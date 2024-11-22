@@ -554,78 +554,75 @@ where
 
     let mut checked_connected_peers = HashSet::new();
 
-    // The loop is in order to check peers that might be connected after the initial loop has
-    // started.
-    loop {
-        let Ok(connected_peers) = node.connected_peers().await else {
-            trace!("Connected peers error");
-            break;
-        };
+    let Ok(connected_peers) = node.connected_peers().await else {
+        trace!("Connected peers error");
+        return pieces_to_download;
+    };
 
-        debug!(
-            connected_peers = %connected_peers.len(),
-            pieces_to_download = %pieces_to_download.len(),
-            "Loop"
-        );
-        if connected_peers.is_empty() || pieces_to_download.is_empty() {
-            break;
-        }
+    let num_pieces = pieces_to_download.len();
+    let num_connected_peers = connected_peers.len();
+    debug!(
+        %num_connected_peers,
+        %num_pieces,
+        "Starting downloading"
+    );
 
-        let num_pieces = pieces_to_download.len();
-        let step = num_pieces / connected_peers.len().min(num_pieces);
+    // Dispatch initial set of requests to peers
+    let mut downloading_stream = connected_peers
+        .into_iter()
+        .take(num_pieces)
+        .enumerate()
+        .map(|(peer_index, peer_id)| {
+            checked_connected_peers.insert(peer_id);
 
-        // Dispatch initial set of requests to peers
-        let mut downloading_stream = connected_peers
-            .into_iter()
-            .take(num_pieces)
-            .enumerate()
-            .filter_map(|(peer_index, peer_id)| {
-                if !checked_connected_peers.insert(peer_id) {
-                    return None;
-                }
+            // Inside to avoid division by zero in case there are no connected peers or pieces
+            let step = num_pieces / num_connected_peers.min(num_pieces);
 
-                // Take unique first piece index for each connected peer and the rest just to check
-                // cached pieces up to recommended limit
-                let mut peer_piece_indices = pieces_to_download
-                    .keys()
-                    .cycle()
-                    .skip(step * peer_index)
-                    .take(num_pieces.min(CachedPieceByIndexRequest::RECOMMENDED_LIMIT))
-                    .copied()
-                    .collect::<Vec<_>>();
-                // Pick first piece index as the piece we want to download
-                let piece_index = peer_piece_indices.swap_remove(0);
+            // Take unique first piece index for each connected peer and the rest just to check
+            // cached pieces up to recommended limit
+            let mut peer_piece_indices = pieces_to_download
+                .keys()
+                .cycle()
+                .skip(step * peer_index)
+                .take(num_pieces.min(CachedPieceByIndexRequest::RECOMMENDED_LIMIT))
+                .copied()
+                .collect::<Vec<_>>();
+            // Pick first piece index as the piece we want to download
+            let piece_index = peer_piece_indices.swap_remove(0);
 
-                let fut = download_cached_piece_from_peer(
-                    node,
-                    piece_validator,
-                    peer_id,
-                    Vec::new(),
-                    Arc::new(peer_piece_indices),
-                    piece_index,
-                    HashSet::new(),
-                    HashSet::new(),
-                );
-
-                Some((piece_index, Box::pin(fut.into_stream()) as _))
-            })
-            .collect::<StreamMap<_, _>>();
-
-        // Process every response and potentially schedule follow-up request to the same peer
-        while let Some((piece_index, result)) = downloading_stream.next().await {
-            process_connected_peer_result(
-                piece_index,
-                result,
-                &mut pieces_to_download,
-                &mut downloading_stream,
+            let fut = download_cached_piece_from_peer(
                 node,
                 piece_validator,
-                results,
+                peer_id,
+                Vec::new(),
+                Arc::new(peer_piece_indices),
+                piece_index,
+                HashSet::new(),
+                HashSet::new(),
             );
 
-            if pieces_to_download.is_empty() {
-                return HashMap::new();
-            }
+            (piece_index, Box::pin(fut.into_stream()) as _)
+        })
+        .collect::<StreamMap<_, _>>();
+
+    loop {
+        // TODO: Add more pieces to download if needed
+
+        let Some((piece_index, result)) = downloading_stream.next().await else {
+            break;
+        };
+        process_connected_peer_result(
+            piece_index,
+            result,
+            &mut pieces_to_download,
+            &mut downloading_stream,
+            node,
+            piece_validator,
+            results,
+        );
+
+        if pieces_to_download.is_empty() {
+            break;
         }
 
         if pieces_to_download.len() == num_pieces {
