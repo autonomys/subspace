@@ -200,7 +200,7 @@ fn main() -> Result<(), Error> {
                 base: consensus_chain_config,
                 // Domain node needs slots notifications for bundle production.
                 force_new_slot_notifications: true,
-                create_object_mappings: CreateObjectMappings::Block(0),
+                create_object_mappings: CreateObjectMappings::No,
                 subspace_networking: SubspaceNetworking::Create { config: dsn_config },
                 dsn_piece_getter: None,
                 sync: Default::default(),
