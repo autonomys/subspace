@@ -24,6 +24,7 @@ use std::any::type_name;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::iter::Empty;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{fmt, iter, mem};
@@ -606,117 +607,25 @@ where
                     HashSet::new(),
                 );
 
-                Some((piece_index, Box::pin(fut.into_stream())))
+                Some((piece_index, Box::pin(fut.into_stream()) as _))
             })
             .collect::<StreamMap<_, _>>();
 
         // Process every response and potentially schedule follow-up request to the same peer
         while let Some((piece_index, result)) = downloading_stream.next().await {
-            let DownloadedPieceFromPeer {
-                peer_id,
+            process_connected_peer_result(
+                piece_index,
                 result,
-                mut cached_pieces,
-                not_cached_pieces,
-            } = result;
-            trace!(%piece_index, %peer_id, result = %result.is_some(), "Piece response");
-
-            let Some(result) = result else {
-                // Downloading failed, ignore peer
-                continue;
-            };
-
-            match result {
-                PieceResult::Piece(piece) => {
-                    trace!(%piece_index, %peer_id, "Got piece");
-
-                    // Downloaded successfully
-                    pieces_to_download.remove(&piece_index);
-
-                    results
-                        .unbounded_send((piece_index, Some(piece)))
-                        .expect("This future isn't polled after receiver is dropped; qed");
-
-                    if pieces_to_download.is_empty() {
-                        return HashMap::new();
-                    }
-                }
-                PieceResult::ClosestPeers(closest_peers) => {
-                    trace!(%piece_index, %peer_id, "Got closest peers");
-
-                    // Store closer peers in case piece index was not downloaded yet
-                    if let Some(peers) = pieces_to_download.get_mut(&piece_index) {
-                        peers.extend(Vec::from(closest_peers));
-                    }
-
-                    // No need to ask this peer again if they didn't have the piece we expected, or
-                    // they claimed to have earlier
-                    continue;
-                }
-            }
-
-            let mut maybe_piece_index_to_download_next = None;
-            // Clear useless entries in cached pieces and find something to download next
-            cached_pieces.retain(|piece_index| {
-                // Clear downloaded pieces
-                if !pieces_to_download.contains_key(piece_index) {
-                    return false;
-                }
-
-                // Try to pick a piece to download that is not being downloaded already
-                if maybe_piece_index_to_download_next.is_none()
-                    && !downloading_stream.contains_key(piece_index)
-                {
-                    maybe_piece_index_to_download_next.replace(*piece_index);
-                    // We'll not need to download it after this attempt
-                    return false;
-                }
-
-                // Retain everything else
-                true
-            });
-
-            let piece_index_to_download_next =
-                if let Some(piece_index) = maybe_piece_index_to_download_next {
-                    trace!(%piece_index, %peer_id, "Next piece to download from peer");
-                    piece_index
-                } else {
-                    trace!(%peer_id, "Peer doesn't have anything else");
-                    // Nothing left to do with this peer
-                    continue;
-                };
-
-            let fut = download_cached_piece_from_peer(
+                &mut pieces_to_download,
+                &mut downloading_stream,
                 node,
                 piece_validator,
-                peer_id,
-                Vec::new(),
-                // Sample more random cached piece indices for connected peer, algorithm can be
-                // improved, but has to be something simple and this should do it for now
-                Arc::new(
-                    pieces_to_download
-                        .keys()
-                        // Do a bit of work to filter-out piece indices we already know remote peer
-                        // has or doesn't to decrease burden on them
-                        .filter_map(|piece_index| {
-                            if piece_index == &piece_index_to_download_next
-                                || cached_pieces.contains(piece_index)
-                                || not_cached_pieces.contains(piece_index)
-                            {
-                                None
-                            } else {
-                                Some(*piece_index)
-                            }
-                        })
-                        .choose_multiple(
-                            &mut thread_rng(),
-                            CachedPieceByIndexRequest::RECOMMENDED_LIMIT,
-                        ),
-                ),
-                piece_index_to_download_next,
-                cached_pieces,
-                not_cached_pieces,
+                results,
             );
-            downloading_stream.insert(piece_index_to_download_next, Box::pin(fut.into_stream()));
+
+            if pieces_to_download.is_empty() {
+                return HashMap::new();
+            }
         }
 
         if pieces_to_download.len() == num_pieces {
@@ -727,6 +636,127 @@ where
     }
 
     pieces_to_download
+}
+
+fn process_connected_peer_result<'a, 'b, PV>(
+    piece_index: PieceIndex,
+    result: DownloadedPieceFromPeer,
+    pieces_to_download: &'b mut HashMap<PieceIndex, HashMap<PeerId, Vec<Multiaddr>>>,
+    downloading_stream: &'b mut StreamMap<
+        PieceIndex,
+        Pin<Box<dyn Stream<Item = DownloadedPieceFromPeer> + Send + 'a>>,
+    >,
+    node: &'a Node,
+    piece_validator: &'a PV,
+    results: &'a mpsc::UnboundedSender<(PieceIndex, Option<Piece>)>,
+) where
+    PV: PieceValidator,
+{
+    let DownloadedPieceFromPeer {
+        peer_id,
+        result,
+        mut cached_pieces,
+        not_cached_pieces,
+    } = result;
+    trace!(%piece_index, %peer_id, result = %result.is_some(), "Piece response");
+
+    let Some(result) = result else {
+        // Downloading failed, ignore peer
+        return;
+    };
+
+    match result {
+        PieceResult::Piece(piece) => {
+            trace!(%piece_index, %peer_id, "Got piece");
+
+            // Downloaded successfully
+            pieces_to_download.remove(&piece_index);
+
+            results
+                .unbounded_send((piece_index, Some(piece)))
+                .expect("This future isn't polled after receiver is dropped; qed");
+
+            if pieces_to_download.is_empty() {
+                return;
+            }
+        }
+        PieceResult::ClosestPeers(closest_peers) => {
+            trace!(%piece_index, %peer_id, "Got closest peers");
+
+            // Store closer peers in case piece index was not downloaded yet
+            if let Some(peers) = pieces_to_download.get_mut(&piece_index) {
+                peers.extend(Vec::from(closest_peers));
+            }
+
+            // No need to ask this peer again if they didn't have the piece we expected, or
+            // they claimed to have earlier
+            return;
+        }
+    }
+
+    let mut maybe_piece_index_to_download_next = None;
+    // Clear useless entries in cached pieces and find something to download next
+    cached_pieces.retain(|piece_index| {
+        // Clear downloaded pieces
+        if !pieces_to_download.contains_key(piece_index) {
+            return false;
+        }
+
+        // Try to pick a piece to download that is not being downloaded already
+        if maybe_piece_index_to_download_next.is_none()
+            && !downloading_stream.contains_key(piece_index)
+        {
+            maybe_piece_index_to_download_next.replace(*piece_index);
+            // We'll not need to download it after this attempt
+            return false;
+        }
+
+        // Retain everything else
+        true
+    });
+
+    let piece_index_to_download_next = if let Some(piece_index) = maybe_piece_index_to_download_next
+    {
+        trace!(%piece_index, %peer_id, "Next piece to download from peer");
+        piece_index
+    } else {
+        trace!(%peer_id, "Peer doesn't have anything else");
+        // Nothing left to do with this peer
+        return;
+    };
+
+    let fut = download_cached_piece_from_peer(
+        node,
+        piece_validator,
+        peer_id,
+        Vec::new(),
+        // Sample more random cached piece indices for connected peer, algorithm can be
+        // improved, but has to be something simple and this should do it for now
+        Arc::new(
+            pieces_to_download
+                .keys()
+                // Do a bit of work to filter-out piece indices we already know remote peer
+                // has or doesn't to decrease burden on them
+                .filter_map(|piece_index| {
+                    if piece_index == &piece_index_to_download_next
+                        || cached_pieces.contains(piece_index)
+                        || not_cached_pieces.contains(piece_index)
+                    {
+                        None
+                    } else {
+                        Some(*piece_index)
+                    }
+                })
+                .choose_multiple(
+                    &mut thread_rng(),
+                    CachedPieceByIndexRequest::RECOMMENDED_LIMIT,
+                ),
+        ),
+        piece_index_to_download_next,
+        cached_pieces,
+        not_cached_pieces,
+    );
+    downloading_stream.insert(piece_index_to_download_next, Box::pin(fut.into_stream()));
 }
 
 /// Takes pieces to download with potential peer candidates as an input, sends results with pieces
