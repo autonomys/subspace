@@ -616,16 +616,31 @@ where
     // If there is no path to this block from the tip due to snap sync, we'll start archiving from
     // an earlier segment, then start mapping again once archiving reaches this block.
     if let Some(block_number) = create_object_mappings.block() {
-        best_block_to_archive = best_block_to_archive.min(block_number);
+        // There aren't any mappings in the genesis block, so starting there is pointless.
+        // (And causes errors on restart, because genesis block data is never stored during snap sync.)
+        best_block_to_archive = best_block_to_archive.min(block_number).max(1);
     }
 
     if (best_block_to_archive..best_block_number)
         .any(|block_number| client.hash(block_number.into()).ok().flatten().is_none())
     {
-        // If there are blocks missing blocks between best block to archive and best block of the
+        // If there are blocks missing headers between best block to archive and best block of the
         // blockchain it means newer block was inserted in some special way and as such is by
         // definition valid, so we can simply assume that is our best block to archive instead
         best_block_to_archive = best_block_number;
+    }
+
+    // If the user chooses an object mapping start block we don't have the data for, we can't
+    // create mappings for it, so the node must exit with an error.
+    let best_block_to_archive_hash = client
+        .hash(best_block_to_archive.into())?
+        .expect("just checked above; qed");
+    if client.block(best_block_to_archive_hash)?.is_none() {
+        let error = format!(
+                "Missing data for mapping block {best_block_to_archive} hash {best_block_to_archive_hash},\
+                try a higher block number, or wipe your node and restart with `--sync full`"
+            );
+        return Err(sp_blockchain::Error::Application(error.into()));
     }
 
     let maybe_last_archived_block = find_last_archived_block(
