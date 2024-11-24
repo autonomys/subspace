@@ -618,7 +618,7 @@ where
     if (best_block_to_archive..best_block_number)
         .any(|block_number| client.hash(block_number.into()).ok().flatten().is_none())
     {
-        // If there are blocks missing blocks between best block to archive and best block of the
+        // If there are blocks missing headers between best block to archive and best block of the
         // blockchain it means newer block was inserted in some special way and as such is by
         // definition valid, so we can simply assume that is our best block to archive instead
         best_block_to_archive = best_block_number;
