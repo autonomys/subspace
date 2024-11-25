@@ -42,6 +42,9 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     pub(crate) record_store: RecordStore,
     /// The configuration for the [`RequestResponsesBehaviour`] protocol.
     pub(crate) request_response_protocols: Vec<Box<dyn RequestHandler>>,
+    /// The upper bound for the number of concurrent inbound + outbound streams for request/response
+    /// protocols.
+    pub(crate) request_response_max_concurrent_streams: usize,
     /// Connection limits for the swarm.
     pub(crate) connection_limits: ConnectionLimits,
     /// The configuration for the [`ReservedPeersBehaviour`].
@@ -97,6 +100,7 @@ where
             ping: Ping::default(),
             request_response: RequestResponseFactoryBehaviour::new(
                 config.request_response_protocols,
+                config.request_response_max_concurrent_streams,
             )
             //TODO: Convert to an error.
             .expect("RequestResponse protocols registration failed."),
