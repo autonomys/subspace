@@ -630,18 +630,29 @@ where
         best_block_to_archive = best_block_number;
     }
 
-    // If the user chooses an object mapping start block we don't have the data for, we can't
+    // If the user chooses an object mapping start block we don't have data or state for, we can't
     // create mappings for it, so the node must exit with an error.
     let best_block_to_archive_hash = client
         .hash(best_block_to_archive.into())?
         .expect("just checked above; qed");
-    if client.block(best_block_to_archive_hash)?.is_none() {
+    let Some(best_block_data) = client.block(best_block_to_archive_hash)? else {
         let error = format!(
                 "Missing data for mapping block {best_block_to_archive} hash {best_block_to_archive_hash},\
                 try a higher block number, or wipe your node and restart with `--sync full`"
             );
         return Err(sp_blockchain::Error::Application(error.into()));
-    }
+    };
+
+    // Similarly, state can be pruned, even if the data is present.
+    client
+        .runtime_api()
+        .extract_block_object_mapping(*best_block_data.block.header().parent_hash(), best_block_data.block.clone())
+            .map_err(|error| {
+                sp_blockchain::Error::Application(
+                    format!("Missing state for mapping block {best_block_to_archive} hash {best_block_to_archive_hash}: {error}, \
+                            try a higher block number, or wipe your node and restart with `--sync full`").into(),
+                )
+            })?;
 
     let maybe_last_archived_block = find_last_archived_block(
         client,
