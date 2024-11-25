@@ -61,7 +61,7 @@ const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 80;
 /// The default maximum pending incoming connection number for the swarm.
 const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 80;
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(40);
-const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: Option<u32> = Some(3);
+const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: u32 = 3;
 // TODO: Consider moving this constant to configuration or removing `Toggle` wrapper when we find a
 //  use-case for gossipsub protocol.
 const ENABLE_GOSSIP_PROTOCOL: bool = false;
@@ -441,7 +441,7 @@ where
     );
 
     let connection_limits = ConnectionLimits::default()
-        .with_max_established_per_peer(SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER)
+        .with_max_established_per_peer(Some(SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER))
         .with_max_pending_incoming(Some(max_pending_incoming_connections))
         .with_max_pending_outgoing(Some(max_pending_outgoing_connections))
         .with_max_established_incoming(Some(max_established_incoming_connections))
@@ -469,6 +469,11 @@ where
         gossipsub,
         record_store: LocalOnlyRecordStore::new(local_records_provider),
         request_response_protocols,
+        request_response_max_concurrent_streams: {
+            let max_num_connections = max_established_incoming_connections as usize
+                + max_established_outgoing_connections as usize;
+            max_num_connections * SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER as usize
+        },
         connection_limits,
         reserved_peers: ReservedPeersConfig {
             reserved_peers: reserved_peers.clone(),

@@ -323,6 +323,7 @@ impl RequestResponseFactoryBehaviour {
     /// the same protocol is passed twice.
     pub fn new(
         list: impl IntoIterator<Item = Box<dyn RequestHandler>>,
+        max_concurrent_streams: usize,
     ) -> Result<Self, RegisterError> {
         let mut protocols = HashMap::new();
         let mut request_handlers = Vec::new();
@@ -341,7 +342,9 @@ impl RequestResponseFactoryBehaviour {
                     max_response_size: config.max_response_size,
                 },
                 iter::once(StreamProtocol::new(config.name)).zip(iter::repeat(protocol_support)),
-                RequestResponseConfig::default().with_request_timeout(config.request_timeout),
+                RequestResponseConfig::default()
+                    .with_request_timeout(config.request_timeout)
+                    .with_max_concurrent_streams(max_concurrent_streams),
             );
 
             match protocols.entry(Cow::Borrowed(config.name)) {
