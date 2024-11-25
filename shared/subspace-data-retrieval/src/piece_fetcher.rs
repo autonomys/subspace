@@ -17,7 +17,7 @@
 
 use crate::object_fetcher::Error;
 use crate::piece_getter::ObjectPieceGetter;
-use futures::{StreamExt, TryStreamExt};
+use futures::StreamExt;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tracing::{debug, trace};
 
@@ -41,18 +41,25 @@ where
     );
 
     // TODO:
-    // - if we're close to the number of pieces in a segment, use segment downloading and piece
+    // - if we're close to the number of pieces in a segment, or we can't find a piece, use segment downloading and piece
     //   reconstruction instead
     // Currently most objects are limited to 4 pieces, so this isn't needed yet.
-    let received_pieces = piece_getter
+    let mut received_pieces = piece_getter
         .get_pieces(piece_indexes.iter().copied())
         .await?;
 
-    // We want exact pieces, so any errors are fatal.
-    let received_pieces: Vec<Piece> = received_pieces
-        .map(|(piece_index, maybe_piece)| maybe_piece?.ok_or(Error::PieceNotFound { piece_index }))
-        .try_collect()
-        .await?;
+    let mut pieces = Vec::new();
+    pieces.resize(piece_indexes.len(), Piece::default());
+
+    while let Some((piece_index, maybe_piece)) = received_pieces.next().await {
+        // We want exact pieces, so any errors are fatal.
+        let piece = maybe_piece?.ok_or(Error::PieceNotFound { piece_index })?;
+        let index_position = piece_indexes
+            .iter()
+            .position(|i| *i == piece_index)
+            .expect("get_pieces only returns indexes it was supplied; qed");
+        pieces[index_position] = piece;
+    }
 
     trace!(
         count = piece_indexes.len(),
@@ -60,5 +67,5 @@ where
         "Successfully retrieved exact pieces"
     );
 
-    Ok(received_pieces)
+    Ok(pieces)
 }
