@@ -58,6 +58,7 @@ use std::collections::HashSet;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
 use std::io::Write;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::str::FromStr;
@@ -167,14 +168,25 @@ impl SingleDiskFarmInfo {
     }
 
     /// Store `SingleDiskFarm` info to path, so it can be loaded again upon restart.
-    pub fn store_to(&self, directory: &Path) -> io::Result<()> {
+    ///
+    /// Can optionally return a lock.
+    pub fn store_to(
+        &self,
+        directory: &Path,
+        lock: bool,
+    ) -> io::Result<Option<SingleDiskFarmInfoLock>> {
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
-            .truncate(true)
+            .truncate(false)
             .open(directory.join(Self::FILE_NAME))?;
-        fs4::fs_std::FileExt::try_lock_exclusive(&file)?;
-        file.write_all(&serde_json::to_vec(self).expect("Info serialization never fails; qed"))
+        if lock {
+            fs4::fs_std::FileExt::try_lock_exclusive(&file)?;
+        }
+        file.set_len(0)?;
+        file.write_all(&serde_json::to_vec(self).expect("Info serialization never fails; qed"))?;
+
+        Ok(lock.then_some(SingleDiskFarmInfoLock { _file: file }))
     }
 
     /// Try to acquire exclusive lock on the single disk farm info file, ensuring no concurrent edits by cooperating
@@ -301,6 +313,8 @@ where
     /// that those operations that are very sensitive (like proving) have all the resources
     /// available to them for the highest probability of success
     pub global_mutex: Arc<AsyncMutex<()>>,
+    /// How many sectors a will be plotted concurrently per farm
+    pub max_plotting_sectors_per_farm: NonZeroUsize,
     /// Disable farm locking, for example if file system doesn't support it
     pub disable_farm_locking: bool,
     /// Explicit mode to use for reading of sector record chunks instead of doing internal
@@ -845,6 +859,7 @@ impl SingleDiskFarm {
             farming_thread_pool_size,
             plotting_delay,
             global_mutex,
+            max_plotting_sectors_per_farm,
             disable_farm_locking,
             read_sector_record_chunks_mode,
             faster_read_sector_record_chunks_mode_barrier,
@@ -895,9 +910,7 @@ impl SingleDiskFarm {
 
             SingleDiskPieceCache::new(
                 id,
-                if piece_cache_capacity == 0 {
-                    None
-                } else {
+                if let Some(piece_cache_capacity) = NonZeroU32::new(piece_cache_capacity) {
                     Some(task::block_in_place(|| {
                         if let Some(registry) = registry {
                             DiskPieceCache::open(
@@ -910,6 +923,8 @@ impl SingleDiskFarm {
                             DiskPieceCache::open(&directory, piece_cache_capacity, Some(id), None)
                         }
                     })?)
+                } else {
+                    None
                 },
             )
         };
@@ -958,7 +973,9 @@ impl SingleDiskFarm {
         let farming_plot_fut = task::spawn_blocking(|| {
             farming_thread_pool
                 .install(move || {
-                    RayonFiles::open_with(&directory.join(Self::PLOT_FILE), DirectIoFile::open)
+                    RayonFiles::open_with(directory.join(Self::PLOT_FILE), |path| {
+                        DirectIoFile::open(path)
+                    })
                 })
                 .map(|farming_plot| (farming_plot, farming_thread_pool))
         });
@@ -1031,6 +1048,7 @@ impl SingleDiskFarm {
                         plotter,
                         metrics,
                     },
+                    max_plotting_sectors_per_farm,
                 };
 
                 let plotting_fut = async {
@@ -1277,87 +1295,88 @@ impl SingleDiskFarm {
         };
         let public_key = identity.public_key().to_bytes().into();
 
-        let single_disk_farm_info = match SingleDiskFarmInfo::load_from(directory)? {
-            Some(mut single_disk_farm_info) => {
-                if &farmer_app_info.genesis_hash != single_disk_farm_info.genesis_hash() {
-                    return Err(SingleDiskFarmError::WrongChain {
-                        id: *single_disk_farm_info.id(),
-                        correct_chain: hex::encode(single_disk_farm_info.genesis_hash()),
-                        wrong_chain: hex::encode(farmer_app_info.genesis_hash),
-                    });
-                }
-
-                if &public_key != single_disk_farm_info.public_key() {
-                    return Err(SingleDiskFarmError::IdentityMismatch {
-                        id: *single_disk_farm_info.id(),
-                        correct_public_key: *single_disk_farm_info.public_key(),
-                        wrong_public_key: public_key,
-                    });
-                }
-
-                let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
-
-                if max_pieces_in_sector < pieces_in_sector {
-                    return Err(SingleDiskFarmError::InvalidPiecesInSector {
-                        id: *single_disk_farm_info.id(),
-                        max_supported: max_pieces_in_sector,
-                        initialized_with: pieces_in_sector,
-                    });
-                }
-
-                if max_pieces_in_sector > pieces_in_sector {
-                    info!(
-                        pieces_in_sector,
-                        max_pieces_in_sector,
-                        "Farm initialized with smaller number of pieces in sector, farm needs to \
-                        be re-created for increase"
-                    );
-                }
-
-                if allocated_space != single_disk_farm_info.allocated_space() {
-                    info!(
-                        old_space = %bytesize::to_string(single_disk_farm_info.allocated_space(), true),
-                        new_space = %bytesize::to_string(allocated_space, true),
-                        "Farm size has changed"
-                    );
-
-                    let new_allocated_space = allocated_space;
-                    match &mut single_disk_farm_info {
-                        SingleDiskFarmInfo::V0 {
-                            allocated_space, ..
-                        } => {
-                            *allocated_space = new_allocated_space;
-                        }
+        let (single_disk_farm_info, single_disk_farm_info_lock) =
+            match SingleDiskFarmInfo::load_from(directory)? {
+                Some(mut single_disk_farm_info) => {
+                    if &farmer_app_info.genesis_hash != single_disk_farm_info.genesis_hash() {
+                        return Err(SingleDiskFarmError::WrongChain {
+                            id: *single_disk_farm_info.id(),
+                            correct_chain: hex::encode(single_disk_farm_info.genesis_hash()),
+                            wrong_chain: hex::encode(farmer_app_info.genesis_hash),
+                        });
                     }
 
-                    single_disk_farm_info.store_to(directory)?;
+                    if &public_key != single_disk_farm_info.public_key() {
+                        return Err(SingleDiskFarmError::IdentityMismatch {
+                            id: *single_disk_farm_info.id(),
+                            correct_public_key: *single_disk_farm_info.public_key(),
+                            wrong_public_key: public_key,
+                        });
+                    }
+
+                    let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
+
+                    if max_pieces_in_sector < pieces_in_sector {
+                        return Err(SingleDiskFarmError::InvalidPiecesInSector {
+                            id: *single_disk_farm_info.id(),
+                            max_supported: max_pieces_in_sector,
+                            initialized_with: pieces_in_sector,
+                        });
+                    }
+
+                    if max_pieces_in_sector > pieces_in_sector {
+                        info!(
+                            pieces_in_sector,
+                            max_pieces_in_sector,
+                            "Farm initialized with smaller number of pieces in sector, farm needs \
+                            to be re-created for increase"
+                        );
+                    }
+
+                    let mut single_disk_farm_info_lock = None;
+
+                    if allocated_space != single_disk_farm_info.allocated_space() {
+                        info!(
+                            old_space = %bytesize::to_string(single_disk_farm_info.allocated_space(), true),
+                            new_space = %bytesize::to_string(allocated_space, true),
+                            "Farm size has changed"
+                        );
+
+                        let new_allocated_space = allocated_space;
+                        match &mut single_disk_farm_info {
+                            SingleDiskFarmInfo::V0 {
+                                allocated_space, ..
+                            } => {
+                                *allocated_space = new_allocated_space;
+                            }
+                        }
+
+                        single_disk_farm_info_lock =
+                            single_disk_farm_info.store_to(directory, !disable_farm_locking)?;
+                    } else if !disable_farm_locking {
+                        single_disk_farm_info_lock = Some(
+                            SingleDiskFarmInfo::try_lock(directory)
+                                .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?,
+                        );
+                    }
+
+                    (single_disk_farm_info, single_disk_farm_info_lock)
                 }
+                None => {
+                    let single_disk_farm_info = SingleDiskFarmInfo::new(
+                        FarmId::new(),
+                        farmer_app_info.genesis_hash,
+                        public_key,
+                        max_pieces_in_sector,
+                        allocated_space,
+                    );
 
-                single_disk_farm_info
-            }
-            None => {
-                let single_disk_farm_info = SingleDiskFarmInfo::new(
-                    FarmId::new(),
-                    farmer_app_info.genesis_hash,
-                    public_key,
-                    max_pieces_in_sector,
-                    allocated_space,
-                );
+                    let single_disk_farm_info_lock =
+                        single_disk_farm_info.store_to(directory, !disable_farm_locking)?;
 
-                single_disk_farm_info.store_to(directory)?;
-
-                single_disk_farm_info
-            }
-        };
-
-        let single_disk_farm_info_lock = if disable_farm_locking {
-            None
-        } else {
-            Some(
-                SingleDiskFarmInfo::try_lock(directory)
-                    .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?,
-            )
-        };
+                    (single_disk_farm_info, single_disk_farm_info_lock)
+                }
+            };
 
         let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
         let sector_size = sector_size(pieces_in_sector) as u64;
@@ -1461,7 +1480,7 @@ impl SingleDiskFarm {
             Arc::new(AsyncRwLock::new(sectors_metadata))
         };
 
-        let plot_file = DirectIoFile::open(&directory.join(Self::PLOT_FILE))?;
+        let plot_file = DirectIoFile::open(directory.join(Self::PLOT_FILE))?;
 
         if plot_file.size()? != allocated_space_distribution.plot_file_size {
             // Allocating the whole file (`set_len` below can create a sparse file, which will cause
@@ -1604,7 +1623,7 @@ impl SingleDiskFarm {
     pub fn read_all_sectors_metadata(
         directory: &Path,
     ) -> io::Result<Vec<SectorMetadataChecksummed>> {
-        let metadata_file = DirectIoFile::open(&directory.join(Self::METADATA_FILE))?;
+        let metadata_file = DirectIoFile::open(directory.join(Self::METADATA_FILE))?;
 
         let metadata_size = metadata_file.size()?;
         let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
@@ -2291,7 +2310,7 @@ impl SingleDiskFarm {
         let _ = cache_file.advise_sequential_access();
 
         let cache_size = match cache_file.size() {
-            Ok(metadata_size) => metadata_size,
+            Ok(cache_size) => cache_size,
             Err(error) => {
                 return Err(SingleDiskFarmScrubError::FailedToDetermineFileSize { file, error });
             }

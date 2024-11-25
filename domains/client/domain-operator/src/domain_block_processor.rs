@@ -64,7 +64,7 @@ where
     pub(crate) domain_confirmation_depth: NumberFor<Block>,
     pub(crate) block_import: Arc<BoxBlockImport<Block>>,
     pub(crate) import_notification_sinks: DomainImportNotificationSinks<Block, CBlock>,
-    pub(crate) consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
+    pub(crate) domain_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
 }
 
 impl<Block, CBlock, Client, CClient, Backend> Clone
@@ -83,7 +83,7 @@ where
             domain_confirmation_depth: self.domain_confirmation_depth,
             block_import: self.block_import.clone(),
             import_notification_sinks: self.import_notification_sinks.clone(),
-            consensus_network_sync_oracle: self.consensus_network_sync_oracle.clone(),
+            domain_sync_oracle: self.domain_sync_oracle.clone(),
         }
     }
 }
@@ -446,7 +446,7 @@ where
         let header_number = *header.number();
 
         let block_import_params = {
-            let block_origin = if self.consensus_network_sync_oracle.is_major_syncing() {
+            let block_origin = if self.domain_sync_oracle.is_major_syncing() {
                 // The domain block is derived from the consensus block, if the consensus chain is
                 // in major sync then we should also consider the domain block is `NetworkInitialSync`
                 BlockOrigin::NetworkInitialSync
@@ -669,7 +669,7 @@ where
     pub(crate) domain_id: DomainId,
     pub(crate) client: Arc<Client>,
     pub(crate) consensus_client: Arc<CClient>,
-    pub(crate) consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
+    pub(crate) domain_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub(crate) fraud_proof_generator:
         FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>,
     pub(crate) consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
@@ -686,7 +686,7 @@ where
             domain_id: self.domain_id,
             client: self.client.clone(),
             consensus_client: self.consensus_client.clone(),
-            consensus_network_sync_oracle: self.consensus_network_sync_oracle.clone(),
+            domain_sync_oracle: self.domain_sync_oracle.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
             consensus_offchain_tx_pool_factory: self.consensus_offchain_tx_pool_factory.clone(),
         }
@@ -734,7 +734,7 @@ where
         &self,
         consensus_block_hash: CBlock::Hash,
     ) -> sp_blockchain::Result<()> {
-        if self.consensus_network_sync_oracle.is_major_syncing() {
+        if self.domain_sync_oracle.is_major_syncing() {
             tracing::debug!(
                 "Skip reporting unconfirmed bad receipt as the consensus node is still major syncing..."
             );

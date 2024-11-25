@@ -3,8 +3,8 @@
     array_windows,
     assert_matches,
     btree_extract_if,
-    const_option,
     duration_constructors,
+    extract_if,
     exact_size_is_empty,
     fmt_helpers_for_derive,
     future_join,
@@ -65,8 +65,6 @@ pub mod plotter;
 pub mod single_disk_farm;
 pub mod thread_pool_manager;
 pub mod utils;
-
-pub use jsonrpsee;
 
 /// Size of the LRU cache for peers.
 pub const KNOWN_PEERS_CACHE_SIZE: u32 = 100;

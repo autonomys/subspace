@@ -25,7 +25,6 @@ use rayon::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::future::join;
-use std::hash::Hash;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::Poll;
@@ -39,6 +38,7 @@ use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{KeyWithDistance, LocalRecordProvider};
 use tokio::runtime::Handle;
+use tokio::sync::Semaphore;
 use tokio::task::{block_in_place, yield_now};
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
@@ -55,6 +55,7 @@ const IS_PIECE_MAYBE_STORED_TIMEOUT: Duration = Duration::from_millis(100);
 
 type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
+type CacheIndex = u8;
 
 #[derive(Default, Debug)]
 struct Handlers {
@@ -62,16 +63,12 @@ struct Handlers {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct FarmerCacheOffset<CacheIndex> {
+struct FarmerCacheOffset {
     cache_index: CacheIndex,
     piece_offset: PieceCacheOffset,
 }
 
-impl<CacheIndex> FarmerCacheOffset<CacheIndex>
-where
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    CacheIndex: TryFrom<usize>,
-{
+impl FarmerCacheOffset {
     fn new(cache_index: CacheIndex, piece_offset: PieceCacheOffset) -> Self {
         Self {
             cache_index,
@@ -121,9 +118,9 @@ impl CacheBackend {
 }
 
 #[derive(Debug)]
-struct CacheState<CacheIndex> {
-    cache_stored_pieces: HashMap<KeyWithDistance, FarmerCacheOffset<CacheIndex>>,
-    cache_free_offsets: Vec<FarmerCacheOffset<CacheIndex>>,
+struct CacheState {
+    cache_stored_pieces: HashMap<KeyWithDistance, FarmerCacheOffset>,
+    cache_free_offsets: Vec<FarmerCacheOffset>,
     backend: CacheBackend,
 }
 
@@ -140,25 +137,22 @@ enum WorkerCommand {
 /// Farmer cache worker used to drive the farmer cache backend
 #[derive(Debug)]
 #[must_use = "Farmer cache will not work unless its worker is running"]
-pub struct FarmerCacheWorker<NC, CacheIndex>
+pub struct FarmerCacheWorker<NC>
 where
     NC: fmt::Debug,
 {
     peer_id: PeerId,
     node_client: NC,
-    piece_caches: Arc<AsyncRwLock<PieceCachesState<CacheIndex>>>,
+    piece_caches: Arc<AsyncRwLock<PieceCachesState>>,
     plot_caches: Arc<PlotCaches>,
     handlers: Arc<Handlers>,
     worker_receiver: Option<mpsc::Receiver<WorkerCommand>>,
     metrics: Option<Arc<FarmerCacheMetrics>>,
 }
 
-impl<NC, CacheIndex> FarmerCacheWorker<NC, CacheIndex>
+impl<NC> FarmerCacheWorker<NC>
 where
     NC: NodeClient,
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
 {
     /// Run the cache worker with provided piece getter.
     ///
@@ -216,7 +210,7 @@ where
                 }
                 maybe_segment_header = segment_headers_notifications.next().fuse() => {
                     if let Some(segment_header) = maybe_segment_header {
-                        self.process_segment_header(segment_header, &mut last_segment_index_internal).await;
+                        self.process_segment_header(&piece_getter, segment_header, &mut last_segment_index_internal).await;
                     } else {
                         // Keep-up sync only ends with subscription, which lasts for duration of an
                         // instance
@@ -417,7 +411,11 @@ where
             match maybe_cache {
                 Ok(cache) => {
                     let backend = cache.backend;
-                    stored_pieces.extend(cache.cache_stored_pieces.into_iter());
+                    for (key, cache_offset) in cache.cache_stored_pieces {
+                        if let Some(old_cache_offset) = stored_pieces.insert(key, cache_offset) {
+                            dangling_free_offsets.push_front(old_cache_offset);
+                        }
+                    }
                     dangling_free_offsets.extend(
                         cache.cache_free_offsets.into_iter().filter(|free_offset| {
                             free_offset.piece_offset.0 < backend.used_capacity
@@ -540,14 +538,23 @@ where
         let downloaded_pieces_count = AtomicUsize::new(0);
         let caches = Mutex::new(caches);
         self.handlers.progress.call_simple(&0.0);
+        let piece_indices_to_store = piece_indices_to_store.into_iter().enumerate();
+
+        let downloading_semaphore = &Semaphore::new(SYNC_BATCH_SIZE * SYNC_CONCURRENT_BATCHES);
 
         let downloading_pieces_stream =
-            stream::iter(piece_indices_to_store.into_iter().map(|piece_indices| {
+            stream::iter(piece_indices_to_store.map(|(batch, piece_indices)| {
                 let downloaded_pieces_count = &downloaded_pieces_count;
                 let caches = &caches;
 
                 async move {
-                    let mut pieces_stream = match piece_getter.get_pieces(piece_indices).await {
+                    let mut permit = downloading_semaphore
+                        .acquire_many(SYNC_BATCH_SIZE as u32)
+                        .await
+                        .expect("Semaphore is never closed; qed");
+                    debug!(%batch, num_pieces = %piece_indices.len(), "Downloading pieces");
+
+                    let pieces_stream = match piece_getter.get_pieces(piece_indices).await {
                         Ok(pieces_stream) => pieces_stream,
                         Err(error) => {
                             error!(
@@ -557,8 +564,11 @@ where
                             return;
                         }
                     };
+                    let mut pieces_stream = pieces_stream.enumerate();
 
-                    while let Some((piece_index, result)) = pieces_stream.next().await {
+                    while let Some((index, (piece_index, result))) = pieces_stream.next().await {
+                        debug!(%batch, %index, %piece_index, "Downloaded piece");
+
                         let piece = match result {
                             Ok(Some(piece)) => {
                                 trace!(%piece_index, "Downloaded piece successfully");
@@ -577,6 +587,8 @@ where
                                 continue;
                             }
                         };
+                        // Release slot for future batches
+                        permit.split(1);
 
                         let (offset, maybe_backend) = {
                             let mut caches = caches.lock();
@@ -636,19 +648,16 @@ where
                     }
                 }
             }));
+
         // Download several batches concurrently to make sure slow tail of one is compensated by
         // another
-        let mut downloading_pieces_stream =
-            downloading_pieces_stream.buffer_unordered(SYNC_CONCURRENT_BATCHES);
-        // TODO: Can't use this due to https://github.com/rust-lang/rust/issues/64650
-        // Simply drain everything
-        // .for_each(|()| async {})
-
-        // TODO: Remove once https://github.com/rust-lang/rust/issues/64650 is resolved
-        while let Some(()) = downloading_pieces_stream.next().await {
+        downloading_pieces_stream
+            // This allows to schedule new batch while previous batches partially completed, but
+            // avoids excessive memory usage like when all futures are created upfront
+            .buffer_unordered(SYNC_CONCURRENT_BATCHES * 2)
             // Simply drain everything
-        }
-        drop(downloading_pieces_stream);
+            .for_each(|()| async {})
+            .await;
 
         *self.piece_caches.write().await = caches.into_inner();
         self.handlers.progress.call_simple(&100.0);
@@ -657,11 +666,14 @@ where
         info!("Finished piece cache synchronization");
     }
 
-    async fn process_segment_header(
+    async fn process_segment_header<PG>(
         &self,
+        piece_getter: &PG,
         segment_header: SegmentHeader,
         last_segment_index_internal: &mut SegmentIndex,
-    ) {
+    ) where
+        PG: PieceGetter,
+    {
         let segment_index = segment_header.segment_index();
         debug!(%segment_index, "Starting to process newly archived segment");
 
@@ -691,33 +703,45 @@ where
                         return None;
                     }
 
-                    let maybe_piece = match self.node_client.piece(piece_index).await {
-                        Ok(maybe_piece) => maybe_piece,
+                    let maybe_piece_result =
+                        self.node_client
+                            .piece(piece_index)
+                            .await
+                            .inspect_err(|error| {
+                                debug!(
+                                    %error,
+                                    %segment_index,
+                                    %piece_index,
+                                    "Failed to retrieve piece from node right after archiving"
+                                );
+                            });
+
+                    if let Ok(Some(piece)) = maybe_piece_result {
+                        return Some((piece_index, piece));
+                    }
+
+                    match piece_getter.get_piece(piece_index).await {
+                        Ok(Some(piece)) => Some((piece_index, piece)),
+                        Ok(None) => {
+                            warn!(
+                                %segment_index,
+                                %piece_index,
+                                "Failed to retrieve piece right after archiving"
+                            );
+
+                            None
+                        }
                         Err(error) => {
-                            error!(
+                            warn!(
                                 %error,
                                 %segment_index,
                                 %piece_index,
-                                "Failed to retrieve piece from node right after archiving, \
-                                this should never happen and is an implementation bug"
+                                "Failed to retrieve piece right after archiving"
                             );
 
-                            return None;
+                            None
                         }
-                    };
-
-                    let Some(piece) = maybe_piece else {
-                        error!(
-                            %segment_index,
-                            %piece_index,
-                            "Failed to retrieve piece from node right after archiving, this \
-                            should never happen and is an implementation bug"
-                        );
-
-                        return None;
-                    };
-
-                    Some((piece_index, piece))
+                    }
                 })
                 .collect::<FuturesUnordered<_>>()
                 .filter_map(|maybe_piece| async move { maybe_piece })
@@ -729,8 +753,6 @@ where
             self.acknowledge_archived_segment_processing(segment_index)
                 .await;
 
-            // TODO: Would be nice to have concurrency here, but heap is causing a bit of
-            //  difficulties unfortunately
             // Go through potentially matching pieces again now that segment was acknowledged and
             // try to persist them if necessary
             for (piece_index, piece) in pieces_to_maybe_include {
@@ -1026,10 +1048,10 @@ impl PlotCaches {
 /// where piece cache is not enough to store all the pieces on the network, while there is a lot of
 /// space in the plot that is not used by sectors yet and can be leverage as extra caching space.
 #[derive(Debug, Clone)]
-pub struct FarmerCache<CacheIndex> {
+pub struct FarmerCache {
     peer_id: PeerId,
     /// Individual dedicated piece caches
-    piece_caches: Arc<AsyncRwLock<PieceCachesState<CacheIndex>>>,
+    piece_caches: Arc<AsyncRwLock<PieceCachesState>>,
     /// Additional piece caches
     plot_caches: Arc<PlotCaches>,
     handlers: Arc<Handlers>,
@@ -1038,12 +1060,7 @@ pub struct FarmerCache<CacheIndex> {
     metrics: Option<Arc<FarmerCacheMetrics>>,
 }
 
-impl<CacheIndex> FarmerCache<CacheIndex>
-where
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
-{
+impl FarmerCache {
     /// Create new piece cache instance and corresponding worker.
     ///
     /// NOTE: Returned future is async, but does blocking operations and should be running in
@@ -1052,7 +1069,7 @@ where
         node_client: NC,
         peer_id: PeerId,
         registry: Option<&mut Registry>,
-    ) -> (Self, FarmerCacheWorker<NC, CacheIndex>)
+    ) -> (Self, FarmerCacheWorker<NC>)
     where
         NC: NodeClient,
     {
@@ -1188,7 +1205,7 @@ where
         let pieces_to_read_from_piece_cache = {
             let caches = self.piece_caches.read().await;
             // Pieces to read from piece cache grouped by backend for efficiency reasons
-            let mut reading_from_piece_cache =
+            let mut pieces_to_read_from_piece_cache =
                 HashMap::<CacheIndex, (CacheBackend, HashMap<_, _>)>::new();
 
             for piece_index in piece_indices {
@@ -1208,7 +1225,7 @@ where
                 let cache_index = offset.cache_index;
                 let piece_offset = offset.piece_offset;
 
-                match reading_from_piece_cache.entry(cache_index) {
+                match pieces_to_read_from_piece_cache.entry(cache_index) {
                     Entry::Occupied(mut entry) => {
                         let (_backend, pieces) = entry.get_mut();
                         pieces.insert(piece_offset, (piece_index, key));
@@ -1227,7 +1244,7 @@ where
                 }
             }
 
-            reading_from_piece_cache
+            pieces_to_read_from_piece_cache
         };
 
         let (tx, mut rx) = mpsc::unbounded();
@@ -1502,7 +1519,7 @@ where
 
     fn find_piece_internal(
         &self,
-        caches: &PieceCachesState<CacheIndex>,
+        caches: &PieceCachesState,
         piece_index: PieceIndex,
     ) -> Option<(PieceCacheId, PieceCacheOffset)> {
         let key = KeyWithDistance::new(self.peer_id, piece_index.to_multihash());
@@ -1568,12 +1585,7 @@ where
     }
 }
 
-impl<CacheIndex> LocalRecordProvider for FarmerCache<CacheIndex>
-where
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
-{
+impl LocalRecordProvider for FarmerCache {
     fn record(&self, key: &RecordKey) -> Option<ProviderRecord> {
         let distance_key = KeyWithDistance::new(self.peer_id, key.clone());
         if self

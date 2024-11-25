@@ -31,6 +31,11 @@ Check [crates/subspace-node](../crates/subspace-node/README.md) and [crates/subs
 
 This is a monorepo with multiple binaries and the workflow is typical for Rust projects:
 
+You may need to follow both node & farmer requirements
+
+**node**: https://github.com/autonomys/subspace/tree/main/crates/subspace-node
+**farmer**: https://github.com/autonomys/subspace/tree/main/crates/subspace-farmer
+
 - `cargo run --release --bin subspace-node -- run --dev` to run [a node](/crates/subspace-node)
 - To [start farming](/crates/subspace-farmer):
   - Single farm: `cargo run --release --bin subspace-farmer -- farm --reward-address REWARD-ADDRESS path=FARM0-DIR,size=FARM0-SIZE`

@@ -42,7 +42,7 @@ serde = { version = "1.0.110", features = ["derive"] }
 serde_json = "1.0.128"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
-thiserror = "1.0.64"
+thiserror = "2.0.0"
 tokio = { version = "1.40.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = "0.1.16"
 tracing = "0.1.40"
@@ -54,7 +54,7 @@ void = "1.0.2"
 # TODO: Replace with upstream once https://github.com/libp2p/rust-libp2p/issues/5626 and
 #  https://github.com/libp2p/rust-libp2p/issues/5634 are resolved
 git = "https://github.com/autonomys/rust-libp2p"
-rev = "ae7527453146df24aff6afed5f5b9efdffbc15b8"
+rev = "3f6238a86bda615ee9ec54462147f6a5d7891b6d"
 version = "0.54.1"
 default-features = false
 features = [
@@ -78,4 +78,4 @@ features = [
 [dev-dependencies]
 rand = "0.8.5"
 # TODO: Replace with upstream once https://github.com/libp2p/rust-libp2p/issues/5626 is resolved
-libp2p-swarm-test = { version = "0.4.0", git = "https://github.com/autonomys/rust-libp2p", rev = "ae7527453146df24aff6afed5f5b9efdffbc15b8" }
+libp2p-swarm-test = { version = "0.4.0", git = "https://github.com/autonomys/rust-libp2p", rev = "3f6238a86bda615ee9ec54462147f6a5d7891b6d" }

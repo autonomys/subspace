@@ -23,6 +23,7 @@ use domain_client_operator::fetch_domain_bootstrap_info;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use sc_cli::{ChainSpec, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
+use sc_consensus_subspace::archiver::CreateObjectMappings;
 use sc_network::config::MultiaddrWithPeerId;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
@@ -199,7 +200,7 @@ fn main() -> Result<(), Error> {
                 base: consensus_chain_config,
                 // Domain node needs slots notifications for bundle production.
                 force_new_slot_notifications: true,
-                create_object_mappings: true,
+                create_object_mappings: CreateObjectMappings::No,
                 subspace_networking: SubspaceNetworking::Create { config: dsn_config },
                 dsn_piece_getter: None,
                 sync: Default::default(),
@@ -218,12 +219,14 @@ fn main() -> Result<(), Error> {
 
             let keystore = partial_components.keystore_container.keystore();
 
-            let consensus_chain_node = subspace_service::new_full::<PosTable, _>(
+            let consensus_chain_node =
+                subspace_service::new_full::<PosTable, _>(
                 consensus_chain_config,
                 partial_components,
                 None,
                 true,
                 SlotProportion::new(3f32 / 4f32),
+                None,
             )
             .await
             .map_err(|error| {

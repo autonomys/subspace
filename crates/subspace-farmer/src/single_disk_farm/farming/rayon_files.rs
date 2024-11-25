@@ -40,13 +40,16 @@ where
 impl RayonFiles<File> {
     /// Open file at specified path as many times as there is number of threads in current [`rayon`]
     /// thread pool.
-    pub fn open(path: &Path) -> io::Result<Self> {
+    pub fn open<P>(path: P) -> io::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
         let files = (0..rayon::current_num_threads())
             .map(|_| {
                 let file = OpenOptions::new()
                     .read(true)
                     .advise_random_access()
-                    .open(path)?;
+                    .open(path.as_ref())?;
                 file.advise_random_access()?;
 
                 Ok::<_, io::Error>(file)
@@ -63,9 +66,12 @@ where
 {
     /// Open file at specified path as many times as there is number of threads in current [`rayon`]
     /// thread pool with a provided function
-    pub fn open_with(path: &Path, open: fn(&Path) -> io::Result<File>) -> io::Result<Self> {
+    pub fn open_with<P>(path: P, open: fn(&Path) -> io::Result<File>) -> io::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
         let files = (0..rayon::current_num_threads())
-            .map(|_| open(path))
+            .map(|_| open(path.as_ref()))
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Self { files })

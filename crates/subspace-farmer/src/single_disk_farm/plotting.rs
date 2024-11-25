@@ -6,14 +6,15 @@ use crate::single_disk_farm::metrics::{SectorState, SingleDiskFarmMetrics};
 use crate::single_disk_farm::{
     BackgroundTaskError, Handlers, PlotMetadataHeader, RESERVED_PLOT_METADATA,
 };
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock, Semaphore, SemaphoreGuard};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesOrdered;
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use parity_scale_codec::Encode;
 use std::collections::HashSet;
-use std::future::{pending, Future};
+use std::future::Future;
 use std::io;
+use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::pin::pin;
 use std::sync::Arc;
@@ -100,6 +101,7 @@ pub(super) struct PlottingOptions<'a, NC> {
     pub(super) sectors_being_modified: &'a AsyncRwLock<HashSet<SectorIndex>>,
     pub(super) sectors_to_plot_receiver: mpsc::Receiver<SectorToPlot>,
     pub(super) sector_plotting_options: SectorPlottingOptions<'a, NC>,
+    pub(super) max_plotting_sectors_per_farm: NonZeroUsize,
 }
 
 /// Starts plotting process.
@@ -118,9 +120,33 @@ where
         sectors_being_modified,
         mut sectors_to_plot_receiver,
         sector_plotting_options,
+        max_plotting_sectors_per_farm,
     } = plotting_options;
 
+    let sector_plotting_options = &sector_plotting_options;
+    let plotting_semaphore = Semaphore::new(max_plotting_sectors_per_farm.get());
     let mut sectors_being_plotted = FuturesOrdered::new();
+    // Channel size is intentionally unbounded for easier analysis, but it is bounded by plotting
+    // semaphore in practice due to permit stored in `SectorPlottingResult`
+    let (sector_plotting_result_sender, mut sector_plotting_result_receiver) = mpsc::unbounded();
+    let process_plotting_result_fut = async move {
+        while let Some(sector_plotting_result) = sector_plotting_result_receiver.next().await {
+            process_plotting_result(
+                sector_plotting_result,
+                sectors_metadata,
+                sectors_being_modified,
+                &mut metadata_header,
+                Arc::clone(&sector_plotting_options.metadata_file),
+            )
+            .await?;
+        }
+
+        unreachable!(
+            "Stream will not end before the rest of the plotting process is shutting down"
+        );
+    };
+    let process_plotting_result_fut = process_plotting_result_fut.fuse();
+    let mut process_plotting_result_fut = pin!(process_plotting_result_fut);
 
     // Wait for new sectors to plot from `sectors_to_plot_receiver` and wait for sectors that
     // already started plotting to finish plotting and then update metadata header
@@ -134,9 +160,10 @@ where
                 let sector_index = sector_to_plot.sector_index;
                 let sector_plotting_init_fut = plot_single_sector(
                     sector_to_plot,
-                    &sector_plotting_options,
+                    sector_plotting_options,
                     sectors_metadata,
                     sectors_being_modified,
+                    &plotting_semaphore,
                 )
                     .instrument(info_span!("", %sector_index))
                     .fuse();
@@ -162,26 +189,24 @@ where
                             );
                             break;
                         }
-                        maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
-                            process_plotting_result(
-                                maybe_sector_plotting_result?,
-                                sectors_metadata,
-                                sectors_being_modified,
-                                &mut metadata_header,
-                                Arc::clone(&sector_plotting_options.metadata_file)
-                            ).await?;
+                        maybe_sector_plotting_result = sectors_being_plotted.select_next_some() => {
+                            sector_plotting_result_sender
+                                .unbounded_send(maybe_sector_plotting_result?)
+                                .expect("Sending means receiver is not dropped yet; qed");
+                        }
+                        result = process_plotting_result_fut => {
+                            return result;
                         }
                     }
                 }
             }
-            maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
-                process_plotting_result(
-                    maybe_sector_plotting_result?,
-                    sectors_metadata,
-                    sectors_being_modified,
-                    &mut metadata_header,
-                    Arc::clone(&sector_plotting_options.metadata_file)
-                ).await?;
+            maybe_sector_plotting_result = sectors_being_plotted.select_next_some() => {
+                sector_plotting_result_sender
+                    .unbounded_send(maybe_sector_plotting_result?)
+                    .expect("Sending means receiver is not dropped yet; qed");
+            }
+            result = process_plotting_result_fut => {
+                return result;
             }
         }
     }
@@ -190,7 +215,7 @@ where
 }
 
 async fn process_plotting_result(
-    sector_plotting_result: SectorPlottingResult,
+    sector_plotting_result: SectorPlottingResult<'_>,
     sectors_metadata: &AsyncRwLock<Vec<SectorMetadataChecksummed>>,
     sectors_being_modified: &AsyncRwLock<HashSet<SectorIndex>>,
     metadata_header: &mut PlotMetadataHeader,
@@ -200,6 +225,7 @@ async fn process_plotting_result(
         sector_metadata,
         replotting,
         last_queued,
+        plotting_permit,
     } = sector_plotting_result;
 
     let sector_index = sector_metadata.sector_index;
@@ -236,20 +262,9 @@ async fn process_plotting_result(
         }
     }
 
-    Ok(())
-}
+    drop(plotting_permit);
 
-/// Wait for next element in `FuturesOrdered`, but only if it is not empty. This avoids calling
-/// `.poll_next()` if `FuturesOrdered` is already empty, so it can be reused indefinitely
-async fn maybe_wait_futures_ordered<F>(stream: &mut FuturesOrdered<F>) -> F::Output
-where
-    F: Future,
-{
-    if stream.is_empty() {
-        pending().await
-    } else {
-        stream.next().await.expect("Not empty; qed")
-    }
+    Ok(())
 }
 
 enum PlotSingleSectorResult<F> {
@@ -258,10 +273,11 @@ enum PlotSingleSectorResult<F> {
     FatalError(PlottingError),
 }
 
-struct SectorPlottingResult {
+struct SectorPlottingResult<'a> {
     sector_metadata: SectorMetadataChecksummed,
     replotting: bool,
     last_queued: bool,
+    plotting_permit: SemaphoreGuard<'a>,
 }
 
 async fn plot_single_sector<'a, NC>(
@@ -269,7 +285,10 @@ async fn plot_single_sector<'a, NC>(
     sector_plotting_options: &'a SectorPlottingOptions<'a, NC>,
     sectors_metadata: &'a AsyncRwLock<Vec<SectorMetadataChecksummed>>,
     sectors_being_modified: &'a AsyncRwLock<HashSet<SectorIndex>>,
-) -> PlotSingleSectorResult<impl Future<Output = Result<SectorPlottingResult, PlottingError>> + 'a>
+    plotting_semaphore: &'a Semaphore,
+) -> PlotSingleSectorResult<
+    impl Future<Output = Result<SectorPlottingResult<'a>, PlottingError>> + 'a,
+>
 where
     NC: NodeClient,
 {
@@ -293,6 +312,17 @@ where
         acknowledgement_sender: _acknowledgement_sender,
     } = sector_to_plot;
     trace!("Preparing to plot sector");
+
+    // Inform others that this sector is being modified
+    {
+        let mut sectors_being_modified = sectors_being_modified.write().await;
+        if !sectors_being_modified.insert(sector_index) {
+            debug!("Skipped sector plotting, it is already in progress");
+            return PlotSingleSectorResult::Skipped;
+        }
+    }
+
+    let plotting_permit = plotting_semaphore.acquire().await;
 
     let maybe_old_sector_metadata = sectors_metadata
         .read()
@@ -384,7 +414,6 @@ where
                 plot_file,
                 metadata_file,
                 handlers,
-                sectors_being_modified,
                 global_mutex,
                 progress_receiver,
                 metrics,
@@ -479,6 +508,7 @@ where
             sector_metadata,
             replotting,
             last_queued,
+            plotting_permit,
         })
     })
 }
@@ -492,7 +522,6 @@ async fn plot_single_sector_internal(
     plot_file: &Arc<DirectIoFile>,
     metadata_file: &Arc<DirectIoFile>,
     handlers: &Handlers,
-    sectors_being_modified: &AsyncRwLock<HashSet<SectorIndex>>,
     global_mutex: &AsyncMutex<()>,
     mut progress_receiver: mpsc::Receiver<SectorPlottingProgress>,
     metrics: &Option<Arc<SingleDiskFarmMetrics>>,
@@ -568,9 +597,6 @@ async fn plot_single_sector_internal(
             return Ok(Err(PlottingError::LowLevel(error)));
         }
     };
-
-    // Inform others that this sector is being modified
-    sectors_being_modified.write().await.insert(sector_index);
 
     {
         // Take mutex briefly to make sure writing is allowed right now

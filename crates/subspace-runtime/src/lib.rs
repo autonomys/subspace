@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(const_option, const_trait_impl, variant_count)]
+#![feature(const_trait_impl, variant_count)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 // TODO: remove when upstream issue is fixed
@@ -72,7 +72,8 @@ use sp_core::{ConstBool, OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor,
-    OperatorId, OperatorPublicKey, DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
+    OperatorId, OperatorPublicKey, OperatorRewardSource, DOMAIN_STORAGE_FEE_MULTIPLIER,
+    INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -129,7 +130,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: Cow::Borrowed("subspace"),
     impl_name: Cow::Borrowed("subspace"),
     authoring_version: 0,
-    spec_version: 7,
+    spec_version: 1,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -316,8 +317,13 @@ impl pallet_timestamp::Config for Runtime {
 }
 
 parameter_types! {
-    // TODO: Correct value
-    pub const ExistentialDeposit: Balance = 500 * SHANNON;
+    // Computed as ED = Account data size * Price per byte, where
+    // Price per byte = Min Number of validators * Storage duration (years) * Storage cost per year
+    // Account data size (80 bytes)
+    // Min Number of redundant validators (100) - For a stable and redundant blockchain we need at least a certain number of full nodes/collators.
+    // Storage duration (20 years) - It is theoretically unlimited, accounts will stay around while the chain is alive.
+    // Storage cost per year of (12 * 1e-9 * 0.1 ) - SSD storage on cloud hosting costs about 0.1 USD per Gb per month
+    pub const ExistentialDeposit: Balance = 200_000_000_000_000 * SHANNON;
 }
 
 #[derive(
@@ -590,7 +596,7 @@ impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
         // on consensus chain, reward the domain operators
         // balance is already on this consensus runtime
         if let ChainId::Domain(domain_id) = chain_id {
-            Domains::reward_domain_operators(domain_id, fees)
+            Domains::reward_domain_operators(domain_id, OperatorRewardSource::XDMProtocolFees, fees)
         }
     }
 }
@@ -793,7 +799,11 @@ impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
                     let _ = Balances::deposit_creating(&block_author, reward);
                 }
             }
-            ChainId::Domain(domain_id) => Domains::reward_domain_operators(domain_id, reward),
+            ChainId::Domain(domain_id) => Domains::reward_domain_operators(
+                domain_id,
+                OperatorRewardSource::XDMProtocolFees,
+                reward,
+            ),
         }
     }
 }
@@ -1529,8 +1539,9 @@ impl_runtime_apis! {
             build_state::<RuntimeGenesisConfig>(config)
         }
 
-        fn get_preset(id: &Option<sp_genesis_builder::PresetId>) -> Option<Vec<u8>> {
-            get_preset::<RuntimeGenesisConfig>(id, |_| None)
+        fn get_preset(_id: &Option<sp_genesis_builder::PresetId>) -> Option<Vec<u8>> {
+            // By passing `None` the upstream `get_preset` will return the default value of `RuntimeGenesisConfig`
+            get_preset::<RuntimeGenesisConfig>(&None, |_| None)
         }
 
         fn preset_names() -> Vec<sp_genesis_builder::PresetId> {

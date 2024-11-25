@@ -101,13 +101,19 @@ pub const EXISTENTIAL_DEPOSIT: Balance = 500 * SHANNON;
 const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
 
 pub fn block_weights() -> BlockWeights {
-    // Allow u64::MAX for ref_time and proof size for total domain weight
-    let maximum_block_weight = Weight::from_parts(u64::MAX, u64::MAX);
+    // NOTE: this value is used in many places as the `max_block` weight (e.g. `used_weight / max_block`
+    // is used in tx fee adjustment), but it does not serve as a limit of the total weight of a domain block,
+    // which is `max_bundle_weight * number_of_bundle` and bundle production is probabilistic.
+    // See [`domain-check-weight::CheckWeight`] for more detail about the domain block weight check.
+    //
+    // TODO: instead of using a constant weight value for all the domain runtimes, perhaps derive and use the
+    // target domain block weight bases on `max_bundle_weight` and `bundle_slot_probability`.
+    let maximum_block_weight = maximum_domain_block_weight();
 
     // If the bundle slot probability is the same as the consensus slot probability then
-    // there is one bundle per block, such bundle is allowed to contains the whole domain
+    // there is one bundle per block, such a bundle is allowed to consume the whole domain
     // block weight
-    let max_extrinsic_weight = maximum_domain_block_weight();
+    let max_extrinsic_weight = maximum_block_weight - ExtrinsicBaseWeight::get();
 
     BlockWeights::builder()
         .base_block(BlockExecutionWeight::get())

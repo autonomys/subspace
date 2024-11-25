@@ -17,5 +17,5 @@ jsonrpsee = { version = "0.24.5", features = ["client-core", "server-core", "mac
 serde = { version = "1.0.110", default-features = false, features = ["alloc", "derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-data-retrieval = { version = "0.1.0", path = "../../shared/subspace-data-retrieval" }
-thiserror = "1.0.64"
+thiserror = "2.0.0"
 tracing = "0.1.40"

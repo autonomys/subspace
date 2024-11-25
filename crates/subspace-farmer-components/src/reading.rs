@@ -340,8 +340,7 @@ pub fn recover_extended_record_chunks(
     erasure_coding: &ErasureCoding,
 ) -> Result<Box<[Scalar; Record::NUM_S_BUCKETS]>, ReadingError> {
     // Restore source record scalars
-    // TODO: Recover into `Box<[Scalar; Record::NUM_S_BUCKETS]>` or else conversion into `Box` below
-    //  might leak memory
+    // TODO: Would be nice to recover directly into `Box<[Scalar; Record::NUM_S_BUCKETS]>`
     let record_chunks = erasure_coding
         .recover(sector_record_chunks)
         .map_err(|error| ReadingError::FailedToErasureDecodeRecord {

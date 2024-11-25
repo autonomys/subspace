@@ -1,23 +1,12 @@
-// TODO: Remove
-#![allow(
-    clippy::needless_return,
-    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
-)]
-#![feature(
-    const_option,
-    duration_constructors,
-    extract_if,
-    hash_extract_if,
-    let_chains,
-    type_changing_struct_update
-)]
+#![feature(duration_constructors, type_changing_struct_update)]
 
 mod commands;
 mod utils;
 
 use clap::Parser;
-use std::fs;
 use std::path::PathBuf;
+use std::process::exit;
+use std::{fs, panic};
 use subspace_farmer::single_disk_farm::{ScrubTarget, SingleDiskFarm};
 use subspace_proof_of_space::chia::ChiaTable;
 use tracing::info;
@@ -80,6 +69,14 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Exit on panics, rather than unwinding. Unwinding can hang the tokio runtime waiting for
+    // stuck tasks or threads.
+    let default_panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |panic_info| {
+        default_panic_hook(panic_info);
+        exit(1);
+    }));
+
     tracing_subscriber::registry()
         .with(
             fmt::layer()

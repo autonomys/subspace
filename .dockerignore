@@ -1,9 +1,0 @@
-*
-!/crates
-!/domains
-!/orml
-!/shared
-!/test
-!/Cargo.lock
-!/Cargo.toml
-!/rust-toolchain.toml

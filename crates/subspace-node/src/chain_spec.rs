@@ -22,13 +22,14 @@ use crate::domain::cli::{GenesisDomain, SpecId};
 use crate::domain::evm_chain_spec::{self};
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
-use sc_subspace_chain_specs::DEVNET_CHAIN_SPEC;
+use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, MAINNET_CHAIN_SPEC, TAURUS_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
+use serde::Deserialize;
 use sp_core::crypto::Ss58Codec;
 use sp_domains::PermissionedActionAllowedBy;
 use sp_runtime::{BoundedVec, Percent};
 use std::marker::PhantomData;
-use std::num::NonZeroU32;
+use std::num::{NonZeroU128, NonZeroU32};
 use subspace_core_primitives::pot::PotKey;
 use subspace_core_primitives::PublicKey;
 use subspace_runtime::{
@@ -40,7 +41,7 @@ use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
 };
 
-const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
+const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.foundation/submit/";
 
 /// Additional subspace specific genesis parameters.
 struct GenesisParams {
@@ -59,20 +60,36 @@ struct GenesisDomainParams {
     genesis_domains: Vec<GenesisDomain>,
 }
 
-pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
+/// Genesis token balances allocations
+const GENESIS_ALLOCATIONS: &str = include_str!("genesis_allocations.json");
+
+#[derive(Deserialize)]
+struct GenesisAllocation(AccountId, NonZeroU128);
+
+fn get_genesis_allocations(contents: &str) -> Vec<(AccountId, Balance)> {
+    let allocations: Vec<GenesisAllocation> =
+        serde_json::from_str(contents).expect("Failed to parse genesis allocations JSON");
+
+    allocations
+        .into_iter()
+        .map(|GenesisAllocation(account, balance)| (account, balance.get() * SSC))
+        .collect()
+}
+
+pub fn mainnet_compiled() -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "Wasm binary must be built for Taurus".to_string())?,
         None,
     )
-    .with_name("Autonomys Taurus Testnet")
+    .with_name("Autonomys Mainnet")
     // ID
-    .with_id("autonomys_taurus")
-    .with_chain_type(ChainType::Custom("Autonomys Taurus Testnet".to_string()))
+    .with_id("autonomys_mainnet")
+    .with_chain_type(ChainType::Custom("Autonomys Mainnet".to_string()))
     .with_telemetry_endpoints(
         TelemetryEndpoints::new(vec![(SUBSPACE_TELEMETRY_URL.into(), 1)])
             .map_err(|error| error.to_string())?,
     )
-    .with_protocol_id("autonomys-taurus")
+    .with_protocol_id("autonomys-mainnet")
     .with_properties({
         let mut properties = chain_spec_properties();
         properties.insert(
@@ -83,10 +100,31 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
     })
     .with_genesis_config({
         let sudo_account =
-            AccountId::from_ss58check("5F1XZHUSixAq58W8fstCUNtP1WDGoRpCEuLzGRDmJo32sbGc")
+            AccountId::from_ss58check("5EHHtxGtDEPFX2x2PCVg8uhhg6kDdt9znQLr2oqUA9sYL5n6")
                 .expect("Wrong root account address");
+        let history_seeder =
+            AccountId::from_ss58check("5EXKjeN6GXua85mHygsS95UwwrnNwTTEbzeAj9nqkXrgqQp6")
+                .expect("Wrong history seeder account address");
+        let council_members = [
+            "5EhEcKAfGXzEkEqYdN9Ntc4f2KJrVvabWTUceCVtDPTYxVit",
+            "5G9GUNK2Vp1jgpENPmcy9TLoprkmHBTSg9bgvMa8er5ZLYjb",
+            "5CAtkaN1tDiaiuaYbxeDNNnix2WhAQxu5RobMFaiaStiCcTx",
+            "5CJ8ezmRwcNJmutA92ZmRpaL8e6BCPSdfnt3e6kZZWLAVUZK",
+            "5CiFrTxvxmehJ7okLdEc8z3cxvWfrMpShPJy9GKymRqEgF7T",
+        ]
+        .iter()
+        .map(|address| {
+            AccountId::from_ss58check(address)
+                .map_err(|_| format!("Invalid council SS58 address: {}", address))
+        })
+        .collect::<Result<Vec<AccountId>, String>>()?;
 
-        let balances = vec![(sudo_account.clone(), 1_000 * SSC)];
+        let council_config = CouncilConfig {
+            phantom: PhantomData,
+            members: council_members,
+        };
+        let balances = get_genesis_allocations(GENESIS_ALLOCATIONS);
+
         serde_json::to_value(subspace_genesis_config(
             sudo_account.clone(),
             balances,
@@ -94,19 +132,19 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
                 enable_rewards_at: EnableRewardsAt::Manually,
                 allow_authoring_by: AllowAuthoringBy::RootFarmer(PublicKey::from(
                     hex_literal::hex!(
-                        "8aecbcf0b404590ddddc01ebacb205a562d12fdb5c2aa6a4035c1a20f23c9515"
+                        "e6a489dab63b650cf475431fc46649f4256167443fea241fca0bb3f86b29837a"
                     ),
                 )),
                 // TODO: Adjust once we bench PoT on faster hardware
-                // About 1s on 6.0 GHz Raptor Lake CPU (14900K)
-                pot_slot_iterations: NonZeroU32::new(200_032_000).expect("Not zero; qed"),
+                // About 1s on 6.2 GHz Raptor Lake CPU (14900KS)
+                pot_slot_iterations: NonZeroU32::new(206_557_520).expect("Not zero; qed"),
                 enable_domains: false,
                 enable_dynamic_cost_of_storage: false,
                 enable_balance_transfers: false,
                 // TODO: Proper value here
                 confirmation_depth_k: 100,
                 rewards_config: RewardsConfig {
-                    remaining_issuance: 360_000_000 * SSC,
+                    remaining_issuance: 350_000_000 * SSC,
                     proposer_subsidy_points: BoundedVec::try_from(vec![
                         RewardPoint {
                             block: 0,
@@ -207,22 +245,23 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
                 permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
                     sudo_account.clone(),
                 ]),
-                genesis_domains: vec![
-                    evm_chain_spec::get_genesis_domain(SpecId::Taurus, sudo_account.clone())?,
-                    auto_id_chain_spec::get_genesis_domain(SpecId::Taurus, sudo_account.clone())?,
-                ],
+                genesis_domains: vec![],
             },
             CouncilDemocracyConfigParams::<BlockNumber>::production_params(),
-            // TODO: Proper value here
-            sudo_account.clone(),
+            council_config,
+            history_seeder.clone(),
         )?)
         .map_err(|error| format!("Failed to serialize genesis config: {error}"))?
     })
     .build())
 }
 
+pub fn mainnet_config() -> Result<GenericChainSpec, String> {
+    GenericChainSpec::from_json_bytes(MAINNET_CHAIN_SPEC.as_bytes())
+}
+
 pub fn taurus_config() -> Result<GenericChainSpec, String> {
-    Err("Taurus is not supported".to_string())
+    GenericChainSpec::from_json_bytes(TAURUS_CHAIN_SPEC.as_bytes())
 }
 
 pub fn devnet_config() -> Result<GenericChainSpec, String> {
@@ -285,6 +324,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                 )?],
             },
             CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
+            CouncilConfig::default(),
             sudo_account.clone(),
         )?)
         .map_err(|error| format!("Failed to serialize genesis config: {error}"))?
@@ -344,7 +384,8 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     )?],
                 },
                 CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
-                history_seeder,
+                CouncilConfig::default(),
+                history_seeder.clone(),
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
         )
@@ -358,6 +399,7 @@ fn subspace_genesis_config(
     genesis_params: GenesisParams,
     genesis_domain_params: GenesisDomainParams,
     council_democracy_config_params: CouncilDemocracyConfigParams<BlockNumber>,
+    council_config: CouncilConfig,
     history_seeder_account: AccountId,
 ) -> Result<RuntimeGenesisConfig, String> {
     let GenesisParams {
@@ -413,7 +455,7 @@ fn subspace_genesis_config(
             phantom: PhantomData,
         },
         rewards: rewards_config,
-        council: CouncilConfig::default(),
+        council: council_config,
         democracy: DemocracyConfig::default(),
         runtime_configs: RuntimeConfigsConfig {
             enable_domains,

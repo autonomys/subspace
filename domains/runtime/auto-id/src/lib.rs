@@ -87,7 +87,7 @@ pub type SignedExtra = (
     frame_system::CheckGenesis<Runtime>,
     frame_system::CheckMortality<Runtime>,
     frame_system::CheckNonce<Runtime>,
-    frame_system::CheckWeight<Runtime>,
+    domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
 
@@ -118,7 +118,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: Cow::Borrowed("subspace-auto-id-domain"),
     impl_name: Cow::Borrowed("subspace-auto-id-domain"),
     authoring_version: 0,
-    spec_version: 1,
+    spec_version: 0,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -831,7 +831,11 @@ impl_runtime_apis! {
         }
 
         fn extrinsic_weight(ext: &<Block as BlockT>::Extrinsic) -> Weight {
-            ext.get_dispatch_info().weight
+            let len = ext.encoded_size() as u64;
+            let info = ext.get_dispatch_info();
+            info.weight
+                .saturating_add(<Runtime as frame_system::Config>::BlockWeights::get().get(info.class).base_extrinsic)
+                .saturating_add(Weight::from_parts(0, len))
         }
 
         fn block_fees() -> sp_domains::BlockFees<Balance> {

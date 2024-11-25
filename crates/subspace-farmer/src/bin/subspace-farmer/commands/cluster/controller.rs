@@ -1,8 +1,5 @@
-mod caches;
-mod farms;
-
-use crate::commands::cluster::controller::caches::maintain_caches;
-use crate::commands::cluster::controller::farms::{maintain_farms, FarmIndex};
+use crate::commands::cluster::cache::CACHE_IDENTIFICATION_BROADCAST_INTERVAL;
+use crate::commands::cluster::farmer::FARMER_IDENTIFICATION_BROADCAST_INTERVAL;
 use crate::commands::shared::derive_libp2p_keypair;
 use crate::commands::shared::network::{configure_network, NetworkArgs};
 use anyhow::anyhow;
@@ -18,7 +15,9 @@ use std::path::PathBuf;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::Duration;
+use subspace_farmer::cluster::controller::caches::maintain_caches;
 use subspace_farmer::cluster::controller::controller_service;
+use subspace_farmer::cluster::controller::farms::{maintain_farms, FarmIndex};
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farmer_cache::FarmerCache;
@@ -229,13 +228,29 @@ pub(super) async fn controller(
         {
             let nats_client = nats_client.clone();
 
-            move || async move { maintain_farms(&instance, &nats_client, &plotted_pieces).await }
+            move || async move {
+                maintain_farms(
+                    &instance,
+                    &nats_client,
+                    &plotted_pieces,
+                    FARMER_IDENTIFICATION_BROADCAST_INTERVAL,
+                )
+                .await
+            }
         },
         "controller-farms".to_string(),
     )?;
 
     let caches_fut = run_future_in_dedicated_thread(
-        move || async move { maintain_caches(&cache_group, &nats_client, farmer_cache).await },
+        move || async move {
+            maintain_caches(
+                &cache_group,
+                &nats_client,
+                farmer_cache,
+                CACHE_IDENTIFICATION_BROADCAST_INTERVAL,
+            )
+            .await
+        },
         "controller-caches".to_string(),
     )?;
 

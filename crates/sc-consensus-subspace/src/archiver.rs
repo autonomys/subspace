@@ -67,10 +67,13 @@ use sp_consensus::SyncOracle;
 use sp_consensus_subspace::{SubspaceApi, SubspaceJustification};
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
-use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
+use sp_runtime::traits::{
+    Block as BlockT, BlockNumber as BlockNumberT, CheckedSub, Header, NumberFor, One, Zero,
+};
 use sp_runtime::Justifications;
 use std::error::Error;
 use std::future::Future;
+use std::num::NonZeroU32;
 use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -353,7 +356,61 @@ pub struct ObjectMappingNotification {
     ///
     /// The archived data won't be available in pieces until the entire segment is full and archived.
     pub object_mapping: Vec<GlobalObject>,
+    /// The block that these mappings are from.
+    pub block_number: BlockNumber,
     // TODO: add an acknowledgement_sender for backpressure if needed
+}
+
+/// Whether to create object mappings.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum CreateObjectMappings {
+    /// Start creating object mappings from this block number.
+    ///
+    /// This can be lower than the latest archived block, but must be greater than genesis.
+    ///
+    /// The genesis block doesn't have mappings, so starting mappings at genesis is pointless.
+    /// The archiver will fail if it can't get the data for this block, but snap sync doesn't store
+    /// the genesis data on disk.  So avoiding genesis also avoids this error.
+    /// <https://github.com/paritytech/polkadot-sdk/issues/5366>
+    Block(NonZeroU32),
+
+    /// Create object mappings as archiving is happening.
+    Yes,
+
+    /// Don't create object mappings.
+    #[default]
+    No,
+}
+
+impl CreateObjectMappings {
+    /// The fixed block number to start creating object mappings from.
+    /// If there is no fixed block number, or mappings are disabled, returns None.
+    fn block(&self) -> Option<BlockNumber> {
+        match self {
+            CreateObjectMappings::Block(block) => Some(block.get()),
+            CreateObjectMappings::Yes => None,
+            CreateObjectMappings::No => None,
+        }
+    }
+
+    /// Returns true if object mappings will be created from a past or future block.
+    pub fn is_enabled(&self) -> bool {
+        !matches!(self, CreateObjectMappings::No)
+    }
+
+    /// Does the supplied block number need object mappings?
+    pub fn is_enabled_for_block(&self, block: BlockNumber) -> bool {
+        if !self.is_enabled() {
+            return false;
+        }
+
+        if let Some(target_block) = self.block() {
+            return block >= target_block;
+        }
+
+        // We're continuing where we left off, so all blocks get mappings.
+        true
+    }
 }
 
 fn find_last_archived_block<Block, Client, AS>(
@@ -382,6 +439,7 @@ where
         .filter_map(|segment_index| segment_headers_store.get_segment_header(segment_index))
     {
         let last_archived_block_number = segment_header.last_archived_block().number;
+
         if NumberFor::<Block>::from(last_archived_block_number) > best_block_to_archive {
             // Last archived block in segment header is too high for current state of the chain
             // (segment headers store may know about more blocks in existence than is currently
@@ -394,12 +452,11 @@ where
             continue;
         };
 
-        let last_segment_header = segment_header;
-
         let last_archived_block = client
             .block(last_archived_block_hash)?
             .expect("Last archived block must always be retrievable; qed");
 
+        // If we're starting mapping creation at this block, return its mappings.
         let block_object_mappings = if create_object_mappings {
             client
                 .runtime_api()
@@ -413,7 +470,7 @@ where
         };
 
         return Ok(Some((
-            last_segment_header,
+            segment_header,
             last_archived_block,
             block_object_mappings,
         )));
@@ -537,7 +594,7 @@ fn initialize_archiver<Block, Client, AS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
-    create_object_mappings: bool,
+    create_object_mappings: CreateObjectMappings,
 ) -> sp_blockchain::Result<InitializedArchiver<Block>>
 where
     Block: BlockT,
@@ -548,26 +605,49 @@ where
     let client_info = client.info();
     let best_block_number = TryInto::<BlockNumber>::try_into(client_info.best_number)
         .unwrap_or_else(|_| {
-            unreachable!("Block number fits into block number; qed");
+            unreachable!("sp_runtime::BlockNumber fits into subspace_primitives::BlockNumber; qed");
         });
 
     let confirmation_depth_k = subspace_link.chain_constants.confirmation_depth_k();
 
     let mut best_block_to_archive = best_block_number.saturating_sub(confirmation_depth_k);
+    // Choose a lower block number if we want to get mappings from that specific block.
+    // If we are continuing from where we left off, we don't need to change the block number to archive.
+    // If there is no path to this block from the tip due to snap sync, we'll start archiving from
+    // an earlier segment, then start mapping again once archiving reaches this block.
+    if let Some(block_number) = create_object_mappings.block() {
+        // There aren't any mappings in the genesis block, so starting there is pointless.
+        // (And causes errors on restart, because genesis block data is never stored during snap sync.)
+        best_block_to_archive = best_block_to_archive.min(block_number).max(1);
+    }
+
     if (best_block_to_archive..best_block_number)
         .any(|block_number| client.hash(block_number.into()).ok().flatten().is_none())
     {
-        // If there are blocks missing blocks between best block to archive and best block of the
+        // If there are blocks missing headers between best block to archive and best block of the
         // blockchain it means newer block was inserted in some special way and as such is by
         // definition valid, so we can simply assume that is our best block to archive instead
         best_block_to_archive = best_block_number;
+    }
+
+    // If the user chooses an object mapping start block we don't have the data for, we can't
+    // create mappings for it, so the node must exit with an error.
+    let best_block_to_archive_hash = client
+        .hash(best_block_to_archive.into())?
+        .expect("just checked above; qed");
+    if client.block(best_block_to_archive_hash)?.is_none() {
+        let error = format!(
+                "Missing data for mapping block {best_block_to_archive} hash {best_block_to_archive_hash},\
+                try a higher block number, or wipe your node and restart with `--sync full`"
+            );
+        return Err(sp_blockchain::Error::Application(error.into()));
     }
 
     let maybe_last_archived_block = find_last_archived_block(
         client,
         segment_headers_store,
         best_block_to_archive.into(),
-        create_object_mappings,
+        create_object_mappings.is_enabled(),
     )?;
 
     let have_last_segment_header = maybe_last_archived_block.is_some();
@@ -659,16 +739,17 @@ where
                                 .block(block_hash)?
                                 .expect("All blocks since last archived must be present; qed");
 
-                            let block_object_mappings = if create_object_mappings {
-                                runtime_api
-                                    .extract_block_object_mapping(
-                                        *block.block.header().parent_hash(),
-                                        block.block.clone(),
-                                    )
-                                    .unwrap_or_default()
-                            } else {
-                                BlockObjectMapping::default()
-                            };
+                            let block_object_mappings =
+                                if create_object_mappings.is_enabled_for_block(block_number) {
+                                    runtime_api
+                                        .extract_block_object_mapping(
+                                            *block.block.header().parent_hash(),
+                                            block.block.clone(),
+                                        )
+                                        .unwrap_or_default()
+                                } else {
+                                    BlockObjectMapping::default()
+                                };
 
                             Ok((block, block_object_mappings))
                         },
@@ -685,7 +766,6 @@ where
 
             for (signed_block, block_object_mappings) in blocks_to_archive {
                 let block_number_to_archive = *signed_block.block.header().number();
-
                 let encoded_block = encode_block(signed_block);
 
                 debug!(
@@ -698,6 +778,7 @@ where
                 send_object_mapping_notification(
                     &subspace_link.object_mapping_notification_sender,
                     block_outcome.object_mapping,
+                    block_number_to_archive,
                 );
                 let new_segment_headers: Vec<SegmentHeader> = block_outcome
                     .archived_segments
@@ -780,8 +861,9 @@ fn finalize_block<Block, Backend, Client>(
 /// processing, which is necessary for ensuring that when the next block is imported, inherents will
 /// contain segment header of newly archived block (must happen exactly in the next block).
 ///
-/// If `create_object_mappings` is set, when a block with object mappings is archived, notification
-/// ([`SubspaceLink::object_mapping_notification_stream`]) will be sent.
+/// `create_object_mappings` controls when object mappings are created for archived blocks. When
+/// these mappings are created, a ([`SubspaceLink::object_mapping_notification_stream`])
+/// notification will be sent.
 ///
 /// Once segment header is archived, notification ([`SubspaceLink::archived_segment_notification_stream`])
 /// will be sent and archiver will be paused until all receivers have provided an acknowledgement
@@ -796,7 +878,7 @@ pub fn create_subspace_archiver<Block, Backend, Client, AS, SO>(
     client: Arc<Client>,
     sync_oracle: SubspaceSyncOracle<SO>,
     telemetry: Option<TelemetryHandle>,
-    create_object_mappings: bool,
+    create_object_mappings: CreateObjectMappings,
 ) -> sp_blockchain::Result<impl Future<Output = sp_blockchain::Result<()>> + Send + 'static>
 where
     Block: BlockT,
@@ -814,6 +896,15 @@ where
     AS: AuxStore + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + 'static,
 {
+    if create_object_mappings.is_enabled() {
+        info!(
+            ?create_object_mappings,
+            "Creating object mappings from the configured block onwards"
+        );
+    } else {
+        info!("Not creating object mappings");
+    }
+
     let maybe_archiver = if segment_headers_store.max_segment_index().is_none() {
         Some(initialize_archiver(
             &segment_headers_store,
@@ -861,13 +952,14 @@ where
                     }
                 };
 
-            let last_archived_block_number = NumberFor::<Block>::from(
-                segment_headers_store
-                    .last_segment_header()
-                    .expect("Exists after archiver initialization; qed")
-                    .last_archived_block()
-                    .number,
-            );
+            let last_archived_block_number = segment_headers_store
+                .last_segment_header()
+                .expect("Exists after archiver initialization; qed")
+                .last_archived_block()
+                .number;
+            let create_mappings =
+                create_object_mappings.is_enabled_for_block(last_archived_block_number);
+            let last_archived_block_number = NumberFor::<Block>::from(last_archived_block_number);
             trace!(
                 %importing_block_number,
                 %block_number_to_archive,
@@ -876,9 +968,9 @@ where
                 "Checking if block needs to be skipped"
             );
 
-            // Skip archived blocks, unless we're producing object mappings for the full history
+            // Skip archived blocks, unless we're producing object mappings for them
             let skip_last_archived_blocks =
-                last_archived_block_number > block_number_to_archive && !create_object_mappings;
+                last_archived_block_number > block_number_to_archive && !create_mappings;
             if best_archived_block_number >= block_number_to_archive || skip_last_archived_blocks {
                 // This block was already archived, skip
                 debug!(
@@ -907,7 +999,7 @@ where
                 )?;
 
                 if best_archived_block_number + One::one() == block_number_to_archive {
-                    // As expected, can continue now
+                    // As expected, can archive this block
                 } else if best_archived_block_number >= block_number_to_archive {
                     // Special sync mode where verified blocks were inserted into blockchain
                     // directly, archiving of this block will naturally happen later
@@ -966,7 +1058,7 @@ async fn archive_block<Block, Backend, Client, AS, SO>(
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     best_archived_block_hash: Block::Hash,
     block_number_to_archive: NumberFor<Block>,
-    create_object_mappings: bool,
+    create_object_mappings: CreateObjectMappings,
 ) -> sp_blockchain::Result<(Block::Hash, NumberFor<Block>)>
 where
     Block: BlockT,
@@ -1011,7 +1103,13 @@ where
         )));
     }
 
-    let block_object_mappings = if create_object_mappings {
+    let create_mappings = create_object_mappings.is_enabled_for_block(
+        block_number_to_archive.try_into().unwrap_or_else(|_| {
+            unreachable!("sp_runtime::BlockNumber fits into subspace_primitives::BlockNumber; qed")
+        }),
+    );
+
+    let block_object_mappings = if create_mappings {
         client
             .runtime_api()
             .extract_block_object_mapping(parent_block_hash, block.block.clone())
@@ -1040,6 +1138,7 @@ where
     send_object_mapping_notification(
         &object_mapping_notification_sender,
         block_outcome.object_mapping,
+        block_number_to_archive,
     );
     for archived_segment in block_outcome.archived_segments {
         let segment_header = archived_segment.segment_header;
@@ -1083,15 +1182,25 @@ where
     Ok((block_hash_to_archive, block_number_to_archive))
 }
 
-fn send_object_mapping_notification(
+fn send_object_mapping_notification<BlockNum>(
     object_mapping_notification_sender: &SubspaceNotificationSender<ObjectMappingNotification>,
     object_mapping: Vec<GlobalObject>,
-) {
+    block_number: BlockNum,
+) where
+    BlockNum: BlockNumberT,
+{
     if object_mapping.is_empty() {
         return;
     }
 
-    let object_mapping_notification = ObjectMappingNotification { object_mapping };
+    let block_number = TryInto::<BlockNumber>::try_into(block_number).unwrap_or_else(|_| {
+        unreachable!("sp_runtime::BlockNumber fits into subspace_primitives::BlockNumber; qed");
+    });
+
+    let object_mapping_notification = ObjectMappingNotification {
+        object_mapping,
+        block_number,
+    };
 
     object_mapping_notification_sender.notify(move || object_mapping_notification);
 }

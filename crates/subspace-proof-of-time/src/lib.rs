@@ -7,16 +7,12 @@ use core::num::NonZeroU32;
 use subspace_core_primitives::pot::{PotCheckpoints, PotOutput, PotSeed};
 
 /// Proof of time error
-#[derive(Debug)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+#[derive(Debug, thiserror::Error)]
 pub enum PotError {
     /// Iterations are not multiple of number of checkpoints times two
-    #[cfg_attr(
-        feature = "thiserror",
-        error(
-            "Iterations {iterations} are not multiple of number of checkpoints {num_checkpoints} \
-            times two"
-        )
+    #[error(
+        "Iterations {iterations} are not multiple of number of checkpoints {num_checkpoints} \
+        times two"
     )]
     NotMultipleOfCheckpoints {
         /// Slot iterations provided

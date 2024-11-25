@@ -1,9 +1,3 @@
-// TODO: Remove
-#![allow(
-    clippy::needless_return,
-    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
-)]
-
 mod consensus;
 mod domain;
 mod shared;
@@ -19,17 +13,21 @@ use crate::{set_default_ss58_version, Error, PosTable};
 use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::fetch_domain_bootstrap_info;
+use domain_client_operator::snap_sync::{
+    BlockImportingAcknowledgement, ConsensusChainSyncParams, SnapSyncOrchestrator,
+};
 use domain_runtime_primitives::opaque::Block as DomainBlock;
+use futures::stream::StreamExt;
 use futures::FutureExt;
 use sc_cli::Signals;
 use sc_consensus_slots::SlotProportion;
-use sc_service::{BlocksPruning, PruningMode};
 use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::env;
+use std::sync::Arc;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::ChainSyncMode;
@@ -118,29 +116,21 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     info!("🏷  Node name: {}", subspace_configuration.network.node_name);
     info!("💾 Node path: {}", base_path.display());
 
-    if maybe_domain_configuration.is_some() && subspace_configuration.sync == ChainSyncMode::Snap {
-        return Err(Error::Other(
-            "Snap sync mode is not supported for domains, use full sync".to_string(),
-        ));
-    }
-
-    if maybe_domain_configuration.is_some()
-        && (matches!(
-            subspace_configuration.blocks_pruning,
-            BlocksPruning::Some(_)
-        ) || matches!(
-            subspace_configuration.state_pruning,
-            Some(PruningMode::Constrained(_))
-        ))
+    let fork_id = subspace_configuration
+        .base
+        .chain_spec
+        .fork_id()
+        .map(String::from);
+    let snap_sync_orchestrator = if maybe_domain_configuration.is_some()
+        && subspace_configuration.sync == ChainSyncMode::Snap
     {
-        return Err(Error::Other(
-            "Running an operator requires both `--blocks-pruning` and `--state-pruning` to be set \
-            to either `archive` or `archive-canonical`"
-                .to_string(),
-        ));
-    }
+        Some(Arc::new(SnapSyncOrchestrator::new()))
+    } else {
+        None
+    };
 
     let mut task_manager = {
+        let subspace_link;
         let consensus_chain_node = {
             let span = info_span!("Consensus");
             let _enter = span.enter();
@@ -159,6 +149,8 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 ))
             })?;
 
+            subspace_link = partial_components.other.subspace_link.clone();
+
             let full_node_fut = subspace_service::new_full::<PosTable, _>(
                 subspace_configuration,
                 partial_components,
@@ -169,6 +161,9 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                     }),
                 true,
                 SlotProportion::new(3f32 / 4f32),
+                snap_sync_orchestrator
+                    .as_ref()
+                    .map(|orchestrator| orchestrator.consensus_snap_sync_target_block_receiver()),
             );
 
             full_node_fut.await.map_err(|error| {
@@ -278,15 +273,15 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             };
 
             let domain_start_options = DomainStartOptions {
-                consensus_client: consensus_chain_node.client,
+                consensus_client: consensus_chain_node.client.clone(),
                 consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
                     consensus_chain_node.transaction_pool,
                 ),
-                consensus_network: consensus_chain_node.network_service,
+                consensus_network: consensus_chain_node.network_service.clone(),
                 block_importing_notification_stream: consensus_chain_node
                     .block_importing_notification_stream,
                 pot_slot_info_stream: consensus_chain_node.pot_slot_info_stream,
-                consensus_network_sync_oracle: consensus_chain_node.sync_service,
+                consensus_network_sync_oracle: consensus_chain_node.sync_service.clone(),
                 domain_message_receiver,
                 gossip_message_sink,
             };
@@ -294,9 +289,10 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             consensus_chain_node
                 .task_manager
                 .spawn_essential_handle()
-                .spawn_essential_blocking(
-                    "domain",
-                    Some("domains"),
+                .spawn_essential_blocking("domain", Some("domains"), {
+                    let consensus_chain_network_service =
+                        consensus_chain_node.network_service.clone();
+                    let consensus_chain_sync_service = consensus_chain_node.sync_service.clone();
                     Box::pin(async move {
                         let span = info_span!("Domain");
                         let _enter = span.enter();
@@ -305,6 +301,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                             &*domain_start_options.consensus_client,
                             domain_configuration.domain_id,
                         );
+
                         let bootstrap_result = match bootstrap_result_fut.await {
                             Ok(bootstrap_result) => bootstrap_result,
                             Err(error) => {
@@ -313,17 +310,38 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                             }
                         };
 
+                        let consensus_chain_sync_params =
+                            snap_sync_orchestrator.map(|snap_sync_orchestrator| {
+                                ConsensusChainSyncParams {
+                                    snap_sync_orchestrator,
+                                    fork_id,
+                                    network_service: consensus_chain_network_service,
+                                    sync_service: consensus_chain_sync_service,
+                                    block_importing_notification_stream: Box::new(
+                                        subspace_link
+                                            .block_importing_notification_stream()
+                                            .subscribe()
+                                            .map(|block| BlockImportingAcknowledgement {
+                                                block_number: block.block_number,
+                                                acknowledgement_sender: block
+                                                    .acknowledgement_sender,
+                                            }),
+                                    ),
+                                }
+                            });
+
                         let start_domain = run_domain(
                             bootstrap_result,
                             domain_configuration,
                             domain_start_options,
+                            consensus_chain_sync_params,
                         );
 
                         if let Err(error) = start_domain.await {
                             error!(%error, "Domain starter exited with an error");
                         }
-                    }),
-                );
+                    })
+                });
         };
 
         consensus_chain_node.network_starter.start_network();

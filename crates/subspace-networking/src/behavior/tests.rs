@@ -1,9 +1,3 @@
-// TODO: Remove
-#![allow(
-    clippy::needless_return,
-    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
-)]
-
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::persistent_parameters::{append_p2p_suffix, remove_p2p_suffix};
 use crate::protocols::request_response::handlers::generic_request_handler::{

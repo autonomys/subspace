@@ -7,6 +7,7 @@ use sc_cli::{
     generate_node_name, Cors, NodeKeyParams, NodeKeyType, RpcMethods, TelemetryParams,
     TransactionPoolParams, RPC_DEFAULT_PORT,
 };
+use sc_consensus_subspace::archiver::CreateObjectMappings;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, Role, SetConfig};
 use sc_service::{BlocksPruning, Configuration, PruningMode};
 use sc_storage_monitor::StorageMonitorParams;
@@ -14,6 +15,7 @@ use sc_telemetry::TelemetryEndpoints;
 use std::collections::HashSet;
 use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::BlockNumber;
@@ -302,6 +304,64 @@ struct TimekeeperOptions {
     timekeeper_cpu_cores: HashSet<usize>,
 }
 
+/// Whether to create object mappings.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum CreateObjectMappingConfig {
+    /// Start creating object mappings from this block number.
+    ///
+    /// This can be lower than the latest archived block, but must be greater than genesis.
+    ///
+    /// The genesis block doesn't have mappings, so starting mappings at genesis is pointless.
+    /// The archiver will fail if it can't get the data for this block, and snap sync doesn't store
+    /// the genesis data on disk. So avoiding genesis also avoids this error.
+    /// <https://github.com/paritytech/polkadot-sdk/issues/5366>
+    Block(NonZeroU32),
+
+    /// Create object mappings as archiving is happening.
+    /// This continues from the last archived segment, but mappings that were in the channel or RPC
+    /// segment when the node shut down can be lost.
+    Yes,
+
+    /// Don't create object mappings.
+    #[default]
+    No,
+}
+
+impl From<CreateObjectMappingConfig> for CreateObjectMappings {
+    fn from(config: CreateObjectMappingConfig) -> Self {
+        match config {
+            CreateObjectMappingConfig::Block(block) => CreateObjectMappings::Block(block),
+            CreateObjectMappingConfig::Yes => CreateObjectMappings::Yes,
+            CreateObjectMappingConfig::No => CreateObjectMappings::No,
+        }
+    }
+}
+
+impl FromStr for CreateObjectMappingConfig {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "no" => Ok(Self::No),
+            "yes" => Ok(Self::Yes),
+            block => block.parse().map(Self::Block).map_err(|_| {
+                "Unsupported create object mappings setting: use `yes`, `no` or a non-zero block number"
+                    .to_string()
+            }),
+        }
+    }
+}
+
+impl fmt::Display for CreateObjectMappingConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Block(block) => write!(f, "{}", block),
+            Self::Yes => f.write_str("yes"),
+            Self::No => f.write_str("no"),
+        }
+    }
+}
+
 /// Options for running a node
 #[derive(Debug, Parser)]
 pub(super) struct ConsensusChainOptions {
@@ -389,12 +449,16 @@ pub(super) struct ConsensusChainOptions {
     #[arg(long)]
     force_authoring: bool,
 
-    /// Create object mappings for new blocks, and blocks that have already been archived.
-    /// By default, mappings are not created for any blocks.
+    /// Create object mappings during archiving.
     ///
-    /// --dev mode enables this option automatically.
+    /// Can be set to `no` (default), `yes` (creates object mappings as archiving is happening), or
+    /// a non-zero block number where the node starts creating object mappings.
+    ///
+    /// --dev mode enables mappings from the first block automatically, unless a value is supplied
+    /// explicitly.
+    /// Use `no` to disable mappings in --dev mode.
     #[arg(long)]
-    create_object_mappings: bool,
+    create_object_mappings: Option<CreateObjectMappingConfig>,
 
     /// External entropy, used initially when PoT chain starts to derive the first seed
     #[arg(long)]
@@ -474,9 +538,12 @@ pub(super) fn create_consensus_chain_configuration(
             tmp = true;
             force_synced = true;
             force_authoring = true;
-            create_object_mappings = true;
             network_options.allow_private_ips = true;
             timekeeper_options.timekeeper = true;
+
+            if create_object_mappings.is_none() {
+                create_object_mappings = Some(CreateObjectMappingConfig::Block(NonZeroU32::MIN));
+            }
 
             if sync.is_none() {
                 sync.replace(ChainSyncMode::Full);
@@ -506,7 +573,8 @@ pub(super) fn create_consensus_chain_configuration(
     let sync = sync.unwrap_or(ChainSyncMode::Snap);
 
     let chain_spec = match chain.as_deref() {
-        Some("taurus-compiled") => chain_spec::taurus_compiled()?,
+        Some("mainnet-compiled") => chain_spec::mainnet_compiled()?,
+        Some("mainnet") => chain_spec::mainnet_config()?,
         Some("taurus") => chain_spec::taurus_config()?,
         Some("devnet") => chain_spec::devnet_config()?,
         Some("devnet-compiled") => chain_spec::devnet_config_compiled()?,
@@ -688,7 +756,7 @@ pub(super) fn create_consensus_chain_configuration(
             base: consensus_chain_config,
             // Domain node needs slots notifications for bundle production.
             force_new_slot_notifications: domains_enabled,
-            create_object_mappings,
+            create_object_mappings: create_object_mappings.unwrap_or_default().into(),
             subspace_networking: SubspaceNetworking::Create { config: dsn_config },
             dsn_piece_getter: None,
             sync,

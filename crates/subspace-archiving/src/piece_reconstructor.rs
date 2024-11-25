@@ -14,22 +14,18 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::{Commitment, Kzg, Polynomial, Scalar};
 
 /// Reconstructor-related instantiation error
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum ReconstructorError {
     /// Segment size is not bigger than record size
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Error during data shards reconstruction: {0}")
-    )]
+    #[error("Error during data shards reconstruction: {0}")]
     DataShardsReconstruction(String),
 
     /// Commitment of input piece is invalid.
-    #[cfg_attr(feature = "thiserror", error("Commitment of input piece is invalid."))]
+    #[error("Commitment of input piece is invalid.")]
     InvalidInputPieceCommitment,
 
     /// Incorrect piece position provided.
-    #[cfg_attr(feature = "thiserror", error("Incorrect piece position provided."))]
+    #[error("Incorrect piece position provided.")]
     IncorrectPiecePosition,
 }
 

@@ -1,9 +1,3 @@
-// TODO: Remove
-#![allow(
-    clippy::needless_return,
-    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
-)]
-
 use crate::farm::MaybePieceStoredResult;
 use crate::single_disk_farm::direct_io_file::{DirectIoFile, DISK_SECTOR_SIZE};
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
@@ -33,7 +27,7 @@ async fn basic() {
     });
 
     let tempdir = tempdir().unwrap();
-    let file = DirectIoFile::open(&tempdir.path().join("plot.bin")).unwrap();
+    let file = DirectIoFile::open(tempdir.path().join("plot.bin")).unwrap();
 
     // Align plot file size for disk sector size
     file.preallocate(

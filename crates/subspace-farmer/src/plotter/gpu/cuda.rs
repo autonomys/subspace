@@ -3,7 +3,8 @@
 use crate::plotter::gpu::GpuRecordsEncoder;
 use async_lock::Mutex as AsyncMutex;
 use parking_lot::Mutex;
-use rayon::{ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
+use rayon::{current_thread_index, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
+use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::pieces::{PieceOffset, Record};
@@ -37,7 +38,7 @@ impl RecordsEncoder for CudaRecordsEncoder {
             .map_err(|error| anyhow::anyhow!("Failed to convert pieces in sector: {error}"))?;
         let mut sector_contents_map = SectorContentsMap::new(pieces_in_sector);
 
-        self.thread_pool.install(|| {
+        {
             let iter = Mutex::new(
                 (PieceOffset::ZERO..)
                     .zip(records.iter_mut())
@@ -45,7 +46,7 @@ impl RecordsEncoder for CudaRecordsEncoder {
             );
             let plotting_error = Mutex::new(None::<String>);
 
-            rayon::scope(|scope| {
+            self.thread_pool.scope(|scope| {
                 scope.spawn_broadcast(|_scope, _ctx| loop {
                     // Take mutex briefly to make sure encoding is allowed right now
                     self.global_mutex.lock_blocking();
@@ -78,9 +79,7 @@ impl RecordsEncoder for CudaRecordsEncoder {
             if let Some(error) = plotting_error {
                 return Err(anyhow::Error::msg(error));
             }
-
-            Ok(())
-        })?;
+        }
 
         Ok(sector_contents_map)
     }
@@ -93,8 +92,25 @@ impl CudaRecordsEncoder {
         global_mutex: Arc<AsyncMutex<()>>,
     ) -> Result<Self, ThreadPoolBuildError> {
         let id = cuda_device.id();
+        let thread_name = move |thread_index| format!("cuda-{id}.{thread_index}");
+        // TODO: remove this panic handler when rayon logs panic_info
+        // https://github.com/rayon-rs/rayon/issues/1208
+        let panic_handler = move |panic_info| {
+            if let Some(index) = current_thread_index() {
+                eprintln!("panic on thread {}: {:?}", thread_name(index), panic_info);
+            } else {
+                // We want to guarantee exit, rather than panicking in a panic handler.
+                eprintln!(
+                    "rayon panic handler called on non-rayon thread: {:?}",
+                    panic_info
+                );
+            }
+            exit(1);
+        };
+
         let thread_pool = ThreadPoolBuilder::new()
-            .thread_name(move |thread_index| format!("cuda-{id}.{thread_index}"))
+            .thread_name(thread_name)
+            .panic_handler(panic_handler)
             // Make sure there is overlap between records, so GPU is almost always busy
             .num_threads(2)
             .build()?;

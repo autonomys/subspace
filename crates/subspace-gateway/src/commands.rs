@@ -4,6 +4,8 @@ pub(crate) mod run;
 
 use crate::commands::run::RunOptions;
 use clap::Parser;
+use std::panic;
+use std::process::exit;
 use tokio::signal;
 use tracing::level_filters::LevelFilter;
 use tracing::{debug, warn};
@@ -18,6 +20,16 @@ pub enum Command {
     /// Run data gateway
     Run(RunOptions),
     // TODO: subcommand to run various benchmarks
+}
+
+/// Install a panic handler which exits on panics, rather than unwinding. Unwinding can hang the
+/// tokio runtime waiting for stuck tasks or threads.
+pub(crate) fn set_exit_on_panic() {
+    let default_panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |panic_info| {
+        default_panic_hook(panic_info);
+        exit(1);
+    }));
 }
 
 pub(crate) fn init_logger() {

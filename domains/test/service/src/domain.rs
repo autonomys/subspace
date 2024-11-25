@@ -7,6 +7,7 @@ use crate::{
     Sr25519Keyring, UncheckedExtrinsicFor, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID,
 };
 use cross_domain_message_gossip::ChainMsg;
+use domain_client_operator::snap_sync::ConsensusChainSyncParams;
 use domain_client_operator::{fetch_domain_bootstrap_info, BootstrapResult, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::Balance;
@@ -19,7 +20,7 @@ use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::HeaderBackend;
 use sc_domains::RuntimeExecutor;
 use sc_network::service::traits::NetworkService;
-use sc_network::NetworkStateInfo;
+use sc_network::{NetworkRequest, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
@@ -205,7 +206,7 @@ where
             consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
                 mock_consensus_node.transaction_pool.clone(),
             ),
-            consensus_network_sync_oracle: mock_consensus_node.sync_service.clone(),
+            domain_sync_oracle: mock_consensus_node.sync_service.clone(),
             consensus_network: mock_consensus_node.network_service.clone(),
             operator_streams,
             gossip_message_sink: gossip_msg_sink,
@@ -215,6 +216,9 @@ where
             skip_out_of_order_slot: true,
             maybe_operator_id,
             confirmation_depth_k: chain_constants.confirmation_depth_k(),
+            consensus_chain_sync_params: None::<
+                ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
+            >,
         };
 
         let domain_node = domain_service::new_full::<
@@ -226,6 +230,7 @@ where
             _,
             RuntimeApi,
             <Runtime as DomainRuntime>::AccountId,
+            _,
             _,
         >(domain_params)
         .await

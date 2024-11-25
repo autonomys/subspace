@@ -78,7 +78,7 @@ struct IncrementalRecordCommitmentsProcessor<'a> {
     kzg: &'a Kzg,
 }
 
-impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
+impl Drop for IncrementalRecordCommitmentsProcessor<'_> {
     fn drop(&mut self) {
         #[cfg(not(feature = "parallel"))]
         let raw_records_bytes = self.buffer.chunks_exact(RawRecord::SIZE);
@@ -118,7 +118,7 @@ impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
     }
 }
 
-impl<'a> Output for IncrementalRecordCommitmentsProcessor<'a> {
+impl Output for IncrementalRecordCommitmentsProcessor<'_> {
     fn write(&mut self, mut bytes: &[u8]) {
         if self.skip_bytes >= bytes.len() {
             self.skip_bytes -= bytes.len();

@@ -1,6 +1,7 @@
 use crate::malicious_bundle_producer::MaliciousBundleProducer;
 use crate::{create_malicious_operator_configuration, DomainCli};
 use cross_domain_message_gossip::{ChainMsg, Message};
+use domain_client_operator::snap_sync::ConsensusChainSyncParams;
 use domain_client_operator::{BootstrapResult, OperatorStreams};
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
@@ -13,7 +14,7 @@ use sc_cli::CliConfiguration;
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::NewSlotNotification;
-use sc_network::NetworkPeers;
+use sc_network::{NetworkPeers, NetworkRequest};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
@@ -101,7 +102,8 @@ impl DomainInstanceStarter {
                     block_importing_notification.block_number,
                     block_importing_notification.acknowledgement_sender,
                 )
-            });
+            })
+            .boxed();
 
         let new_slot_notification_stream = || {
             new_slot_notification_stream
@@ -151,7 +153,7 @@ impl DomainInstanceStarter {
                     consensus_client: consensus_client.clone(),
                     consensus_offchain_tx_pool_factory: consensus_offchain_tx_pool_factory.clone(),
                     consensus_network,
-                    consensus_network_sync_oracle: consensus_sync_service.clone(),
+                    domain_sync_oracle: consensus_sync_service.clone(),
                     operator_streams,
                     gossip_message_sink,
                     domain_message_receiver,
@@ -161,6 +163,9 @@ impl DomainInstanceStarter {
                     // Always set it to `None` to not running the normal bundle producer
                     maybe_operator_id: None,
                     confirmation_depth_k: chain_constants.confirmation_depth_k(),
+                    consensus_chain_sync_params: None::<
+                        ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
+                    >,
                 };
 
                 let mut domain_node = domain_service::new_full::<
@@ -172,6 +177,7 @@ impl DomainInstanceStarter {
                     _,
                     evm_domain_runtime::RuntimeApi,
                     AccountId20,
+                    _,
                     _,
                 >(domain_params)
                 .await?;
@@ -209,7 +215,7 @@ impl DomainInstanceStarter {
                     consensus_client: consensus_client.clone(),
                     consensus_offchain_tx_pool_factory: consensus_offchain_tx_pool_factory.clone(),
                     consensus_network,
-                    consensus_network_sync_oracle: consensus_sync_service.clone(),
+                    domain_sync_oracle: consensus_sync_service.clone(),
                     operator_streams,
                     gossip_message_sink,
                     domain_message_receiver,
@@ -219,6 +225,9 @@ impl DomainInstanceStarter {
                     // Always set it to `None` to not running the normal bundle producer
                     maybe_operator_id: None,
                     confirmation_depth_k: chain_constants.confirmation_depth_k(),
+                    consensus_chain_sync_params: None::<
+                        ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
+                    >,
                 };
 
                 let mut domain_node = domain_service::new_full::<
@@ -230,6 +239,7 @@ impl DomainInstanceStarter {
                     _,
                     auto_id_domain_runtime::RuntimeApi,
                     AccountId32,
+                    _,
                     _,
                 >(domain_params)
                 .await?;

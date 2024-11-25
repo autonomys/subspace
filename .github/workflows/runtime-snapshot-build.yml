@@ -9,7 +9,8 @@ on:
   push:
     tags:
       - "runtime-snapshot-*"
-      - "runtime-gemini-*"
+      - "runtime-taurus-*"
+      - "runtime-mainnet-*"
 
 jobs:
   runtime:
@@ -24,15 +25,16 @@ jobs:
 
       - name: Build runtime
         id: build
-        uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0 # v5.3.0
+        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
         with:
-          file: Dockerfile-runtime
+          file: docker/runtime.Dockerfile
+          pull: true
           push: false
 
       - name: Extract runtime
         run: |
           SPEC_VERSION=$(sed -nr 's/.*spec_version: ([0-9]+),/\1/p' crates/subspace-runtime/src/lib.rs)
-          docker run --rm -u root ${{ steps.build.outputs.digest }} > subspace_runtime-$SPEC_VERSION.compact.compressed.wasm
+          docker run --rm -u root ${{ steps.build.outputs.imageid }} > subspace_runtime-$SPEC_VERSION.compact.compressed.wasm
           echo "SPEC_VERSION=$SPEC_VERSION" >> $GITHUB_ENV
 
       - name: Upload runtime to artifacts

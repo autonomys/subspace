@@ -1,22 +1,27 @@
+use crate::mmr::sync::mmr_sync;
 use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
-use crate::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
-use sc_client_api::{AuxStore, ProofProvider};
+use crate::utils::wait_for_block_import;
+use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportedState, IncomingBlock, StateAction,
     StorageChanges,
 };
 use sc_consensus_subspace::archiver::{decode_block, SegmentHeadersStore};
-use sc_network::{NetworkBlock, PeerId};
+use sc_network::service::traits::NetworkService;
+use sc_network::{NetworkBlock, NetworkRequest, PeerId};
 use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::SyncingService;
-use sc_service::Error;
+use sc_subspace_sync_common::snap_sync_engine::SnapSyncingEngine;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_consensus_subspace::SubspaceApi;
+use sp_core::offchain::OffchainStorage;
+use sp_core::H256;
+use sp_mmr_primitives::MmrApi;
 use sp_objects::ObjectsApi;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::collections::{HashSet, VecDeque};
@@ -28,11 +33,41 @@ use subspace_core_primitives::segments::SegmentIndex;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
+use tokio::sync::broadcast::Receiver;
 use tokio::time::sleep;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
+/// Error type for snap sync.
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    /// A fatal snap sync error which requires user intervention.
+    /// Most snap sync errors are non-fatal, because we can just continue with regular sync.
+    #[error("Snap Sync requires user action: {0}")]
+    SnapSyncImpossible(String),
+
+    /// Substrate service error.
+    #[error(transparent)]
+    Sub(#[from] sc_service::Error),
+
+    /// Substrate blockchain client error.
+    #[error(transparent)]
+    Client(#[from] sp_blockchain::Error),
+
+    /// Other.
+    #[error("Snap sync error: {0}")]
+    Other(String),
+}
+
+impl From<String> for Error {
+    fn from(error: String) -> Self {
+        Error::Other(error)
+    }
+}
+
+/// Run a snap sync, return an error if snap sync is impossible and user intervention is required.
+/// Otherwise, just log the error and return `Ok(())` so that regular sync continues.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn snap_sync<Block, AS, Client, PG>(
+pub(crate) async fn snap_sync<Block, AS, Client, PG, OS>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: Node,
     fork_id: Option<String>,
@@ -43,18 +78,25 @@ pub(crate) async fn snap_sync<Block, AS, Client, PG>(
     sync_service: Arc<SyncingService<Block>>,
     network_service_handle: NetworkServiceHandle,
     erasure_coding: ErasureCoding,
-) where
+    target_block_receiver: Option<Receiver<BlockNumber>>,
+    offchain_storage: Option<OS>,
+    network_service: Arc<dyn NetworkService>,
+) -> Result<(), Error>
+where
     Block: BlockT,
     AS: AuxStore,
     Client: HeaderBackend<Block>
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + BlockImport<Block>
+        + BlockchainEvents<Block>
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
+    Client::Api:
+        SubspaceApi<Block, PublicKey> + ObjectsApi<Block> + MmrApi<Block, H256, NumberFor<Block>>,
     PG: DsnSyncPieceGetter,
+    OS: OffchainStorage,
 {
     let info = client.info();
     // Only attempt snap sync with genesis state
@@ -63,27 +105,37 @@ pub(crate) async fn snap_sync<Block, AS, Client, PG>(
     if info.best_hash == info.genesis_hash {
         pause_sync.store(true, Ordering::Release);
 
-        let snap_sync_fut = sync(
+        let target_block = if let Some(mut target_block_receiver) = target_block_receiver {
+            match target_block_receiver.recv().await {
+                Ok(target_block) => Some(target_block),
+                Err(err) => {
+                    error!(?err, "Snap sync failed: can't obtain target block.");
+                    return Err(Error::Other(
+                        "Snap sync failed: can't obtain target block.".into(),
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+
+        debug!("Snap sync target block: {:?}", target_block);
+
+        sync(
             &segment_headers_store,
             &node,
             &piece_getter,
             fork_id.as_deref(),
             &client,
             import_queue_service.as_mut(),
-            &sync_service,
+            sync_service.clone(),
             &network_service_handle,
-            None,
+            target_block,
             &erasure_coding,
-        );
-
-        match snap_sync_fut.await {
-            Ok(()) => {
-                debug!("Snap sync finished successfully");
-            }
-            Err(error) => {
-                error!(%error, "Snap sync failed");
-            }
-        }
+            offchain_storage,
+            network_service,
+        )
+        .await?;
 
         // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue
         // gracefully
@@ -95,6 +147,8 @@ pub(crate) async fn snap_sync<Block, AS, Client, PG>(
     } else {
         debug!("Snap sync can only work with genesis state, skipping");
     }
+
+    Ok(())
 }
 
 // Get blocks from the last segment or from the segment containing the target block.
@@ -126,39 +180,46 @@ where
                     "Can't get segment header from the store: {last_segment_index}"
                 ))?;
 
+            let mut target_block_exceeded_last_archived_block = false;
             if target_block > segment_header.last_archived_block().number {
-                return Err(format!(
-                    "Target block is greater than the last archived block. \
-                    Last segment index = {last_segment_index}, target block = {target_block}, \
-                    last block from the segment = {}
+                warn!(
+                   %last_segment_index,
+                   %target_block,
+
+                    "Specified target block is greater than the last archived block. \
+                     Choosing the last archived block (#{}) as target block...
                     ",
                     segment_header.last_archived_block().number
-                )
-                .into());
+                );
+                target_block_exceeded_last_archived_block = true;
             }
 
-            let mut current_segment_index = last_segment_index;
+            if !target_block_exceeded_last_archived_block {
+                let mut current_segment_index = last_segment_index;
 
-            loop {
-                if current_segment_index <= SegmentIndex::ONE {
-                    break;
+                loop {
+                    if current_segment_index <= SegmentIndex::ONE {
+                        break;
+                    }
+
+                    if target_block > segment_header.last_archived_block().number {
+                        current_segment_index += SegmentIndex::ONE;
+                        break;
+                    }
+
+                    current_segment_index -= SegmentIndex::ONE;
+
+                    segment_header = segment_headers_store
+                        .get_segment_header(current_segment_index)
+                        .ok_or(format!(
+                            "Can't get segment header from the store: {last_segment_index}"
+                        ))?;
                 }
 
-                if target_block > segment_header.last_archived_block().number {
-                    current_segment_index += SegmentIndex::ONE;
-                    break;
-                }
-
-                current_segment_index -= SegmentIndex::ONE;
-
-                segment_header = segment_headers_store
-                    .get_segment_header(current_segment_index)
-                    .ok_or(format!(
-                        "Can't get segment header from the store: {last_segment_index}"
-                    ))?;
+                current_segment_index
+            } else {
+                last_segment_index
             }
-
-            current_segment_index
         } else {
             last_segment_index
         }
@@ -166,10 +227,10 @@ where
 
     // We don't have the genesis state when we choose to snap sync.
     if target_segment_index <= SegmentIndex::ONE {
-        panic!(
-            "Snap sync is impossible - not enough archived history: \
-            wipe the DB folder and rerun with --sync=full"
-        );
+        // The caller logs this error
+        return Err(Error::SnapSyncImpossible(
+            "Snap sync is impossible - not enough archived history".into(),
+        ));
     }
 
     // Identify all segment headers that would need to be reconstructed in order to get first
@@ -241,18 +302,20 @@ where
 
 #[allow(clippy::too_many_arguments)]
 /// Synchronize the blockchain to the target_block (approximate value based on the containing
-/// segment) or to the last archived block.
-async fn sync<PG, AS, Block, Client, IQS>(
+/// segment) or to the last archived block. Returns false when sync is skipped.
+async fn sync<PG, AS, Block, Client, IQS, OS, NR>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
     piece_getter: &PG,
     fork_id: Option<&str>,
     client: &Arc<Client>,
     import_queue_service: &mut IQS,
-    sync_service: &SyncingService<Block>,
+    sync_service: Arc<SyncingService<Block>>,
     network_service_handle: &NetworkServiceHandle,
     target_block: Option<BlockNumber>,
     erasure_coding: &ErasureCoding,
+    offchain_storage: Option<OS>,
+    network_request: NR,
 ) -> Result<(), Error>
 where
     PG: DsnSyncPieceGetter,
@@ -262,11 +325,15 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + BlockImport<Block>
+        + BlockchainEvents<Block>
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
+    Client::Api:
+        SubspaceApi<Block, PublicKey> + ObjectsApi<Block> + MmrApi<Block, H256, NumberFor<Block>>,
     IQS: ImportQueueService<Block> + ?Sized,
+    OS: OffchainStorage,
+    NR: NetworkRequest + Sync + Send,
 {
     debug!("Starting snap sync...");
 
@@ -321,7 +388,7 @@ where
             &header,
             client,
             fork_id,
-            sync_service,
+            &sync_service,
             network_service_handle,
         )
         .await
@@ -377,45 +444,25 @@ where
     // TODO: Replace this hack with actual watching of block import
     wait_for_block_import(client.as_ref(), last_block_number.into()).await;
 
+    // We sync MMR up to the last block block number. All other MMR-data will be synced after
+    // resuming either DSN-sync or Substrate-sync.
+    let mmr_target_block = last_block_number;
+
+    if let Some(offchain_storage) = offchain_storage {
+        mmr_sync(
+            fork_id.map(|v| v.into()),
+            client.clone(),
+            network_request,
+            sync_service.clone(),
+            offchain_storage,
+            mmr_target_block,
+        )
+        .await?;
+    }
+
     debug!(info = ?client.info(), "Snap sync finished successfully");
 
     Ok(())
-}
-
-async fn wait_for_block_import<Block, Client>(
-    client: &Client,
-    waiting_block_number: NumberFor<Block>,
-) where
-    Block: BlockT,
-    Client: HeaderBackend<Block>,
-{
-    const WAIT_DURATION: Duration = Duration::from_secs(5);
-    const MAX_NO_NEW_IMPORT_ITERATIONS: u32 = 10;
-    let mut current_iteration = 0;
-    let mut last_best_block_number = client.info().best_number;
-    loop {
-        let info = client.info();
-        debug!(%current_iteration, %waiting_block_number, "Waiting client info: {:?}", info);
-
-        tokio::time::sleep(WAIT_DURATION).await;
-
-        if info.best_number >= waiting_block_number {
-            break;
-        }
-
-        if last_best_block_number == info.best_number {
-            current_iteration += 1;
-        } else {
-            current_iteration = 0;
-        }
-
-        if current_iteration >= MAX_NO_NEW_IMPORT_ITERATIONS {
-            debug!(%current_iteration, %waiting_block_number, "Max idle period reached. {:?}", info);
-            break;
-        }
-
-        last_best_block_number = info.best_number;
-    }
 }
 
 async fn sync_segment_headers<AS>(
@@ -460,8 +507,8 @@ where
 {
     let block_number = *header.number();
 
-    const STATE_SYNC_RETRIES: u32 = 5;
-    const LOOP_PAUSE: Duration = Duration::from_secs(20);
+    const STATE_SYNC_RETRIES: u32 = 10;
+    const LOOP_PAUSE: Duration = Duration::from_secs(10);
 
     for attempt in 1..=STATE_SYNC_RETRIES {
         debug!(%attempt, "Starting state sync...");

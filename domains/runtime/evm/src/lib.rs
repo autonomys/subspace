@@ -118,7 +118,7 @@ pub type SignedExtra = (
     frame_system::CheckGenesis<Runtime>,
     frame_system::CheckMortality<Runtime>,
     frame_system::CheckNonce<Runtime>,
-    frame_system::CheckWeight<Runtime>,
+    domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
 
@@ -131,7 +131,7 @@ type CustomSignedExtra = (
     frame_system::CheckGenesis<Runtime>,
     frame_system::CheckMortality<Runtime>,
     pallet_evm_nonce_tracker::CheckNonce<Runtime>,
-    frame_system::CheckWeight<Runtime>,
+    domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
 
@@ -215,7 +215,20 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
                     Err(_) => return Some(Err(InvalidTransaction::Payment.into())),
                 }
 
-                call.pre_dispatch_self_contained(info, dispatch_info, len)
+                // Copied from [`pallet_ethereum::Call::pre_dispatch_self_contained`] with `frame_system::CheckWeight`
+                // replaced with `domain_check_weight::CheckWeight`
+                if let pallet_ethereum::Call::transact { transaction } = call {
+                    if let Err(e) = domain_check_weight::CheckWeight::<Runtime>::do_pre_dispatch(
+                        dispatch_info,
+                        len,
+                    ) {
+                        return Some(Err(e));
+                    }
+
+                    Some(Ethereum::validate_transaction_in_block(*info, transaction))
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -248,7 +261,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: Cow::Borrowed("subspace-evm-domain"),
     impl_name: Cow::Borrowed("subspace-evm-domain"),
     authoring_version: 0,
-    spec_version: 2,
+    spec_version: 0,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -933,7 +946,7 @@ fn pre_dispatch_evm_transaction(
                 let _ = transaction_validity?;
 
                 let Call::transact { transaction } = call;
-                frame_system::CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
+                domain_check_weight::CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
 
                 let transaction_data: TransactionData = (&transaction).into();
                 let transaction_nonce = transaction_data.nonce;
@@ -1229,7 +1242,11 @@ impl_runtime_apis! {
         }
 
         fn extrinsic_weight(ext: &<Block as BlockT>::Extrinsic) -> Weight {
-            ext.get_dispatch_info().weight
+            let len = ext.encoded_size() as u64;
+            let info = ext.get_dispatch_info();
+            info.weight
+                .saturating_add(<Runtime as frame_system::Config>::BlockWeights::get().get(info.class).base_extrinsic)
+                .saturating_add(Weight::from_parts(0, len))
         }
 
         fn block_fees() -> sp_domains::BlockFees<Balance> {

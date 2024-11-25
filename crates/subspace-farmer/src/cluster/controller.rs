@@ -6,9 +6,10 @@
 //! client implementations designed to work with cluster controller and a service function to drive
 //! the backend part of the controller.
 
-use crate::cluster::cache::{
-    ClusterCacheIndex, ClusterCacheReadPieceRequest, ClusterCacheReadPiecesRequest,
-};
+pub mod caches;
+pub mod farms;
+
+use crate::cluster::cache::{ClusterCacheReadPieceRequest, ClusterCacheReadPiecesRequest};
 use crate::cluster::nats_client::{
     GenericBroadcast, GenericNotification, GenericRequest, GenericStreamRequest, NatsClient,
 };
@@ -312,10 +313,10 @@ impl PieceGetter for ClusterPieceGetter {
         let fut = async move {
             let tx = &tx;
 
-            let mut getting_from_piece_cache = cached_pieces_by_cache_id
+            cached_pieces_by_cache_id
                 .into_iter()
                 .map(|(piece_cache_id, offsets)| {
-                    let piece_indices_to_download = &piece_indices_to_get;
+                    let piece_indices_to_get = &piece_indices_to_get;
 
                     async move {
                         let mut pieces_stream = match self
@@ -348,7 +349,7 @@ impl PieceGetter for ClusterPieceGetter {
                             };
 
                             if let Some((piece_index, piece)) = maybe_piece {
-                                piece_indices_to_download.lock().remove(&piece_index);
+                                piece_indices_to_get.lock().remove(&piece_index);
 
                                 tx.unbounded_send((piece_index, Ok(Some(piece)))).expect(
                                     "This future isn't polled after receiver is dropped; qed",
@@ -363,16 +364,10 @@ impl PieceGetter for ClusterPieceGetter {
                         }
                     }
                 })
-                .collect::<FuturesUnordered<_>>();
-            // TODO: Can't use this due to https://github.com/rust-lang/rust/issues/64650
-            // Simply drain everything
-            // .for_each(|()| async {})
-
-            // TODO: Remove once https://github.com/rust-lang/rust/issues/64650 is resolved
-            while let Some(()) = getting_from_piece_cache.next().await {
+                .collect::<FuturesUnordered<_>>()
                 // Simply drain everything
-            }
-            drop(getting_from_piece_cache);
+                .for_each(|()| async {})
+                .await;
 
             let mut piece_indices_to_get = piece_indices_to_get.into_inner();
             if piece_indices_to_get.is_empty() {
@@ -614,7 +609,7 @@ pub async fn controller_service<NC, PG>(
     nats_client: &NatsClient,
     node_client: &NC,
     piece_getter: &PG,
-    farmer_cache: &FarmerCache<ClusterCacheIndex>,
+    farmer_cache: &FarmerCache,
     instance: &str,
     primary_instance: bool,
 ) -> anyhow::Result<()>
@@ -912,7 +907,7 @@ where
 
 async fn find_piece_responder(
     nats_client: &NatsClient,
-    farmer_cache: &FarmerCache<ClusterCacheIndex>,
+    farmer_cache: &FarmerCache,
 ) -> anyhow::Result<()> {
     nats_client
         .request_responder(
@@ -927,7 +922,7 @@ async fn find_piece_responder(
 
 async fn find_pieces_responder(
     nats_client: &NatsClient,
-    farmer_cache: &FarmerCache<ClusterCacheIndex>,
+    farmer_cache: &FarmerCache,
 ) -> anyhow::Result<()> {
     nats_client
         .stream_request_responder(

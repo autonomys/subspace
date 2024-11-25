@@ -19,6 +19,10 @@ use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde::{Deserializer, Serializer};
+#[cfg(feature = "serde")]
+use serde_big_array::BigArray;
 
 /// Segment index type.
 #[derive(
@@ -146,10 +150,47 @@ impl SegmentIndex {
     MaxEncodedLen,
 )]
 #[repr(transparent)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SegmentCommitment(
-    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; SegmentCommitment::SIZE],
-);
+pub struct SegmentCommitment([u8; SegmentCommitment::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct SegmentCommitmentBinary(#[serde(with = "BigArray")] [u8; SegmentCommitment::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct SegmentCommitmentHex(#[serde(with = "hex")] [u8; SegmentCommitment::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for SegmentCommitment {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            SegmentCommitmentHex(self.0).serialize(serializer)
+        } else {
+            SegmentCommitmentBinary(self.0).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for SegmentCommitment {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            SegmentCommitmentHex::deserialize(deserializer)?.0
+        } else {
+            SegmentCommitmentBinary::deserialize(deserializer)?.0
+        }))
+    }
+}
 
 impl Default for SegmentCommitment {
     #[inline]

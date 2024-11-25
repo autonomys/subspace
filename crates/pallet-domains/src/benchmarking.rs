@@ -27,9 +27,9 @@ use frame_system::{Pallet as System, RawOrigin};
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::ByteArray;
 use sp_domains::{
-    dummy_opaque_bundle, BlockFees, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
-    OperatorPublicKey, OperatorSignature, PermissionedActionAllowedBy, ProofOfElection,
-    RuntimeType, SealedSingletonReceipt, SingletonReceipt, Transfers,
+    dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
+    OperatorPublicKey, OperatorRewardSource, OperatorSignature, PermissionedActionAllowedBy,
+    ProofOfElection, RuntimeType, SealedSingletonReceipt, SingletonReceipt,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{CheckedAdd, One, Zero};
@@ -286,6 +286,7 @@ mod benchmarks {
 
             do_reward_operators::<T>(
                 domain_id,
+                OperatorRewardSource::Dummy,
                 operator_ids[..n as usize].to_vec().into_iter(),
                 operator_rewards,
             )
@@ -337,6 +338,7 @@ mod benchmarks {
 
         do_reward_operators::<T>(
             domain_id,
+            OperatorRewardSource::Dummy,
             operator_ids.clone().into_iter(),
             operator_rewards,
         )
@@ -449,8 +451,13 @@ mod benchmarks {
         }
         assert_eq!(PendingStakingOperationCount::<T>::get(domain_id), p);
 
-        do_reward_operators::<T>(domain_id, operator_ids.into_iter(), operator_rewards)
-            .expect("reward operator should success");
+        do_reward_operators::<T>(
+            domain_id,
+            OperatorRewardSource::Dummy,
+            operator_ids.into_iter(),
+            operator_rewards,
+        )
+        .expect("reward operator should success");
 
         let epoch_index = DomainStakingSummary::<T>::get(domain_id)
             .expect("staking summary must exist")
@@ -770,28 +777,11 @@ mod benchmarks {
         })
         .unwrap();
 
-        // Update the `LatestConfirmedDomainExecutionReceipt` so unlock can success
-        let confirmed_domain_block_number =
-            Pallet::<T>::latest_confirmed_domain_block_number(domain_id)
-                + T::StakeWithdrawalLockingPeriod::get()
-                + One::one();
-        LatestConfirmedDomainExecutionReceipt::<T>::insert(
-            domain_id,
-            ExecutionReceiptOf::<T> {
-                domain_block_number: confirmed_domain_block_number,
-                domain_block_hash: Default::default(),
-                domain_block_extrinsic_root: Default::default(),
-                parent_domain_block_receipt_hash: Default::default(),
-                consensus_block_number: Default::default(),
-                consensus_block_hash: Default::default(),
-                inboxed_bundles: vec![],
-                final_state_root: Default::default(),
-                execution_trace: vec![],
-                execution_trace_root: Default::default(),
-                block_fees: BlockFees::default(),
-                transfers: Transfers::default(),
-            },
-        );
+        // Update the `HeadDomainNumber` so unlock can success
+        let next_head_domain_number = HeadDomainNumber::<T>::get(domain_id)
+            + T::StakeWithdrawalLockingPeriod::get()
+            + One::one();
+        HeadDomainNumber::<T>::set(domain_id, next_head_domain_number);
 
         #[extrinsic_call]
         _(RawOrigin::Signed(nominator.clone()), operator_id);
@@ -821,28 +811,11 @@ mod benchmarks {
             operator_id,
         ));
 
-        // Update the `LatestConfirmedDomainExecutionReceipt` so unlock can success
-        let confirmed_domain_block_number =
-            Pallet::<T>::latest_confirmed_domain_block_number(domain_id)
-                + T::StakeWithdrawalLockingPeriod::get()
-                + One::one();
-        LatestConfirmedDomainExecutionReceipt::<T>::insert(
-            domain_id,
-            ExecutionReceiptOf::<T> {
-                domain_block_number: confirmed_domain_block_number,
-                domain_block_hash: Default::default(),
-                domain_block_extrinsic_root: Default::default(),
-                parent_domain_block_receipt_hash: Default::default(),
-                consensus_block_number: Default::default(),
-                consensus_block_hash: Default::default(),
-                inboxed_bundles: vec![],
-                final_state_root: Default::default(),
-                execution_trace: vec![],
-                execution_trace_root: Default::default(),
-                block_fees: BlockFees::default(),
-                transfers: Transfers::default(),
-            },
-        );
+        // Update the `HeadDomainNumber` so unlock can success
+        let next_head_domain_number = HeadDomainNumber::<T>::get(domain_id)
+            + T::StakeWithdrawalLockingPeriod::get()
+            + One::one();
+        HeadDomainNumber::<T>::set(domain_id, next_head_domain_number);
 
         #[extrinsic_call]
         _(RawOrigin::Signed(operator_owner), operator_id);

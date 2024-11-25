@@ -18,22 +18,18 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::Scalar;
 
 /// Reconstructor-related instantiation error
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum ReconstructorError {
     /// Error during data shards reconstruction
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Error during data shards reconstruction: {0}")
-    )]
+    #[error("Error during data shards reconstruction: {0}")]
     DataShardsReconstruction(String),
     /// Segment size is not bigger than record size
-    #[cfg_attr(feature = "thiserror", error("Error during segment decoding: {0}"))]
+    #[error("Error during segment decoding: {0}")]
     SegmentDecoding(parity_scale_codec::Error),
     /// Incorrect segment order, each next segment must have monotonically increasing segment index
-    #[cfg_attr(
-    feature = "thiserror",
-    error("Incorrect segment order, expected index {expected_segment_index}, actual {actual_segment_index}")
+    #[error(
+        "Incorrect segment order, expected index {expected_segment_index}, actual \
+        {actual_segment_index}"
     )]
     IncorrectSegmentOrder {
         expected_segment_index: SegmentIndex,

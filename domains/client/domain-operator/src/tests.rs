@@ -1,9 +1,3 @@
-// TODO: Remove
-#![allow(
-    clippy::needless_return,
-    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
-)]
-
 use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
@@ -338,7 +332,7 @@ async fn test_processing_empty_consensus_block() {
         domain_confirmation_depth: 256u32,
         block_import: Arc::new(Box::new(alice.client.clone())),
         import_notification_sinks: Default::default(),
-        consensus_network_sync_oracle: ferdie.sync_service.clone(),
+        domain_sync_oracle: ferdie.sync_service.clone(),
     };
 
     let domain_genesis_hash = alice.client.info().best_hash;
