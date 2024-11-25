@@ -62,6 +62,7 @@ const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 80;
 const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 80;
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(40);
 const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: u32 = 3;
+const MAX_CONCURRENT_STREAMS_PER_CONNECTION: usize = 10;
 // TODO: Consider moving this constant to configuration or removing `Toggle` wrapper when we find a
 //  use-case for gossipsub protocol.
 const ENABLE_GOSSIP_PROTOCOL: bool = false;
@@ -472,7 +473,7 @@ where
         request_response_max_concurrent_streams: {
             let max_num_connections = max_established_incoming_connections as usize
                 + max_established_outgoing_connections as usize;
-            max_num_connections * SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER as usize
+            max_num_connections * MAX_CONCURRENT_STREAMS_PER_CONNECTION
         },
         connection_limits,
         reserved_peers: ReservedPeersConfig {
