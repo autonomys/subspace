@@ -138,8 +138,6 @@ where
     PG: ObjectPieceGetter + Send + Sync + 'static,
 {
     async fn fetch_object(&self, mappings: GlobalObjectMapping) -> Result<Vec<HexData>, Error> {
-        // TODO: deny unsafe RPC calls
-
         let count = mappings.objects().len();
         if count > MAX_OBJECTS_PER_REQUEST {
             debug!(%count, %MAX_OBJECTS_PER_REQUEST, "Too many mappings in request");
