@@ -637,7 +637,7 @@ where
         .expect("just checked above; qed");
     let Some(best_block_data) = client.block(best_block_to_archive_hash)? else {
         let error = format!(
-                "Missing data for mapping block {best_block_to_archive} hash {best_block_to_archive_hash},\
+                "Missing data for mapping block {best_block_to_archive} hash {best_block_to_archive_hash}, \
                 try a higher block number, or wipe your node and restart with `--sync full`"
             );
         return Err(sp_blockchain::Error::Application(error.into()));
