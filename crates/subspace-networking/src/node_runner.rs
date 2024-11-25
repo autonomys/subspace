@@ -10,7 +10,7 @@ use crate::protocols::request_response::request_response_factory::{
 };
 use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
 use crate::utils::{is_global_address_or_dns, strip_peer_id, SubspaceMetrics};
-use async_mutex::Mutex as AsyncMutex;
+use async_lock::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;

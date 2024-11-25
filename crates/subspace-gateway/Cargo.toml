@@ -17,6 +17,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+async-lock = "3.4.0"
 anyhow = "1.0.89"
 async-trait = "0.1.83"
 clap = { version = "4.5.18", features = ["derive"] }
@@ -25,7 +26,6 @@ futures = "0.3.31"
 hex = "0.4.3"
 jsonrpsee = { version = "0.24.5", features = ["server"] }
 mimalloc = "0.1.43"
-parking_lot = "0.12.2"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-data-retrieval = { version = "0.1.0", path = "../../shared/subspace-data-retrieval" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
@@ -35,7 +35,6 @@ subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
 supports-color = "3.0.1"
-thiserror = "2.0.0"
 tokio = { version = "1.40.0", features = ["rt-multi-thread", "signal", "macros"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

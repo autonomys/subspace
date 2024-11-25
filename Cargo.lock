@@ -761,15 +761,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-mutex"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "479db852db25d9dbf6204e6cb6253698f175c15726470f78af0d918e99d6156e"
-dependencies = [
- "event-listener 2.5.3",
-]
-
-[[package]]
 name = "async-nats"
 version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12675,6 +12666,7 @@ name = "subspace-gateway"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-lock 3.4.0",
  "async-trait",
  "clap",
  "fdlimit",
@@ -12682,7 +12674,6 @@ dependencies = [
  "hex",
  "jsonrpsee",
  "mimalloc",
- "parking_lot 0.12.3",
  "subspace-core-primitives",
  "subspace-data-retrieval",
  "subspace-erasure-coding",
@@ -12692,7 +12683,6 @@ dependencies = [
  "subspace-rpc-primitives",
  "subspace-verification",
  "supports-color",
- "thiserror 2.0.0",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -12808,13 +12798,12 @@ dependencies = [
 name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
- "async-mutex",
+ "async-lock 3.4.0",
  "async-trait",
  "backoff",
  "bytes",
  "clap",
  "derive_more 1.0.0",
- "either",
  "event-listener-primitives",
  "fs2",
  "futures",
@@ -13056,6 +13045,7 @@ version = "0.1.0"
 dependencies = [
  "array-bytes",
  "async-channel 1.9.0",
+ "async-lock 3.4.0",
  "async-trait",
  "cross-domain-message-gossip",
  "domain-runtime-primitives",
@@ -13083,9 +13073,7 @@ dependencies = [
  "sc-executor",
  "sc-informant",
  "sc-network",
- "sc-network-light",
  "sc-network-sync",
- "sc-network-transactions",
  "sc-offchain",
  "sc-proof-of-time",
  "sc-rpc",
@@ -13098,7 +13086,6 @@ dependencies = [
  "sc-tracing",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
- "sc-utils",
  "schnellru",
  "schnorrkel",
  "sp-api",

@@ -2,7 +2,7 @@
 
 use crate::commands::shared::DiskFarm;
 use anyhow::anyhow;
-use async_lock::Mutex as AsyncMutex;
+use async_lock::{Mutex as AsyncMutex, Semaphore};
 use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::Parser;
@@ -36,7 +36,7 @@ use subspace_farmer::utils::{
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
-use tokio::sync::{Barrier, Semaphore};
+use tokio::sync::Barrier;
 use tracing::{error, info, info_span, warn, Instrument};
 
 const FARM_ERROR_PRINT_INTERVAL: Duration = Duration::from_secs(30);

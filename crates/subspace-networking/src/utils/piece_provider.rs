@@ -8,6 +8,7 @@ use crate::protocols::request_response::handlers::piece_by_index::{
 };
 use crate::utils::multihash::ToMultihash;
 use crate::{Multihash, Node};
+use async_lock::{Semaphore, SemaphoreGuard};
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::future::FusedFuture;
@@ -60,6 +61,7 @@ impl PieceValidator for NoPieceValidator {
 pub struct PieceProvider<PV> {
     node: Node,
     piece_validator: PV,
+    piece_downloading_semaphore: Semaphore,
 }
 
 impl<PV> fmt::Debug for PieceProvider<PV> {
@@ -75,10 +77,11 @@ where
     PV: PieceValidator,
 {
     /// Creates new piece provider.
-    pub fn new(node: Node, piece_validator: PV) -> Self {
+    pub fn new(node: Node, piece_validator: PV, piece_downloading_semaphore: Semaphore) -> Self {
         Self {
             node,
             piece_validator,
+            piece_downloading_semaphore,
         }
     }
 
@@ -98,6 +101,7 @@ where
             &self.node,
             &self.piece_validator,
             tx,
+            &self.piece_downloading_semaphore,
         );
         let mut fut = Box::pin(fut.fuse());
 
@@ -490,6 +494,7 @@ async fn get_from_cache_inner<PV, PieceIndices>(
     node: &Node,
     piece_validator: &PV,
     results: mpsc::UnboundedSender<(PieceIndex, Option<Piece>)>,
+    piece_downloading_semaphore: &Semaphore,
 ) where
     PV: PieceValidator,
     PieceIndices: Iterator<Item = PieceIndex>,
@@ -505,6 +510,7 @@ async fn get_from_cache_inner<PV, PieceIndices>(
             node,
             piece_validator,
             &results,
+            piece_downloading_semaphore,
         )
         .await;
 
@@ -519,6 +525,7 @@ async fn get_from_cache_inner<PV, PieceIndices>(
             node,
             piece_validator,
             &results,
+            piece_downloading_semaphore,
         )
         .await;
 
@@ -536,6 +543,7 @@ async fn download_cached_pieces_from_connected_peers<PV, PieceIndices>(
     node: &Node,
     piece_validator: &PV,
     results: &mpsc::UnboundedSender<(PieceIndex, Option<Piece>)>,
+    semaphore: &Semaphore,
 ) -> HashMap<PieceIndex, HashMap<PeerId, Vec<Multiaddr>>>
 where
     PV: PieceValidator,
@@ -590,16 +598,27 @@ where
             // Pick first piece index as the piece we want to download
             let piece_index = peer_piece_indices.swap_remove(0);
 
-            let fut = download_cached_piece_from_peer(
-                node,
-                piece_validator,
-                peer_id,
-                Vec::new(),
-                Arc::new(peer_piece_indices),
-                piece_index,
-                HashSet::new(),
-                HashSet::new(),
-            );
+            let permit = semaphore.try_acquire();
+
+            let fut = async move {
+                let permit = match permit {
+                    Some(permit) => permit,
+                    None => semaphore.acquire().await,
+                };
+
+                download_cached_piece_from_peer(
+                    node,
+                    piece_validator,
+                    peer_id,
+                    Vec::new(),
+                    Arc::new(peer_piece_indices),
+                    piece_index,
+                    HashSet::new(),
+                    HashSet::new(),
+                    permit,
+                )
+                .await
+            };
 
             (piece_index, Box::pin(fut.into_stream()) as _)
         })
@@ -611,7 +630,7 @@ where
         let Some((piece_index, result)) = downloading_stream.next().await else {
             break;
         };
-        process_connected_peer_result(
+        process_downloading_result(
             piece_index,
             result,
             &mut pieces_to_download,
@@ -635,13 +654,13 @@ where
     pieces_to_download
 }
 
-fn process_connected_peer_result<'a, 'b, PV>(
+fn process_downloading_result<'a, 'b, PV>(
     piece_index: PieceIndex,
-    result: DownloadedPieceFromPeer,
+    result: DownloadedPieceFromPeer<'a>,
     pieces_to_download: &'b mut HashMap<PieceIndex, HashMap<PeerId, Vec<Multiaddr>>>,
     downloading_stream: &'b mut StreamMap<
         PieceIndex,
-        Pin<Box<dyn Stream<Item = DownloadedPieceFromPeer> + Send + 'a>>,
+        Pin<Box<dyn Stream<Item = DownloadedPieceFromPeer<'a>> + Send + 'a>>,
     >,
     node: &'a Node,
     piece_validator: &'a PV,
@@ -654,6 +673,7 @@ fn process_connected_peer_result<'a, 'b, PV>(
         result,
         mut cached_pieces,
         not_cached_pieces,
+        permit,
     } = result;
     trace!(%piece_index, %peer_id, result = %result.is_some(), "Piece response");
 
@@ -752,6 +772,7 @@ fn process_connected_peer_result<'a, 'b, PV>(
         piece_index_to_download_next,
         cached_pieces,
         not_cached_pieces,
+        permit,
     );
     downloading_stream.insert(piece_index_to_download_next, Box::pin(fut.into_stream()));
 }
@@ -763,6 +784,7 @@ async fn download_cached_pieces_from_closest_peers<PV>(
     node: &Node,
     piece_validator: &PV,
     results: &mpsc::UnboundedSender<(PieceIndex, Option<Piece>)>,
+    semaphore: &Semaphore,
 ) where
     PV: PieceValidator,
 {
@@ -830,6 +852,7 @@ async fn download_cached_pieces_from_closest_peers<PV>(
                         piece_index,
                         HashSet::new(),
                         HashSet::new(),
+                        semaphore.acquire().await,
                     );
 
                     match fut.await.result {
@@ -871,6 +894,7 @@ async fn download_cached_pieces_from_closest_peers<PV>(
                         piece_index,
                         HashSet::new(),
                         HashSet::new(),
+                        semaphore.acquire().await,
                     );
 
                     let DownloadedPieceFromPeer {
@@ -878,6 +902,7 @@ async fn download_cached_pieces_from_closest_peers<PV>(
                         result,
                         cached_pieces,
                         not_cached_pieces: _,
+                        permit: _,
                     } = fut.await;
 
                     if !cached_pieces.is_empty() {
@@ -925,24 +950,26 @@ async fn download_cached_pieces_from_closest_peers<PV>(
     }
 }
 
-struct DownloadedPieceFromPeer {
+struct DownloadedPieceFromPeer<'a> {
     peer_id: PeerId,
     result: Option<PieceResult>,
     cached_pieces: HashSet<PieceIndex>,
     not_cached_pieces: HashSet<PieceIndex>,
+    permit: SemaphoreGuard<'a>,
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn download_cached_piece_from_peer<PV>(
-    node: &Node,
-    piece_validator: &PV,
+async fn download_cached_piece_from_peer<'a, PV>(
+    node: &'a Node,
+    piece_validator: &'a PV,
     peer_id: PeerId,
     addresses: Vec<Multiaddr>,
     peer_piece_indices: Arc<Vec<PieceIndex>>,
     piece_index: PieceIndex,
     mut cached_pieces: HashSet<PieceIndex>,
     mut not_cached_pieces: HashSet<PieceIndex>,
-) -> DownloadedPieceFromPeer
+    permit: SemaphoreGuard<'a>,
+) -> DownloadedPieceFromPeer<'a>
 where
     PV: PieceValidator,
 {
@@ -993,6 +1020,7 @@ where
                 cached_pieces
             },
             not_cached_pieces,
+            permit,
         },
         None => {
             not_cached_pieces.insert(piece_index);
@@ -1002,6 +1030,7 @@ where
                 result: None,
                 cached_pieces,
                 not_cached_pieces,
+                permit,
             }
         }
     }

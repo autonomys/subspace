@@ -2,7 +2,7 @@ use crate::commands::shared::network::{configure_network, NetworkArgs};
 use crate::commands::shared::{derive_libp2p_keypair, DiskFarm, PlottingThreadPriority};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock, Semaphore};
 use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
@@ -54,7 +54,7 @@ use subspace_kzg::Kzg;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
-use tokio::sync::{Barrier, Semaphore};
+use tokio::sync::Barrier;
 use tracing::{error, info, info_span, warn, Instrument};
 
 /// Get piece retry attempts number.
@@ -68,6 +68,8 @@ const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 const MAX_SPACE_PLEDGED_FOR_PLOT_CACHE_ON_WINDOWS: u64 = 7 * 1024 * 1024 * 1024 * 1024;
 const FARM_ERROR_PRINT_INTERVAL: Duration = Duration::from_secs(30);
 const PLOTTING_RETRY_INTERVAL: Duration = Duration::from_secs(5);
+/// Multiplier on top of outgoing connections number for piece downloading purposes
+const PIECE_PROVIDER_MULTIPLIER: usize = 10;
 
 type FarmIndex = u8;
 
@@ -431,6 +433,7 @@ where
         .await
         .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
 
+    let out_connections = network_args.out_connections;
     let (node, mut node_runner) = {
         if network_args.bootstrap_nodes.is_empty() {
             network_args
@@ -460,6 +463,7 @@ where
     let piece_provider = PieceProvider::new(
         node.clone(),
         SegmentCommitmentPieceValidator::new(node.clone(), node_client.clone(), kzg.clone()),
+        Semaphore::new(out_connections as usize * PIECE_PROVIDER_MULTIPLIER),
     );
 
     let piece_getter = FarmerPieceGetter::new(
