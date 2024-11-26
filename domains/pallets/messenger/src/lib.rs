@@ -47,9 +47,9 @@ use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
 
 pub(crate) mod verification_errors {
-    pub(crate) const INVALID_CHANNEL: u8 = 100;
-    pub(crate) const INVALID_NONCE: u8 = 101;
-    pub(crate) const NONCE_OVERFLOW: u8 = 102;
+    pub(crate) const INVALID_CHANNEL: u8 = 200;
+    pub(crate) const INVALID_NONCE: u8 = 201;
+    pub(crate) const NONCE_OVERFLOW: u8 = 202;
 }
 
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
