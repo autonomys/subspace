@@ -269,9 +269,9 @@ where
         // TODO: consider using retry policy for L1 lookups as well.
         trace!(%piece_index, "Getting piece from archival storage..");
 
-        let connected_peers = {
-            let connected_peers = match self.node.connected_peers().await {
-                Ok(connected_peers) => connected_peers,
+        let connected_servers = {
+            let connected_servers = match self.node.connected_servers().await {
+                Ok(connected_servers) => connected_servers,
                 Err(err) => {
                     debug!(%piece_index, ?err, "Cannot get connected peers (DSN L1 lookup)");
 
@@ -279,13 +279,13 @@ where
                 }
             };
 
-            HashSet::<PeerId>::from_iter(connected_peers)
+            HashSet::<PeerId>::from_iter(connected_servers)
         };
 
-        if connected_peers.is_empty() {
+        if connected_servers.is_empty() {
             debug!(%piece_index, "Cannot acquire piece from no connected peers (DSN L1 lookup)");
         } else {
-            for peer_id in connected_peers.iter() {
+            for peer_id in connected_servers.iter() {
                 let maybe_piece = self.get_piece_from_peer(*peer_id, piece_index).await;
 
                 if maybe_piece.is_some() {
@@ -551,28 +551,28 @@ where
 
     let mut checked_peers = HashSet::new();
 
-    let Ok(connected_peers) = node.connected_peers().await else {
-        trace!("Connected peers error");
+    let Ok(connected_servers) = node.connected_servers().await else {
+        trace!("Connected servers error");
         return pieces_to_download;
     };
 
-    let num_connected_peers = connected_peers.len();
+    let num_connected_servers = connected_servers.len();
     debug!(
-        %num_connected_peers,
+        %num_connected_servers,
         %num_pieces,
         "Starting downloading"
     );
 
     // Dispatch initial set of requests to peers with checked pieces distributed uniformly
-    let mut downloading_stream = connected_peers
+    let mut downloading_stream = connected_servers
         .into_iter()
         .take(num_pieces)
         .enumerate()
         .map(|(peer_index, peer_id)| {
             checked_peers.insert(peer_id);
 
-            // Inside to avoid division by zero in case there are no connected peers or pieces
-            let step = num_pieces / num_connected_peers.min(num_pieces);
+            // Inside to avoid division by zero in case there are no connected servers or pieces
+            let step = num_pieces / num_connected_servers.min(num_pieces);
 
             // Take unique first piece index for each connected peer and the rest just to check
             // cached pieces up to recommended limit
@@ -628,7 +628,7 @@ where
             );
             // Pick up any newly connected peers (if any)
             'outer: for peer_id in node
-                .connected_peers()
+                .connected_servers()
                 .await
                 .unwrap_or_default()
                 .into_iter()

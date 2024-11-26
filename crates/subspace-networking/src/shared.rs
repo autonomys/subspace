@@ -108,6 +108,9 @@ pub(crate) enum Command {
     ConnectedPeers {
         result_sender: oneshot::Sender<Vec<PeerId>>,
     },
+    ConnectedServers {
+        result_sender: oneshot::Sender<Vec<PeerId>>,
+    },
     Bootstrap {
         // No result sender means background async bootstrapping
         result_sender: Option<mpsc::UnboundedSender<()>>,

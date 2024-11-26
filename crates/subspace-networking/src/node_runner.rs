@@ -108,6 +108,7 @@ where
     periodical_tasks_interval: Pin<Box<Fuse<Sleep>>>,
     /// Manages the networking parameters like known peers and addresses
     known_peers_registry: Box<dyn KnownPeersRegistry>,
+    connected_servers: HashSet<PeerId>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
     reserved_peers: HashMap<PeerId, Multiaddr>,
     /// Temporarily banned peers.
@@ -211,6 +212,7 @@ where
             // We'll make the first dial right away and continue at the interval.
             periodical_tasks_interval: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             known_peers_registry,
+            connected_servers: HashSet::new(),
             reserved_peers,
             temporary_bans,
             libp2p_metrics,
@@ -569,6 +571,7 @@ where
 
                 if num_established == 0 {
                     self.peer_ip_addresses.remove(&peer_id);
+                    self.connected_servers.remove(&peer_id);
                 }
                 let num_established_peer_connections = shared
                     .num_established_peer_connections
@@ -831,6 +834,8 @@ where
 
                     kademlia.remove_address(&peer_id, &old_address);
                 }
+
+                self.connected_servers.insert(peer_id);
             } else {
                 debug!(
                     %local_peer_id,
@@ -841,6 +846,7 @@ where
                 );
 
                 kademlia.remove_peer(&peer_id);
+                self.connected_servers.remove(&peer_id);
             }
         }
     }
@@ -1474,6 +1480,11 @@ where
                 let connected_peers = self.swarm.connected_peers().cloned().collect();
 
                 let _ = result_sender.send(connected_peers);
+            }
+            Command::ConnectedServers { result_sender } => {
+                let connected_servers = self.connected_servers.iter().cloned().collect();
+
+                let _ = result_sender.send(connected_servers);
             }
             Command::Bootstrap { result_sender } => {
                 let kademlia = &mut self.swarm.behaviour_mut().kademlia;
