@@ -749,32 +749,46 @@ fn process_downloading_result<'a, 'b, PV>(
         Vec::new(),
         // Sample more random cached piece indices for connected peer, algorithm can be
         // improved, but has to be something simple and this should do it for now
-        Arc::new(
-            pieces_to_download
-                .keys()
-                // Do a bit of work to filter-out piece indices we already know remote peer
-                // has or doesn't to decrease burden on them
-                .filter_map(|piece_index| {
-                    if piece_index == &piece_index_to_download_next
-                        || cached_pieces.contains(piece_index)
-                        || not_cached_pieces.contains(piece_index)
-                    {
-                        None
-                    } else {
-                        Some(*piece_index)
-                    }
-                })
-                .choose_multiple(
-                    &mut thread_rng(),
-                    CachedPieceByIndexRequest::RECOMMENDED_LIMIT,
-                ),
-        ),
+        Arc::new(sample_cached_piece_indices(
+            pieces_to_download.keys(),
+            &cached_pieces,
+            &not_cached_pieces,
+            piece_index_to_download_next,
+        )),
         piece_index_to_download_next,
         cached_pieces,
         not_cached_pieces,
         permit,
     );
     downloading_stream.insert(piece_index_to_download_next, Box::pin(fut.into_stream()));
+}
+
+fn sample_cached_piece_indices<'a, I>(
+    pieces_to_download: I,
+    cached_pieces: &HashSet<PieceIndex>,
+    not_cached_pieces: &HashSet<PieceIndex>,
+    piece_index_to_download_next: PieceIndex,
+) -> Vec<PieceIndex>
+where
+    I: Iterator<Item = &'a PieceIndex>,
+{
+    pieces_to_download
+        // Do a bit of work to filter-out piece indices we already know remote peer
+        // has or doesn't to decrease burden on them
+        .filter_map(|piece_index| {
+            if piece_index == &piece_index_to_download_next
+                || cached_pieces.contains(piece_index)
+                || not_cached_pieces.contains(piece_index)
+            {
+                None
+            } else {
+                Some(*piece_index)
+            }
+        })
+        .choose_multiple(
+            &mut thread_rng(),
+            CachedPieceByIndexRequest::RECOMMENDED_LIMIT,
+        )
 }
 
 /// Takes pieces to download with potential peer candidates as an input, sends results with pieces
