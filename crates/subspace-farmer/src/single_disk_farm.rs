@@ -40,7 +40,7 @@ use crate::single_disk_farm::plotting::{
 use crate::single_disk_farm::reward_signing::reward_signing;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::{farm, KNOWN_PEERS_CACHE_SIZE};
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock, Semaphore};
 use async_trait::async_trait;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
@@ -82,7 +82,7 @@ use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::{broadcast, Barrier, Semaphore};
+use tokio::sync::{broadcast, Barrier};
 use tokio::task;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 

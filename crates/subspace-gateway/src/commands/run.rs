@@ -10,6 +10,7 @@ use crate::commands::shutdown_signal;
 use crate::piece_getter::DsnPieceGetter;
 use crate::piece_validator::SegmentCommitmentPieceValidator;
 use anyhow::anyhow;
+use async_lock::Semaphore;
 use clap::Parser;
 use futures::{select, FutureExt};
 use std::env;
@@ -20,10 +21,13 @@ use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_gateway_rpc::{SubspaceGatewayRpc, SubspaceGatewayRpcConfig};
 use subspace_kzg::Kzg;
+use subspace_networking::utils::piece_provider::PieceProvider;
 use tracing::info;
 
 /// The default size limit, based on the maximum block size in some domains.
 pub const DEFAULT_MAX_SIZE: usize = 5 * 1024 * 1024;
+/// Multiplier on top of outgoing connections number for piece downloading purposes
+const PIECE_PROVIDER_MULTIPLIER: usize = 10;
 
 /// Options for running a node
 #[derive(Debug, Parser)]
@@ -87,14 +91,17 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     )
     .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
 
+    let out_connections = dsn_options.out_connections;
     // TODO: move this service code into its own function, in a new library part of this crate
     let (dsn_node, mut dsn_node_runner, node_client) = configure_network(dsn_options).await?;
     let dsn_fut = dsn_node_runner.run();
 
-    let piece_getter = DsnPieceGetter::new(
+    let piece_provider = PieceProvider::new(
         dsn_node.clone(),
         SegmentCommitmentPieceValidator::new(dsn_node, node_client, kzg),
+        Semaphore::new(out_connections as usize * PIECE_PROVIDER_MULTIPLIER),
     );
+    let piece_getter = DsnPieceGetter::new(piece_provider);
     let object_fetcher = ObjectFetcher::new(piece_getter, erasure_coding, Some(max_size));
 
     let rpc_api = SubspaceGatewayRpc::new(SubspaceGatewayRpcConfig { object_fetcher });

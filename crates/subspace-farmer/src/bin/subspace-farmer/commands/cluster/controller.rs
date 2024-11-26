@@ -3,7 +3,7 @@ use crate::commands::cluster::farmer::FARMER_IDENTIFICATION_BROADCAST_INTERVAL;
 use crate::commands::shared::derive_libp2p_keypair;
 use crate::commands::shared::network::{configure_network, NetworkArgs};
 use anyhow::anyhow;
-use async_lock::RwLock as AsyncRwLock;
+use async_lock::{RwLock as AsyncRwLock, Semaphore};
 use backoff::ExponentialBackoff;
 use clap::{Parser, ValueHint};
 use futures::stream::FuturesUnordered;
@@ -38,6 +38,8 @@ const PIECE_GETTER_MAX_RETRIES: u16 = 7;
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
 /// Defines max duration between get_piece calls.
 const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
+/// Multiplier on top of outgoing connections number for piece downloading purposes
+const PIECE_PROVIDER_MULTIPLIER: usize = 10;
 
 /// Arguments for controller
 #[derive(Debug, Parser)]
@@ -137,6 +139,7 @@ pub(super) async fn controller(
         .await
         .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
 
+    let out_connections = network_args.out_connections;
     let (node, mut node_runner) = {
         if network_args.bootstrap_nodes.is_empty() {
             network_args
@@ -161,6 +164,7 @@ pub(super) async fn controller(
     let piece_provider = PieceProvider::new(
         node.clone(),
         SegmentCommitmentPieceValidator::new(node.clone(), node_client.clone(), kzg.clone()),
+        Semaphore::new(out_connections as usize * PIECE_PROVIDER_MULTIPLIER),
     );
 
     let piece_getter = FarmerPieceGetter::new(

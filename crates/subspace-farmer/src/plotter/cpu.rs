@@ -6,7 +6,7 @@ use crate::plotter::cpu::metrics::CpuPlotterMetrics;
 use crate::plotter::{Plotter, SectorPlottingProgress};
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
-use async_lock::Mutex as AsyncMutex;
+use async_lock::{Mutex as AsyncMutex, Semaphore, SemaphoreGuardArc};
 use async_trait::async_trait;
 use bytes::Bytes;
 use event_listener_primitives::{Bag, HandlerId};
@@ -35,7 +35,6 @@ use subspace_farmer_components::plotting::{
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::yield_now;
 use tracing::{warn, Instrument};
 
@@ -87,7 +86,7 @@ where
     PosTable: Table,
 {
     async fn has_free_capacity(&self) -> Result<bool, String> {
-        Ok(self.downloading_semaphore.available_permits() > 0)
+        Ok(self.downloading_semaphore.try_acquire().is_some())
     }
 
     async fn plot_sector(
@@ -97,39 +96,13 @@ where
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
         replotting: bool,
-        mut progress_sender: mpsc::Sender<SectorPlottingProgress>,
+        progress_sender: mpsc::Sender<SectorPlottingProgress>,
     ) {
         let start = Instant::now();
 
         // Done outside the future below as a backpressure, ensuring that it is not possible to
         // schedule unbounded number of plotting tasks
-        let downloading_permit = match Arc::clone(&self.downloading_semaphore)
-            .acquire_owned()
-            .await
-        {
-            Ok(downloading_permit) => downloading_permit,
-            Err(error) => {
-                warn!(%error, "Failed to acquire downloading permit");
-
-                let progress_updater = ProgressUpdater {
-                    public_key,
-                    sector_index,
-                    handlers: Arc::clone(&self.handlers),
-                    metrics: self.metrics.clone(),
-                };
-
-                progress_updater
-                    .update_progress_and_events(
-                        &mut progress_sender,
-                        SectorPlottingProgress::Error {
-                            error: format!("Failed to acquire downloading permit: {error}"),
-                        },
-                    )
-                    .await;
-
-                return;
-            }
-        };
+        let downloading_permit = self.downloading_semaphore.acquire_arc().await;
 
         self.plot_sector_internal(
             start,
@@ -155,8 +128,7 @@ where
     ) -> bool {
         let start = Instant::now();
 
-        let Ok(downloading_permit) = Arc::clone(&self.downloading_semaphore).try_acquire_owned()
-        else {
+        let Some(downloading_permit) = self.downloading_semaphore.try_acquire_arc() else {
             return false;
         };
 
@@ -259,7 +231,7 @@ where
     async fn plot_sector_internal<PS>(
         &self,
         start: Instant,
-        downloading_permit: OwnedSemaphorePermit,
+        downloading_permit: SemaphoreGuardArc,
         public_key: PublicKey,
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,

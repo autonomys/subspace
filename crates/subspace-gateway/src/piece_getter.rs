@@ -7,7 +7,6 @@ use std::ops::{Deref, DerefMut};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_data_retrieval::piece_getter::{BoxError, ObjectPieceGetter};
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
-use subspace_networking::Node;
 
 /// The maximum number of peer-to-peer walking rounds for L1 archival storage.
 const MAX_RANDOM_WALK_ROUNDS: usize = 15;
@@ -76,7 +75,7 @@ where
     PV: PieceValidator,
 {
     /// Creates new DSN piece getter.
-    pub fn new(node: Node, piece_validator: PV) -> Self {
-        Self(PieceProvider::new(node, piece_validator))
+    pub fn new(piece_provider: PieceProvider<PV>) -> Self {
+        Self(piece_provider)
     }
 }

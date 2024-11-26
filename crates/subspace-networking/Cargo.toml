@@ -16,13 +16,12 @@ include = [
 ]
 
 [dependencies]
-async-mutex = "1.4.0"
+async-lock = "3.4.0"
 async-trait = "0.1.83"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bytes = "1.7.2"
 clap = { version = "4.5.18", features = ["color", "derive"] }
 derive_more = { version = "1.0.0", features = ["full"] }
-either = "1.13.0"
 event-listener-primitives = "2.0.1"
 # TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved
 fs2 = "0.4.3"
