@@ -560,7 +560,7 @@ where
 
     debug!(num_pieces = %pieces_to_download.len(), "Starting");
 
-    let mut checked_connected_peers = HashSet::new();
+    let mut checked_peers = HashSet::new();
 
     let Ok(connected_peers) = node.connected_peers().await else {
         trace!("Connected peers error");
@@ -581,14 +581,14 @@ where
         .take(num_pieces)
         .enumerate()
         .map(|(peer_index, peer_id)| {
-            checked_connected_peers.insert(peer_id);
+            checked_peers.insert(peer_id);
 
             // Inside to avoid division by zero in case there are no connected peers or pieces
             let step = num_pieces / num_connected_peers.min(num_pieces);
 
             // Take unique first piece index for each connected peer and the rest just to check
             // cached pieces up to recommended limit
-            let mut peer_piece_indices = pieces_to_download
+            let mut check_cached_pieces = pieces_to_download
                 .keys()
                 .cycle()
                 .skip(step * peer_index)
@@ -596,7 +596,7 @@ where
                 .copied()
                 .collect::<Vec<_>>();
             // Pick first piece index as the piece we want to download
-            let piece_index = peer_piece_indices.swap_remove(0);
+            let piece_index = check_cached_pieces.swap_remove(0);
 
             let permit = semaphore.try_acquire();
 
@@ -611,7 +611,7 @@ where
                     piece_validator,
                     peer_id,
                     Vec::new(),
-                    Arc::new(peer_piece_indices),
+                    Arc::new(check_cached_pieces),
                     piece_index,
                     HashSet::new(),
                     HashSet::new(),
@@ -978,7 +978,7 @@ async fn download_cached_piece_from_peer<'a, PV>(
     piece_validator: &'a PV,
     peer_id: PeerId,
     addresses: Vec<Multiaddr>,
-    peer_piece_indices: Arc<Vec<PieceIndex>>,
+    check_cached_pieces: Arc<Vec<PieceIndex>>,
     piece_index: PieceIndex,
     mut cached_pieces: HashSet<PieceIndex>,
     mut not_cached_pieces: HashSet<PieceIndex>,
@@ -993,7 +993,7 @@ where
             addresses,
             CachedPieceByIndexRequest {
                 piece_index,
-                cached_pieces: peer_piece_indices,
+                cached_pieces: check_cached_pieces,
             },
         )
         .await
