@@ -1495,6 +1495,259 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verification() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+
+    let undecodable_tx = || {
+        let undecodable_extrinsic = rand::random::<[u8; 5]>();
+        OpaqueExtrinsic::from_bytes(&undecodable_extrinsic.encode())
+            .expect("raw byte encoding and decoding never fails; qed")
+    };
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+
+    alice
+        .construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
+            dest: Bob.to_account_id(),
+            value: 1,
+        })
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(target_bundle.extrinsics.len(), 1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let extrinsics: Vec<Vec<u8>>;
+    let bundle_extrinsic_root;
+    let bad_submit_bundle_tx = {
+        opaque_bundle.extrinsics.push(undecodable_tx());
+        extrinsics = opaque_bundle
+            .extrinsics
+            .clone()
+            .into_iter()
+            .map(|ext| ext.encode())
+            .collect();
+        bundle_extrinsic_root =
+            BlakeTwo256::ordered_trie_root(extrinsics.clone(), StateVersion::V1);
+        opaque_bundle.sealed_header.header.bundle_extrinsics_root = bundle_extrinsic_root;
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        bundle_to_tx(opaque_bundle)
+    };
+
+    // Produce a block that contains the `bad_submit_bundle_tx`
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+
+    // produce another bundle that marks the previous extrinsic as invalid.
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
+        let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        // bad receipt marks this particular bundle as valid even though bundle contains inherent extrinsic
+        bad_receipt.inboxed_bundles =
+            vec![InboxedBundle::valid(H256::random(), bundle_extrinsic_root)];
+
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
+    };
+
+    // Wait for the fraud proof that target the bad ER
+    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
+            if let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type {
+                assert!(proof.is_true_invalid_fraud_proof);
+                return true;
+            }
+        }
+        false
+    });
+
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+
+    let _ = wait_for_fraud_proof_fut.await;
+
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, thus pruned the bad receipt from the block tree
+    ferdie.produce_blocks(1).await.unwrap();
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_false_invalid_bundles_undecodeable_tx_proof_creation_and_verification() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+
+    alice
+        .construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
+            dest: Bob.to_account_id(),
+            value: 1,
+        })
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(target_bundle.extrinsics.len(), 1);
+    let extrinsics: Vec<Vec<u8>> = target_bundle
+        .extrinsics
+        .clone()
+        .into_iter()
+        .map(|ext| ext.encode())
+        .collect();
+    let bundle_extrinsic_root =
+        BlakeTwo256::ordered_trie_root(extrinsics.clone(), StateVersion::V1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // produce another bundle that marks the previous valid extrinsic as invalid.
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
+        let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        // bad receipt marks this particular bundle as invalid even though bundle does not contain
+        // inherent extrinsic
+        bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
+            InvalidBundleType::UndecodableTx(0),
+            bundle_extrinsic_root,
+        )];
+
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
+    };
+
+    // Wait for the fraud proof that target the bad ER
+    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
+            if let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type {
+                assert!(!proof.is_true_invalid_fraud_proof);
+                return true;
+            }
+        }
+        false
+    });
+
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+
+    let _ = wait_for_fraud_proof_fut.await;
+
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, thus pruned the bad receipt from the block tree
+    ferdie.produce_blocks(1).await.unwrap();
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
