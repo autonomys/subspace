@@ -940,6 +940,9 @@ struct DownloadedPieceFromPeer<'a> {
     permit: SemaphoreGuard<'a>,
 }
 
+/// `check_cached_pieces` contains a list of pieces for peer to filter-out according to locally
+/// caches pieces, `cached_pieces` and `not_cached_pieces` contain piece indices peer claims is
+/// known to have or not have already
 #[allow(clippy::too_many_arguments)]
 async fn download_cached_piece_from_peer<'a, PV>(
     node: &'a Node,
@@ -961,7 +964,7 @@ where
             addresses,
             CachedPieceByIndexRequest {
                 piece_index,
-                cached_pieces: check_cached_pieces,
+                cached_pieces: Arc::clone(&check_cached_pieces),
             },
         )
         .await
@@ -994,26 +997,29 @@ where
     };
 
     match result {
-        Some(result) => DownloadedPieceFromPeer {
-            peer_id,
-            result: Some(result.result),
-            cached_pieces: {
-                cached_pieces.extend(result.cached_pieces);
-                cached_pieces
-            },
-            not_cached_pieces,
-            permit,
-        },
-        None => {
-            not_cached_pieces.insert(piece_index);
+        Some(result) => {
+            cached_pieces.extend(result.cached_pieces);
+            not_cached_pieces.extend(
+                check_cached_pieces
+                    .iter()
+                    .filter(|piece_index| !cached_pieces.contains(piece_index))
+                    .copied(),
+            );
 
             DownloadedPieceFromPeer {
                 peer_id,
-                result: None,
-                cached_pieces,
+                result: Some(result.result),
+                cached_pieces: { cached_pieces },
                 not_cached_pieces,
                 permit,
             }
         }
+        None => DownloadedPieceFromPeer {
+            peer_id,
+            result: None,
+            cached_pieces,
+            not_cached_pieces,
+            permit,
+        },
     }
 }
