@@ -19,7 +19,6 @@ use libp2p::kad::store::RecordStore;
 use libp2p::kad::{store, Behaviour as Kademlia, KBucketKey, ProviderRecord, Record, RecordKey};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{Multiaddr, PeerId};
-use parking_lot::Mutex;
 use rand::prelude::*;
 use std::any::type_name;
 use std::borrow::Cow;
@@ -28,7 +27,7 @@ use std::iter::Empty;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::{fmt, iter, mem};
+use std::{fmt, iter};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tokio_stream::StreamMap;
 use tracing::{debug, trace, warn, Instrument};
@@ -501,11 +500,9 @@ async fn get_from_cache_inner<PV, PieceIndices>(
 {
     let download_id = random::<u64>();
 
-    // TODO: It'd be nice to combine downloading from connected peers with downloading from closest
-    //  peers concurrently
     let fut = async move {
         // Download from connected peers first
-        let pieces_to_download = download_cached_pieces_from_connected_peers(
+        let pieces_to_download = download_cached_pieces(
             piece_indices,
             node,
             piece_validator,
@@ -519,15 +516,11 @@ async fn get_from_cache_inner<PV, PieceIndices>(
             return;
         }
 
-        // Download from iteratively closer peers according to Kademlia rules
-        download_cached_pieces_from_closest_peers(
-            pieces_to_download,
-            node,
-            piece_validator,
-            &results,
-            piece_downloading_semaphore,
-        )
-        .await;
+        for (piece_index, _closest_peers) in pieces_to_download {
+            results
+                .unbounded_send((piece_index, None))
+                .expect("This future isn't polled after receiver is dropped; qed");
+        }
 
         debug!("Done #2");
     };
@@ -538,13 +531,13 @@ async fn get_from_cache_inner<PV, PieceIndices>(
 /// Takes pieces to download as an input, sends results with pieces that were downloaded
 /// successfully and returns those that were not downloaded from connected peer with addresses of
 /// potential candidates
-async fn download_cached_pieces_from_connected_peers<PV, PieceIndices>(
+async fn download_cached_pieces<PV, PieceIndices>(
     piece_indices: PieceIndices,
     node: &Node,
     piece_validator: &PV,
     results: &mpsc::UnboundedSender<(PieceIndex, Option<Piece>)>,
     semaphore: &Semaphore,
-) -> HashMap<PieceIndex, HashMap<PeerId, Vec<Multiaddr>>>
+) -> HashMap<PieceIndex, KademliaWrapper>
 where
     PV: PieceValidator,
     PieceIndices: Iterator<Item = PieceIndex>,
@@ -555,10 +548,28 @@ where
     // At the end pieces that were not downloaded will remain with a collection of known closest
     // peers for them.
     let mut pieces_to_download = piece_indices
-        .map(|piece_index| (piece_index, HashMap::new()))
-        .collect::<HashMap<PieceIndex, HashMap<PeerId, Vec<Multiaddr>>>>();
+        .map(|piece_index| async move {
+            let mut kademlia = KademliaWrapper::new(node.id());
+            let key = piece_index.to_multihash();
 
-    debug!(num_pieces = %pieces_to_download.len(), "Starting");
+            let local_closest_peers = node
+                .get_closest_local_peers(key, None)
+                .await
+                .unwrap_or_default();
+
+            // Seed with local closest peers
+            for (peer_id, addresses) in local_closest_peers {
+                kademlia.add_peer(&peer_id, addresses);
+            }
+
+            (piece_index, kademlia)
+        })
+        .collect::<FuturesUnordered<_>>()
+        .collect::<HashMap<_, _>>()
+        .await;
+
+    let num_pieces = pieces_to_download.len();
+    debug!(%num_pieces, "Starting");
 
     let mut checked_peers = HashSet::new();
 
@@ -567,7 +578,6 @@ where
         return pieces_to_download;
     };
 
-    let num_pieces = pieces_to_download.len();
     let num_connected_peers = connected_peers.len();
     debug!(
         %num_connected_peers,
@@ -575,7 +585,7 @@ where
         "Starting downloading"
     );
 
-    // Dispatch initial set of requests to peers
+    // Dispatch initial set of requests to peers with checked pieces distributed uniformly
     let mut downloading_stream = connected_peers
         .into_iter()
         .take(num_pieces)
@@ -592,11 +602,14 @@ where
                 .keys()
                 .cycle()
                 .skip(step * peer_index)
-                .take(num_pieces.min(CachedPieceByIndexRequest::RECOMMENDED_LIMIT))
+                // + 1 because one index below is removed below
+                .take(num_pieces.min(CachedPieceByIndexRequest::RECOMMENDED_LIMIT + 1))
                 .copied()
                 .collect::<Vec<_>>();
             // Pick first piece index as the piece we want to download
             let piece_index = check_cached_pieces.swap_remove(0);
+
+            trace!(%peer_id, %piece_index, "Downloading piece from initially connected peer");
 
             let permit = semaphore.try_acquire();
 
@@ -625,9 +638,138 @@ where
         .collect::<StreamMap<_, _>>();
 
     loop {
-        // TODO: Add more pieces to download if needed
+        // Process up to 50% of the pieces concurrently
+        let mut additional_pieces_to_download =
+            (num_pieces / 2).saturating_sub(downloading_stream.len());
+        if additional_pieces_to_download > 0 {
+            trace!(
+                %additional_pieces_to_download,
+                num_pieces,
+                currently_downloading = %downloading_stream.len(),
+                "Downloading additional pieces from closest peers"
+            );
+            // Pick up any newly connected peers (if any)
+            'outer: for peer_id in node
+                .connected_peers()
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|peer_id| checked_peers.insert(*peer_id))
+                .take(additional_pieces_to_download)
+            {
+                let permit = if downloading_stream.is_empty() {
+                    semaphore.acquire().await
+                } else if let Some(permit) = semaphore.try_acquire() {
+                    permit
+                } else {
+                    break;
+                };
+
+                for &piece_index in pieces_to_download.keys() {
+                    if downloading_stream.contains_key(&piece_index) {
+                        continue;
+                    }
+
+                    trace!(%peer_id, %piece_index, "Downloading piece from newly connected peer");
+
+                    let check_cached_pieces = sample_cached_piece_indices(
+                        pieces_to_download.keys(),
+                        &HashSet::new(),
+                        &HashSet::new(),
+                        piece_index,
+                    );
+                    let fut = download_cached_piece_from_peer(
+                        node,
+                        piece_validator,
+                        peer_id,
+                        Vec::new(),
+                        Arc::new(check_cached_pieces),
+                        piece_index,
+                        HashSet::new(),
+                        HashSet::new(),
+                        permit,
+                    );
+
+                    downloading_stream.insert(piece_index, Box::pin(fut.into_stream()) as _);
+                    additional_pieces_to_download -= 1;
+
+                    continue 'outer;
+                }
+
+                break;
+            }
+
+            // Pick up more pieces to download from the closest peers
+            // Ideally we'd not allocate here, but it is hard to explain to the compiler that
+            // entries are not removed otherwise
+            let pieces_indices_to_download = pieces_to_download.keys().copied().collect::<Vec<_>>();
+            for piece_index in pieces_indices_to_download {
+                if additional_pieces_to_download == 0 {
+                    break;
+                }
+                if downloading_stream.contains_key(&piece_index) {
+                    continue;
+                }
+                let permit = if downloading_stream.is_empty() {
+                    semaphore.acquire().await
+                } else if let Some(permit) = semaphore.try_acquire() {
+                    permit
+                } else {
+                    break;
+                };
+
+                let kbucket_key = KBucketKey::from(piece_index.to_multihash());
+                let closest_peers_to_check = pieces_to_download
+                    .get_mut(&piece_index)
+                    .expect("Entries are not removed here; qed")
+                    .closest_peers(&kbucket_key);
+                for (peer_id, addresses) in closest_peers_to_check {
+                    if !checked_peers.insert(peer_id) {
+                        continue;
+                    }
+
+                    trace!(%peer_id, %piece_index, "Downloading piece from closest peer");
+
+                    let check_cached_pieces = sample_cached_piece_indices(
+                        pieces_to_download.keys(),
+                        &HashSet::new(),
+                        &HashSet::new(),
+                        piece_index,
+                    );
+                    let fut = download_cached_piece_from_peer(
+                        node,
+                        piece_validator,
+                        peer_id,
+                        addresses,
+                        Arc::new(check_cached_pieces),
+                        piece_index,
+                        HashSet::new(),
+                        HashSet::new(),
+                        permit,
+                    );
+
+                    downloading_stream.insert(piece_index, Box::pin(fut.into_stream()) as _);
+                    additional_pieces_to_download -= 1;
+                    break;
+                }
+            }
+
+            trace!(
+                pieces_left = %additional_pieces_to_download,
+                "Initiated downloading additional pieces from closest peers"
+            );
+        }
 
         let Some((piece_index, result)) = downloading_stream.next().await else {
+            if !pieces_to_download.is_empty() {
+                debug!(
+                    %num_pieces,
+                    downloaded = %pieces_to_download.len(),
+                    "Finished downloading early"
+                );
+                // Nothing was downloaded, we're done here
+                break;
+            }
             break;
         };
         process_downloading_result(
@@ -643,12 +785,6 @@ where
         if pieces_to_download.is_empty() {
             break;
         }
-
-        if pieces_to_download.len() == num_pieces {
-            debug!(%num_pieces, "Finished downloading from connected peers");
-            // Nothing was downloaded, we're done here
-            break;
-        }
     }
 
     pieces_to_download
@@ -657,7 +793,7 @@ where
 fn process_downloading_result<'a, 'b, PV>(
     piece_index: PieceIndex,
     result: DownloadedPieceFromPeer<'a>,
-    pieces_to_download: &'b mut HashMap<PieceIndex, HashMap<PeerId, Vec<Multiaddr>>>,
+    pieces_to_download: &'b mut HashMap<PieceIndex, KademliaWrapper>,
     downloading_stream: &'b mut StreamMap<
         PieceIndex,
         Pin<Box<dyn Stream<Item = DownloadedPieceFromPeer<'a>> + Send + 'a>>,
@@ -696,18 +832,23 @@ fn process_downloading_result<'a, 'b, PV>(
             if pieces_to_download.is_empty() {
                 return;
             }
+
+            cached_pieces.remove(&piece_index);
         }
         PieceResult::ClosestPeers(closest_peers) => {
             trace!(%piece_index, %peer_id, "Got closest peers");
 
             // Store closer peers in case piece index was not downloaded yet
-            if let Some(peers) = pieces_to_download.get_mut(&piece_index) {
-                peers.extend(Vec::from(closest_peers));
+            if let Some(kademlia) = pieces_to_download.get_mut(&piece_index) {
+                for (peer_id, addresses) in Vec::from(closest_peers) {
+                    kademlia.add_peer(&peer_id, addresses);
+                }
             }
 
-            // No need to ask this peer again if they didn't have the piece we expected, or
-            // they claimed to have earlier
-            return;
+            // No need to ask this peer again if they claimed to have this piece index earlier
+            if cached_pieces.remove(&piece_index) {
+                return;
+            }
         }
     }
 
@@ -724,8 +865,8 @@ fn process_downloading_result<'a, 'b, PV>(
             && !downloading_stream.contains_key(piece_index)
         {
             maybe_piece_index_to_download_next.replace(*piece_index);
-            // We'll not need to download it after this attempt
-            return false;
+            // We'll check it later when receiving response
+            return true;
         }
 
         // Retain everything else
@@ -789,179 +930,6 @@ where
             &mut thread_rng(),
             CachedPieceByIndexRequest::RECOMMENDED_LIMIT,
         )
-}
-
-/// Takes pieces to download with potential peer candidates as an input, sends results with pieces
-/// that were downloaded successfully and returns those that were not downloaded
-async fn download_cached_pieces_from_closest_peers<PV>(
-    maybe_pieces_to_download: HashMap<PieceIndex, HashMap<PeerId, Vec<Multiaddr>>>,
-    node: &Node,
-    piece_validator: &PV,
-    results: &mpsc::UnboundedSender<(PieceIndex, Option<Piece>)>,
-    semaphore: &Semaphore,
-) where
-    PV: PieceValidator,
-{
-    let kademlia = &Mutex::new(KademliaWrapper::new(node.id()));
-    // Collection of pieces to download and already connected peers that claim to have them
-    let connected_peers_with_piece = &Mutex::new(
-        maybe_pieces_to_download
-            .keys()
-            .map(|&piece_index| (piece_index, HashSet::<PeerId>::new()))
-            .collect::<HashMap<_, _>>(),
-    );
-
-    let mut downloaded_pieces = maybe_pieces_to_download
-        .into_iter()
-        .map(|(piece_index, collected_peers)| async move {
-            let key = piece_index.to_multihash();
-            let kbucket_key = KBucketKey::from(key);
-            let mut checked_closest_peers = HashSet::<PeerId>::new();
-
-            {
-                let local_closest_peers = node
-                    .get_closest_local_peers(key, None)
-                    .await
-                    .unwrap_or_default();
-                let mut kademlia = kademlia.lock();
-
-                for (peer_id, addresses) in collected_peers {
-                    kademlia.add_peer(&peer_id, addresses);
-                }
-                for (peer_id, addresses) in local_closest_peers {
-                    kademlia.add_peer(&peer_id, addresses);
-                }
-            }
-
-            loop {
-                // Collect pieces that still need to be downloaded and connected peers that claim to
-                // have them
-                let (pieces_to_download, connected_peers) = {
-                    let mut connected_peers_with_piece = connected_peers_with_piece.lock();
-
-                    (
-                        Arc::new(
-                            connected_peers_with_piece
-                                .keys()
-                                .filter(|&candidate| candidate != &piece_index)
-                                .take(CachedPieceByIndexRequest::RECOMMENDED_LIMIT)
-                                .copied()
-                                .collect::<Vec<_>>(),
-                        ),
-                        connected_peers_with_piece
-                            .get_mut(&piece_index)
-                            .map(mem::take)
-                            .unwrap_or_default(),
-                    )
-                };
-
-                // Check connected peers that claim to have the piece index first
-                for peer_id in connected_peers {
-                    let fut = download_cached_piece_from_peer(
-                        node,
-                        piece_validator,
-                        peer_id,
-                        Vec::new(),
-                        Arc::default(),
-                        piece_index,
-                        HashSet::new(),
-                        HashSet::new(),
-                        semaphore.acquire().await,
-                    );
-
-                    match fut.await.result {
-                        Some(PieceResult::Piece(piece)) => {
-                            return (piece_index, Some(piece));
-                        }
-                        Some(PieceResult::ClosestPeers(closest_peers)) => {
-                            let mut kademlia = kademlia.lock();
-
-                            // Store additional closest peers reported by the peer
-                            for (peer_id, addresses) in Vec::from(closest_peers) {
-                                kademlia.add_peer(&peer_id, addresses);
-                            }
-                        }
-                        None => {
-                            checked_closest_peers.insert(peer_id);
-                        }
-                    }
-                }
-
-                // Find the closest peers that were not queried yet
-                let closest_peers_to_check = kademlia.lock().closest_peers(&kbucket_key);
-                let closest_peers_to_check = closest_peers_to_check
-                    .filter(|(peer_id, _addresses)| checked_closest_peers.insert(*peer_id))
-                    .collect::<Vec<_>>();
-
-                if closest_peers_to_check.is_empty() {
-                    // No new closest peers found, nothing left to do here
-                    break;
-                }
-
-                for (peer_id, addresses) in closest_peers_to_check {
-                    let fut = download_cached_piece_from_peer(
-                        node,
-                        piece_validator,
-                        peer_id,
-                        addresses,
-                        Arc::clone(&pieces_to_download),
-                        piece_index,
-                        HashSet::new(),
-                        HashSet::new(),
-                        semaphore.acquire().await,
-                    );
-
-                    let DownloadedPieceFromPeer {
-                        peer_id: _,
-                        result,
-                        cached_pieces,
-                        not_cached_pieces: _,
-                        permit: _,
-                    } = fut.await;
-
-                    if !cached_pieces.is_empty() {
-                        let mut connected_peers_with_piece = connected_peers_with_piece.lock();
-
-                        // Remember that this peer has some pieces that need to be downloaded here
-                        for cached_piece_index in cached_pieces {
-                            if let Some(peers) =
-                                connected_peers_with_piece.get_mut(&cached_piece_index)
-                            {
-                                peers.insert(peer_id);
-                            }
-                        }
-                    }
-
-                    match result {
-                        Some(PieceResult::Piece(piece)) => {
-                            return (piece_index, Some(piece));
-                        }
-                        Some(PieceResult::ClosestPeers(closest_peers)) => {
-                            let mut kademlia = kademlia.lock();
-
-                            // Store additional closest peers
-                            for (peer_id, addresses) in Vec::from(closest_peers) {
-                                kademlia.add_peer(&peer_id, addresses);
-                            }
-                        }
-                        None => {
-                            checked_closest_peers.insert(peer_id);
-                        }
-                    }
-                }
-            }
-
-            (piece_index, None)
-        })
-        .collect::<FuturesUnordered<_>>();
-
-    while let Some((piece_index, maybe_piece)) = downloaded_pieces.next().await {
-        connected_peers_with_piece.lock().remove(&piece_index);
-
-        results
-            .unbounded_send((piece_index, maybe_piece))
-            .expect("This future isn't polled after receiver is dropped; qed");
-    }
 }
 
 struct DownloadedPieceFromPeer<'a> {
