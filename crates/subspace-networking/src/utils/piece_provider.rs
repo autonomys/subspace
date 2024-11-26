@@ -97,8 +97,7 @@ where
         let download_id = random::<u64>();
         let (tx, mut rx) = mpsc::unbounded();
         let fut = async move {
-            // Download from connected peers first
-            let pieces_to_download = download_cached_pieces(
+            let not_downloaded_pieces = download_cached_pieces(
                 piece_indices.into_iter(),
                 &self.node,
                 &self.piece_validator,
@@ -107,12 +106,12 @@ where
             )
             .await;
 
-            if pieces_to_download.is_empty() {
+            if not_downloaded_pieces.is_empty() {
                 debug!("Done");
                 return;
             }
 
-            for (piece_index, _closest_peers) in pieces_to_download {
+            for piece_index in not_downloaded_pieces {
                 tx.unbounded_send((piece_index, None))
                     .expect("This future isn't polled after receiver is dropped; qed");
             }
@@ -507,15 +506,14 @@ impl KademliaWrapper {
 }
 
 /// Takes pieces to download as an input, sends results with pieces that were downloaded
-/// successfully and returns those that were not downloaded from connected peer with addresses of
-/// potential candidates
+/// successfully and returns those that were not downloaded
 async fn download_cached_pieces<PV, PieceIndices>(
     piece_indices: PieceIndices,
     node: &Node,
     piece_validator: &PV,
     results: &mpsc::UnboundedSender<(PieceIndex, Option<Piece>)>,
     semaphore: &Semaphore,
-) -> HashMap<PieceIndex, KademliaWrapper>
+) -> impl ExactSizeIterator<Item = PieceIndex>
 where
     PV: PieceValidator,
     PieceIndices: Iterator<Item = PieceIndex>,
@@ -553,7 +551,7 @@ where
 
     let Ok(connected_servers) = node.connected_servers().await else {
         trace!("Connected servers error");
-        return pieces_to_download;
+        return pieces_to_download.into_keys();
     };
 
     let num_connected_servers = connected_servers.len();
@@ -765,7 +763,7 @@ where
         }
     }
 
-    pieces_to_download
+    pieces_to_download.into_keys()
 }
 
 fn process_downloading_result<'a, 'b, PV>(
