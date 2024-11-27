@@ -18,10 +18,7 @@ use sp_blockchain::Info;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::{
-    BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
-    OperatorSignature, OperatorSigningKeyProofOfOwnershipData,
-};
+use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey};
 use sp_keyring::Sr25519Keyring;
 use sp_keystore::{Keystore, KeystorePtr};
 use sp_messenger::MessengerApi;
@@ -272,19 +269,6 @@ where
             }
         };
 
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: self.sudo_account.clone(),
-        };
-        let signature = OperatorSignature::from(
-            self.operator_keystore
-                .sr25519_sign(
-                    OperatorPublicKey::ID,
-                    signing_key.clone().as_ref(),
-                    &data.encode(),
-                )?
-                .expect("key pair must be avaible on keystore for signing"),
-        );
-
         let maybe_operator_id = self
             .consensus_client
             .runtime_api()
@@ -299,7 +283,6 @@ where
                 self.submit_register_operator(
                     nonce,
                     signing_key,
-                    signature,
                     // Ideally we should use the `next_total_stake` but it is tricky to get
                     MALICIOUS_OPR_STAKE_MULTIPLIER * current_total_stake,
                 )?;
@@ -347,7 +330,6 @@ where
         &self,
         nonce: Nonce,
         signing_key: OperatorPublicKey,
-        signature: OperatorSignature,
         staking_amount: Balance,
     ) -> Result<(), Box<dyn Error>> {
         let call = pallet_domains::Call::register_operator {
@@ -358,7 +340,6 @@ where
                 minimum_nominator_stake: Balance::MAX,
                 nomination_tax: Default::default(),
             },
-            signing_key_proof_of_ownership: signature,
         };
         self.submit_consensus_extrinsic(Some(nonce), call.into())
     }

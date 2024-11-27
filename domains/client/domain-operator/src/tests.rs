@@ -32,7 +32,7 @@ use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     Bundle, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor, InboxedBundle,
-    InvalidBundleType, OperatorSignature, OperatorSigningKeyProofOfOwnershipData, Transfers,
+    InvalidBundleType, Transfers,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProofVariant,
@@ -4788,12 +4788,6 @@ async fn test_bad_receipt_chain() {
                 minimum_nominator_stake: Balance::MAX,
                 nomination_tax: Default::default(),
             },
-            signing_key_proof_of_ownership: OperatorSignature::from(
-                OperatorSigningKeyProofOfOwnershipData {
-                    operator_owner: Sr25519Alice.to_account_id(),
-                }
-                .using_encoded(|e| Sr25519Keyring::Charlie.sign(e)),
-            ),
         })
         .await
         .unwrap();

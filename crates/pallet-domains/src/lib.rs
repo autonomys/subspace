@@ -231,8 +231,7 @@ mod pallet {
     use sp_domains::{
         BundleDigest, DomainBundleSubmitted, DomainId, DomainSudoCall, DomainsTransfersTracker,
         EpochIndex, GenesisDomain, OnChainRewards, OnDomainInstantiated, OperatorAllowList,
-        OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature, RuntimeId,
-        RuntimeObject, RuntimeType,
+        OperatorId, OperatorPublicKey, OperatorRewardSource, RuntimeId, RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof_runtime_interface::domain_runtime_call;
     use sp_domains_fraud_proof::storage_proof::{self, FraudProofStorageKeyProvider};
@@ -1357,7 +1356,6 @@ mod pallet {
             domain_id: DomainId,
             amount: BalanceOf<T>,
             config: OperatorConfig<BalanceOf<T>>,
-            _signing_key_proof_of_ownership: OperatorSignature,
         ) -> DispatchResult {
             let owner = ensure_signed(origin)?;
 
