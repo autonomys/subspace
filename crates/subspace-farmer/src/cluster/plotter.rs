@@ -31,6 +31,7 @@ use std::time::{Duration, Instant};
 use subspace_core_primitives::sectors::SectorIndex;
 use subspace_core_primitives::PublicKey;
 use subspace_farmer_components::plotting::PlottedSector;
+use subspace_farmer_components::sector::sector_size;
 use subspace_farmer_components::FarmerProtocolInfo;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::MissedTickBehavior;
@@ -380,7 +381,12 @@ impl ClusterPlotter {
                     }
                 };
 
-                let (mut sector_sender, sector_receiver) = mpsc::channel(1);
+                // Allow to buffer up to the whole sector in memory to not block plotter on the
+                // other side
+                let (mut sector_sender, sector_receiver) = mpsc::channel(
+                    (sector_size(pieces_in_sector) / nats_client.approximate_max_message_size())
+                        .max(1),
+                );
                 let mut maybe_sector_receiver = Some(sector_receiver);
                 loop {
                     match tokio::time::timeout(PING_TIMEOUT, response_stream.next()).await {
