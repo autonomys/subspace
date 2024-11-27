@@ -384,7 +384,8 @@ impl ClusterPlotter {
                 // Allow to buffer up to the whole sector in memory to not block plotter on the
                 // other side
                 let (mut sector_sender, sector_receiver) = mpsc::channel(
-                    sector_size(pieces_in_sector) / nats_client.approximate_max_message_size(),
+                    (sector_size(pieces_in_sector) / nats_client.approximate_max_message_size())
+                        .max(1),
                 );
                 let mut maybe_sector_receiver = Some(sector_receiver);
                 loop {
