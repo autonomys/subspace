@@ -470,9 +470,12 @@ async fn handle_xdm_message<TxPool, Client>(
     Client: HeaderBackend<BlockOf<TxPool>>,
 {
     let at = client.info().best_hash;
+    let tx_hash = tx_pool.hash_of(&ext);
     tracing::debug!(
         target: LOG_TARGET,
-        "Submitting extrinsic to tx pool at block: {:?}",
+        "Submitting extrinsic {:?} to tx pool for chain {:?} at block: {:?}",
+        tx_hash,
+        chain_id,
         at
     );
 
@@ -487,5 +490,13 @@ async fn handle_xdm_message<TxPool, Client>(
             chain_id,
             err
         );
+    } else {
+        tracing::debug!(
+            target: LOG_TARGET,
+            "Submitted extrinsic {:?} to tx pool for chain {:?} at {:?}",
+            tx_hash,
+            chain_id,
+            at
+        )
     }
 }

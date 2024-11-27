@@ -33,6 +33,7 @@ use codec::{Decode, Encode};
 use frame_support::inherent::InherentData;
 use frame_support::inherent::{InherentIdentifier, IsFatalError};
 use messages::{BlockMessagesWithStorageKey, ChannelId, CrossDomainMessage, MessageId};
+use scale_info::TypeInfo;
 use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 #[cfg(feature = "std")]
@@ -159,6 +160,13 @@ impl sp_inherents::InherentDataProvider for InherentDataProvider {
     }
 }
 
+/// Represent a union of XDM types with their message ID
+#[derive(Debug, Encode, Decode, TypeInfo)]
+pub enum XdmId {
+    RelayMessage(MessageKey),
+    RelayResponseMessage(MessageKey),
+}
+
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
     pub trait RelayerApi<BlockNumber, CNumber, CHash>
@@ -220,5 +228,8 @@ sp_api::decl_runtime_apis! {
 
         /// Returns any domain's chains allowlist updates on consensus chain.
         fn domain_chains_allowlist_update(domain_id: DomainId) -> Option<DomainAllowlistUpdates>;
+
+        /// Returns XDM message ID
+        fn xdm_id(ext: &Block::Extrinsic) -> Option<XdmId>;
     }
 }
