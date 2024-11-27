@@ -1456,14 +1456,6 @@ pub fn operator_block_fees_final_key() -> Vec<u8> {
         .to_vec()
 }
 
-/// Preimage to verify the proof of ownership of Operator Signing key.
-/// Operator owner is used to ensure the signature is used by anyone except
-/// the owner of the Signing key pair.
-#[derive(Debug, Encode)]
-pub struct OperatorSigningKeyProofOfOwnershipData<AccountId> {
-    pub operator_owner: AccountId,
-}
-
 /// Hook to handle chain rewards.
 pub trait OnChainRewards<Balance> {
     fn on_chain_rewards(chain_id: ChainId, reward: Balance);
