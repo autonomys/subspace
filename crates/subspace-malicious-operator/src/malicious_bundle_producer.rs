@@ -269,12 +269,21 @@ where
             }
         };
 
-        let maybe_operator_id = self
-            .consensus_client
-            .runtime_api()
-            .operator_id_by_signing_key(consensus_best_hash, signing_key.clone())?;
+        let mut maybe_operator_id = None;
+        for operator_id in current_operators.keys().chain(next_operators.iter()) {
+            if let Some((operator_signing_key, _)) = self
+                .consensus_client
+                .runtime_api()
+                .operator(consensus_best_hash, *operator_id)?
+            {
+                if operator_signing_key == signing_key {
+                    maybe_operator_id = Some(*operator_id);
+                    break;
+                }
+            }
+        }
 
-        // The `signing_key` is linked to a operator means the previous registeration request is succeeded
+        // If the `signing_key` is linked to a operator, the previous registration request succeeded,
         // otherwise we need to retry
         match maybe_operator_id {
             None => {

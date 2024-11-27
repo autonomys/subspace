@@ -1532,9 +1532,6 @@ sp_api::decl_runtime_apis! {
         /// Returns the current epoch and the next epoch operators of the given domain
         fn domain_operators(domain_id: DomainId) -> Option<(BTreeMap<OperatorId, Balance>, Vec<OperatorId>)>;
 
-        /// Get operator id by signing key
-        fn operator_id_by_signing_key(signing_key: OperatorPublicKey) -> Option<OperatorId>;
-
         /// Returns the execution receipt hash of the given domain and domain block number
         fn receipt_hash(domain_id: DomainId, domain_number: HeaderNumberFor<DomainHeader>) -> Option<HeaderHashFor<DomainHeader>>;
 

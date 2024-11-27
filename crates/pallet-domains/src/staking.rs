@@ -6,8 +6,8 @@ extern crate alloc;
 use crate::bundle_storage_fund::{self, deposit_reserve_for_storage_fund};
 use crate::pallet::{
     Deposits, DomainRegistry, DomainStakingSummary, HeadDomainNumber, NextOperatorId,
-    NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, PendingSlashes,
-    PendingStakingOperationCount, Withdrawals,
+    NominatorCount, OperatorIdOwner, Operators, PendingSlashes, PendingStakingOperationCount,
+    Withdrawals,
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
@@ -285,7 +285,6 @@ pub enum Error {
     TooManyPendingStakingOperation,
     OperatorNotAllowed,
     InvalidOperatorSigningKey,
-    DuplicateOperatorSigningKey,
     MissingOperatorEpochSharePrice,
     MissingWithdrawal,
     EpochNotComplete,
@@ -323,11 +322,6 @@ pub fn do_register_operator<T: Config>(
         ensure!(
             config.signing_key != OperatorPublicKey::from(sr25519::Public::default()),
             Error::InvalidOperatorSigningKey
-        );
-
-        ensure!(
-            !OperatorSigningKey::<T>::contains_key(config.signing_key.clone()),
-            Error::DuplicateOperatorSigningKey
         );
 
         ensure!(
@@ -388,7 +382,6 @@ pub fn do_register_operator<T: Config>(
             total_storage_fee_deposit: new_deposit.storage_fee_deposit,
         };
         Operators::<T>::insert(operator_id, operator);
-        OperatorSigningKey::<T>::insert(signing_key, operator_id);
         // update stake summary to include new operator for next epoch
         domain_stake_summary.next_operators.insert(operator_id);
         // update pending transfers
@@ -1260,7 +1253,7 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             && !Deposits::<T>::contains_key(operator_id, operator_owner);
 
         if cleanup_operator {
-            do_cleanup_operator::<T>(operator_id, total_stake, operator.signing_key.clone())?
+            do_cleanup_operator::<T>(operator_id, total_stake)?
         } else {
             // set update total shares, total stake and total storage fee deposit for operator
             operator.current_total_shares = total_shares;
@@ -1278,7 +1271,6 @@ pub(crate) fn do_unlock_nominator<T: Config>(
 pub(crate) fn do_cleanup_operator<T: Config>(
     operator_id: OperatorId,
     total_stake: BalanceOf<T>,
-    operator_signing_key: OperatorPublicKey,
 ) -> Result<(), Error> {
     // transfer any remaining storage fund to treasury
     bundle_storage_fund::transfer_all_to_treasury::<T>(operator_id)
@@ -1289,9 +1281,6 @@ pub(crate) fn do_cleanup_operator<T: Config>(
 
     // remove OperatorOwner Details
     OperatorIdOwner::<T>::remove(operator_id);
-
-    // remove operator signing key
-    OperatorSigningKey::<T>::remove(operator_signing_key);
 
     // remove operator epoch share prices
     let _ = OperatorEpochSharePrice::<T>::clear_prefix(operator_id, u32::MAX, None);
@@ -1604,7 +1593,7 @@ pub(crate) mod tests {
     fn test_register_operator() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let operator_free_balance = 1500 * SSC;
+        let operator_free_balance = 2500 * SSC;
         let operator_total_stake = 1000 * SSC;
         let operator_stake = 800 * SSC;
         let operator_storage_fee_deposit = 200 * SSC;
@@ -1655,17 +1644,14 @@ pub(crate) mod tests {
                 operator_free_balance - operator_total_stake - ExistentialDeposit::get()
             );
 
-            // cannot register with same operator key
+            // registering with same operator key is allowed
             let res = Domains::register_operator(
                 RuntimeOrigin::signed(operator_account),
                 domain_id,
                 operator_stake,
                 operator_config.clone(),
             );
-            assert_err!(
-                res,
-                Error::<Test>::Staking(crate::staking::Error::DuplicateOperatorSigningKey)
-            );
+            assert_ok!(res);
 
             // cannot use the locked funds to register a new operator
             let new_pair = OperatorPair::from_seed(&U256::from(1u32).into());

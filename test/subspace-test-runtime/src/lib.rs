@@ -1386,10 +1386,6 @@ impl_runtime_apis! {
             })
         }
 
-        fn operator_id_by_signing_key(signing_key: OperatorPublicKey) -> Option<OperatorId> {
-            Domains::operator_signing_key(signing_key)
-        }
-
         fn receipt_hash(domain_id: DomainId, domain_number: DomainNumber) -> Option<DomainHash> {
             Domains::receipt_hash(domain_id, domain_number)
         }

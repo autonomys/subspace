@@ -253,10 +253,6 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn operator_id_by_signing_key(_signing_key: OperatorPublicKey) -> Option<OperatorId> {
-            unreachable!()
-        }
-
         fn receipt_hash(_domain_id: DomainId, _domain_number: DomainNumber) -> Option<DomainHash> {
             unreachable!()
         }
