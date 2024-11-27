@@ -41,7 +41,7 @@ async fn build_swarm(
         .into_iter()
         .map(|config| Box::new(MockRunner(config)) as Box<dyn RequestHandler>)
         .collect::<Vec<_>>();
-    let behaviour = RequestResponseFactoryBehaviour::new(configs).unwrap();
+    let behaviour = RequestResponseFactoryBehaviour::new(configs, 100).unwrap();
 
     let mut swarm = SwarmBuilder::with_new_identity()
         .with_tokio()

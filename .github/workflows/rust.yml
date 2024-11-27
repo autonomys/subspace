@@ -4,13 +4,7 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "**.md"
-      - ".github/CODEOWNERS"
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - ".github/CODEOWNERS"
   workflow_dispatch:
   merge_group:
 

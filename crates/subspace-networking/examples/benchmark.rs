@@ -1,3 +1,4 @@
+use async_lock::Semaphore;
 use backoff::future::retry;
 use backoff::ExponentialBackoff;
 use clap::Parser;
@@ -17,7 +18,6 @@ use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_networking::protocols::request_response::handlers::piece_by_index::PieceByIndexRequestHandler;
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, PieceValidator};
 use subspace_networking::{Config, Node};
-use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -214,7 +214,7 @@ async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize, retr
         return;
     }
 
-    let piece_provider = PieceProvider::new(node, NoPieceValidator);
+    let piece_provider = PieceProvider::new(node, NoPieceValidator, Semaphore::new(100));
     let mut total_duration = Duration::default();
     for i in start_with..(start_with + max_pieces) {
         let piece_index = PieceIndex::from(i as u64);
@@ -266,7 +266,11 @@ async fn parallel_benchmark(
 
     let semaphore = &Semaphore::new(parallelism_level.into());
 
-    let piece_provider = &PieceProvider::new(node, NoPieceValidator);
+    let piece_provider = &PieceProvider::new(
+        node,
+        NoPieceValidator,
+        Semaphore::new(parallelism_level.into()),
+    );
     let mut total_duration = Duration::default();
     let mut pure_total_duration = Duration::default();
     let mut pending_pieces = (start_with..(start_with + max_pieces))
@@ -277,10 +281,7 @@ async fn parallel_benchmark(
             async move {
                 let start = Instant::now();
 
-                let permit = semaphore
-                    .acquire()
-                    .await
-                    .expect("Semaphore cannot be closed.");
+                let permit = semaphore.acquire().await;
                 let semaphore_acquired = Instant::now();
                 let maybe_piece = get_piece_from_dsn_cache_with_retries(
                     piece_provider,

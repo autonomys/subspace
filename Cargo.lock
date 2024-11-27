@@ -761,15 +761,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-mutex"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "479db852db25d9dbf6204e6cb6253698f175c15726470f78af0d918e99d6156e"
-dependencies = [
- "event-listener 2.5.3",
-]
-
-[[package]]
 name = "async-nats"
 version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4236,7 +4227,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f2f12607f92c69b12ed746fabf9ca4f5c482cba46679c1a75b874ed7c26adb"
 dependencies = [
  "futures-io",
- "rustls 0.23.13",
+ "rustls 0.23.18",
  "rustls-pki-types",
 ]
 
@@ -5282,7 +5273,7 @@ dependencies = [
  "http 1.1.0",
  "jsonrpsee-core",
  "pin-project",
- "rustls 0.23.13",
+ "rustls 0.23.18",
  "rustls-pki-types",
  "rustls-platform-verifier",
  "soketto",
@@ -6090,7 +6081,7 @@ dependencies = [
  "quinn 0.11.5",
  "rand",
  "ring 0.17.8",
- "rustls 0.23.13",
+ "rustls 0.23.18",
  "socket2 0.5.7",
  "thiserror 1.0.64",
  "tokio",
@@ -6287,7 +6278,7 @@ dependencies = [
  "libp2p-identity",
  "rcgen 0.11.3",
  "ring 0.17.8",
- "rustls 0.23.13",
+ "rustls 0.23.18",
  "rustls-webpki 0.101.7",
  "thiserror 1.0.64",
  "x509-parser 0.16.0",
@@ -9000,7 +8991,7 @@ dependencies = [
  "quinn-proto 0.11.8",
  "quinn-udp 0.5.5",
  "rustc-hash 2.0.0",
- "rustls 0.23.13",
+ "rustls 0.23.18",
  "socket2 0.5.7",
  "thiserror 1.0.64",
  "tokio",
@@ -9052,7 +9043,7 @@ dependencies = [
  "rand",
  "ring 0.17.8",
  "rustc-hash 2.0.0",
- "rustls 0.23.13",
+ "rustls 0.23.18",
  "slab",
  "thiserror 1.0.64",
  "tinyvec",
@@ -9615,9 +9606,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.13"
+version = "0.23.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2dabaac7466917e566adb06783a81ca48944c6898a1b08b9374106dd671f4c8"
+checksum = "9c9cc1d47e243d655ace55ed38201c19ae02c148ae56412ab8750e8f0166ab7f"
 dependencies = [
  "log",
  "once_cell",
@@ -9673,9 +9664,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-pki-types"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e696e35370c65c9c541198af4543ccd580cf17fc25d8e05c5a242b202488c55"
+checksum = "16f1201b3c9a7ee8039bcadc17b7e605e2945b27eee7631788c1bd2b0643674b"
 
 [[package]]
 name = "rustls-platform-verifier"
@@ -9688,7 +9679,7 @@ dependencies = [
  "jni",
  "log",
  "once_cell",
- "rustls 0.23.13",
+ "rustls 0.23.18",
  "rustls-native-certs 0.7.3",
  "rustls-platform-verifier-android",
  "rustls-webpki 0.102.8",
@@ -12676,6 +12667,7 @@ name = "subspace-gateway"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-lock 3.4.0",
  "async-trait",
  "clap",
  "fdlimit",
@@ -12683,7 +12675,6 @@ dependencies = [
  "hex",
  "jsonrpsee",
  "mimalloc",
- "parking_lot 0.12.3",
  "subspace-core-primitives",
  "subspace-data-retrieval",
  "subspace-erasure-coding",
@@ -12693,7 +12684,6 @@ dependencies = [
  "subspace-rpc-primitives",
  "subspace-verification",
  "supports-color",
- "thiserror 2.0.0",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -12809,13 +12799,12 @@ dependencies = [
 name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
- "async-mutex",
+ "async-lock 3.4.0",
  "async-trait",
  "backoff",
  "bytes",
  "clap",
  "derive_more 1.0.0",
- "either",
  "event-listener-primitives",
  "fs2",
  "futures",
@@ -13057,6 +13046,7 @@ version = "0.1.0"
 dependencies = [
  "array-bytes",
  "async-channel 1.9.0",
+ "async-lock 3.4.0",
  "async-trait",
  "cross-domain-message-gossip",
  "domain-runtime-primitives",
@@ -13084,9 +13074,7 @@ dependencies = [
  "sc-executor",
  "sc-informant",
  "sc-network",
- "sc-network-light",
  "sc-network-sync",
- "sc-network-transactions",
  "sc-offchain",
  "sc-proof-of-time",
  "sc-rpc",
@@ -13099,7 +13087,6 @@ dependencies = [
  "sc-tracing",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
- "sc-utils",
  "schnellru",
  "schnorrkel",
  "sp-api",
@@ -13746,7 +13733,7 @@ version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c7bc40d0e5a97695bb96e27995cd3a08538541b0a846f65bba7a359f36700d4"
 dependencies = [
- "rustls 0.23.13",
+ "rustls 0.23.18",
  "rustls-pki-types",
  "tokio",
 ]

@@ -37,7 +37,7 @@ pub(crate) struct NetworkArgs {
 
     /// Maximum established outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
-    out_connections: u32,
+    pub(crate) out_connections: u32,
 
     /// Maximum pending outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]

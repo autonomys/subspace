@@ -287,6 +287,8 @@ pub enum SubspaceNetworking {
         node: Node,
         /// Bootstrap nodes used (that can be also sent to the farmer over RPC)
         bootstrap_nodes: Vec<Multiaddr>,
+        /// Sum of incoming and outgoing connection limits
+        max_connections: u32,
     },
     /// Networking must be instantiated internally
     Create {

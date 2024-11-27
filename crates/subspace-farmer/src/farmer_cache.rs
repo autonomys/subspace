@@ -654,7 +654,7 @@ where
         downloading_pieces_stream
             // This allows to schedule new batch while previous batches partially completed, but
             // avoids excessive memory usage like when all futures are created upfront
-            .buffer_unordered(SYNC_CONCURRENT_BATCHES * 2)
+            .buffer_unordered(SYNC_CONCURRENT_BATCHES * 10)
             // Simply drain everything
             .for_each(|()| async {})
             .await;
