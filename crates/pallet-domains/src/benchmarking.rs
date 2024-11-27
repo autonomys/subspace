@@ -986,7 +986,6 @@ mod benchmarks {
             domain_id,
             T::MinOperatorStake::get(),
             operator_config.clone(),
-            None,
         ));
         assert_eq!(
             OperatorIdOwner::<T>::get(operator_id),

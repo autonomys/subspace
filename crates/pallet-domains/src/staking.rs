@@ -21,12 +21,9 @@ use frame_support::{ensure, PalletError};
 use frame_system::pallet_prelude::BlockNumberFor;
 use scale_info::TypeInfo;
 use sp_core::{sr25519, Get};
-use sp_domains::{
-    DomainId, EpochIndex, OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature,
-    OperatorSigningKeyProofOfOwnershipData,
-};
+use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey, OperatorRewardSource};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
-use sp_runtime::{Perbill, Percent, Perquintill, RuntimeAppPublic, Saturating};
+use sp_runtime::{Perbill, Percent, Perquintill, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::collections::vec_deque::VecDeque;
@@ -296,8 +293,6 @@ pub enum Error {
     OperatorNotDeregistered,
     BundleStorageFund(bundle_storage_fund::Error),
     UnconfirmedER,
-    /// Invalid signature from Signing key owner.
-    InvalidSigningKeySignature,
     TooManyWithdrawals,
 }
 
@@ -321,7 +316,6 @@ pub fn do_register_operator<T: Config>(
     domain_id: DomainId,
     amount: BalanceOf<T>,
     config: OperatorConfig<BalanceOf<T>>,
-    maybe_signing_key_proof_of_ownership: Option<OperatorSignature>,
 ) -> Result<(OperatorId, EpochIndex), Error> {
     note_pending_staking_operation::<T>(domain_id)?;
 
@@ -335,19 +329,6 @@ pub fn do_register_operator<T: Config>(
             !OperatorSigningKey::<T>::contains_key(config.signing_key.clone()),
             Error::DuplicateOperatorSigningKey
         );
-
-        if let Some(signing_key_proof_of_ownership) = maybe_signing_key_proof_of_ownership {
-            let signing_key_signature_data = OperatorSigningKeyProofOfOwnershipData {
-                operator_owner: operator_owner.clone(),
-            };
-            ensure!(
-                config.signing_key.verify(
-                    &signing_key_signature_data.encode(),
-                    &signing_key_proof_of_ownership,
-                ),
-                Error::InvalidSigningKeySignature
-            );
-        }
 
         ensure!(
             config.minimum_nominator_stake >= T::MinNominatorStake::get(),
@@ -1450,8 +1431,7 @@ pub(crate) mod tests {
     use crate::staking::{
         do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_nominate_operator,
         do_reward_operators, do_unlock_funds, do_withdraw_stake, Error as StakingError, Operator,
-        OperatorConfig, OperatorSigningKeyProofOfOwnershipData, OperatorStatus, StakingSummary,
-        WithdrawStake,
+        OperatorConfig, OperatorStatus, StakingSummary, WithdrawStake,
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
@@ -1467,7 +1447,7 @@ pub(crate) mod tests {
     use sp_core::{sr25519, Pair, U256};
     use sp_domains::{
         DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
-        OperatorRewardSource, OperatorSignature,
+        OperatorRewardSource, OperatorSignature, OperatorSigningKeyProofOfOwnershipData,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Perbill};
