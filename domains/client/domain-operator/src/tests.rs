@@ -1527,7 +1527,7 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
     };
 
     let undecodable_tx = || {
-        let undecodable_extrinsic = rand::random::<[u8; 5]>();
+        let undecodable_extrinsic = rand::random::<[u8; 5]>().to_vec();
         OpaqueExtrinsic::from_bytes(&undecodable_extrinsic.encode())
             .expect("raw byte encoding and decoding never fails; qed")
     };
