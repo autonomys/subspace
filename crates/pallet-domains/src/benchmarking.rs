@@ -576,9 +576,6 @@ mod benchmarks {
 
         let domain_id = register_domain::<T>();
         let operator_id = NextOperatorId::<T>::get();
-
-        // TODO: the `(key, signature)` is failed to verify in `cargo test --features runtime-benchmarks` but it
-        // will pass when doing the actual benchmark with `subspace-node benchmark pallet ...`, need more investigations.
         let key =
             OperatorPublicKey::from_ss58check("5Gv1Uopoqo1k7125oDtFSCmxH4DzuCiBU7HBKu2bF1GZFsEb")
                 .unwrap();
