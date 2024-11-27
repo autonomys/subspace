@@ -1438,16 +1438,14 @@ pub(crate) mod tests {
     use crate::{
         bundle_storage_fund, BalanceOf, Error, NominatorId, SlashedReason, MAX_NOMINATORS_TO_SLASH,
     };
-    use codec::Encode;
     use frame_support::traits::fungible::Mutate;
     use frame_support::traits::Currency;
     use frame_support::weights::Weight;
     use frame_support::{assert_err, assert_ok};
-    use sp_core::crypto::UncheckedFrom;
     use sp_core::{sr25519, Pair, U256};
     use sp_domains::{
         DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
-        OperatorRewardSource, OperatorSignature, OperatorSigningKeyProofOfOwnershipData,
+        OperatorRewardSource,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Perbill};
@@ -1468,7 +1466,6 @@ pub(crate) mod tests {
         operator_stake: BalanceOf<Test>,
         minimum_nominator_stake: BalanceOf<Test>,
         signing_key: OperatorPublicKey,
-        signature: OperatorSignature,
         mut nominators: BTreeMap<NominatorId<Test>, (BalanceOf<Test>, BalanceOf<Test>)>,
     ) -> (OperatorId, OperatorConfig<BalanceOf<Test>>) {
         nominators.insert(operator_account, (operator_free_balance, operator_stake));
@@ -1525,7 +1522,6 @@ pub(crate) mod tests {
             domain_id,
             operator_stake,
             operator_config.clone(),
-            signature,
         );
         assert_ok!(res);
 
@@ -1569,7 +1565,6 @@ pub(crate) mod tests {
                 domain_id,
                 Default::default(),
                 operator_config,
-                OperatorSignature::unchecked_from([1u8; 64]),
             );
             assert_err!(
                 res,
@@ -1592,17 +1587,11 @@ pub(crate) mod tests {
                 nomination_tax: Default::default(),
             };
 
-            let data = OperatorSigningKeyProofOfOwnershipData {
-                operator_owner: operator_account,
-            };
-            let signature = pair.sign(&data.encode());
-
             let res = Domains::register_operator(
                 RuntimeOrigin::signed(operator_account),
                 domain_id,
                 Default::default(),
                 operator_config,
-                signature,
             );
             assert_err!(
                 res,
@@ -1623,10 +1612,6 @@ pub(crate) mod tests {
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            let data = OperatorSigningKeyProofOfOwnershipData {
-                operator_owner: operator_account,
-            };
-            let signature = pair.sign(&data.encode());
             let (operator_id, mut operator_config) = register_operator(
                 domain_id,
                 operator_account,
@@ -1634,7 +1619,6 @@ pub(crate) mod tests {
                 operator_total_stake,
                 SSC,
                 pair.public(),
-                signature.clone(),
                 BTreeMap::new(),
             );
 
@@ -1677,7 +1661,6 @@ pub(crate) mod tests {
                 domain_id,
                 operator_stake,
                 operator_config.clone(),
-                signature.clone(),
             );
             assert_err!(
                 res,
@@ -1687,16 +1670,11 @@ pub(crate) mod tests {
             // cannot use the locked funds to register a new operator
             let new_pair = OperatorPair::from_seed(&U256::from(1u32).into());
             operator_config.signing_key = new_pair.public();
-            let data = OperatorSigningKeyProofOfOwnershipData {
-                operator_owner: operator_account,
-            };
-            let signature = new_pair.sign(&data.encode());
             let res = Domains::register_operator(
                 RuntimeOrigin::signed(operator_account),
                 domain_id,
                 operator_stake,
                 operator_config,
-                signature,
             );
             assert_err!(
                 res,
@@ -1717,10 +1695,6 @@ pub(crate) mod tests {
         let operator_stake = 800 * SSC;
         let operator_storage_fee_deposit = 200 * SSC;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
 
         let nominator_account = 2;
         let nominator_free_balance = 150 * SSC;
@@ -1737,7 +1711,6 @@ pub(crate) mod tests {
                 operator_total_stake,
                 10 * SSC,
                 pair.public(),
-                signature,
                 BTreeMap::from_iter(vec![(
                     nominator_account,
                     (nominator_free_balance, nominator_total_stake),
@@ -1835,10 +1808,6 @@ pub(crate) mod tests {
         let operator_stake = 200 * SSC;
         let operator_free_balance = 250 * SSC;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
         let mut ext = new_test_ext();
         ext.execute_with(|| {
             let (operator_id, _) = register_operator(
@@ -1848,7 +1817,6 @@ pub(crate) mod tests {
                 operator_stake,
                 SSC,
                 pair.public(),
-                signature,
                 BTreeMap::new(),
             );
 
@@ -1960,10 +1928,6 @@ pub(crate) mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 0;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
         let mut total_balance = nominators.iter().map(|n| n.1).sum::<BalanceOf<Test>>()
             + operator_reward
             + maybe_deposit.unwrap_or(0);
@@ -1986,7 +1950,6 @@ pub(crate) mod tests {
                 operator_stake,
                 minimum_nominator_stake,
                 pair.public(),
-                signature,
                 nominators,
             );
 
@@ -2601,10 +2564,6 @@ pub(crate) mod tests {
         let operator_free_balance = 250 * SSC;
         let operator_stake = 200 * SSC;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
         let nominator_account = 2;
         let nominator_free_balance = 150 * SSC;
         let nominator_stake = 100 * SSC;
@@ -2627,7 +2586,6 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * SSC,
                 pair.public(),
-                signature,
                 BTreeMap::from_iter(nominators),
             );
 
@@ -2732,10 +2690,6 @@ pub(crate) mod tests {
         let operator_stake = 200 * SSC;
         let operator_extra_deposit = 40 * SSC;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
         let nominator_account = 2;
         let nominator_free_balance = 150 * SSC;
         let nominator_stake = 100 * SSC;
@@ -2765,7 +2719,6 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * SSC,
                 pair.public(),
-                signature,
                 BTreeMap::from_iter(nominators),
             );
 
@@ -2888,10 +2841,6 @@ pub(crate) mod tests {
         let operator_stake = 200 * SSC;
         let operator_extra_deposit = 40 * SSC;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
 
         let nominator_accounts: Vec<crate::tests::AccountId> = (2..22).collect();
         let nominator_free_balance = 150 * SSC;
@@ -2929,7 +2878,6 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * SSC,
                 pair.public(),
-                signature,
                 BTreeMap::from_iter(nominators),
             );
 
@@ -3066,21 +3014,6 @@ pub(crate) mod tests {
         let pair_2 = OperatorPair::from_seed(&U256::from(1u32).into());
         let pair_3 = OperatorPair::from_seed(&U256::from(2u32).into());
 
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account_1,
-        };
-        let signature_1 = pair_1.sign(&data.encode());
-
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account_2,
-        };
-        let signature_2 = pair_2.sign(&data.encode());
-
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account_3,
-        };
-        let signature_3 = pair_3.sign(&data.encode());
-
         let mut ext = new_test_ext();
         ext.execute_with(|| {
             let (operator_id_1, _) = register_operator(
@@ -3090,7 +3023,6 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * SSC,
                 pair_1.public(),
-                signature_1,
                 Default::default(),
             );
 
@@ -3101,7 +3033,6 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * SSC,
                 pair_2.public(),
-                signature_2,
                 Default::default(),
             );
 
@@ -3112,7 +3043,6 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * SSC,
                 pair_3.public(),
-                signature_3,
                 Default::default(),
             );
 
@@ -3213,10 +3143,6 @@ pub(crate) mod tests {
         let operator_stake = 80 * SSC;
         let operator_storage_fee_deposit = 20 * SSC;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
         let nominator_account = 2;
 
         let mut ext = new_test_ext();
@@ -3228,7 +3154,6 @@ pub(crate) mod tests {
                 operator_total_stake,
                 SSC,
                 pair.public(),
-                signature,
                 BTreeMap::default(),
             );
 

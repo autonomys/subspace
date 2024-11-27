@@ -530,13 +530,10 @@ mod tests {
     use crate::{BalanceOf, Config, HoldIdentifier, NominatorId};
     #[cfg(not(feature = "std"))]
     use alloc::vec;
-    use codec::Encode;
     use frame_support::assert_ok;
     use frame_support::traits::fungible::InspectHold;
     use sp_core::{Pair, U256};
-    use sp_domains::{
-        DomainId, OperatorPair, OperatorRewardSource, OperatorSigningKeyProofOfOwnershipData,
-    };
+    use sp_domains::{DomainId, OperatorPair, OperatorRewardSource};
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Percent};
     use std::collections::BTreeMap;
@@ -554,10 +551,6 @@ mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
         let minimum_free_balance = 10 * SSC;
         let mut nominators = BTreeMap::from_iter(
             nominators
@@ -586,7 +579,6 @@ mod tests {
                 operator_stake,
                 10 * SSC,
                 pair.public(),
-                signature,
                 BTreeMap::from_iter(nominators.clone()),
             );
 
@@ -692,10 +684,6 @@ mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 0;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
         let FinalizeDomainParams {
             total_deposit,
             rewards,
@@ -729,7 +717,6 @@ mod tests {
                 operator_stake,
                 10 * SSC,
                 pair.public(),
-                signature,
                 BTreeMap::from_iter(nominators),
             );
 
@@ -808,10 +795,6 @@ mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
         let operator_rewards = 10 * SSC;
         let mut nominators =
             BTreeMap::from_iter(vec![(1, (110 * SSC, 100 * SSC)), (2, (60 * SSC, 50 * SSC))]);
@@ -827,7 +810,6 @@ mod tests {
                 operator_stake,
                 10 * SSC,
                 pair.public(),
-                signature,
                 BTreeMap::from_iter(nominators),
             );
 
