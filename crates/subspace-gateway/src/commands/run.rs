@@ -102,7 +102,7 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
         Semaphore::new(out_connections as usize * PIECE_PROVIDER_MULTIPLIER),
     );
     let piece_getter = DsnPieceGetter::new(piece_provider);
-    let object_fetcher = ObjectFetcher::new(piece_getter, erasure_coding, Some(max_size));
+    let object_fetcher = ObjectFetcher::new(piece_getter.into(), erasure_coding, Some(max_size));
 
     let rpc_api = SubspaceGatewayRpc::new(SubspaceGatewayRpcConfig { object_fetcher });
     let rpc_handle = launch_rpc_server(rpc_api, rpc_options).await?;

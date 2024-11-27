@@ -16,9 +16,8 @@
 //! Fetching pieces of the archived history of Subspace Network.
 
 use crate::object_fetcher::Error;
-use crate::piece_getter::{BoxError, ObjectPieceGetter};
-use futures::stream::FuturesOrdered;
-use futures::TryStreamExt;
+use crate::piece_getter::ObjectPieceGetter;
+use futures::StreamExt;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tracing::{debug, trace};
 
@@ -31,7 +30,7 @@ use tracing::{debug, trace};
 pub async fn download_pieces<PG>(
     piece_indexes: &[PieceIndex],
     piece_getter: &PG,
-) -> Result<Vec<Piece>, BoxError>
+) -> anyhow::Result<Vec<Piece>>
 where
     PG: ObjectPieceGetter,
 {
@@ -42,40 +41,25 @@ where
     );
 
     // TODO:
-    // - consider using a semaphore to limit the number of concurrent requests, like
-    //   download_segment_pieces()
-    // - if we're close to the number of pieces in a segment, use segment downloading and piece
+    // - if we're close to the number of pieces in a segment, or we can't find a piece, use segment downloading and piece
     //   reconstruction instead
     // Currently most objects are limited to 4 pieces, so this isn't needed yet.
-    let received_pieces = piece_indexes
-        .iter()
-        .map(|piece_index| async move {
-            match piece_getter.get_piece(*piece_index).await {
-                Ok(Some(piece)) => {
-                    trace!(?piece_index, "Piece request succeeded",);
-                    Ok(piece)
-                }
-                Ok(None) => {
-                    trace!(?piece_index, "Piece not found");
-                    Err(Error::PieceNotFound {
-                        piece_index: *piece_index,
-                    }
-                    .into())
-                }
-                Err(error) => {
-                    trace!(
-                        %error,
-                        ?piece_index,
-                        "Piece request caused an error",
-                    );
-                    Err(error)
-                }
-            }
-        })
-        .collect::<FuturesOrdered<_>>();
+    let mut received_pieces = piece_getter
+        .get_pieces(piece_indexes.iter().copied())
+        .await?;
 
-    // We want exact pieces, so any errors are fatal.
-    let received_pieces: Vec<Piece> = received_pieces.try_collect().await?;
+    let mut pieces = Vec::new();
+    pieces.resize(piece_indexes.len(), Piece::default());
+
+    while let Some((piece_index, maybe_piece)) = received_pieces.next().await {
+        // We want exact pieces, so any errors are fatal.
+        let piece = maybe_piece?.ok_or(Error::PieceNotFound { piece_index })?;
+        let index_position = piece_indexes
+            .iter()
+            .position(|i| *i == piece_index)
+            .expect("get_pieces only returns indexes it was supplied; qed");
+        pieces[index_position] = piece;
+    }
 
     trace!(
         count = piece_indexes.len(),
@@ -83,5 +67,5 @@ where
         "Successfully retrieved exact pieces"
     );
 
-    Ok(received_pieces)
+    Ok(pieces)
 }

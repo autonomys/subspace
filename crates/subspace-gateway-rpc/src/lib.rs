@@ -8,6 +8,7 @@ use std::ops::{Deref, DerefMut};
 use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
 use subspace_core_primitives::objects::GlobalObjectMapping;
 use subspace_data_retrieval::object_fetcher::{self, ObjectFetcher};
+use subspace_data_retrieval::piece_getter::ObjectPieceGetter;
 use tracing::debug;
 
 const SUBSPACE_ERROR: i32 = 9000;
@@ -99,22 +100,32 @@ pub trait SubspaceGatewayRpcApi {
     #[method(name = "subspace_fetchObject")]
     async fn fetch_object(&self, mappings: GlobalObjectMapping) -> Result<Vec<HexData>, Error>;
 }
+
 /// Subspace Gateway RPC configuration
-pub struct SubspaceGatewayRpcConfig {
+pub struct SubspaceGatewayRpcConfig<PG>
+where
+    PG: ObjectPieceGetter + Send + Sync + 'static,
+{
     /// DSN object fetcher instance.
-    pub object_fetcher: ObjectFetcher,
+    pub object_fetcher: ObjectFetcher<PG>,
 }
 
 /// Implements the [`SubspaceGatewayRpcApiServer`] trait for interacting with the Subspace Gateway.
-pub struct SubspaceGatewayRpc {
+pub struct SubspaceGatewayRpc<PG>
+where
+    PG: ObjectPieceGetter + Send + Sync + 'static,
+{
     /// DSN object fetcher instance.
-    object_fetcher: ObjectFetcher,
+    object_fetcher: ObjectFetcher<PG>,
 }
 
 /// [`SubspaceGatewayRpc`] is used to fetch objects from the DSN.
-impl SubspaceGatewayRpc {
+impl<PG> SubspaceGatewayRpc<PG>
+where
+    PG: ObjectPieceGetter + Send + Sync + 'static,
+{
     /// Creates a new instance of the `SubspaceGatewayRpc` handler.
-    pub fn new(config: SubspaceGatewayRpcConfig) -> Self {
+    pub fn new(config: SubspaceGatewayRpcConfig<PG>) -> Self {
         Self {
             object_fetcher: config.object_fetcher,
         }
@@ -122,10 +133,11 @@ impl SubspaceGatewayRpc {
 }
 
 #[async_trait]
-impl SubspaceGatewayRpcApiServer for SubspaceGatewayRpc {
+impl<PG> SubspaceGatewayRpcApiServer for SubspaceGatewayRpc<PG>
+where
+    PG: ObjectPieceGetter + Send + Sync + 'static,
+{
     async fn fetch_object(&self, mappings: GlobalObjectMapping) -> Result<Vec<HexData>, Error> {
-        // TODO: deny unsafe RPC calls
-
         let count = mappings.objects().len();
         if count > MAX_OBJECTS_PER_REQUEST {
             debug!(%count, %MAX_OBJECTS_PER_REQUEST, "Too many mappings in request");
