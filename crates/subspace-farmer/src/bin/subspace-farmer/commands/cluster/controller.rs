@@ -200,6 +200,7 @@ pub(super) async fn controller(
             let node_client = node_client.clone();
             let piece_getter = piece_getter.clone();
             let farmer_cache = farmer_cache.clone();
+            let cache_group = cache_group.clone();
             let instance = instance.clone();
 
             AsyncJoinOnDrop::new(
@@ -210,6 +211,7 @@ pub(super) async fn controller(
                         &piece_getter,
                         &farmer_cache,
                         &instance,
+                        &cache_group,
                         index == 0,
                     )
                     .await

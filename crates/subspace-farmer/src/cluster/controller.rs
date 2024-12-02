@@ -37,6 +37,10 @@ use subspace_rpc_primitives::{
 };
 use tracing::{debug, error, trace, warn};
 
+/// Special "cache group" that all controllers subscribe to and that can be used to query all cache
+/// groups
+const GLOBAL_CACHE_GROUP: &str = "_";
+
 /// Broadcast sent by controllers requesting farmers to identify themselves
 #[derive(Debug, Copy, Clone, Encode, Decode)]
 pub struct ClusterControllerFarmerIdentifyBroadcast;
@@ -152,7 +156,7 @@ struct ClusterControllerFindPieceInCacheRequest {
 }
 
 impl GenericRequest for ClusterControllerFindPieceInCacheRequest {
-    const SUBJECT: &'static str = "subspace.controller.find-piece-in-cache";
+    const SUBJECT: &'static str = "subspace.controller.*.find-piece-in-cache";
     type Response = Option<(PieceCacheId, PieceCacheOffset)>;
 }
 
@@ -163,7 +167,7 @@ struct ClusterControllerFindPiecesInCacheRequest {
 }
 
 impl GenericStreamRequest for ClusterControllerFindPiecesInCacheRequest {
-    const SUBJECT: &'static str = "subspace.controller.find-pieces-in-cache";
+    const SUBJECT: &'static str = "subspace.controller.*.find-pieces-in-cache";
     /// Only pieces that were found are returned
     type Response = (PieceIndex, PieceCacheId, PieceCacheOffset);
 }
@@ -195,6 +199,7 @@ impl GenericStreamRequest for ClusterControllerPiecesRequest {
 #[derive(Debug, Clone)]
 pub struct ClusterPieceGetter {
     nats_client: NatsClient,
+    cache_group: String,
 }
 
 #[async_trait]
@@ -204,7 +209,7 @@ impl PieceGetter for ClusterPieceGetter {
             .nats_client
             .request(
                 &ClusterControllerFindPieceInCacheRequest { piece_index },
-                None,
+                Some(&self.cache_group),
             )
             .await?
         {
@@ -296,7 +301,7 @@ impl PieceGetter for ClusterPieceGetter {
                 .nats_client
                 .stream_request(
                     &ClusterControllerFindPiecesInCacheRequest { piece_indices },
-                    None,
+                    Some(&self.cache_group),
                 )
                 .await?;
 
@@ -432,8 +437,11 @@ impl PieceGetter for ClusterPieceGetter {
 impl ClusterPieceGetter {
     /// Create new instance
     #[inline]
-    pub fn new(nats_client: NatsClient) -> Self {
-        Self { nats_client }
+    pub fn new(nats_client: NatsClient, cache_group: Option<String>) -> Self {
+        Self {
+            nats_client,
+            cache_group: cache_group.unwrap_or_else(|| GLOBAL_CACHE_GROUP.to_string()),
+        }
     }
 }
 
@@ -611,6 +619,7 @@ pub async fn controller_service<NC, PG>(
     piece_getter: &PG,
     farmer_cache: &FarmerCache,
     instance: &str,
+    cache_group: &str,
     primary_instance: bool,
 ) -> anyhow::Result<()>
 where
@@ -640,10 +649,10 @@ where
             result = segment_headers_responder(nats_client, node_client).fuse() => {
                 result
             },
-            result = find_piece_responder(nats_client, farmer_cache).fuse() => {
+            result = find_piece_responder(nats_client, farmer_cache, cache_group).fuse() => {
                 result
             },
-            result = find_pieces_responder(nats_client, farmer_cache).fuse() => {
+            result = find_pieces_responder(nats_client, farmer_cache, cache_group).fuse() => {
                 result
             },
             result = piece_responder(nats_client, piece_getter).fuse() => {
@@ -661,10 +670,10 @@ where
             result = segment_headers_responder(nats_client, node_client).fuse() => {
                 result
             },
-            result = find_piece_responder(nats_client, farmer_cache).fuse() => {
+            result = find_piece_responder(nats_client, farmer_cache, cache_group).fuse() => {
                 result
             },
-            result = find_pieces_responder(nats_client, farmer_cache).fuse() => {
+            result = find_pieces_responder(nats_client, farmer_cache, cache_group).fuse() => {
                 result
             },
             result = piece_responder(nats_client, piece_getter).fuse() => {
@@ -908,31 +917,51 @@ where
 async fn find_piece_responder(
     nats_client: &NatsClient,
     farmer_cache: &FarmerCache,
+    cache_group: &str,
 ) -> anyhow::Result<()> {
-    nats_client
-        .request_responder(
-            None,
+    futures::future::try_join(
+        nats_client.request_responder(
+            Some(cache_group),
             Some("subspace.controller".to_string()),
             |ClusterControllerFindPieceInCacheRequest { piece_index }| async move {
                 Some(farmer_cache.find_piece(piece_index).await)
             },
-        )
-        .await
+        ),
+        nats_client.request_responder(
+            Some(GLOBAL_CACHE_GROUP),
+            Some("subspace.controller".to_string()),
+            |ClusterControllerFindPieceInCacheRequest { piece_index }| async move {
+                Some(farmer_cache.find_piece(piece_index).await)
+            },
+        ),
+    )
+    .await
+    .map(|((), ())| ())
 }
 
 async fn find_pieces_responder(
     nats_client: &NatsClient,
     farmer_cache: &FarmerCache,
+    cache_group: &str,
 ) -> anyhow::Result<()> {
-    nats_client
-        .stream_request_responder(
-            None,
+    futures::future::try_join(
+        nats_client.stream_request_responder(
+            Some(cache_group),
             Some("subspace.controller".to_string()),
             |ClusterControllerFindPiecesInCacheRequest { piece_indices }| async move {
                 Some(stream::iter(farmer_cache.find_pieces(piece_indices).await))
             },
-        )
-        .await
+        ),
+        nats_client.stream_request_responder(
+            Some(GLOBAL_CACHE_GROUP),
+            Some("subspace.controller".to_string()),
+            |ClusterControllerFindPiecesInCacheRequest { piece_indices }| async move {
+                Some(stream::iter(farmer_cache.find_pieces(piece_indices).await))
+            },
+        ),
+    )
+    .await
+    .map(|((), ())| ())
 }
 
 async fn piece_responder<PG>(nats_client: &NatsClient, piece_getter: &PG) -> anyhow::Result<()>
