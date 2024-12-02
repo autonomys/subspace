@@ -2,7 +2,7 @@
 
 use crate::commands::shared::DiskFarm;
 use anyhow::anyhow;
-use async_lock::{Mutex as AsyncMutex, Semaphore};
+use async_lock::Mutex as AsyncMutex;
 use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::Parser;
@@ -36,7 +36,6 @@ use subspace_farmer::utils::{
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
-use tokio::sync::Barrier;
 use tracing::{error, info, info_span, warn, Instrument};
 
 const FARM_ERROR_PRINT_INTERVAL: Duration = Duration::from_secs(30);
@@ -59,8 +58,7 @@ pub(super) struct FarmerArgs {
     /// `size` is max allocated size in human-readable format (e.g. 10GB, 2TiB) or just bytes that
     /// farmer will make sure to not exceed (and will pre-allocated all the space on startup to
     /// ensure it will not run out of space in runtime). Optionally, `record-chunks-mode` can be
-    /// set to `ConcurrentChunks` or `WholeSector` in order to avoid internal benchmarking during
-    /// startup.
+    /// set to `ConcurrentChunks` (default) or `WholeSector`.
     disk_farms: Vec<DiskFarm>,
     /// Address for farming rewards
     #[arg(long, value_parser = parse_ss58_reward_address)]
@@ -256,9 +254,6 @@ where
     let farms = {
         let node_client = node_client.clone();
         let info_mutex = &AsyncMutex::new(());
-        let faster_read_sector_record_chunks_mode_barrier =
-            Arc::new(Barrier::new(disk_farms.len()));
-        let faster_read_sector_record_chunks_mode_concurrency = Arc::new(Semaphore::new(1));
         let registry = &Mutex::new(registry);
 
         let mut farms = Vec::with_capacity(disk_farms.len());
@@ -272,10 +267,6 @@ where
                 let erasure_coding = erasure_coding.clone();
                 let plotter = Arc::clone(&plotter);
                 let global_mutex = Arc::clone(&global_mutex);
-                let faster_read_sector_record_chunks_mode_barrier =
-                    Arc::clone(&faster_read_sector_record_chunks_mode_barrier);
-                let faster_read_sector_record_chunks_mode_concurrency =
-                    Arc::clone(&faster_read_sector_record_chunks_mode_concurrency);
 
                 async move {
                     let farm_fut = SingleDiskFarm::new::<_, PosTable>(
@@ -297,9 +288,8 @@ where
                             max_plotting_sectors_per_farm,
                             disable_farm_locking,
                             read_sector_record_chunks_mode: disk_farm
-                                .read_sector_record_chunks_mode,
-                            faster_read_sector_record_chunks_mode_barrier,
-                            faster_read_sector_record_chunks_mode_concurrency,
+                                .read_sector_record_chunks_mode
+                                .unwrap_or(ReadSectorRecordChunksMode::ConcurrentChunks),
                             registry: Some(registry),
                             create,
                         },
