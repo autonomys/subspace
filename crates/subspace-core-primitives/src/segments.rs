@@ -9,6 +9,7 @@ use crate::BlockNumber;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 use core::array::TryFromSliceError;
+use core::fmt;
 use core::iter::Step;
 use core::num::NonZeroU64;
 use derive_more::{
@@ -134,7 +135,6 @@ impl SegmentIndex {
 
 /// Segment commitment contained within segment header.
 #[derive(
-    Debug,
     Copy,
     Clone,
     Eq,
@@ -151,6 +151,12 @@ impl SegmentIndex {
 )]
 #[repr(transparent)]
 pub struct SegmentCommitment([u8; SegmentCommitment::SIZE]);
+
+impl fmt::Debug for SegmentCommitment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 #[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]
@@ -422,9 +428,16 @@ impl SegmentHeader {
 /// Recorded history segment before archiving is applied.
 ///
 /// NOTE: This is a stack-allocated data structure and can cause stack overflow!
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
+#[derive(Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct RecordedHistorySegment([RawRecord; Self::NUM_RAW_RECORDS]);
+
+impl fmt::Debug for RecordedHistorySegment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RecordedHistorySegment")
+            .finish_non_exhaustive()
+    }
+}
 
 impl Default for RecordedHistorySegment {
     #[inline]

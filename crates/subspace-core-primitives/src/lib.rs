@@ -59,21 +59,15 @@ pub const REWARD_SIGNING_CONTEXT: &[u8] = b"subspace_reward";
 
 /// Type of randomness.
 #[derive(
-    Debug,
-    Default,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    From,
-    Into,
-    Deref,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
+    Default, Copy, Clone, Eq, PartialEq, From, Into, Deref, Encode, Decode, TypeInfo, MaxEncodedLen,
 )]
 pub struct Randomness([u8; Randomness::SIZE]);
+
+impl fmt::Debug for Randomness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 #[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]
@@ -156,7 +150,6 @@ pub type BlockWeight = u128;
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
 #[derive(
-    Debug,
     Default,
     Copy,
     Clone,
@@ -173,6 +166,12 @@ pub type BlockWeight = u128;
     Into,
 )]
 pub struct PublicKey([u8; PublicKey::SIZE]);
+
+impl fmt::Debug for PublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 #[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]
@@ -239,7 +238,6 @@ impl PublicKey {
 
 /// Single BLS12-381 scalar with big-endian representation, not guaranteed to be valid
 #[derive(
-    Debug,
     Default,
     Copy,
     Clone,
@@ -261,6 +259,12 @@ impl PublicKey {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct ScalarBytes([u8; ScalarBytes::FULL_BYTES]);
+
+impl fmt::Debug for ScalarBytes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 impl ScalarBytes {
     /// How many full bytes can be stored in BLS12-381 scalar (for instance before encoding). It is
