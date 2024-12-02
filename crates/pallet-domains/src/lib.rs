@@ -231,7 +231,7 @@ mod pallet {
     use sp_domains::{
         BundleDigest, DomainBundleSubmitted, DomainId, DomainSudoCall, DomainsTransfersTracker,
         EpochIndex, GenesisDomain, OnChainRewards, OnDomainInstantiated, OperatorAllowList,
-        OperatorId, OperatorPublicKey, OperatorRewardSource, RuntimeId, RuntimeObject, RuntimeType,
+        OperatorId, OperatorRewardSource, RuntimeId, RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof_runtime_interface::domain_runtime_call;
     use sp_domains_fraud_proof::storage_proof::{self, FraudProofStorageKeyProvider};
@@ -483,12 +483,6 @@ mod pallet {
     #[pallet::storage]
     pub(super) type OperatorIdOwner<T: Config> =
         StorageMap<_, Identity, OperatorId, T::AccountId, OptionQuery>;
-
-    /// Indexes operator signing key against OperatorId.
-    #[pallet::storage]
-    #[pallet::getter(fn operator_signing_key)]
-    pub(super) type OperatorSigningKey<T: Config> =
-        StorageMap<_, Identity, OperatorPublicKey, OperatorId, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn domain_staking_summary)]

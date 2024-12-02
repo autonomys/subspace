@@ -493,7 +493,7 @@ pub(crate) fn do_slash_operator<T: Config>(
             nominator_count == 0 && !Deposits::<T>::contains_key(operator_id, operator_owner);
 
         if cleanup_operator {
-            do_cleanup_operator::<T>(operator_id, total_stake, operator.signing_key)?;
+            do_cleanup_operator::<T>(operator_id, total_stake)?;
             if slashed_operators.is_empty() {
                 PendingSlashes::<T>::remove(domain_id);
             } else {
@@ -516,7 +516,7 @@ mod tests {
     use crate::bundle_storage_fund::STORAGE_FEE_RESERVE;
     use crate::pallet::{
         Deposits, DomainStakingSummary, HeadDomainNumber, LastEpochStakingDistribution,
-        NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, Withdrawals,
+        NominatorCount, OperatorIdOwner, Operators, Withdrawals,
     };
     use crate::staking::tests::{register_operator, Share};
     use crate::staking::{
@@ -641,7 +641,6 @@ mod tests {
 
             assert_eq!(Operators::<Test>::get(operator_id), None);
             assert_eq!(OperatorIdOwner::<Test>::get(operator_id), None);
-            assert_eq!(OperatorSigningKey::<Test>::get(pair.public()), None);
             assert_eq!(NominatorCount::<Test>::get(operator_id), 0);
         });
     }
