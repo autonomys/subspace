@@ -25,6 +25,7 @@ use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
+use rand::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -617,9 +618,8 @@ pub async fn controller_service<NC, PG>(
     nats_client: &NatsClient,
     node_client: &NC,
     piece_getter: &PG,
-    farmer_cache: &FarmerCache,
+    farmer_caches: &[(&str, &FarmerCache)],
     instance: &str,
-    cache_group: &str,
     primary_instance: bool,
 ) -> anyhow::Result<()>
 where
@@ -649,10 +649,10 @@ where
             result = segment_headers_responder(nats_client, node_client).fuse() => {
                 result
             },
-            result = find_piece_responder(nats_client, farmer_cache, cache_group).fuse() => {
+            result = find_piece_responder(nats_client, farmer_caches).fuse() => {
                 result
             },
-            result = find_pieces_responder(nats_client, farmer_cache, cache_group).fuse() => {
+            result = find_pieces_responder(nats_client, farmer_caches).fuse() => {
                 result
             },
             result = piece_responder(nats_client, piece_getter).fuse() => {
@@ -670,10 +670,10 @@ where
             result = segment_headers_responder(nats_client, node_client).fuse() => {
                 result
             },
-            result = find_piece_responder(nats_client, farmer_cache, cache_group).fuse() => {
+            result = find_piece_responder(nats_client, farmer_caches).fuse() => {
                 result
             },
-            result = find_pieces_responder(nats_client, farmer_cache, cache_group).fuse() => {
+            result = find_pieces_responder(nats_client, farmer_caches).fuse() => {
                 result
             },
             result = piece_responder(nats_client, piece_getter).fuse() => {
@@ -916,21 +916,28 @@ where
 
 async fn find_piece_responder(
     nats_client: &NatsClient,
-    farmer_cache: &FarmerCache,
-    cache_group: &str,
+    farmer_caches: &[(&str, &FarmerCache)],
 ) -> anyhow::Result<()> {
     futures::future::try_join(
-        nats_client.request_responder(
-            Some(cache_group),
-            Some("subspace.controller".to_string()),
-            |ClusterControllerFindPieceInCacheRequest { piece_index }| async move {
-                Some(farmer_cache.find_piece(piece_index).await)
-            },
-        ),
+        farmer_caches
+            .iter()
+            .map(|(cache_group, farmer_cache)| {
+                nats_client.request_responder(
+                    Some(cache_group),
+                    Some("subspace.controller".to_string()),
+                    move |ClusterControllerFindPieceInCacheRequest { piece_index }| async move {
+                        Some(farmer_cache.find_piece(piece_index).await)
+                    },
+                )
+            })
+            .collect::<FuturesUnordered<_>>()
+            .next()
+            .map(|result| result.unwrap_or(Ok(()))),
         nats_client.request_responder(
             Some(GLOBAL_CACHE_GROUP),
             Some("subspace.controller".to_string()),
             |ClusterControllerFindPieceInCacheRequest { piece_index }| async move {
+                let (_cache_group, farmer_cache) = farmer_caches.iter().choose(&mut thread_rng())?;
                 Some(farmer_cache.find_piece(piece_index).await)
             },
         ),
@@ -941,21 +948,28 @@ async fn find_piece_responder(
 
 async fn find_pieces_responder(
     nats_client: &NatsClient,
-    farmer_cache: &FarmerCache,
-    cache_group: &str,
+    farmer_caches: &[(&str, &FarmerCache)],
 ) -> anyhow::Result<()> {
     futures::future::try_join(
-        nats_client.stream_request_responder(
-            Some(cache_group),
-            Some("subspace.controller".to_string()),
-            |ClusterControllerFindPiecesInCacheRequest { piece_indices }| async move {
-                Some(stream::iter(farmer_cache.find_pieces(piece_indices).await))
-            },
-        ),
+        farmer_caches
+            .iter()
+            .map(|(cache_group, farmer_cache)| {
+                nats_client.stream_request_responder(
+                    Some(cache_group),
+                    Some("subspace.controller".to_string()),
+                    move |ClusterControllerFindPiecesInCacheRequest { piece_indices }| async move {
+                        Some(stream::iter(farmer_cache.find_pieces(piece_indices).await))
+                    },
+                )
+            })
+            .collect::<FuturesUnordered<_>>()
+            .next()
+            .map(|result| result.unwrap_or(Ok(()))),
         nats_client.stream_request_responder(
             Some(GLOBAL_CACHE_GROUP),
             Some("subspace.controller".to_string()),
             |ClusterControllerFindPiecesInCacheRequest { piece_indices }| async move {
+                let (_cache_group, farmer_cache) = farmer_caches.iter().choose(&mut thread_rng())?;
                 Some(stream::iter(farmer_cache.find_pieces(piece_indices).await))
             },
         ),

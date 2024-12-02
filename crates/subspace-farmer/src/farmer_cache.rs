@@ -16,11 +16,12 @@ use crate::utils::run_future_in_dedicated_thread;
 use async_lock::RwLock as AsyncRwLock;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
-use futures::future::FusedFuture;
+use futures::future::{Either, FusedFuture};
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{select, stream, FutureExt, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
+use rand::prelude::*;
 use rayon::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -1641,6 +1642,83 @@ impl LocalRecordProvider for FarmerCache {
             expires: None,
             addresses: Vec::new(),
         })
+    }
+}
+
+/// Collection of [`FarmerCache`] instances for load balancing
+#[derive(Debug, Clone)]
+pub struct FarmerCaches {
+    caches: Arc<[FarmerCache]>,
+}
+
+impl From<Arc<[FarmerCache]>> for FarmerCaches {
+    fn from(caches: Arc<[FarmerCache]>) -> Self {
+        Self { caches }
+    }
+}
+
+impl From<FarmerCache> for FarmerCaches {
+    fn from(cache: FarmerCache) -> Self {
+        Self {
+            caches: Arc::new([cache]),
+        }
+    }
+}
+
+impl FarmerCaches {
+    /// Get piece from cache
+    pub async fn get_piece<Key>(&self, key: Key) -> Option<Piece>
+    where
+        RecordKey: From<Key>,
+    {
+        let farmer_cache = self.caches.choose(&mut thread_rng())?;
+        farmer_cache.get_piece(key).await
+    }
+
+    /// Get pieces from cache.
+    ///
+    /// Number of elements in returned stream is the same as number of unique `piece_indices`.
+    pub async fn get_pieces<'a, PieceIndices>(
+        &'a self,
+        piece_indices: PieceIndices,
+    ) -> impl Stream<Item = (PieceIndex, Option<Piece>)> + Send + Unpin + 'a
+    where
+        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send + 'a> + Send + 'a,
+    {
+        let Some(farmer_cache) = self.caches.choose(&mut thread_rng()) else {
+            return Either::Left(stream::iter(
+                piece_indices
+                    .into_iter()
+                    .map(|piece_index| (piece_index, None)),
+            ));
+        };
+
+        Either::Right(farmer_cache.get_pieces(piece_indices).await)
+    }
+
+    /// Returns a filtered list of pieces that were found in farmer cache, order is not guaranteed
+    pub async fn has_pieces(&self, piece_indices: Vec<PieceIndex>) -> Vec<PieceIndex> {
+        let Some(farmer_cache) = self.caches.choose(&mut thread_rng()) else {
+            return Vec::new();
+        };
+
+        farmer_cache.has_pieces(piece_indices).await
+    }
+
+    /// Try to store a piece in additional downloaded pieces, if there is space for them
+    pub async fn maybe_store_additional_piece(&self, piece_index: PieceIndex, piece: &Piece) {
+        self.caches
+            .iter()
+            .map(|farmer_cache| farmer_cache.maybe_store_additional_piece(piece_index, piece))
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|()| async {})
+            .await;
+    }
+}
+
+impl LocalRecordProvider for FarmerCaches {
+    fn record(&self, key: &RecordKey) -> Option<ProviderRecord> {
+        self.caches.choose(&mut thread_rng())?.record(key)
     }
 }
 

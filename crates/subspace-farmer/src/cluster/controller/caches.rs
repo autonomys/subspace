@@ -94,7 +94,7 @@ impl KnownCaches {
 pub async fn maintain_caches(
     cache_group: &str,
     nats_client: &NatsClient,
-    farmer_cache: FarmerCache,
+    farmer_cache: &FarmerCache,
     identification_broadcast_interval: Duration,
 ) -> anyhow::Result<()> {
     let mut known_caches = KnownCaches::new(identification_broadcast_interval);

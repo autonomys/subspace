@@ -9,7 +9,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
-use subspace_farmer::farmer_cache::FarmerCache;
+use subspace_farmer::farmer_cache::FarmerCaches;
 use subspace_farmer::node_client::NodeClientExt;
 use subspace_farmer::KNOWN_PEERS_CACHE_SIZE;
 use subspace_networking::libp2p::identity::Keypair;
@@ -96,9 +96,9 @@ pub(in super::super) fn configure_network<FarmIndex, NC>(
     }: NetworkArgs,
     weak_plotted_pieces: Weak<AsyncRwLock<PlottedPieces<FarmIndex>>>,
     node_client: NC,
-    farmer_cache: FarmerCache,
+    farmer_caches: FarmerCaches,
     prometheus_metrics_registry: Option<&mut Registry>,
-) -> Result<(Node, NodeRunner<FarmerCache>), anyhow::Error>
+) -> Result<(Node, NodeRunner<FarmerCaches>), anyhow::Error>
 where
     FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
     usize: From<FarmIndex>,
@@ -119,7 +119,7 @@ where
     let default_config = Config::new(
         protocol_prefix,
         keypair,
-        farmer_cache.clone(),
+        farmer_caches.clone(),
         prometheus_metrics_registry,
     );
     let config = Config {
@@ -130,7 +130,7 @@ where
         request_response_protocols: vec![
             {
                 let maybe_weak_node = Arc::clone(&maybe_weak_node);
-                let farmer_cache = farmer_cache.clone();
+                let farmer_caches = farmer_caches.clone();
 
                 CachedPieceByIndexRequestHandler::create(move |peer_id, request| {
                     let CachedPieceByIndexRequest {
@@ -140,14 +140,14 @@ where
                     debug!(?piece_index, "Cached piece request received");
 
                     let maybe_weak_node = Arc::clone(&maybe_weak_node);
-                    let farmer_cache = farmer_cache.clone();
+                    let farmer_caches = farmer_caches.clone();
                     let mut cached_pieces = Arc::unwrap_or_clone(cached_pieces);
 
                     async move {
                         let piece_from_cache =
-                            farmer_cache.get_piece(piece_index.to_multihash()).await;
+                            farmer_caches.get_piece(piece_index.to_multihash()).await;
                         cached_pieces.truncate(CachedPieceByIndexRequest::RECOMMENDED_LIMIT);
-                        let cached_pieces = farmer_cache.has_pieces(cached_pieces).await;
+                        let cached_pieces = farmer_caches.has_pieces(cached_pieces).await;
 
                         Some(CachedPieceByIndexResponse {
                             result: match piece_from_cache {
@@ -190,13 +190,14 @@ where
                 debug!(?piece_index, "Piece request received. Trying cache...");
 
                 let weak_plotted_pieces = weak_plotted_pieces.clone();
-                let farmer_cache = farmer_cache.clone();
+                let farmer_caches = farmer_caches.clone();
                 let mut cached_pieces = Arc::unwrap_or_clone(cached_pieces);
 
                 async move {
-                    let piece_from_cache = farmer_cache.get_piece(piece_index.to_multihash()).await;
+                    let piece_from_cache =
+                        farmer_caches.get_piece(piece_index.to_multihash()).await;
                     cached_pieces.truncate(PieceByIndexRequest::RECOMMENDED_LIMIT);
-                    let cached_pieces = farmer_cache.has_pieces(cached_pieces).await;
+                    let cached_pieces = farmer_caches.has_pieces(cached_pieces).await;
 
                     if let Some(piece) = piece_from_cache {
                         Some(PieceByIndexResponse {

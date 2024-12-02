@@ -1062,7 +1062,9 @@ where
                 subspace_link.kzg().clone(),
                 segment_headers_store.clone(),
             ),
-            Semaphore::new(max_connections as usize * PIECE_PROVIDER_MULTIPLIER),
+            Arc::new(Semaphore::new(
+                max_connections as usize * PIECE_PROVIDER_MULTIPLIER,
+            )),
         ))
     });
 

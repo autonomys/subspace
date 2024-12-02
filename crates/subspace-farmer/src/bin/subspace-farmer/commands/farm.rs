@@ -23,7 +23,7 @@ use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farm::{PlottedSectors, SectorPlottingDetails, SectorUpdate};
-use subspace_farmer::farmer_cache::FarmerCache;
+use subspace_farmer::farmer_cache::{FarmerCache, FarmerCaches};
 use subspace_farmer::farmer_piece_getter::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
 use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeClient;
@@ -428,6 +428,7 @@ where
 
     let (farmer_cache, farmer_cache_worker) =
         FarmerCache::new(node_client.clone(), peer_id, Some(&mut registry));
+    let farmer_caches = FarmerCaches::from(farmer_cache.clone());
 
     let node_client = CachingProxyNodeClient::new(node_client)
         .await
@@ -448,7 +449,7 @@ where
             network_args,
             Arc::downgrade(&plotted_pieces),
             node_client.clone(),
-            farmer_cache.clone(),
+            farmer_caches.clone(),
             should_start_prometheus_server.then_some(&mut registry),
         )
         .map_err(|error| anyhow!("Failed to configure networking: {error}"))?
@@ -463,12 +464,14 @@ where
     let piece_provider = PieceProvider::new(
         node.clone(),
         SegmentCommitmentPieceValidator::new(node.clone(), node_client.clone(), kzg.clone()),
-        Semaphore::new(out_connections as usize * PIECE_PROVIDER_MULTIPLIER),
+        Arc::new(Semaphore::new(
+            out_connections as usize * PIECE_PROVIDER_MULTIPLIER,
+        )),
     );
 
     let piece_getter = FarmerPieceGetter::new(
         piece_provider,
-        farmer_cache.clone(),
+        farmer_caches,
         node_client.clone(),
         Arc::clone(&plotted_pieces),
         DsnCacheRetryPolicy {

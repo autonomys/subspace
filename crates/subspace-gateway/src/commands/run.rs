@@ -16,6 +16,7 @@ use futures::{select, FutureExt};
 use std::env;
 use std::num::NonZeroUsize;
 use std::pin::pin;
+use std::sync::Arc;
 use subspace_core_primitives::pieces::Record;
 use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_erasure_coding::ErasureCoding;
@@ -99,7 +100,9 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     let piece_provider = PieceProvider::new(
         dsn_node.clone(),
         SegmentCommitmentPieceValidator::new(dsn_node, node_client, kzg),
-        Semaphore::new(out_connections as usize * PIECE_PROVIDER_MULTIPLIER),
+        Arc::new(Semaphore::new(
+            out_connections as usize * PIECE_PROVIDER_MULTIPLIER,
+        )),
     );
     let piece_getter = DsnPieceGetter::new(piece_provider);
     let object_fetcher = ObjectFetcher::new(piece_getter.into(), erasure_coding, Some(max_size));

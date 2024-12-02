@@ -57,10 +57,11 @@ impl PieceValidator for NoPieceValidator {
 
 /// Piece provider with cancellation and piece validator.
 /// Use `NoPieceValidator` to disable validation.
+#[derive(Clone)]
 pub struct PieceProvider<PV> {
     node: Node,
     piece_validator: PV,
-    piece_downloading_semaphore: Semaphore,
+    piece_downloading_semaphore: Arc<Semaphore>,
 }
 
 impl<PV> fmt::Debug for PieceProvider<PV> {
@@ -76,7 +77,11 @@ where
     PV: PieceValidator,
 {
     /// Creates new piece provider.
-    pub fn new(node: Node, piece_validator: PV, piece_downloading_semaphore: Semaphore) -> Self {
+    pub fn new(
+        node: Node,
+        piece_validator: PV,
+        piece_downloading_semaphore: Arc<Semaphore>,
+    ) -> Self {
         Self {
             node,
             piece_validator,
