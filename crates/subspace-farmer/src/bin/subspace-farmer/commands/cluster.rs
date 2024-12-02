@@ -18,10 +18,13 @@ use prometheus_client::registry::Registry;
 use std::env::current_exe;
 use std::mem;
 use std::net::SocketAddr;
+use std::time::Duration;
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::utils::AsyncJoinOnDrop;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_proof_of_space::Table;
+
+const REQUEST_RETRY_MAX_ELAPSED_TIME: Duration = Duration::from_mins(1);
 
 /// Arguments for cluster
 #[derive(Debug, Parser)]
@@ -101,7 +104,7 @@ where
     let nats_client = NatsClient::new(
         nats_servers,
         ExponentialBackoff {
-            max_elapsed_time: None,
+            max_elapsed_time: Some(REQUEST_RETRY_MAX_ELAPSED_TIME),
             ..ExponentialBackoff::default()
         },
     )
