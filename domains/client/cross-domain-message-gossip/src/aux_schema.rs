@@ -2,9 +2,11 @@
 
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
-use sp_blockchain::{Error as ClientError, Result as ClientResult};
+use sp_blockchain::{Error as ClientError, Info, Result as ClientResult};
 use sp_core::H256;
 use sp_messenger::messages::{ChainId, ChannelId, ChannelState, Nonce};
+use sp_messenger::XdmId;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use subspace_runtime_primitives::BlockNumber;
 
 const CHANNEL_DETAIL: &[u8] = b"channel_detail";
@@ -85,4 +87,61 @@ where
         )],
         vec![],
     )
+}
+
+mod xdm_keys {
+    use parity_scale_codec::Encode;
+    use sp_messenger::XdmId;
+
+    const XDM: &[u8] = b"xdm";
+    const XDM_RELAY: &[u8] = b"relay_msg";
+    const XDM_RELAY_RESPONSE: &[u8] = b"relay_msg_response";
+
+    pub(super) fn get_key_for_xdm_id(xdm_id: XdmId) -> Vec<u8> {
+        match xdm_id {
+            XdmId::RelayMessage(id) => (XDM, XDM_RELAY, id).encode(),
+            XdmId::RelayResponseMessage(id) => (XDM, XDM_RELAY_RESPONSE, id).encode(),
+        }
+    }
+}
+
+#[derive(Debug, Encode, Decode, Clone)]
+pub(super) struct BlockId<Block: BlockT> {
+    pub(super) number: NumberFor<Block>,
+    pub(super) hash: Block::Hash,
+}
+
+impl<Block: BlockT> From<Info<Block>> for BlockId<Block> {
+    fn from(value: Info<Block>) -> Self {
+        BlockId {
+            number: value.best_number,
+            hash: value.best_hash,
+        }
+    }
+}
+
+/// Store the given XDM ID as processed at given block.
+pub fn set_xdm_message_processed_at<Backend, Block>(
+    backend: &Backend,
+    xdm_id: XdmId,
+    block_id: BlockId<Block>,
+) -> ClientResult<()>
+where
+    Backend: AuxStore,
+    Block: BlockT,
+{
+    let key = xdm_keys::get_key_for_xdm_id(xdm_id);
+    backend.insert_aux(&[(key.as_slice(), block_id.encode().as_slice())], vec![])
+}
+
+/// Returns the maybe last processed block number for given xdm.
+pub fn get_xdm_processed_block_number<Backend, Block>(
+    backend: &Backend,
+    xdm_id: XdmId,
+) -> ClientResult<Option<BlockId<Block>>>
+where
+    Backend: AuxStore,
+    Block: BlockT,
+{
+    load_decode(backend, xdm_keys::get_key_for_xdm_id(xdm_id).as_slice())
 }

@@ -355,7 +355,6 @@ fn main() -> Result<(), Error> {
                                         _,
                                         _,
                                         _,
-                                        DomainBlock,
                                         _,
                                         _,
                                     >(

@@ -518,25 +518,17 @@ impl MockConsensusNode {
             tracing_unbounded("consensus_message_channel", 100);
 
         // Start cross domain message listener for Consensus chain to receive messages from domains in the network
-        let consensus_listener = cross_domain_message_gossip::start_cross_chain_message_listener::<
-            _,
-            _,
-            _,
-            _,
-            _,
-            DomainBlock,
-            _,
-            _,
-        >(
-            ChainId::Consensus,
-            client.clone(),
-            client.clone(),
-            transaction_pool.clone(),
-            network_service.clone(),
-            consensus_msg_receiver,
-            domain_executor,
-            sync_service.clone(),
-        );
+        let consensus_listener =
+            cross_domain_message_gossip::start_cross_chain_message_listener::<_, _, _, _, _, _, _>(
+                ChainId::Consensus,
+                client.clone(),
+                client.clone(),
+                transaction_pool.clone(),
+                network_service.clone(),
+                consensus_msg_receiver,
+                domain_executor,
+                sync_service.clone(),
+            );
 
         task_manager
             .spawn_essential_handle()

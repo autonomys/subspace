@@ -314,4 +314,8 @@ pub(crate) mod rep {
     /// Reputation change when a peer sends us a gossip message that can't be decoded.
     pub(crate) const GOSSIP_NOT_DECODABLE: ReputationChange =
         ReputationChange::new_fatal("Cross chain message: not decodable");
+
+    /// Reputation change when a peer sends us a non XDM message
+    pub(crate) const NOT_XDM: ReputationChange =
+        ReputationChange::new_fatal("Cross chain message: not XDM");
 }

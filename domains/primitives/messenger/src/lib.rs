@@ -161,7 +161,7 @@ impl sp_inherents::InherentDataProvider for InherentDataProvider {
 }
 
 /// Represent a union of XDM types with their message ID
-#[derive(Debug, Encode, Decode, TypeInfo)]
+#[derive(Debug, Encode, Decode, TypeInfo, Copy, Clone)]
 pub enum XdmId {
     RelayMessage(MessageKey),
     RelayResponseMessage(MessageKey),
