@@ -38,8 +38,8 @@ use subspace_rpc_primitives::{
 };
 use tracing::{debug, error, trace, warn};
 
-/// Special "cache group" that all controllers subscribe to and that can be used to query all cache
-/// groups
+/// Special "cache group" that all controllers subscribe to and that can be used to query any cache
+/// group. The cache group for each query is chosen at random.
 const GLOBAL_CACHE_GROUP: &str = "_";
 
 /// Broadcast sent by controllers requesting farmers to identify themselves
