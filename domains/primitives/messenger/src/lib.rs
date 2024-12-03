@@ -23,7 +23,7 @@ pub mod messages;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::messages::MessageKey;
+use crate::messages::{MessageKey, Nonce};
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
 #[cfg(not(feature = "std"))]
@@ -167,6 +167,16 @@ pub enum XdmId {
     RelayResponseMessage(MessageKey),
 }
 
+#[derive(Debug, Encode, Decode, TypeInfo, Copy, Clone)]
+pub struct ChannelNonce {
+    /// Last processed relay message nonce.
+    /// Could be nne if there is not relay message yet.
+    pub relay_msg_nonce: Option<Nonce>,
+    /// Last processed relay response message nonce.
+    /// Could be None since there is no first response yet
+    pub relay_response_msg_nonce: Option<Nonce>,
+}
+
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
     pub trait RelayerApi<BlockNumber, CNumber, CHash>
@@ -231,5 +241,8 @@ sp_api::decl_runtime_apis! {
 
         /// Returns XDM message ID
         fn xdm_id(ext: &Block::Extrinsic) -> Option<XdmId>;
+
+        /// Get Channel nonce for given chain and channel id.
+        fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce>;
     }
 }
