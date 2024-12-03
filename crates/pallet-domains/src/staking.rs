@@ -1285,6 +1285,9 @@ pub(crate) fn do_reward_operators<T: Config>(
     operators: IntoIter<OperatorId>,
     rewards: BalanceOf<T>,
 ) -> Result<(), Error> {
+    if rewards.is_zero() {
+        return Ok(());
+    }
     DomainStakingSummary::<T>::mutate(domain_id, |maybe_stake_summary| {
         let stake_summary = maybe_stake_summary
             .as_mut()
@@ -1295,38 +1298,25 @@ pub(crate) fn do_reward_operators<T: Config>(
         let operator_weights = operators.into_iter().fold(
             BTreeMap::<OperatorId, u64>::new(),
             |mut acc, operator_id| {
-                let total_weight = match acc.get(&operator_id) {
-                    None => 1,
-                    Some(weight) => weight + 1,
-                };
-                acc.insert(operator_id, total_weight);
+                acc.entry(operator_id)
+                    .and_modify(|weight| *weight += 1)
+                    .or_insert(1);
                 acc
             },
         );
 
         let mut allocated_rewards = BalanceOf::<T>::zero();
-        let mut weight_balance_cache = BTreeMap::<u64, BalanceOf<T>>::new();
         for (operator_id, weight) in operator_weights {
-            let operator_reward = match weight_balance_cache.get(&weight) {
-                None => {
-                    let distribution = Perquintill::from_rational(weight, total_count);
-                    let operator_reward = distribution.mul_floor(rewards);
-                    weight_balance_cache.insert(weight, operator_reward);
-                    operator_reward
-                }
-                Some(operator_reward) => *operator_reward,
-            };
-
-            let total_reward = match stake_summary.current_epoch_rewards.get(&operator_id) {
-                None => operator_reward,
-                Some(rewards) => rewards
-                    .checked_add(&operator_reward)
-                    .ok_or(Error::BalanceOverflow)?,
+            let operator_reward = {
+                let distribution = Perquintill::from_rational(weight, total_count);
+                distribution.mul_floor(rewards)
             };
 
             stake_summary
                 .current_epoch_rewards
-                .insert(operator_id, total_reward);
+                .entry(operator_id)
+                .and_modify(|rewards| *rewards = rewards.saturating_add(operator_reward))
+                .or_insert(operator_reward);
 
             Pallet::<T>::deposit_event(Event::OperatorRewarded {
                 source: source.clone(),
