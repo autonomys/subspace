@@ -184,7 +184,7 @@ where
     }
 
     #[expect(clippy::type_complexity)]
-    pub fn claim_bundle_slot(
+    fn claim_bundle_slot(
         &self,
         operator_id: OperatorId,
         slot_info: &OperatorSlotInfo,
@@ -258,7 +258,7 @@ where
         }
     }
 
-    pub fn prepare_receipt(
+    fn prepare_receipt(
         &self,
         slot_info: &OperatorSlotInfo,
         domain_best_number_onchain: NumberFor<Block>,
@@ -302,7 +302,7 @@ where
         }
     }
 
-    pub async fn prepare_bundle(
+    async fn prepare_bundle(
         &mut self,
         operator_id: OperatorId,
         consensus_chain_best_hash: BlockHashFor<CBlock>,
@@ -346,7 +346,7 @@ where
         Ok(is_empty)
     }
 
-    pub fn seal_bundle(
+    fn seal_bundle(
         &self,
         bundle_header: BundleHeaderFor<Block, CBlock>,
         operator_signing_key: &OperatorPublicKey,
