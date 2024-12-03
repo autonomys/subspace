@@ -1,5 +1,5 @@
 use crate::malicious_bundle_tamper::MaliciousBundleTamper;
-use domain_client_operator::domain_bundle_producer::{BundleProducer, DomainBundleProducer};
+use domain_client_operator::domain_bundle_producer::{BundleProducer, TestBundleProducer};
 use domain_client_operator::domain_bundle_proposer::DomainBundleProposer;
 use domain_client_operator::{OpaqueBundleFor, OperatorSlotInfo};
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -86,7 +86,7 @@ pub struct MaliciousBundleProducer<Client, CClient, TransactionPool> {
     operator_keystore: KeystorePtr,
     consensus_client: Arc<CClient>,
     consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
-    bundle_producer: DomainBundleProducer<DomainBlock, CBlock, Client, CClient, TransactionPool>,
+    bundle_producer: TestBundleProducer<DomainBlock, CBlock, Client, CClient, TransactionPool>,
     malicious_bundle_tamper: MaliciousBundleTamper<DomainBlock, CBlock, Client>,
     malicious_operator_status: MaliciousOperatorStatus,
 }
@@ -132,7 +132,7 @@ where
         );
 
         let (bundle_sender, _bundle_receiver) = tracing_unbounded("domain_bundle_stream", 100);
-        let bundle_producer = DomainBundleProducer::new(
+        let bundle_producer = TestBundleProducer::new(
             domain_id,
             consensus_client.clone(),
             domain_client.clone(),

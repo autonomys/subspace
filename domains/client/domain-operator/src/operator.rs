@@ -1,6 +1,8 @@
 use crate::bundle_processor::BundleProcessor;
 use crate::domain_block_processor::{DomainBlockProcessor, ReceiptsChecker};
-use crate::domain_bundle_producer::DomainBundleProducer;
+use crate::domain_bundle_producer::{
+    uses_default_bundle_producer_params, BundleProducer, DomainBundleProducer, TestBundleProducer,
+};
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::snap_sync::{snap_sync, SyncParams};
@@ -28,7 +30,7 @@ use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
-use tracing::{error, info, trace};
+use tracing::{error, info, trace, warn};
 
 /// Domain operator.
 pub struct Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E>
@@ -141,16 +143,32 @@ where
             params.transaction_pool.clone(),
         );
 
-        let bundle_producer = Box::new(DomainBundleProducer::new(
-            params.domain_id,
-            params.consensus_client.clone(),
-            params.client.clone(),
-            domain_bundle_proposer,
-            params.bundle_sender,
-            params.keystore.clone(),
+        let bundle_producer = if uses_default_bundle_producer_params(
             params.skip_empty_bundle_production,
             params.skip_out_of_order_slot,
-        ));
+        ) {
+            Box::new(DomainBundleProducer::new(
+                params.domain_id,
+                params.consensus_client.clone(),
+                params.client.clone(),
+                domain_bundle_proposer,
+                params.bundle_sender,
+                params.keystore.clone(),
+            )) as Box<dyn BundleProducer<Block, CBlock> + Send>
+        } else {
+            // TODO: only allow the test bundle producer in tests (ticket #3162)
+            warn!("Using test bundle producer...");
+            Box::new(TestBundleProducer::new(
+                params.domain_id,
+                params.consensus_client.clone(),
+                params.client.clone(),
+                domain_bundle_proposer,
+                params.bundle_sender,
+                params.keystore.clone(),
+                params.skip_empty_bundle_production,
+                params.skip_out_of_order_slot,
+            )) as Box<dyn BundleProducer<Block, CBlock> + Send>
+        };
 
         let fraud_proof_generator = FraudProofGenerator::new(
             params.client.clone(),

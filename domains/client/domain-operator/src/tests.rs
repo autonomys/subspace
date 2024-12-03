@@ -1,5 +1,5 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
-use crate::domain_bundle_producer::{BundleProducer, DomainBundleProducer};
+use crate::domain_bundle_producer::{BundleProducer, TestBundleProducer};
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
 use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
@@ -3463,7 +3463,7 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
         );
         let (bundle_sender, _bundle_receiver) =
             sc_utils::mpsc::tracing_unbounded("domain_bundle_stream", 100);
-        DomainBundleProducer::new(
+        TestBundleProducer::new(
             EVM_DOMAIN_ID,
             ferdie.client.clone(),
             alice.client.clone(),
@@ -4634,7 +4634,7 @@ async fn test_bad_receipt_chain() {
         );
         let (bundle_sender, _bundle_receiver) =
             sc_utils::mpsc::tracing_unbounded("domain_bundle_stream", 100);
-        DomainBundleProducer::new(
+        TestBundleProducer::new(
             EVM_DOMAIN_ID,
             ferdie.client.clone(),
             alice.client.clone(),

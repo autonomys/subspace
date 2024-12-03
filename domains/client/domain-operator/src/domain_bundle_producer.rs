@@ -328,20 +328,14 @@ where
         }
     }
 
-    #[expect(clippy::too_many_arguments)]
     pub async fn prepare_bundle(
         &mut self,
         operator_id: OperatorId,
-        slot_info: &OperatorSlotInfo,
         consensus_chain_best_hash: BlockHashFor<CBlock>,
         domain_best_number_onchain: NumberFor<Block>,
         head_receipt_number: NumberFor<Block>,
         proof_of_election: ProofOfElection,
-        // TODO: remove when skip_empty_bundle_production is split out
-        domain_best_number: NumberFor<Block>,
-        // TODO: remove Option when skip_empty_bundle_production is split out
-    ) -> sp_blockchain::Result<Option<(BundleHeaderFor<Block, CBlock>, Vec<ExtrinsicFor<Block>>)>>
-    {
+    ) -> sp_blockchain::Result<(BundleHeaderFor<Block, CBlock>, Vec<ExtrinsicFor<Block>>)> {
         let tx_range = self
             .consensus_client
             .runtime_api()
@@ -361,25 +355,7 @@ where
             .propose_bundle_at(proof_of_election.clone(), tx_range, operator_id, receipt)
             .await?;
 
-        // if there are no extrinsics and no receipts to confirm, skip the bundle
-        if self.skip_empty_bundle_production
-            && extrinsics.is_empty()
-            && !self
-                .consensus_client
-                .runtime_api()
-                .non_empty_er_exists(consensus_chain_best_hash, self.domain_id)?
-        {
-            tracing::warn!(
-                ?domain_best_number,
-                "Skipping empty bundle production on slot {}",
-                slot_info.slot,
-            );
-            return Ok(None);
-        }
-
-        self.last_processed_slot.replace(slot_info.slot);
-
-        Ok(Some((bundle_header, extrinsics)))
+        Ok((bundle_header, extrinsics))
     }
 
     pub fn seal_bundle(
@@ -457,24 +433,227 @@ where
             return Ok(Some(receipt));
         }
 
-        let Some((bundle_header, extrinsics)) = self
+        let (bundle_header, extrinsics) = self
             .prepare_bundle(
                 operator_id,
-                &slot_info,
                 consensus_chain_best_hash,
                 domain_best_number_onchain,
                 head_receipt_number,
                 proof_of_election,
-                domain_best_number,
             )
-            .await?
-        else {
+            .await?;
+
+        // if there are no extrinsics and no receipts to confirm, skip the bundle
+        // this is the default production behaviour
+        if extrinsics.is_empty()
+            && !self
+                .consensus_client
+                .runtime_api()
+                .non_empty_er_exists(consensus_chain_best_hash, self.domain_id)?
+        {
+            tracing::warn!(
+                ?domain_best_number,
+                "Skipping empty bundle production on slot {}",
+                slot_info.slot,
+            );
             return Ok(None);
-        };
+        }
 
         info!("🔖 Producing bundle at slot {:?}", slot_info.slot);
 
         let bundle = self.seal_bundle(bundle_header, &operator_signing_key, extrinsics)?;
+
+        Ok(Some(bundle))
+    }
+}
+
+// TODO: only compile the test bundle producer in tests (ticket #3162)
+
+/// Returns true when passed the default parameters bundle producer parameters.
+pub fn uses_default_bundle_producer_params(
+    skip_empty_bundle_production: bool,
+    skip_out_of_order_slot: bool,
+) -> bool {
+    skip_empty_bundle_production && !skip_out_of_order_slot
+}
+
+pub struct TestBundleProducer<Block, CBlock, Client, CClient, TransactionPool>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+{
+    inner: DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>,
+    // Test-only parameters
+    skip_empty_bundle_production: bool,
+    skip_out_of_order_slot: bool,
+    last_processed_slot: Option<Slot>,
+}
+
+impl<Block, CBlock, Client, CClient, TransactionPool> Clone
+    for TestBundleProducer<Block, CBlock, Client, CClient, TransactionPool>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            skip_empty_bundle_production: self.skip_empty_bundle_production,
+            skip_out_of_order_slot: self.skip_out_of_order_slot,
+            last_processed_slot: None,
+        }
+    }
+}
+
+impl<Block, CBlock, Client, CClient, TransactionPool>
+    TestBundleProducer<Block, CBlock, Client, CClient, TransactionPool>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    NumberFor<Block>: Into<NumberFor<CBlock>>,
+    NumberFor<CBlock>: Into<NumberFor<Block>>,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
+    Client::Api: BlockBuilder<Block>
+        + DomainCoreApi<Block>
+        + TaggedTransactionQueue<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>,
+    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = Block::Hash>,
+{
+    #[expect(clippy::too_many_arguments)]
+    pub fn new(
+        domain_id: DomainId,
+        consensus_client: Arc<CClient>,
+        client: Arc<Client>,
+        domain_bundle_proposer: DomainBundleProposer<
+            Block,
+            Client,
+            CBlock,
+            CClient,
+            TransactionPool,
+        >,
+        bundle_sender: Arc<BundleSender<Block, CBlock>>,
+        keystore: KeystorePtr,
+        skip_empty_bundle_production: bool,
+        skip_out_of_order_slot: bool,
+    ) -> Self {
+        Self {
+            inner: DomainBundleProducer::new(
+                domain_id,
+                consensus_client,
+                client,
+                domain_bundle_proposer,
+                bundle_sender,
+                keystore,
+            ),
+            skip_empty_bundle_production,
+            skip_out_of_order_slot,
+            last_processed_slot: None,
+        }
+    }
+}
+
+#[async_trait]
+impl<Block, CBlock, Client, CClient, TransactionPool> BundleProducer<Block, CBlock>
+    for TestBundleProducer<Block, CBlock, Client, CClient, TransactionPool>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    NumberFor<Block>: Into<NumberFor<CBlock>>,
+    NumberFor<CBlock>: Into<NumberFor<Block>>,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
+    Client::Api: BlockBuilder<Block>
+        + DomainCoreApi<Block>
+        + TaggedTransactionQueue<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>,
+    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = Block::Hash>,
+{
+    async fn produce_bundle(
+        &mut self,
+        operator_id: OperatorId,
+        slot_info: OperatorSlotInfo,
+    ) -> sp_blockchain::Result<Option<DomainProposal<Block, CBlock>>> {
+        let domain_best_number = self.inner.client.info().best_number;
+        let consensus_chain_best_hash = self.inner.consensus_client.info().best_hash;
+
+        let skip_out_of_order_slot = self.skip_out_of_order_slot
+            && self
+                .last_processed_slot
+                .map(|last_slot| last_slot >= slot_info.slot)
+                .unwrap_or(false);
+
+        if skip_out_of_order_slot {
+            tracing::warn!(
+                ?domain_best_number,
+                "Skipping out of order bundle production on slot {}",
+                slot_info.slot,
+            );
+            return Ok(None);
+        }
+
+        let Some((
+            domain_best_number_onchain,
+            head_receipt_number,
+            proof_of_election,
+            operator_signing_key,
+        )) = self.inner.claim_bundle_slot(
+            operator_id,
+            &slot_info,
+            domain_best_number,
+            consensus_chain_best_hash,
+        )?
+        else {
+            return Ok(None);
+        };
+
+        if let Some(receipt) = self.inner.prepare_receipt(
+            &slot_info,
+            domain_best_number_onchain,
+            head_receipt_number,
+            &proof_of_election,
+            &operator_signing_key,
+        )? {
+            return Ok(Some(receipt));
+        }
+
+        let (bundle_header, extrinsics) = self
+            .inner
+            .prepare_bundle(
+                operator_id,
+                consensus_chain_best_hash,
+                domain_best_number_onchain,
+                head_receipt_number,
+                proof_of_election,
+            )
+            .await?;
+
+        // if there are no extrinsics and no receipts to confirm, skip the bundle
+        if self.skip_empty_bundle_production
+            && extrinsics.is_empty()
+            && !self
+                .inner
+                .consensus_client
+                .runtime_api()
+                .non_empty_er_exists(consensus_chain_best_hash, self.inner.domain_id)?
+        {
+            tracing::warn!(
+                ?domain_best_number,
+                "Skipping empty bundle production on slot {}",
+                slot_info.slot,
+            );
+            return Ok(None);
+        }
+
+        self.last_processed_slot.replace(slot_info.slot);
+
+        info!("🔖 Producing bundle at slot {:?}", slot_info.slot);
+
+        let bundle = self
+            .inner
+            .seal_bundle(bundle_header, &operator_signing_key, extrinsics)?;
 
         Ok(Some(bundle))
     }
