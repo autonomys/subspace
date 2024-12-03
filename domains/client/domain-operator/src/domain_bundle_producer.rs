@@ -91,13 +91,6 @@ where
     keystore: KeystorePtr,
     bundle_producer_election_solver: BundleProducerElectionSolver<Block, CBlock, CClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>,
-    // TODO: both `skip_empty_bundle_production` and `skip_out_of_order_slot` are only used in the
-    // tests, we should introduce a trait for `DomainBundleProducer` and use a wrapper of `DomainBundleProducer`
-    // in the test, both `skip_empty_bundle_production` and `skip_out_of_order_slot` should move into the wrapper
-    // to keep the production code clean.
-    skip_empty_bundle_production: bool,
-    skip_out_of_order_slot: bool,
-    last_processed_slot: Option<Slot>,
 }
 
 impl<Block, CBlock, Client, CClient, TransactionPool> Clone
@@ -115,9 +108,6 @@ where
             keystore: self.keystore.clone(),
             bundle_producer_election_solver: self.bundle_producer_election_solver.clone(),
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
-            skip_empty_bundle_production: self.skip_empty_bundle_production,
-            skip_out_of_order_slot: self.skip_out_of_order_slot,
-            last_processed_slot: None,
         }
     }
 }
@@ -138,7 +128,6 @@ where
     CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = Block::Hash>,
 {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         domain_id: DomainId,
         consensus_client: Arc<CClient>,
@@ -152,8 +141,6 @@ where
         >,
         bundle_sender: Arc<BundleSender<Block, CBlock>>,
         keystore: KeystorePtr,
-        skip_empty_bundle_production: bool,
-        skip_out_of_order_slot: bool,
     ) -> Self {
         let bundle_producer_election_solver = BundleProducerElectionSolver::<Block, CBlock, _>::new(
             keystore.clone(),
@@ -167,9 +154,6 @@ where
             keystore,
             bundle_producer_election_solver,
             domain_bundle_proposer,
-            skip_empty_bundle_production,
-            skip_out_of_order_slot,
-            last_processed_slot: None,
         }
     }
 
@@ -237,24 +221,14 @@ where
             .runtime_api()
             .head_receipt_number(consensus_chain_best_hash, self.domain_id)?;
 
-        let should_skip_slot = {
-            // Operator is lagging behind the receipt chain on its parent chain as another operator
-            // already processed a block higher than the local best and submitted the receipt to
-            // the parent chain, we ought to catch up with the consensus block processing before
-            // producing new bundle.
-            let is_operator_lagging =
-                !domain_best_number.is_zero() && domain_best_number <= head_receipt_number;
+        // Operator is lagging behind the receipt chain on its parent chain as another operator
+        // already processed a block higher than the local best and submitted the receipt to
+        // the parent chain, we ought to catch up with the consensus block processing before
+        // producing new bundle.
+        let is_operator_lagging =
+            !domain_best_number.is_zero() && domain_best_number <= head_receipt_number;
 
-            let skip_out_of_order_slot = self.skip_out_of_order_slot
-                && self
-                    .last_processed_slot
-                    .map(|last_slot| last_slot >= *slot)
-                    .unwrap_or(false);
-
-            is_operator_lagging || skip_out_of_order_slot
-        };
-
-        if should_skip_slot {
+        if is_operator_lagging {
             tracing::warn!(
                 ?domain_best_number,
                 "Skipping bundle production on slot {slot}"
