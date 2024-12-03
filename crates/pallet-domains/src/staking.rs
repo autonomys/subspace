@@ -181,8 +181,6 @@ pub struct Operator<Balance, Share, DomainBlockNumber> {
     pub nomination_tax: Percent,
     /// Total active stake of combined nominators under this operator.
     pub current_total_stake: Balance,
-    /// Total rewards this operator received this current epoch.
-    pub current_epoch_rewards: Balance,
     /// Total shares of all the nominators under this operator.
     pub current_total_shares: Share,
     /// The status of the operator, it may be stale due to the `OperatorStatus::PendingSlash` is
@@ -227,7 +225,6 @@ impl<Balance: Zero, Share: Zero, DomainBlockNumber> Operator<Balance, Share, Dom
             minimum_nominator_stake,
             nomination_tax: Default::default(),
             current_total_stake: Zero::zero(),
-            current_epoch_rewards: Zero::zero(),
             current_total_shares: Zero::zero(),
             partial_status: OperatorStatus::Registered,
             deposits_in_epoch: Zero::zero(),
@@ -373,7 +370,6 @@ pub fn do_register_operator<T: Config>(
             minimum_nominator_stake,
             nomination_tax,
             current_total_stake: Zero::zero(),
-            current_epoch_rewards: Zero::zero(),
             current_total_shares: Zero::zero(),
             partial_status: OperatorStatus::Registered,
             // sum total deposits added during this epoch.
@@ -1106,16 +1102,7 @@ pub(crate) fn do_unlock_nominator<T: Config>(
         );
 
         let mut total_shares = operator.current_total_shares;
-        // take any operator current epoch rewards to include in total stake and set to zero.
-        let operator_current_epoch_rewards = operator.current_epoch_rewards;
-        operator.current_epoch_rewards = Zero::zero();
-
-        // calculate total stake of operator.
-        let mut total_stake = operator
-            .current_total_stake
-            .checked_add(&operator_current_epoch_rewards)
-            .ok_or(Error::BalanceOverflow)?;
-
+        let mut total_stake = operator.current_total_stake;
         let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
         let mut total_storage_fee_deposit = operator.total_storage_fee_deposit;
@@ -1626,7 +1613,6 @@ pub(crate) mod tests {
                     minimum_nominator_stake: SSC,
                     nomination_tax: Default::default(),
                     current_total_stake: operator_stake,
-                    current_epoch_rewards: 0,
                     current_total_shares: operator_stake,
                     partial_status: OperatorStatus::Registered,
                     deposits_in_epoch: 0,

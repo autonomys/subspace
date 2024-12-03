@@ -134,13 +134,14 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                     });
                 }
 
-                // add remaining rewards to nominators to be distributed during the epoch transition
+                // Add the remaining rewards to the operator's `current_total_stake` which increases the
+                // share price of the staking pool and as a way to distribute the reward to the nominator
                 let rewards = reward
                     .checked_sub(&operator_tax_amount)
                     .ok_or(TransitionError::BalanceUnderflow)?;
 
-                operator.current_epoch_rewards = operator
-                    .current_epoch_rewards
+                operator.current_total_stake = operator
+                    .current_total_stake
                     .checked_add(&rewards)
                     .ok_or(TransitionError::BalanceOverflow)?;
 
@@ -241,20 +242,12 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
 
     // if there are no deposits, withdrawls, and epoch rewards for this operator
     // then short-circuit and return early.
-    if operator.deposits_in_epoch.is_zero()
-        && operator.withdrawals_in_epoch.is_zero()
-        && operator.current_epoch_rewards.is_zero()
-    {
+    if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
         return Ok((operator.current_total_stake, false));
     }
 
-    let total_stake = operator
-        .current_total_stake
-        .checked_add(&operator.current_epoch_rewards)
-        .ok_or(TransitionError::BalanceOverflow)?;
-
+    let total_stake = operator.current_total_stake;
     let total_shares = operator.current_total_shares;
-
     let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
     // calculate and subtract total withdrew shares from previous epoch
@@ -301,7 +294,6 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
     // update operator state
     operator.current_total_shares = total_shares;
     operator.current_total_stake = total_stake;
-    operator.current_epoch_rewards = Zero::zero();
     Operators::<T>::set(operator_id, Some(operator));
 
     Ok((total_stake, true))
@@ -367,12 +359,7 @@ pub(crate) fn do_slash_operator<T: Config>(
 
         let staked_hold_id = T::HoldIdentifier::staking_staked();
 
-        let mut total_stake = operator
-            .current_total_stake
-            .checked_add(&operator.current_epoch_rewards)
-            .ok_or(TransitionError::BalanceOverflow)?;
-
-        operator.current_epoch_rewards = Zero::zero();
+        let mut total_stake = operator.current_total_stake;
         let mut total_shares = operator.current_total_shares;
         let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
@@ -770,7 +757,6 @@ mod tests {
                 operator.current_total_stake + operator.total_storage_fee_deposit,
                 total_updated_stake
             );
-            assert_eq!(operator.current_epoch_rewards, Zero::zero());
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert_eq!(
@@ -830,6 +816,7 @@ mod tests {
             // 10% tax
             let nomination_tax = Percent::from_parts(10);
             let mut operator = Operators::<Test>::get(operator_id).unwrap();
+            let pre_total_stake = operator.current_total_stake;
             let pre_storage_fund_deposit = operator.total_storage_fee_deposit;
             operator.nomination_tax = nomination_tax;
             Operators::<Test>::insert(operator_id, operator);
@@ -848,7 +835,7 @@ mod tests {
             let new_storage_fund_deposit =
                 operator.total_storage_fee_deposit - pre_storage_fund_deposit;
             assert_eq!(
-                operator.current_epoch_rewards,
+                operator.current_total_stake - pre_total_stake,
                 (10 * SSC - expected_operator_tax)
             );
 
