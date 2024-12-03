@@ -67,6 +67,7 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
 ) -> Result<u32, Error> {
     let mut rewarded_operator_count = 0;
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
+        let mut to_treasury = BalanceOf::<T>::zero();
         let stake_summary = maybe_domain_stake_summary
             .as_mut()
             .ok_or(TransitionError::DomainNotInitialized)?;
@@ -74,9 +75,17 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
         while let Some((operator_id, reward)) = stake_summary.current_epoch_rewards.pop_first() {
             Operators::<T>::try_mutate(operator_id, |maybe_operator| {
                 let operator = match maybe_operator.as_mut() {
-                    // it is possible that operator may have de registered by the time they got rewards
-                    // if not available, skip the operator
-                    None => return Ok(()),
+                    // It is possible that operator may have de registered and unlocked by the time they
+                    // got rewards, in this case, move the reward to the treasury
+                    None => {
+                        to_treasury += reward;
+                        return Ok(())
+                    }
+                    // Move the reward of slashed and pening slash operator to the treasury
+                    Some(operator) if matches!(*operator.status::<T>(operator_id), OperatorStatus::Slashed | OperatorStatus::PendingSlash) => {
+                        to_treasury += reward;
+                        return Ok(())
+                    }
                     Some(operator) => operator,
                 };
 
@@ -139,6 +148,10 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
 
                 Ok(())
             })?;
+        }
+
+        if !to_treasury.is_zero() {
+            mint_into_treasury::<T>(to_treasury).ok_or(TransitionError::MintBalance)?;
         }
 
         Ok(())
