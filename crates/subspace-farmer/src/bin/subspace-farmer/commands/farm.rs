@@ -54,7 +54,6 @@ use subspace_kzg::Kzg;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
-use tokio::sync::Barrier;
 use tracing::{error, info, info_span, warn, Instrument};
 
 /// Get piece retry attempts number.
@@ -198,8 +197,7 @@ pub(crate) struct FarmingArgs {
     /// `size` is max allocated size in human-readable format (e.g. 10GB, 2TiB) or just bytes that
     /// farmer will make sure to not exceed (and will pre-allocated all the space on startup to
     /// ensure it will not run out of space in runtime). Optionally, `record-chunks-mode` can be
-    /// set to `ConcurrentChunks` or `WholeSector` in order to avoid internal benchmarking during
-    /// startup.
+    /// set to `ConcurrentChunks` (default) or `WholeSector`.
     disk_farms: Vec<DiskFarm>,
     /// WebSocket RPC URL of the Subspace node to connect to
     #[arg(long, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
@@ -571,9 +569,6 @@ where
 
     let (farms, plotting_delay_senders) = {
         let info_mutex = &AsyncMutex::new(());
-        let faster_read_sector_record_chunks_mode_barrier =
-            Arc::new(Barrier::new(disk_farms.len()));
-        let faster_read_sector_record_chunks_mode_concurrency = Arc::new(Semaphore::new(1));
         let (plotting_delay_senders, plotting_delay_receivers) = (0..disk_farms.len())
             .map(|_| oneshot::channel())
             .unzip::<_, _, Vec<_>, Vec<_>>();
@@ -591,10 +586,6 @@ where
                 let erasure_coding = erasure_coding.clone();
                 let plotter = Arc::clone(&plotter);
                 let global_mutex = Arc::clone(&global_mutex);
-                let faster_read_sector_record_chunks_mode_barrier =
-                    Arc::clone(&faster_read_sector_record_chunks_mode_barrier);
-                let faster_read_sector_record_chunks_mode_concurrency =
-                    Arc::clone(&faster_read_sector_record_chunks_mode_concurrency);
 
                 async move {
                     let farm_fut = SingleDiskFarm::new::<_, PosTable>(
@@ -615,9 +606,8 @@ where
                             max_plotting_sectors_per_farm,
                             disable_farm_locking,
                             read_sector_record_chunks_mode: disk_farm
-                                .read_sector_record_chunks_mode,
-                            faster_read_sector_record_chunks_mode_barrier,
-                            faster_read_sector_record_chunks_mode_concurrency,
+                                .read_sector_record_chunks_mode
+                                .unwrap_or(ReadSectorRecordChunksMode::ConcurrentChunks),
                             registry: Some(registry),
                             create,
                         },
