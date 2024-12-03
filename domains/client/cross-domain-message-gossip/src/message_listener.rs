@@ -1,6 +1,6 @@
 use crate::aux_schema::{
-    get_channel_state, get_xdm_processed_block_number, set_channel_state,
-    set_xdm_message_processed_at, BlockId,
+    cleanup_chain_channel_storages, get_channel_state, get_xdm_processed_block_number,
+    set_channel_state, set_xdm_message_processed_at, BlockId,
 };
 use crate::gossip_worker::{ChannelUpdate, MessageData};
 use crate::{ChainMsg, ChannelDetail};
@@ -30,7 +30,7 @@ use std::sync::Arc;
 use subspace_runtime_primitives::{Balance, BlockNumber};
 use thiserror::Error;
 
-const LOG_TARGET: &str = "domain_message_listener";
+pub(crate) const LOG_TARGET: &str = "domain_message_listener";
 /// Number of blocks an already submitted XDM is not accepted since last submission.
 const XDM_ACCEPT_BLOCK_LIMIT: u32 = 5;
 
@@ -606,6 +606,10 @@ where
         );
 
         set_xdm_message_processed_at(&**client, xdm_id, block_id)?;
+    }
+
+    if let Some(channel_nonce) = maybe_channel_nonce {
+        cleanup_chain_channel_storages(&**client, src_chain_id, channel_id, channel_nonce)?;
     }
 
     Ok(true)
