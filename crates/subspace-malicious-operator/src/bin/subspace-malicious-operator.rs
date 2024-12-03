@@ -202,7 +202,6 @@ fn main() -> Result<(), Error> {
                 force_new_slot_notifications: true,
                 create_object_mappings: CreateObjectMappings::No,
                 subspace_networking: SubspaceNetworking::Create { config: dsn_config },
-                dsn_piece_getter: None,
                 sync: Default::default(),
                 is_timekeeper: false,
                 timekeeper_cpu_cores: Default::default(),

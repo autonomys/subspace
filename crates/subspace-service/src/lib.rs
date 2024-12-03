@@ -778,12 +778,12 @@ where
     } = other;
 
     let offchain_indexing_enabled = config.base.offchain_worker.indexing_enabled;
-    let (node, bootstrap_nodes, max_connections) = match config.subspace_networking {
+    let (node, bootstrap_nodes, piece_getter) = match config.subspace_networking {
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
-            max_connections,
-        } => (node, bootstrap_nodes, max_connections),
+            piece_getter,
+        } => (node, bootstrap_nodes, piece_getter),
         SubspaceNetworking::Create { config: dsn_config } => {
             let dsn_protocol_version = hex::encode(client.chain_info().genesis_hash);
 
@@ -827,7 +827,19 @@ where
                     ),
                 );
 
-            (node, dsn_config.bootstrap_nodes, out_connections)
+            let piece_getter = Arc::new(PieceProvider::new(
+                node.clone(),
+                SegmentCommitmentPieceValidator::new(
+                    node.clone(),
+                    subspace_link.kzg().clone(),
+                    segment_headers_store.clone(),
+                ),
+                Arc::new(Semaphore::new(
+                    out_connections as usize * PIECE_PROVIDER_MULTIPLIER,
+                )),
+            ));
+
+            (node, dsn_config.bootstrap_nodes, piece_getter as _)
         }
     };
 
@@ -1054,20 +1066,6 @@ where
 
     network_wrapper.set(network_service.clone());
 
-    let dsn_sync_piece_getter = config.dsn_piece_getter.unwrap_or_else(|| {
-        Arc::new(PieceProvider::new(
-            node.clone(),
-            SegmentCommitmentPieceValidator::new(
-                node.clone(),
-                subspace_link.kzg().clone(),
-                segment_headers_store.clone(),
-            ),
-            Arc::new(Semaphore::new(
-                max_connections as usize * PIECE_PROVIDER_MULTIPLIER,
-            )),
-        ))
-    });
-
     if !config.base.network.force_synced {
         // Start with DSN sync in this case
         pause_sync.store(true, Ordering::Release);
@@ -1080,7 +1078,7 @@ where
         Arc::clone(&client),
         import_queue_service1,
         pause_sync.clone(),
-        dsn_sync_piece_getter.clone(),
+        piece_getter.clone(),
         sync_service.clone(),
         network_service_handle,
         subspace_link.erasure_coding().clone(),
@@ -1098,7 +1096,7 @@ where
         sync_service.clone(),
         sync_target_block_number,
         pause_sync,
-        dsn_sync_piece_getter,
+        piece_getter,
         subspace_link.erasure_coding().clone(),
     );
     task_manager

@@ -16,7 +16,11 @@
   ],
   "protocolId": "autonomys-taurus",
   "properties": {
-    "domainsBootstrapNodes": {},
+    "domainsBootstrapNodes": {
+      "0": [
+        "/dns/bootstrap-0.auto-evm.taurus.subspace.network/tcp/30334/p2p/12D3KooWKDhSnpoeyRPRQSNwnB2k1C4WRa8h3BQh5s5mtF9MJdTN"
+      ]
+    },
     "dsnBootstrapNodes": [
       "/dns/bootstrap-0.taurus.subspace.network/tcp/30533/p2p/12D3KooWFL8f47BBWcvF7LxNGucJhXoS4j1aSddUNmY7haFR6eUk",
       "/dns/bootstrap-1.taurus.subspace.network/tcp/30533/p2p/12D3KooWCtNAJ9dB1CpBNN6HrjyhZNY1fXodkXz6qQWCfxaM7w4A"

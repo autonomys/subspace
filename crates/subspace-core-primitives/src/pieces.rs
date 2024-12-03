@@ -252,9 +252,15 @@ impl PieceOffset {
 /// Raw record contained within recorded history segment before archiving is applied.
 ///
 /// NOTE: This is a stack-allocated data structure and can cause stack overflow!
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
+#[derive(Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct RawRecord([[u8; ScalarBytes::SAFE_BYTES]; Self::NUM_CHUNKS]);
+
+impl fmt::Debug for RawRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0.as_flattened()))
+    }
+}
 
 impl Default for RawRecord {
     #[inline]
@@ -407,9 +413,15 @@ impl RawRecord {
 /// Record contained within a piece.
 ///
 /// NOTE: This is a stack-allocated data structure and can cause stack overflow!
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
+#[derive(Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct Record([[u8; ScalarBytes::FULL_BYTES]; Self::NUM_CHUNKS]);
+
+impl fmt::Debug for Record {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0.as_flattened()))
+    }
+}
 
 impl Default for Record {
     #[inline]
@@ -601,7 +613,6 @@ impl Record {
 
 /// Record commitment contained within a piece.
 #[derive(
-    Debug,
     Copy,
     Clone,
     Eq,
@@ -617,6 +628,12 @@ impl Record {
     MaxEncodedLen,
 )]
 pub struct RecordCommitment([u8; RecordCommitment::SIZE]);
+
+impl fmt::Debug for RecordCommitment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 #[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]
@@ -731,7 +748,6 @@ impl RecordCommitment {
 
 /// Record witness contained within a piece.
 #[derive(
-    Debug,
     Copy,
     Clone,
     Eq,
@@ -747,6 +763,12 @@ impl RecordCommitment {
     MaxEncodedLen,
 )]
 pub struct RecordWitness([u8; RecordWitness::SIZE]);
+
+impl fmt::Debug for RecordWitness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 #[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]
@@ -859,10 +881,15 @@ impl RecordWitness {
     pub const SIZE: usize = 48;
 }
 
-#[derive(Debug)]
 enum CowBytes {
     Shared(Bytes),
     Owned(BytesMut),
+}
+
+impl fmt::Debug for CowBytes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.as_ref()))
+    }
 }
 
 impl PartialEq for CowBytes {
@@ -1162,11 +1189,15 @@ impl Piece {
 /// Internally piece contains a record and corresponding witness that together with segment
 /// commitment of the segment this piece belongs to can be used to verify that a piece belongs to
 /// the actual archival history of the blockchain.
-#[derive(
-    Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, DerefMut, AsRef, AsMut,
-)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, DerefMut, AsRef, AsMut)]
 #[repr(transparent)]
 pub struct PieceArray([u8; Piece::SIZE]);
+
+impl fmt::Debug for PieceArray {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 impl Default for PieceArray {
     #[inline]

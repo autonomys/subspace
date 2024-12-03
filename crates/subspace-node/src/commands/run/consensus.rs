@@ -758,7 +758,6 @@ pub(super) fn create_consensus_chain_configuration(
             force_new_slot_notifications: domains_enabled,
             create_object_mappings: create_object_mappings.unwrap_or_default().into(),
             subspace_networking: SubspaceNetworking::Create { config: dsn_config },
-            dsn_piece_getter: None,
             sync,
             is_timekeeper: timekeeper_options.timekeeper,
             timekeeper_cpu_cores: timekeeper_options.timekeeper_cpu_cores,

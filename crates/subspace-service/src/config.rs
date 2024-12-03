@@ -287,8 +287,8 @@ pub enum SubspaceNetworking {
         node: Node,
         /// Bootstrap nodes used (that can be also sent to the farmer over RPC)
         bootstrap_nodes: Vec<Multiaddr>,
-        /// Sum of incoming and outgoing connection limits
-        max_connections: u32,
+        /// Piece getter
+        piece_getter: Arc<dyn DsnSyncPieceGetter + Send + Sync + 'static>,
     },
     /// Networking must be instantiated internally
     Create {
@@ -309,8 +309,6 @@ pub struct SubspaceConfiguration {
     pub create_object_mappings: CreateObjectMappings,
     /// Subspace networking (DSN).
     pub subspace_networking: SubspaceNetworking,
-    /// DSN piece getter
-    pub dsn_piece_getter: Option<Arc<dyn DsnSyncPieceGetter + Send + Sync + 'static>>,
     /// Is this node a Timekeeper
     pub is_timekeeper: bool,
     /// CPU cores that timekeeper can use

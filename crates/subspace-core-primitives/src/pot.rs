@@ -15,7 +15,6 @@ use serde::{Deserializer, Serializer};
 
 /// Proof of time key(input to the encryption).
 #[derive(
-    Debug,
     Default,
     Copy,
     Clone,
@@ -32,6 +31,12 @@ use serde::{Deserializer, Serializer};
     MaxEncodedLen,
 )]
 pub struct PotKey([u8; Self::SIZE]);
+
+impl fmt::Debug for PotKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 #[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]
@@ -98,7 +103,6 @@ impl PotKey {
 
 /// Proof of time seed
 #[derive(
-    Debug,
     Default,
     Copy,
     Clone,
@@ -116,6 +120,12 @@ impl PotKey {
     MaxEncodedLen,
 )]
 pub struct PotSeed([u8; Self::SIZE]);
+
+impl fmt::Debug for PotSeed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 #[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]
@@ -187,7 +197,6 @@ impl PotSeed {
 
 /// Proof of time output, can be intermediate checkpoint or final slot output
 #[derive(
-    Debug,
     Default,
     Copy,
     Clone,
@@ -205,6 +214,12 @@ impl PotSeed {
     MaxEncodedLen,
 )]
 pub struct PotOutput([u8; Self::SIZE]);
+
+impl fmt::Debug for PotOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 #[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]
