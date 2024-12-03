@@ -332,6 +332,20 @@ where
         Ok((bundle_header, extrinsics))
     }
 
+    fn is_bundle_empty(
+        &self,
+        consensus_chain_best_hash: BlockHashFor<CBlock>,
+        extrinsics: &[ExtrinsicFor<Block>],
+    ) -> sp_blockchain::Result<bool> {
+        let is_empty = extrinsics.is_empty()
+            && !self
+                .consensus_client
+                .runtime_api()
+                .non_empty_er_exists(consensus_chain_best_hash, self.domain_id)?;
+
+        Ok(is_empty)
+    }
+
     pub fn seal_bundle(
         &self,
         bundle_header: BundleHeaderFor<Block, CBlock>,
@@ -419,17 +433,13 @@ where
 
         // if there are no extrinsics and no receipts to confirm, skip the bundle
         // this is the default production behaviour
-        if extrinsics.is_empty()
-            && !self
-                .consensus_client
-                .runtime_api()
-                .non_empty_er_exists(consensus_chain_best_hash, self.domain_id)?
-        {
+        if self.is_bundle_empty(consensus_chain_best_hash, &extrinsics)? {
             tracing::warn!(
                 ?domain_best_number,
                 "Skipping empty bundle production on slot {}",
                 slot_info.slot,
             );
+
             return Ok(None);
         }
 
@@ -553,6 +563,7 @@ where
         let domain_best_number = self.inner.client.info().best_number;
         let consensus_chain_best_hash = self.inner.consensus_client.info().best_hash;
 
+        // Test-only behaviour: skip slot if configured to do so
         let skip_out_of_order_slot = self.skip_out_of_order_slot
             && self
                 .last_processed_slot
@@ -605,19 +616,18 @@ where
             .await?;
 
         // if there are no extrinsics and no receipts to confirm, skip the bundle
+        // Test-only behaviour: if configured, *don't* skip empty bundles
         if self.skip_empty_bundle_production
-            && extrinsics.is_empty()
-            && !self
+            && self
                 .inner
-                .consensus_client
-                .runtime_api()
-                .non_empty_er_exists(consensus_chain_best_hash, self.inner.domain_id)?
+                .is_bundle_empty(consensus_chain_best_hash, &extrinsics)?
         {
             tracing::warn!(
                 ?domain_best_number,
                 "Skipping empty bundle production on slot {}",
                 slot_info.slot,
             );
+
             return Ok(None);
         }
 
