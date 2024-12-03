@@ -15,7 +15,7 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 use crate::bundle_processor::BundleProcessor;
-use crate::domain_bundle_producer::{BundleProducer, DomainBundleProducer, DomainProposal};
+use crate::domain_bundle_producer::{BundleProducer, DomainProposal};
 use crate::utils::{BlockInfo, OperatorSlotInfo};
 use crate::{NewSlotNotification, OperatorStreams};
 use futures::channel::mpsc;
@@ -50,7 +50,6 @@ pub(super) async fn start_worker<
     CBlock,
     Client,
     CClient,
-    TransactionPool,
     Backend,
     IBNS,
     CIBNS,
@@ -62,7 +61,7 @@ pub(super) async fn start_worker<
     consensus_client: Arc<CClient>,
     consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     maybe_operator_id: Option<OperatorId>,
-    mut bundle_producer: DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>,
+    mut bundle_producer: Box<dyn BundleProducer<Block, CBlock> + Send>,
     bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
     operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
 ) where
@@ -95,8 +94,6 @@ pub(super) async fn start_worker<
         + BundleProducerElectionApi<CBlock, Balance>
         + FraudProofApi<CBlock, Block::Header>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>,
-    TransactionPool:
-        sc_transaction_pool_api::TransactionPool<Block = Block, Hash = Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,

@@ -141,7 +141,7 @@ where
             params.transaction_pool.clone(),
         );
 
-        let bundle_producer = DomainBundleProducer::new(
+        let bundle_producer = Box::new(DomainBundleProducer::new(
             params.domain_id,
             params.consensus_client.clone(),
             params.client.clone(),
@@ -150,7 +150,7 @@ where
             params.keystore.clone(),
             params.skip_empty_bundle_production,
             params.skip_out_of_order_slot,
-        );
+        ));
 
         let fraud_proof_generator = FraudProofGenerator::new(
             params.client.clone(),
