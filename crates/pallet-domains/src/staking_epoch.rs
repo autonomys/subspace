@@ -246,39 +246,34 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
         return Ok((operator.current_total_stake, false));
     }
 
-    let total_stake = operator.current_total_stake;
-    let total_shares = operator.current_total_shares;
+    let mut total_stake = operator.current_total_stake;
+    let mut total_shares = operator.current_total_shares;
     let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
     // calculate and subtract total withdrew shares from previous epoch
-    let (total_stake, total_shares) = if !operator.withdrawals_in_epoch.is_zero() {
+    if !operator.withdrawals_in_epoch.is_zero() {
         let withdraw_stake = share_price.shares_to_stake::<T>(operator.withdrawals_in_epoch);
-        let total_stake = total_stake
+        total_stake = total_stake
             .checked_sub(&withdraw_stake)
             .ok_or(TransitionError::BalanceUnderflow)?;
-        let total_shares = total_shares
+        total_shares = total_shares
             .checked_sub(&operator.withdrawals_in_epoch)
             .ok_or(TransitionError::ShareUnderflow)?;
 
         operator.withdrawals_in_epoch = Zero::zero();
-        (total_stake, total_shares)
-    } else {
-        (total_stake, total_shares)
     };
 
     // calculate and add total deposits from the previous epoch
-    let (total_stake, total_shares) = if !operator.deposits_in_epoch.is_zero() {
+    if !operator.deposits_in_epoch.is_zero() {
         let deposited_shares = share_price.stake_to_shares::<T>(operator.deposits_in_epoch);
-        let total_stake = total_stake
+        total_stake = total_stake
             .checked_add(&operator.deposits_in_epoch)
             .ok_or(TransitionError::BalanceOverflow)?;
-        let total_shares = total_shares
+        total_shares = total_shares
             .checked_add(&deposited_shares)
             .ok_or(TransitionError::ShareOverflow)?;
+
         operator.deposits_in_epoch = Zero::zero();
-        (total_stake, total_shares)
-    } else {
-        (total_stake, total_shares)
     };
 
     // update operator pool epoch share price
