@@ -222,6 +222,7 @@ sp_api::decl_runtime_apis! {
     }
 
     /// Api to provide XDM extraction from Runtime Calls.
+    #[api_version(2)]
     pub trait MessengerApi<CNumber, CHash>
     where
         CNumber: Encode + Decode,
