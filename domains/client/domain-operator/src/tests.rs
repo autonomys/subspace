@@ -1,5 +1,5 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
-use crate::domain_bundle_producer::DomainBundleProducer;
+use crate::domain_bundle_producer::{BundleProducer, DomainBundleProducer};
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
 use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;

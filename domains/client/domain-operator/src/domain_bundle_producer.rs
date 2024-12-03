@@ -2,6 +2,7 @@ use crate::bundle_producer_election_solver::BundleProducerElectionSolver;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::utils::OperatorSlotInfo;
 use crate::BundleSender;
+use async_trait::async_trait;
 use codec::Decode;
 use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::ProvideRuntimeApi;
@@ -62,6 +63,20 @@ impl<Block: BlockT, CBlock: BlockT> DomainProposal<Block, CBlock> {
             DomainProposal::Receipt(_) => None,
         }
     }
+}
+
+#[async_trait]
+pub trait BundleProducer<Block, CBlock>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+{
+    /// Produce a bundle for the given operator and slot.
+    async fn produce_bundle(
+        &mut self,
+        operator_id: OperatorId,
+        slot_info: OperatorSlotInfo,
+    ) -> sp_blockchain::Result<Option<DomainProposal<Block, CBlock>>>;
 }
 
 pub struct DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>
@@ -390,8 +405,26 @@ where
 
         Ok(DomainProposal::Bundle(bundle.into_opaque_bundle()))
     }
+}
 
-    pub async fn produce_bundle(
+#[async_trait]
+impl<Block, CBlock, Client, CClient, TransactionPool> BundleProducer<Block, CBlock>
+    for DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    NumberFor<Block>: Into<NumberFor<CBlock>>,
+    NumberFor<CBlock>: Into<NumberFor<Block>>,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
+    Client::Api: BlockBuilder<Block>
+        + DomainCoreApi<Block>
+        + TaggedTransactionQueue<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>,
+    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = Block::Hash>,
+{
+    async fn produce_bundle(
         &mut self,
         operator_id: OperatorId,
         slot_info: OperatorSlotInfo,

@@ -15,7 +15,7 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 use crate::bundle_processor::BundleProcessor;
-use crate::domain_bundle_producer::{DomainBundleProducer, DomainProposal};
+use crate::domain_bundle_producer::{BundleProducer, DomainBundleProducer, DomainProposal};
 use crate::utils::{BlockInfo, OperatorSlotInfo};
 use crate::{NewSlotNotification, OperatorStreams};
 use futures::channel::mpsc;

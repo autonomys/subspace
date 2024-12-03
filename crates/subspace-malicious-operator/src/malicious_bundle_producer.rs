@@ -1,5 +1,5 @@
 use crate::malicious_bundle_tamper::MaliciousBundleTamper;
-use domain_client_operator::domain_bundle_producer::DomainBundleProducer;
+use domain_client_operator::domain_bundle_producer::{BundleProducer, DomainBundleProducer};
 use domain_client_operator::domain_bundle_proposer::DomainBundleProposer;
 use domain_client_operator::{OpaqueBundleFor, OperatorSlotInfo};
 use domain_runtime_primitives::opaque::Block as DomainBlock;
