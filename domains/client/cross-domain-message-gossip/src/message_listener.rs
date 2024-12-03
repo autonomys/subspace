@@ -21,7 +21,7 @@ use sp_core::{Hasher, H256};
 use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
 use sp_domains::{DomainId, DomainsApi, RuntimeType};
 use sp_messenger::messages::{ChainId, Channel, ChannelId};
-use sp_messenger::{MessengerApi, RelayerApi};
+use sp_messenger::{ChannelNonce, MessengerApi, RelayerApi, XdmId};
 use sp_runtime::codec::Decode;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header, NumberFor};
 use sp_runtime::{SaturatedConversion, Saturating};
@@ -478,13 +478,43 @@ where
 
 fn can_allow_xdm_submission<Client, Block>(
     client: &Arc<Client>,
+    xdm_id: XdmId,
     submitted_block_id: BlockId<Block>,
     current_block_id: BlockId<Block>,
+    maybe_channel_nonce: Option<ChannelNonce>,
 ) -> bool
 where
     Client: HeaderBackend<Block>,
     Block: BlockT,
 {
+    if let Some(channel_nonce) = maybe_channel_nonce {
+        let maybe_nonces = match (
+            xdm_id,
+            channel_nonce.relay_msg_nonce,
+            channel_nonce.relay_response_msg_nonce,
+        ) {
+            (XdmId::RelayMessage((_, _, nonce)), Some(channel_nonce), _) => {
+                Some((nonce, channel_nonce))
+            }
+            (XdmId::RelayResponseMessage((_, _, nonce)), _, Some(channel_nonce)) => {
+                Some((nonce, channel_nonce))
+            }
+            _ => None,
+        };
+
+        if let Some((xdm_nonce, channel_nonce)) = maybe_nonces
+            && (xdm_nonce <= channel_nonce)
+        {
+            tracing::debug!(
+                target: LOG_TARGET,
+                "Stale XDM submitted: XDM Nonce: {:?}, Channel Nonce: {:?}",
+                xdm_nonce,
+                channel_nonce
+            );
+            return false;
+        }
+    }
+
     match client.hash(submitted_block_id.number).ok().flatten() {
         // there is no block at this number, allow xdm submission
         None => return true,
@@ -521,9 +551,18 @@ where
         Some(xdm_id) => xdm_id,
     };
 
+    let (src_chain_id, channel_id) = xdm_id.get_chain_id_and_channel_id();
+    let maybe_channel_nonce = runtime_api.channel_nonce(block_id.hash, src_chain_id, channel_id)?;
+
     if let Some(submitted_block_id) =
         get_xdm_processed_block_number::<_, BlockOf<TxPool>>(&**client, xdm_id)?
-        && !can_allow_xdm_submission(client, submitted_block_id.clone(), block_id.clone())
+        && !can_allow_xdm_submission(
+            client,
+            xdm_id,
+            submitted_block_id.clone(),
+            block_id.clone(),
+            maybe_channel_nonce,
+        )
     {
         tracing::debug!(
             target: LOG_TARGET,

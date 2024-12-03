@@ -167,6 +167,15 @@ pub enum XdmId {
     RelayResponseMessage(MessageKey),
 }
 
+impl XdmId {
+    pub fn get_chain_id_and_channel_id(&self) -> (ChainId, ChannelId) {
+        match self {
+            XdmId::RelayMessage(key) => (key.0, key.1),
+            XdmId::RelayResponseMessage(key) => (key.0, key.1),
+        }
+    }
+}
+
 #[derive(Debug, Encode, Decode, TypeInfo, Copy, Clone)]
 pub struct ChannelNonce {
     /// Last processed relay message nonce.
