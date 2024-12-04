@@ -179,10 +179,10 @@ impl XdmId {
 #[derive(Debug, Encode, Decode, TypeInfo, Copy, Clone)]
 pub struct ChannelNonce {
     /// Last processed relay message nonce.
-    /// Could be nne if there is not relay message yet.
+    /// Could be None if there is no relay message yet.
     pub relay_msg_nonce: Option<Nonce>,
     /// Last processed relay response message nonce.
-    /// Could be None since there is no first response yet
+    /// Could be None if there is no first response yet
     pub relay_response_msg_nonce: Option<Nonce>,
 }
 
