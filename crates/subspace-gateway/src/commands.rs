@@ -1,8 +1,10 @@
 //! Gateway subcommands.
 
+pub(crate) mod http;
 pub(crate) mod network;
 pub(crate) mod rpc;
 
+use crate::commands::http::HttpCommandOptions;
 use crate::commands::network::NetworkArgs;
 use crate::commands::rpc::RpcCommandOptions;
 use clap::Parser;
@@ -26,6 +28,8 @@ const PIECE_PROVIDER_MULTIPLIER: usize = 10;
 pub enum Command {
     /// Run data gateway with RPC server
     Rpc(RpcCommandOptions),
+    /// Run data gateway with HTTP server
+    Http(HttpCommandOptions),
     // TODO: subcommand to run various benchmarks
 }
 
