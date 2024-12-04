@@ -2,7 +2,9 @@ use crate::PieceGetter;
 use futures::StreamExt;
 use subspace_archiving::piece_reconstructor::{PiecesReconstructor, ReconstructorError};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
-use subspace_core_primitives::segments::{ArchivedHistorySegment, RecordedHistorySegment};
+use subspace_core_primitives::segments::{
+    ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex,
+};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::Kzg;
 use thiserror::Error;
@@ -28,25 +30,23 @@ pub(crate) enum SegmentReconstructionError {
     JoinError(#[from] JoinError),
 }
 
-pub(crate) async fn recover_missing_piece<PG>(
+/// Downloads pieces of the segment such that segment can be reconstructed afterward, prefers source
+/// pieces
+pub(super) async fn download_segment_pieces<PG>(
+    segment_index: SegmentIndex,
     piece_getter: &PG,
-    kzg: Kzg,
-    erasure_coding: ErasureCoding,
-    missing_piece_index: PieceIndex,
-) -> Result<Piece, SegmentReconstructionError>
+) -> Result<Vec<Option<Piece>>, SegmentReconstructionError>
 where
     PG: PieceGetter + Send + Sync,
 {
-    info!(%missing_piece_index, "Recovering missing piece...");
-    let segment_index = missing_piece_index.segment_index();
-    let position = missing_piece_index.position();
-
     let required_pieces_number = RecordedHistorySegment::NUM_RAW_RECORDS;
     let mut received_pieces = 0_usize;
 
     let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
 
-    let mut pieces_iter = segment_index.segment_piece_indexes().into_iter();
+    let mut pieces_iter = segment_index
+        .segment_piece_indexes_source_first()
+        .into_iter();
 
     // Download in batches until we get enough or exhaust available pieces
     while !pieces_iter.is_empty() && received_pieces != required_pieces_number {
@@ -77,14 +77,32 @@ where
 
     if received_pieces < required_pieces_number {
         error!(
-            %missing_piece_index,
+            %segment_index,
             %received_pieces,
             %required_pieces_number,
-            "Recovering missing piece failed."
+            "Failed to retrieve pieces for segment"
         );
 
         return Err(SegmentReconstructionError::NotEnoughPiecesAcquired);
     }
+
+    Ok(segment_pieces)
+}
+
+pub(crate) async fn recover_missing_piece<PG>(
+    piece_getter: &PG,
+    kzg: Kzg,
+    erasure_coding: ErasureCoding,
+    missing_piece_index: PieceIndex,
+) -> Result<Piece, SegmentReconstructionError>
+where
+    PG: PieceGetter + Send + Sync,
+{
+    info!(%missing_piece_index, "Recovering missing piece...");
+    let segment_index = missing_piece_index.segment_index();
+    let position = missing_piece_index.position();
+
+    let segment_pieces = download_segment_pieces(segment_index, piece_getter).await?;
 
     let result = tokio::task::spawn_blocking(move || {
         let reconstructor = PiecesReconstructor::new(kzg, erasure_coding);
