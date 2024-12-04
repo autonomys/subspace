@@ -618,7 +618,7 @@ where
     if let Some(block_number) = create_object_mappings.block() {
         // There aren't any mappings in the genesis block, so starting there is pointless.
         // (And causes errors on restart, because genesis block data is never stored during snap sync.)
-        best_block_to_archive = best_block_to_archive.min(block_number.max(1));
+        best_block_to_archive = best_block_to_archive.min(block_number);
     }
 
     if (best_block_to_archive..best_block_number)
