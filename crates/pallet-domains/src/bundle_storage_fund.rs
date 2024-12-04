@@ -131,9 +131,7 @@ pub fn refund_storage_fee<T: Config>(
     }
 
     // Drop any dust and deregistered/slashed operator's bundle storage fee to the treasury
-    if !remaining_fee.is_zero() {
-        mint_into_treasury::<T>(remaining_fee).ok_or(Error::MintBalance)?;
-    }
+    mint_into_treasury::<T>(remaining_fee).map_err(|_| Error::MintBalance)?;
 
     Ok(())
 }
