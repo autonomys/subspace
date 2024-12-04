@@ -151,9 +151,7 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
             })?;
         }
 
-        if !to_treasury.is_zero() {
-            mint_into_treasury::<T>(to_treasury).ok_or(TransitionError::MintBalance)?;
-        }
+        mint_into_treasury::<T>(to_treasury)?;
 
         Ok(())
     })
@@ -306,23 +304,26 @@ pub(crate) fn mint_funds<T: Config>(
     Ok(())
 }
 
-pub(crate) fn mint_into_treasury<T: Config>(amount: BalanceOf<T>) -> Option<()> {
-    let existing_funds = AccumulatedTreasuryFunds::<T>::get();
-    let total_funds = existing_funds.checked_add(&amount)?;
-    if total_funds.is_zero() {
-        return Some(());
+pub(crate) fn mint_into_treasury<T: Config>(amount: BalanceOf<T>) -> Result<(), TransitionError> {
+    if amount.is_zero() {
+        return Ok(());
     }
+
+    let total_funds = AccumulatedTreasuryFunds::<T>::get()
+        .checked_add(&amount)
+        .ok_or(TransitionError::BalanceOverflow)?;
 
     match T::Currency::can_deposit(&T::TreasuryAccount::get(), total_funds, Provenance::Minted) {
         // Deposit is possible, so we mint the funds into treasury.
         DepositConsequence::Success => {
-            T::Currency::mint_into(&T::TreasuryAccount::get(), total_funds).ok()?;
+            T::Currency::mint_into(&T::TreasuryAccount::get(), total_funds)
+                .map_err(|_| TransitionError::MintBalance)?;
             AccumulatedTreasuryFunds::<T>::kill();
         }
         // Deposit cannot be done to treasury, so hold the funds until we can.
         _ => AccumulatedTreasuryFunds::<T>::set(total_funds),
     }
-    Some(())
+    Ok(())
 }
 
 /// Slashes any pending slashed operators.
@@ -436,7 +437,7 @@ pub(crate) fn do_slash_operator<T: Config>(
                 .checked_sub(&amount_to_slash_in_holding)
                 .ok_or(TransitionError::BalanceUnderflow)?;
 
-            mint_into_treasury::<T>(nominator_reward).ok_or(TransitionError::MintBalance)?;
+            mint_into_treasury::<T>(nominator_reward)?;
 
             total_stake = total_stake.saturating_sub(nominator_staked_amount);
             total_shares = total_shares.saturating_sub(nominator_shares);

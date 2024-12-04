@@ -1264,7 +1264,7 @@ pub(crate) fn do_cleanup_operator<T: Config>(
         .map_err(Error::BundleStorageFund)?;
 
     // transfer any remaining amount to treasury
-    mint_into_treasury::<T>(total_stake).ok_or(Error::MintBalance)?;
+    mint_into_treasury::<T>(total_stake)?;
 
     // remove OperatorOwner Details
     OperatorIdOwner::<T>::remove(operator_id);
@@ -1335,7 +1335,6 @@ pub(crate) fn do_reward_operators<T: Config>(
                 .checked_sub(&allocated_rewards)
                 .ok_or(Error::BalanceUnderflow)?,
         )
-        .ok_or(Error::MintBalance)
     })
 }
 
