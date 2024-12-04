@@ -181,8 +181,6 @@ pub struct Operator<Balance, Share, DomainBlockNumber> {
     pub nomination_tax: Percent,
     /// Total active stake of combined nominators under this operator.
     pub current_total_stake: Balance,
-    /// Total rewards this operator received this current epoch.
-    pub current_epoch_rewards: Balance,
     /// Total shares of all the nominators under this operator.
     pub current_total_shares: Share,
     /// The status of the operator, it may be stale due to the `OperatorStatus::PendingSlash` is
@@ -227,7 +225,6 @@ impl<Balance: Zero, Share: Zero, DomainBlockNumber> Operator<Balance, Share, Dom
             minimum_nominator_stake,
             nomination_tax: Default::default(),
             current_total_stake: Zero::zero(),
-            current_epoch_rewards: Zero::zero(),
             current_total_shares: Zero::zero(),
             partial_status: OperatorStatus::Registered,
             deposits_in_epoch: Zero::zero(),
@@ -373,7 +370,6 @@ pub fn do_register_operator<T: Config>(
             minimum_nominator_stake,
             nomination_tax,
             current_total_stake: Zero::zero(),
-            current_epoch_rewards: Zero::zero(),
             current_total_shares: Zero::zero(),
             partial_status: OperatorStatus::Registered,
             // sum total deposits added during this epoch.
@@ -1106,16 +1102,7 @@ pub(crate) fn do_unlock_nominator<T: Config>(
         );
 
         let mut total_shares = operator.current_total_shares;
-        // take any operator current epoch rewards to include in total stake and set to zero.
-        let operator_current_epoch_rewards = operator.current_epoch_rewards;
-        operator.current_epoch_rewards = Zero::zero();
-
-        // calculate total stake of operator.
-        let mut total_stake = operator
-            .current_total_stake
-            .checked_add(&operator_current_epoch_rewards)
-            .ok_or(Error::BalanceOverflow)?;
-
+        let mut total_stake = operator.current_total_stake;
         let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
         let mut total_storage_fee_deposit = operator.total_storage_fee_deposit;
@@ -1298,6 +1285,9 @@ pub(crate) fn do_reward_operators<T: Config>(
     operators: IntoIter<OperatorId>,
     rewards: BalanceOf<T>,
 ) -> Result<(), Error> {
+    if rewards.is_zero() {
+        return Ok(());
+    }
     DomainStakingSummary::<T>::mutate(domain_id, |maybe_stake_summary| {
         let stake_summary = maybe_stake_summary
             .as_mut()
@@ -1308,38 +1298,25 @@ pub(crate) fn do_reward_operators<T: Config>(
         let operator_weights = operators.into_iter().fold(
             BTreeMap::<OperatorId, u64>::new(),
             |mut acc, operator_id| {
-                let total_weight = match acc.get(&operator_id) {
-                    None => 1,
-                    Some(weight) => weight + 1,
-                };
-                acc.insert(operator_id, total_weight);
+                acc.entry(operator_id)
+                    .and_modify(|weight| *weight += 1)
+                    .or_insert(1);
                 acc
             },
         );
 
         let mut allocated_rewards = BalanceOf::<T>::zero();
-        let mut weight_balance_cache = BTreeMap::<u64, BalanceOf<T>>::new();
         for (operator_id, weight) in operator_weights {
-            let operator_reward = match weight_balance_cache.get(&weight) {
-                None => {
-                    let distribution = Perquintill::from_rational(weight, total_count);
-                    let operator_reward = distribution.mul_floor(rewards);
-                    weight_balance_cache.insert(weight, operator_reward);
-                    operator_reward
-                }
-                Some(operator_reward) => *operator_reward,
-            };
-
-            let total_reward = match stake_summary.current_epoch_rewards.get(&operator_id) {
-                None => operator_reward,
-                Some(rewards) => rewards
-                    .checked_add(&operator_reward)
-                    .ok_or(Error::BalanceOverflow)?,
+            let operator_reward = {
+                let distribution = Perquintill::from_rational(weight, total_count);
+                distribution.mul_floor(rewards)
             };
 
             stake_summary
                 .current_epoch_rewards
-                .insert(operator_id, total_reward);
+                .entry(operator_id)
+                .and_modify(|rewards| *rewards = rewards.saturating_add(operator_reward))
+                .or_insert(operator_reward);
 
             Pallet::<T>::deposit_event(Event::OperatorRewarded {
                 source: source.clone(),
@@ -1626,7 +1603,6 @@ pub(crate) mod tests {
                     minimum_nominator_stake: SSC,
                     nomination_tax: Default::default(),
                     current_total_stake: operator_stake,
-                    current_epoch_rewards: 0,
                     current_total_shares: operator_stake,
                     partial_status: OperatorStatus::Registered,
                     deposits_in_epoch: 0,
