@@ -631,8 +631,9 @@ where
     }
 
     // If the user chooses an object mapping start block we don't have data or state for, we can't
-    // create mappings for it, so the node must exit with an error
-    if create_object_mappings.is_enabled() {
+    // create mappings for it, so the node must exit with an error. We ignore genesis here, because
+    // it doesn't have mappings.
+    if create_object_mappings.is_enabled() && best_block_to_archive >= 1 {
         let Some(best_block_to_archive_hash) = client.hash(best_block_to_archive.into())? else {
             let error = format!(
                 "Missing hash for mapping block {best_block_to_archive}, \
