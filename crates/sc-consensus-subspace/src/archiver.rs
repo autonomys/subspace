@@ -618,7 +618,7 @@ where
     if let Some(block_number) = create_object_mappings.block() {
         // There aren't any mappings in the genesis block, so starting there is pointless.
         // (And causes errors on restart, because genesis block data is never stored during snap sync.)
-        best_block_to_archive = best_block_to_archive.min(block_number).max(1);
+        best_block_to_archive = best_block_to_archive.min(block_number.max(1));
     }
 
     if (best_block_to_archive..best_block_number)
@@ -633,14 +633,19 @@ where
     // If the user chooses an object mapping start block we don't have data or state for, we can't
     // create mappings for it, so the node must exit with an error
     if create_object_mappings.is_enabled() {
-        let best_block_to_archive_hash = client
-            .hash(best_block_to_archive.into())?
-            .expect("just checked above; qed");
+        let Some(best_block_to_archive_hash) = client.hash(best_block_to_archive.into())? else {
+            let error = format!(
+                "Missing hash for mapping block {best_block_to_archive}, \
+                try a higher block number, or wipe your node and restart with `--sync full`"
+            );
+            return Err(sp_blockchain::Error::Application(error.into()));
+        };
+
         let Some(best_block_data) = client.block(best_block_to_archive_hash)? else {
             let error = format!(
-                "Missing data for mapping block {best_block_to_archive} hash \
-                {best_block_to_archive_hash}, try a higher block number, or wipe your node and \
-                restart with `--sync full`"
+                "Missing data for mapping block {best_block_to_archive} \
+                hash {best_block_to_archive_hash}, \
+                try a higher block number, or wipe your node and restart with `--sync full`"
             );
             return Err(sp_blockchain::Error::Application(error.into()));
         };
@@ -655,9 +660,9 @@ where
             .map_err(|error| {
                 sp_blockchain::Error::Application(
                     format!(
-                        "Missing state for mapping block {best_block_to_archive} hash \
-                        {best_block_to_archive_hash}: {error}, try a higher block number, or wipe \
-                        your node and restart with `--sync full`"
+                        "Missing state for mapping block {best_block_to_archive} \
+                        hash {best_block_to_archive_hash}: {error}, \
+                        try a higher block number, or wipe your node and restart with `--sync full`"
                     )
                     .into(),
                 )
