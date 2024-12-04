@@ -1,7 +1,7 @@
 //! Farmer-specific piece getter
 
 use crate::farm::plotted_pieces::PlottedPieces;
-use crate::farmer_cache::FarmerCache;
+use crate::farmer_cache::FarmerCaches;
 use crate::node_client::NodeClient;
 use async_lock::RwLock as AsyncRwLock;
 use async_trait::async_trait;
@@ -39,7 +39,7 @@ pub struct DsnCacheRetryPolicy {
 
 struct Inner<FarmIndex, PV, NC> {
     piece_provider: PieceProvider<PV>,
-    farmer_cache: FarmerCache,
+    farmer_caches: FarmerCaches,
     node_client: NC,
     plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
     dsn_cache_retry_policy: DsnCacheRetryPolicy,
@@ -78,7 +78,7 @@ where
     /// Create new instance
     pub fn new(
         piece_provider: PieceProvider<PV>,
-        farmer_cache: FarmerCache,
+        farmer_caches: FarmerCaches,
         node_client: NC,
         plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
         dsn_cache_retry_policy: DsnCacheRetryPolicy,
@@ -86,7 +86,7 @@ where
         Self {
             inner: Arc::new(Inner {
                 piece_provider,
-                farmer_cache,
+                farmer_caches,
                 node_client,
                 plotted_pieces,
                 dsn_cache_retry_policy,
@@ -104,7 +104,7 @@ where
 
         trace!(%piece_index, "Getting piece from farmer cache");
         if let Some(piece) = inner
-            .farmer_cache
+            .farmer_caches
             .get_piece(piece_index.to_multihash())
             .await
         {
@@ -117,7 +117,7 @@ where
         if let Some(piece) = inner.piece_provider.get_piece_from_cache(piece_index).await {
             trace!(%piece_index, "Got piece from DSN L2 cache");
             inner
-                .farmer_cache
+                .farmer_caches
                 .maybe_store_additional_piece(piece_index, &piece)
                 .await;
             return Some(piece);
@@ -129,7 +129,7 @@ where
             Ok(Some(piece)) => {
                 trace!(%piece_index, "Got piece from node successfully");
                 inner
-                    .farmer_cache
+                    .farmer_caches
                     .maybe_store_additional_piece(piece_index, &piece)
                     .await;
                 return Some(piece);
@@ -168,7 +168,7 @@ where
             if let Some(piece) = read_piece_fut.await {
                 trace!(%piece_index, "Got piece from local plot successfully");
                 inner
-                    .farmer_cache
+                    .farmer_caches
                     .maybe_store_additional_piece(piece_index, &piece)
                     .await;
                 return Some(piece);
@@ -186,7 +186,7 @@ where
         if let Some(piece) = archival_storage_search_result {
             trace!(%piece_index, "DSN L1 lookup succeeded");
             inner
-                .farmer_cache
+                .farmer_caches
                 .maybe_store_additional_piece(piece_index, &piece)
                 .await;
             return Some(piece);
@@ -277,7 +277,7 @@ where
             debug!("Getting pieces from farmer cache");
             let mut pieces_not_found_in_farmer_cache = Vec::new();
             let mut pieces_in_farmer_cache =
-                self.inner.farmer_cache.get_pieces(piece_indices).await;
+                self.inner.farmer_caches.get_pieces(piece_indices).await;
 
             while let Some((piece_index, maybe_piece)) = pieces_in_farmer_cache.next().await {
                 let Some(piece) = maybe_piece else {
@@ -310,7 +310,7 @@ where
                 };
                 // TODO: Would be nice to have concurrency here
                 self.inner
-                    .farmer_cache
+                    .farmer_caches
                     .maybe_store_additional_piece(piece_index, &piece)
                     .await;
                 tx.unbounded_send((piece_index, Ok(Some(piece))))
@@ -332,7 +332,7 @@ where
                         Ok(Some(piece)) => {
                             trace!(%piece_index, "Got piece from node successfully");
                             self.inner
-                                .farmer_cache
+                                .farmer_caches
                                 .maybe_store_additional_piece(piece_index, &piece)
                                 .await;
 

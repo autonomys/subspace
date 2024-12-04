@@ -133,6 +133,9 @@ pub(super) struct PlotterArgs {
     #[cfg(feature = "rocm")]
     #[clap(flatten)]
     rocm_plotting_options: RocmPlottingOptions,
+    /// Cache group to use if specified, otherwise all caches are usable by this plotter
+    #[arg(long)]
+    cache_group: Option<String>,
     /// Additional cluster components
     #[clap(raw = true)]
     pub(super) additional_components: Vec<String>,
@@ -152,6 +155,7 @@ where
         cuda_plotting_options,
         #[cfg(feature = "rocm")]
         rocm_plotting_options,
+        cache_group,
         additional_components: _,
     } = plotter_args;
 
@@ -161,7 +165,7 @@ where
             .expect("Not zero; qed"),
     )
     .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
-    let piece_getter = ClusterPieceGetter::new(nats_client.clone());
+    let piece_getter = ClusterPieceGetter::new(nats_client.clone(), cache_group);
 
     let global_mutex = Arc::default();
 

@@ -25,6 +25,7 @@ use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
+use rand::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -36,6 +37,10 @@ use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use tracing::{debug, error, trace, warn};
+
+/// Special "cache group" that all controllers subscribe to and that can be used to query any cache
+/// group. The cache group for each query is chosen at random.
+const GLOBAL_CACHE_GROUP: &str = "_";
 
 /// Broadcast sent by controllers requesting farmers to identify themselves
 #[derive(Debug, Copy, Clone, Encode, Decode)]
@@ -152,7 +157,7 @@ struct ClusterControllerFindPieceInCacheRequest {
 }
 
 impl GenericRequest for ClusterControllerFindPieceInCacheRequest {
-    const SUBJECT: &'static str = "subspace.controller.find-piece-in-cache";
+    const SUBJECT: &'static str = "subspace.controller.*.find-piece-in-cache";
     type Response = Option<(PieceCacheId, PieceCacheOffset)>;
 }
 
@@ -163,7 +168,7 @@ struct ClusterControllerFindPiecesInCacheRequest {
 }
 
 impl GenericStreamRequest for ClusterControllerFindPiecesInCacheRequest {
-    const SUBJECT: &'static str = "subspace.controller.find-pieces-in-cache";
+    const SUBJECT: &'static str = "subspace.controller.*.find-pieces-in-cache";
     /// Only pieces that were found are returned
     type Response = (PieceIndex, PieceCacheId, PieceCacheOffset);
 }
@@ -195,6 +200,7 @@ impl GenericStreamRequest for ClusterControllerPiecesRequest {
 #[derive(Debug, Clone)]
 pub struct ClusterPieceGetter {
     nats_client: NatsClient,
+    cache_group: String,
 }
 
 #[async_trait]
@@ -204,7 +210,7 @@ impl PieceGetter for ClusterPieceGetter {
             .nats_client
             .request(
                 &ClusterControllerFindPieceInCacheRequest { piece_index },
-                None,
+                Some(&self.cache_group),
             )
             .await?
         {
@@ -296,7 +302,7 @@ impl PieceGetter for ClusterPieceGetter {
                 .nats_client
                 .stream_request(
                     &ClusterControllerFindPiecesInCacheRequest { piece_indices },
-                    None,
+                    Some(&self.cache_group),
                 )
                 .await?;
 
@@ -432,8 +438,11 @@ impl PieceGetter for ClusterPieceGetter {
 impl ClusterPieceGetter {
     /// Create new instance
     #[inline]
-    pub fn new(nats_client: NatsClient) -> Self {
-        Self { nats_client }
+    pub fn new(nats_client: NatsClient, cache_group: Option<String>) -> Self {
+        Self {
+            nats_client,
+            cache_group: cache_group.unwrap_or_else(|| GLOBAL_CACHE_GROUP.to_string()),
+        }
     }
 }
 
@@ -609,7 +618,7 @@ pub async fn controller_service<NC, PG>(
     nats_client: &NatsClient,
     node_client: &NC,
     piece_getter: &PG,
-    farmer_cache: &FarmerCache,
+    farmer_caches: &[(&str, &FarmerCache)],
     instance: &str,
     primary_instance: bool,
 ) -> anyhow::Result<()>
@@ -640,10 +649,10 @@ where
             result = segment_headers_responder(nats_client, node_client).fuse() => {
                 result
             },
-            result = find_piece_responder(nats_client, farmer_cache).fuse() => {
+            result = find_piece_responder(nats_client, farmer_caches).fuse() => {
                 result
             },
-            result = find_pieces_responder(nats_client, farmer_cache).fuse() => {
+            result = find_pieces_responder(nats_client, farmer_caches).fuse() => {
                 result
             },
             result = piece_responder(nats_client, piece_getter).fuse() => {
@@ -661,10 +670,10 @@ where
             result = segment_headers_responder(nats_client, node_client).fuse() => {
                 result
             },
-            result = find_piece_responder(nats_client, farmer_cache).fuse() => {
+            result = find_piece_responder(nats_client, farmer_caches).fuse() => {
                 result
             },
-            result = find_pieces_responder(nats_client, farmer_cache).fuse() => {
+            result = find_pieces_responder(nats_client, farmer_caches).fuse() => {
                 result
             },
             result = piece_responder(nats_client, piece_getter).fuse() => {
@@ -907,32 +916,66 @@ where
 
 async fn find_piece_responder(
     nats_client: &NatsClient,
-    farmer_cache: &FarmerCache,
+    farmer_caches: &[(&str, &FarmerCache)],
 ) -> anyhow::Result<()> {
-    nats_client
-        .request_responder(
-            None,
+    futures::future::try_join(
+        farmer_caches
+            .iter()
+            .map(|(cache_group, farmer_cache)| {
+                nats_client.request_responder(
+                    Some(cache_group),
+                    Some("subspace.controller".to_string()),
+                    move |ClusterControllerFindPieceInCacheRequest { piece_index }| async move {
+                        Some(farmer_cache.find_piece(piece_index).await)
+                    },
+                )
+            })
+            .collect::<FuturesUnordered<_>>()
+            .next()
+            .map(|result| result.unwrap_or(Ok(()))),
+        nats_client.request_responder(
+            Some(GLOBAL_CACHE_GROUP),
             Some("subspace.controller".to_string()),
             |ClusterControllerFindPieceInCacheRequest { piece_index }| async move {
+                let (_cache_group, farmer_cache) = farmer_caches.iter().choose(&mut thread_rng())?;
                 Some(farmer_cache.find_piece(piece_index).await)
             },
-        )
-        .await
+        ),
+    )
+    .await
+    .map(|((), ())| ())
 }
 
 async fn find_pieces_responder(
     nats_client: &NatsClient,
-    farmer_cache: &FarmerCache,
+    farmer_caches: &[(&str, &FarmerCache)],
 ) -> anyhow::Result<()> {
-    nats_client
-        .stream_request_responder(
-            None,
+    futures::future::try_join(
+        farmer_caches
+            .iter()
+            .map(|(cache_group, farmer_cache)| {
+                nats_client.stream_request_responder(
+                    Some(cache_group),
+                    Some("subspace.controller".to_string()),
+                    move |ClusterControllerFindPiecesInCacheRequest { piece_indices }| async move {
+                        Some(stream::iter(farmer_cache.find_pieces(piece_indices).await))
+                    },
+                )
+            })
+            .collect::<FuturesUnordered<_>>()
+            .next()
+            .map(|result| result.unwrap_or(Ok(()))),
+        nats_client.stream_request_responder(
+            Some(GLOBAL_CACHE_GROUP),
             Some("subspace.controller".to_string()),
             |ClusterControllerFindPiecesInCacheRequest { piece_indices }| async move {
+                let (_cache_group, farmer_cache) = farmer_caches.iter().choose(&mut thread_rng())?;
                 Some(stream::iter(farmer_cache.find_pieces(piece_indices).await))
             },
-        )
-        .await
+        ),
+    )
+    .await
+    .map(|((), ())| ())
 }
 
 async fn piece_responder<PG>(nats_client: &NatsClient, piece_getter: &PG) -> anyhow::Result<()>

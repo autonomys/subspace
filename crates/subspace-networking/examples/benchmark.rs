@@ -214,7 +214,7 @@ async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize, retr
         return;
     }
 
-    let piece_provider = PieceProvider::new(node, NoPieceValidator, Semaphore::new(100));
+    let piece_provider = PieceProvider::new(node, NoPieceValidator, Arc::new(Semaphore::new(100)));
     let mut total_duration = Duration::default();
     for i in start_with..(start_with + max_pieces) {
         let piece_index = PieceIndex::from(i as u64);
@@ -269,7 +269,7 @@ async fn parallel_benchmark(
     let piece_provider = &PieceProvider::new(
         node,
         NoPieceValidator,
-        Semaphore::new(parallelism_level.into()),
+        Arc::new(Semaphore::new(parallelism_level.into())),
     );
     let mut total_duration = Duration::default();
     let mut pure_total_duration = Duration::default();

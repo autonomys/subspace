@@ -834,7 +834,9 @@ where
                     subspace_link.kzg().clone(),
                     segment_headers_store.clone(),
                 ),
-                Semaphore::new(out_connections as usize * PIECE_PROVIDER_MULTIPLIER),
+                Arc::new(Semaphore::new(
+                    out_connections as usize * PIECE_PROVIDER_MULTIPLIER,
+                )),
             ));
 
             (node, dsn_config.bootstrap_nodes, piece_getter as _)
