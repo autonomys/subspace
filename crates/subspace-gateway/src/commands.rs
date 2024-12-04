@@ -1,8 +1,10 @@
 //! Gateway subcommands.
 
-pub(crate) mod run;
+pub(crate) mod network;
+pub(crate) mod rpc;
 
-use crate::commands::run::RunOptions;
+use crate::commands::network::NetworkArgs;
+use crate::commands::rpc::RpcCommandOptions;
 use clap::Parser;
 use std::panic;
 use std::process::exit;
@@ -13,13 +15,37 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter, Layer};
 
+/// The default size limit, based on the maximum block size in some domains.
+pub const DEFAULT_MAX_SIZE: usize = 5 * 1024 * 1024;
+/// Multiplier on top of outgoing connections number for piece downloading purposes
+const PIECE_PROVIDER_MULTIPLIER: usize = 10;
+
 /// Commands for working with a gateway.
 #[derive(Debug, Parser)]
 #[clap(about, version)]
 pub enum Command {
-    /// Run data gateway
-    Run(RunOptions),
+    /// Run data gateway with RPC server
+    Rpc(RpcCommandOptions),
     // TODO: subcommand to run various benchmarks
+}
+
+/// Options for running a gateway
+#[derive(Debug, Parser)]
+pub(crate) struct GatewayOptions {
+    /// Enable development mode.
+    ///
+    /// Implies following flags (unless customized):
+    /// * `--allow-private-ips`
+    #[arg(long, verbatim_doc_comment)]
+    dev: bool,
+
+    /// The maximum object size to fetch.
+    /// Larger objects will return an error.
+    #[arg(long, default_value_t = DEFAULT_MAX_SIZE)]
+    max_size: usize,
+
+    #[clap(flatten)]
+    dsn_options: NetworkArgs,
 }
 
 /// Install a panic handler which exits on panics, rather than unwinding. Unwinding can hang the

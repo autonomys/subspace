@@ -1,19 +1,17 @@
 //! Gateway run command.
 //! This is the primary command for the gateway.
 
-mod network;
-mod rpc;
+pub(crate) mod server;
 
-use crate::commands::run::network::{configure_network, NetworkArgs};
-use crate::commands::run::rpc::{launch_rpc_server, RpcOptions, RPC_DEFAULT_PORT};
-use crate::commands::shutdown_signal;
+use crate::commands::network::configure_network;
+use crate::commands::rpc::server::{launch_rpc_server, RpcOptions, RPC_DEFAULT_PORT};
+use crate::commands::{shutdown_signal, GatewayOptions, PIECE_PROVIDER_MULTIPLIER};
 use crate::piece_getter::DsnPieceGetter;
 use crate::piece_validator::SegmentCommitmentPieceValidator;
 use anyhow::anyhow;
 use async_lock::Semaphore;
 use clap::Parser;
 use futures::{select, FutureExt};
-use std::env;
 use std::num::NonZeroUsize;
 use std::pin::pin;
 use std::sync::Arc;
@@ -25,35 +23,11 @@ use subspace_kzg::Kzg;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use tracing::info;
 
-/// The default size limit, based on the maximum block size in some domains.
-pub const DEFAULT_MAX_SIZE: usize = 5 * 1024 * 1024;
-/// Multiplier on top of outgoing connections number for piece downloading purposes
-const PIECE_PROVIDER_MULTIPLIER: usize = 10;
-
 /// Options for running a node
 #[derive(Debug, Parser)]
-pub(crate) struct RunOptions {
+pub(crate) struct RpcCommandOptions {
     #[clap(flatten)]
     gateway: GatewayOptions,
-}
-
-/// Options for running a gateway
-#[derive(Debug, Parser)]
-pub(crate) struct GatewayOptions {
-    /// Enable development mode.
-    ///
-    /// Implies following flags (unless customized):
-    /// * `--allow-private-ips`
-    #[arg(long, verbatim_doc_comment)]
-    dev: bool,
-
-    /// The maximum object size to fetch.
-    /// Larger objects will return an error.
-    #[arg(long, default_value_t = DEFAULT_MAX_SIZE)]
-    max_size: usize,
-
-    #[clap(flatten)]
-    dsn_options: NetworkArgs,
 
     /// Options for RPC
     #[clap(flatten)]
@@ -61,17 +35,17 @@ pub(crate) struct GatewayOptions {
 }
 
 /// Default run command for gateway
-pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
+pub async fn run(run_options: RpcCommandOptions) -> anyhow::Result<()> {
     let signal = shutdown_signal();
 
-    let RunOptions {
+    let RpcCommandOptions {
         gateway:
             GatewayOptions {
                 dev,
                 max_size,
                 mut dsn_options,
-                rpc_options,
             },
+        rpc_options,
     } = run_options;
 
     // Development mode handling is limited to this section
@@ -80,10 +54,6 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
             dsn_options.allow_private_ips = true;
         }
     }
-
-    info!("Subspace Gateway");
-    info!("✌️  version {}", env!("CARGO_PKG_VERSION"));
-    info!("❤️  by {}", env!("CARGO_PKG_AUTHORS"));
 
     let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
