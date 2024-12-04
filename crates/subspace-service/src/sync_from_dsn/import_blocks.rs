@@ -39,7 +39,7 @@ use subspace_core_primitives::BlockNumber;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::utils::multihash::ToMultihash;
 use tokio::sync::Semaphore;
-use tokio::task::spawn_blocking;
+use tokio::task;
 use tracing::warn;
 
 /// How many blocks to queue before pausing and waiting for blocks to be imported, this is
@@ -141,8 +141,24 @@ where
             continue;
         }
 
-        let blocks =
-            download_and_reconstruct_blocks(segment_index, piece_getter, &reconstructor).await?;
+        let segment_pieces = download_segment_pieces(segment_index, piece_getter).await?;
+        // CPU-intensive piece and segment reconstruction code can block the async executor.
+        let segment_contents_fut = task::spawn_blocking({
+            let reconstructor = reconstructor.clone();
+
+            move || {
+                reconstructor
+                    .lock()
+                    .expect("Panic if previous thread panicked when holding the mutex")
+                    .add_segment(segment_pieces.as_ref())
+            }
+        });
+        let blocks = segment_contents_fut
+            .await
+            .expect("Panic if blocking task panicked")
+            .map_err(|error| error.to_string())?
+            .blocks;
+        trace!(%segment_index, "Segment reconstructed successfully");
 
         let mut blocks_to_import = Vec::with_capacity(QUEUED_BLOCKS_LIMIT as usize);
 
@@ -236,12 +252,12 @@ where
     Ok(imported_blocks)
 }
 
-/// Downloads and reconstructs blocks from a DSN segment, by concurrently downloading its pieces.
-pub(super) async fn download_and_reconstruct_blocks<PG>(
+/// Downloads pieces of the segment such that segment can be reconstructed afterward, prefers source
+/// pieces
+pub(super) async fn download_segment_pieces<PG>(
     segment_index: SegmentIndex,
     piece_getter: &PG,
-    reconstructor: &Arc<Mutex<Reconstructor>>,
-) -> Result<Vec<(BlockNumber, Vec<u8>)>, Error>
+) -> Result<Vec<Option<Piece>>, Error>
 where
     PG: DsnSyncPieceGetter,
 {
@@ -320,24 +336,10 @@ where
         pieces_received += 1;
 
         if pieces_received >= RecordedHistorySegment::NUM_RAW_RECORDS {
-            trace!(%segment_index, "Received half of the segment.");
+            trace!(%segment_index, "Received half of the segment");
             break;
         }
     }
 
-    // CPU-intensive piece and segment reconstruction code can block the async executor.
-    let reconstructor = reconstructor.clone();
-    let reconstructed_contents = spawn_blocking(move || {
-        reconstructor
-            .lock()
-            .expect("Panic if previous thread panicked when holding the mutex")
-            .add_segment(segment_pieces.as_ref())
-    })
-    .await
-    .expect("Panic if blocking task panicked")
-    .map_err(|error| error.to_string())?;
-
-    trace!(%segment_index, "Segment reconstructed successfully");
-
-    Ok(reconstructed_contents.blocks)
+    Ok(segment_pieces)
 }

@@ -1,5 +1,5 @@
 use crate::mmr::sync::mmr_sync;
-use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
+use crate::sync_from_dsn::import_blocks::download_segment_pieces;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
 use crate::utils::wait_for_block_import;
@@ -34,8 +34,9 @@ use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
 use tokio::sync::broadcast::Receiver;
+use tokio::task;
 use tokio::time::sleep;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 /// Error type for snap sync.
 #[derive(thiserror::Error, Debug)]
@@ -290,10 +291,28 @@ where
         let reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
 
         for segment_index in segments_to_reconstruct {
-            let blocks_fut =
-                download_and_reconstruct_blocks(segment_index, piece_getter, &reconstructor);
+            let segment_pieces = download_segment_pieces(segment_index, piece_getter).await?;
+            // CPU-intensive piece and segment reconstruction code can block the async executor.
+            let segment_contents_fut = task::spawn_blocking({
+                let reconstructor = reconstructor.clone();
 
-            blocks = VecDeque::from(blocks_fut.await?);
+                move || {
+                    reconstructor
+                        .lock()
+                        .expect("Panic if previous thread panicked when holding the mutex")
+                        .add_segment(segment_pieces.as_ref())
+                }
+            });
+
+            blocks = VecDeque::from(
+                segment_contents_fut
+                    .await
+                    .expect("Panic if blocking task panicked")
+                    .map_err(|error| error.to_string())?
+                    .blocks,
+            );
+
+            trace!(%segment_index, "Segment reconstructed successfully");
         }
     }
 
