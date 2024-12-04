@@ -73,6 +73,7 @@ use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, FeeModel, MessageId,
     MessageKey,
 };
+use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::traits::{
@@ -1502,6 +1503,22 @@ impl_runtime_apis! {
 
         fn domain_chains_allowlist_update(domain_id: DomainId) -> Option<DomainAllowlistUpdates>{
             Messenger::domain_chains_allowlist_update(domain_id)
+        }
+
+        fn xdm_id(ext: &<Block as BlockT>::Extrinsic) -> Option<XdmId> {
+            match &ext.function {
+                RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })=> {
+                    Some(XdmId::RelayMessage((msg.src_chain_id, msg.channel_id, msg.nonce)))
+                }
+                RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                    Some(XdmId::RelayResponseMessage((msg.src_chain_id, msg.channel_id, msg.nonce)))
+                }
+                _ => None,
+            }
+        }
+
+        fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce> {
+            Messenger::channel_nonce(chain_id, channel_id)
         }
     }
 

@@ -212,7 +212,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                                 _,
                                 _,
                                 _,
-                                DomainBlock,
                                 _,
                                 _,
                             >(
