@@ -60,15 +60,15 @@ where
             self.0
                 .get_from_cache(piece_indices)
                 .await
-                .then(move |(index, maybe_piece)| {
+                .then(move |(piece_index, maybe_piece)| {
                     let fut = async move {
                         if let Some(piece) = maybe_piece {
-                            return (index, Ok(Some(piece)));
+                            return (piece_index, Ok(Some(piece)));
                         }
 
                         self.0
-                            .get_piece_from_archival_storage(index, MAX_RANDOM_WALK_ROUNDS)
-                            .map(|piece| (index, Ok(piece)))
+                            .get_piece_from_archival_storage(piece_index, MAX_RANDOM_WALK_ROUNDS)
+                            .map(|piece| (piece_index, Ok(piece)))
                             .await
                     };
                     Box::pin(fut)

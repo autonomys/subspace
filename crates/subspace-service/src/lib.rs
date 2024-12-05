@@ -42,6 +42,7 @@ use crate::mmr::request_handler::MmrRequestHandler;
 pub use crate::mmr::sync::mmr_sync;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::sync_from_dsn::snap_sync::snap_sync;
+use crate::sync_from_dsn::DsnPieceGetter;
 use crate::transaction_pool::FullPool;
 use async_lock::Semaphore;
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -137,7 +138,6 @@ use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
 use tokio::sync::broadcast;
-use tokio::sync::broadcast::Receiver;
 use tracing::{debug, error, info, Instrument};
 pub use utils::wait_for_block_import;
 
@@ -738,7 +738,7 @@ pub async fn new_full<PosTable, RuntimeApi>(
     prometheus_registry: Option<&mut Registry>,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
-    consensus_snap_sync_target_block_receiver: Option<Receiver<BlockNumber>>,
+    consensus_snap_sync_target_block_receiver: Option<broadcast::Receiver<BlockNumber>>,
 ) -> Result<FullNode<RuntimeApi>, Error>
 where
     PosTable: Table,
@@ -827,7 +827,7 @@ where
                     ),
                 );
 
-            let piece_getter = Arc::new(PieceProvider::new(
+            let piece_provider = PieceProvider::new(
                 node.clone(),
                 SegmentCommitmentPieceValidator::new(
                     node.clone(),
@@ -837,9 +837,13 @@ where
                 Arc::new(Semaphore::new(
                     out_connections as usize * PIECE_PROVIDER_MULTIPLIER,
                 )),
-            ));
+            );
 
-            (node, dsn_config.bootstrap_nodes, piece_getter as _)
+            (
+                node,
+                dsn_config.bootstrap_nodes,
+                Arc::new(DsnPieceGetter::new(piece_provider)) as _,
+            )
         }
     };
 

@@ -13034,6 +13034,7 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "array-bytes",
  "async-channel 1.9.0",
  "async-lock 3.4.0",
@@ -13103,6 +13104,7 @@ dependencies = [
  "static_assertions",
  "subspace-archiving",
  "subspace-core-primitives",
+ "subspace-data-retrieval",
  "subspace-erasure-coding",
  "subspace-kzg",
  "subspace-networking",

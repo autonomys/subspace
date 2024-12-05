@@ -15,9 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
-use crate::sync_from_dsn::DsnSyncPieceGetter;
-use futures::stream::FuturesUnordered;
-use futures::StreamExt;
+use crate::sync_from_dsn::PieceGetter;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::IncomingBlock;
@@ -31,16 +29,11 @@ use sp_runtime::Saturating;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
-use subspace_core_primitives::pieces::Piece;
-use subspace_core_primitives::segments::{
-    ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex,
-};
+use subspace_core_primitives::segments::SegmentIndex;
 use subspace_core_primitives::BlockNumber;
+use subspace_data_retrieval::segment_downloading::download_segment_pieces;
 use subspace_erasure_coding::ErasureCoding;
-use subspace_networking::utils::multihash::ToMultihash;
-use tokio::sync::Semaphore;
 use tokio::task;
-use tracing::warn;
 
 /// How many blocks to queue before pausing and waiting for blocks to be imported, this is
 /// essentially used to ensure we use a bounded amount of RAM during sync process.
@@ -66,7 +59,7 @@ where
     Block: BlockT,
     AS: AuxStore + Send + Sync + 'static,
     Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
-    PG: DsnSyncPieceGetter,
+    PG: PieceGetter,
     IQS: ImportQueueService<Block> + ?Sized,
 {
     {
@@ -141,7 +134,9 @@ where
             continue;
         }
 
-        let segment_pieces = download_segment_pieces(segment_index, piece_getter).await?;
+        let segment_pieces = download_segment_pieces(segment_index, piece_getter)
+            .await
+            .map_err(|error| format!("Failed to download segment pieces: {error}"))?;
         // CPU-intensive piece and segment reconstruction code can block the async executor.
         let segment_contents_fut = task::spawn_blocking({
             let reconstructor = reconstructor.clone();
@@ -250,96 +245,4 @@ where
     }
 
     Ok(imported_blocks)
-}
-
-/// Downloads pieces of the segment such that segment can be reconstructed afterward, prefers source
-/// pieces
-pub(super) async fn download_segment_pieces<PG>(
-    segment_index: SegmentIndex,
-    piece_getter: &PG,
-) -> Result<Vec<Option<Piece>>, Error>
-where
-    PG: DsnSyncPieceGetter,
-{
-    debug!(%segment_index, "Retrieving pieces of the segment");
-
-    let semaphore = &Semaphore::new(RecordedHistorySegment::NUM_RAW_RECORDS);
-
-    let mut received_segment_pieces = segment_index
-        .segment_piece_indexes_source_first()
-        .into_iter()
-        .map(|piece_index| {
-            // Source pieces will acquire permit here right away
-            let maybe_permit = semaphore.try_acquire().ok();
-
-            async move {
-                let permit = match maybe_permit {
-                    Some(permit) => permit,
-                    None => {
-                        // Other pieces will acquire permit here instead
-                        match semaphore.acquire().await {
-                            Ok(permit) => permit,
-                            Err(error) => {
-                                warn!(
-                                    %piece_index,
-                                    %error,
-                                    "Semaphore was closed, interrupting piece retrieval"
-                                );
-                                return None;
-                            }
-                        }
-                    }
-                };
-                let maybe_piece = match piece_getter.get_piece(piece_index).await {
-                    Ok(maybe_piece) => maybe_piece,
-                    Err(error) => {
-                        trace!(
-                            %error,
-                            ?piece_index,
-                            "Piece request failed",
-                        );
-                        return None;
-                    }
-                };
-
-                let key =
-                    subspace_networking::libp2p::kad::RecordKey::from(piece_index.to_multihash());
-                trace!(
-                    ?piece_index,
-                    key = hex::encode(&key),
-                    piece_found = maybe_piece.is_some(),
-                    "Piece request succeeded",
-                );
-
-                maybe_piece.map(|received_piece| {
-                    // Piece was received successfully, "remove" this slot from semaphore
-                    permit.forget();
-                    (piece_index, received_piece)
-                })
-            }
-        })
-        .collect::<FuturesUnordered<_>>();
-
-    let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
-    let mut pieces_received = 0;
-
-    while let Some(maybe_result) = received_segment_pieces.next().await {
-        let Some((piece_index, piece)) = maybe_result else {
-            continue;
-        };
-
-        segment_pieces
-            .get_mut(piece_index.position() as usize)
-            .expect("Piece position is by definition within segment; qed")
-            .replace(piece);
-
-        pieces_received += 1;
-
-        if pieces_received >= RecordedHistorySegment::NUM_RAW_RECORDS {
-            trace!(%segment_index, "Received half of the segment");
-            break;
-        }
-    }
-
-    Ok(segment_pieces)
 }
