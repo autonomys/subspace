@@ -16,8 +16,6 @@
 //! Fetching segments of the archived history of Subspace Network.
 
 use crate::piece_getter::PieceGetter;
-use async_lock::Semaphore;
-use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use subspace_archiving::archiver::Segment;
 use subspace_archiving::reconstructor::{Reconstructor, ReconstructorError};
@@ -27,24 +25,34 @@ use subspace_core_primitives::segments::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use tokio::task::spawn_blocking;
-use tracing::{debug, trace};
+use tracing::debug;
 
 /// Segment getter errors.
 #[derive(Debug, thiserror::Error)]
 pub enum SegmentDownloadingError {
+    /// Not enough pieces
+    #[error("Not enough ({downloaded_pieces}) pieces")]
+    NotEnoughPieces {
+        /// Number of pieces that were downloaded
+        downloaded_pieces: usize,
+    },
+
     /// Piece getter error
-    #[error("Failed to get enough segment pieces")]
-    PieceGetter { segment_index: SegmentIndex },
+    #[error("Piece getter error: {source}")]
+    PieceGetterError {
+        #[from]
+        source: anyhow::Error,
+    },
 
     /// Segment reconstruction error
-    #[error("Segment reconstruction error: {source:?}")]
+    #[error("Segment reconstruction error: {source}")]
     SegmentReconstruction {
         #[from]
         source: ReconstructorError,
     },
 
     /// Segment decoding error
-    #[error("Segment data decoding error: {source:?}")]
+    #[error("Segment data decoding error: {source}")]
     SegmentDecoding {
         #[from]
         source: parity_scale_codec::Error,
@@ -71,11 +79,9 @@ where
     Ok(segment)
 }
 
-/// Concurrently downloads the pieces for `segment_index`.
-// This code was copied and modified from subspace_service::sync_from_dsn::download_and_reconstruct_blocks():
-// <https://github.com/autonomys/subspace/blob/d71ca47e45e1b53cd2e472413caa23472a91cd74/crates/subspace-service/src/sync_from_dsn/import_blocks.rs#L236-L322>
-//
-// TODO: pass a lower concurrency limit into this function, to avoid overwhelming residential routers or slow connections
+/// Downloads pieces of the segment such that segment can be reconstructed afterward.
+///
+/// Prefers source pieces if available, on error returns number of downloaded pieces
 pub async fn download_segment_pieces<PG>(
     segment_index: SegmentIndex,
     piece_getter: &PG,
@@ -83,88 +89,52 @@ pub async fn download_segment_pieces<PG>(
 where
     PG: PieceGetter,
 {
-    debug!(%segment_index, "Retrieving pieces of the segment");
-
-    let semaphore = &Semaphore::new(RecordedHistorySegment::NUM_RAW_RECORDS);
-
-    let mut received_segment_pieces = segment_index
-        .segment_piece_indexes_source_first()
-        .into_iter()
-        .map(|piece_index| {
-            // Source pieces will acquire permit here right away
-            let maybe_permit = semaphore.try_acquire();
-
-            async move {
-                let permit = match maybe_permit {
-                    Some(permit) => permit,
-                    None => {
-                        // Other pieces will acquire permit here instead
-                        semaphore.acquire().await
-                    }
-                };
-                let piece = match piece_getter.get_piece(piece_index).await {
-                    Ok(Some(piece)) => piece,
-                    Ok(None) => {
-                        trace!(?piece_index, "Piece not found");
-                        return None;
-                    }
-                    Err(error) => {
-                        trace!(
-                            %error,
-                            ?piece_index,
-                            "Piece request failed",
-                        );
-                        return None;
-                    }
-                };
-
-                trace!(?piece_index, "Piece request succeeded");
-
-                // Piece was received successfully, "remove" this slot from semaphore
-                permit.forget();
-                Some((piece_index, piece))
-            }
-        })
-        .collect::<FuturesUnordered<_>>();
+    let required_pieces_number = RecordedHistorySegment::NUM_RAW_RECORDS;
+    let mut downloaded_pieces = 0_usize;
 
     let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
-    let mut pieces_received = 0;
 
-    while let Some(maybe_piece) = received_segment_pieces.next().await {
-        let Some((piece_index, piece)) = maybe_piece else {
-            continue;
-        };
+    let mut pieces_iter = segment_index
+        .segment_piece_indexes_source_first()
+        .into_iter();
 
-        segment_pieces
-            .get_mut(piece_index.position() as usize)
-            .expect("Piece position is by definition within segment; qed")
-            .replace(piece);
+    // Download in batches until we get enough or exhaust available pieces
+    while !pieces_iter.is_empty() && downloaded_pieces != required_pieces_number {
+        let piece_indices = pieces_iter
+            .by_ref()
+            .take(required_pieces_number - downloaded_pieces);
 
-        pieces_received += 1;
+        let mut received_segment_pieces = piece_getter.get_pieces(piece_indices).await?;
 
-        if pieces_received >= RecordedHistorySegment::NUM_RAW_RECORDS {
-            trace!(%segment_index, "Received half of the segment.");
-            break;
+        while let Some((piece_index, result)) = received_segment_pieces.next().await {
+            match result {
+                Ok(Some(piece)) => {
+                    downloaded_pieces += 1;
+                    segment_pieces
+                        .get_mut(piece_index.position() as usize)
+                        .expect("Piece position is by definition within segment; qed")
+                        .replace(piece);
+                }
+                Ok(None) => {
+                    debug!(%piece_index, "Piece was not found");
+                }
+                Err(error) => {
+                    debug!(%error, %piece_index, "Failed to get piece");
+                }
+            }
         }
     }
 
-    if pieces_received < RecordedHistorySegment::NUM_RAW_RECORDS {
+    if downloaded_pieces < required_pieces_number {
         debug!(
             %segment_index,
-            pieces_received,
-            pieces_needed = RecordedHistorySegment::NUM_RAW_RECORDS,
-            "Failed to get half of the pieces in the segment"
+            %downloaded_pieces,
+            %required_pieces_number,
+            "Failed to retrieve pieces for segment"
         );
 
-        Err(SegmentDownloadingError::PieceGetter { segment_index })
-    } else {
-        trace!(
-            %segment_index,
-            pieces_received,
-            pieces_needed = RecordedHistorySegment::NUM_RAW_RECORDS,
-            "Successfully retrieved enough pieces of the segment"
-        );
-
-        Ok(segment_pieces)
+        return Err(SegmentDownloadingError::NotEnoughPieces { downloaded_pieces });
     }
+
+    Ok(segment_pieces)
 }
