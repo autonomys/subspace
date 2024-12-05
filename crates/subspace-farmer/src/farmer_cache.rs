@@ -33,7 +33,7 @@ use std::time::Duration;
 use std::{fmt, mem};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
-use subspace_farmer_components::PieceGetter;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;

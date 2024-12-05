@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 use std::task::{Context, Poll};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
-use subspace_farmer_components::PieceGetter;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tracing::{debug, error, trace};

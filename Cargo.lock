@@ -12598,6 +12598,7 @@ dependencies = [
  "ss58-registry",
  "static_assertions",
  "subspace-core-primitives",
+ "subspace-data-retrieval",
  "subspace-erasure-coding",
  "subspace-farmer-components",
  "subspace-kzg",
@@ -12626,7 +12627,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-lock 3.4.0",
- "async-trait",
  "backoff",
  "bitvec",
  "criterion",
@@ -12643,6 +12643,7 @@ dependencies = [
  "static_assertions",
  "subspace-archiving",
  "subspace-core-primitives",
+ "subspace-data-retrieval",
  "subspace-erasure-coding",
  "subspace-kzg",
  "subspace-proof-of-space",

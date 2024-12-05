@@ -32,7 +32,7 @@ use std::sync::Arc;
 use std::task::Poll;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
-use subspace_farmer_components::PieceGetter;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };

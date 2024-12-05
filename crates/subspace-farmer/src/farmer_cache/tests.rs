@@ -17,7 +17,8 @@ use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{
     HistorySize, LastArchivedBlock, SegmentHeader, SegmentIndex,
 };
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
+use subspace_data_retrieval::piece_getter::PieceGetter;
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::identity;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;

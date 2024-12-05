@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::PublicKey;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farm::{PlottedSectors, SectorPlottingDetails, SectorUpdate};
@@ -49,7 +50,6 @@ use subspace_farmer::utils::{
     thread_pool_core_indices, AsyncJoinOnDrop,
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
-use subspace_farmer_components::PieceGetter;
 use subspace_kzg::Kzg;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::utils::piece_provider::PieceProvider;
