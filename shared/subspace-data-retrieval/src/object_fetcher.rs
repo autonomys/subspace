@@ -359,7 +359,7 @@ where
                 .filter(|i| i.is_source())
                 .take(remaining_piece_count)
                 .collect::<Vec<_>>();
-            self.read_pieces(&remaining_piece_indexes)
+            self.read_pieces(remaining_piece_indexes)
                 .await?
                 .into_iter()
                 .for_each(|piece| {
@@ -557,7 +557,7 @@ where
     }
 
     /// Concurrently read multiple pieces, and return them in the supplied order.
-    async fn read_pieces(&self, piece_indexes: &[PieceIndex]) -> Result<Vec<Piece>, Error> {
+    async fn read_pieces(&self, piece_indexes: Vec<PieceIndex>) -> Result<Vec<Piece>, Error> {
         download_pieces(piece_indexes, &self.piece_getter)
             .await
             .map_err(|source| Error::PieceGetterError { source })

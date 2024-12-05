@@ -155,15 +155,12 @@ impl PieceGetter for MockPieceGetter {
         ))
     }
 
-    async fn get_pieces<'a, PieceIndices>(
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
+    > {
         Ok(Box::new(
             piece_indices
                 .into_iter()

@@ -24,7 +24,7 @@ clap = { version = "4.5.18", features = ["derive"] }
 fdlimit = "0.3.0"
 futures = "0.3.31"
 hex = "0.4.3"
-jsonrpsee = { version = "0.24.5", features = ["server"] }
+jsonrpsee = { version = "0.24.5", features = ["server", "ws-client"] }
 mimalloc = "0.1.43"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-data-retrieval = { version = "0.1.0", path = "../../shared/subspace-data-retrieval" }

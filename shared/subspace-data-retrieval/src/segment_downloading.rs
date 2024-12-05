@@ -102,7 +102,8 @@ where
     while !pieces_iter.is_empty() && downloaded_pieces != required_pieces_number {
         let piece_indices = pieces_iter
             .by_ref()
-            .take(required_pieces_number - downloaded_pieces);
+            .take(required_pieces_number - downloaded_pieces)
+            .collect();
 
         let mut received_segment_pieces = piece_getter.get_pieces(piece_indices).await?;
 

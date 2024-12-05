@@ -36,14 +36,12 @@ pub trait PieceGetter: fmt::Debug {
     ///
     /// The number of elements in the returned stream is the same as the number of unique
     /// `piece_indices`.
-    async fn get_pieces<'a, PieceIndices>(
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a;
+    >;
 }
 
 #[async_trait]
@@ -51,19 +49,18 @@ impl<T> PieceGetter for Arc<T>
 where
     T: PieceGetter + Send + Sync + ?Sized,
 {
+    #[inline]
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         self.as_ref().get_piece(piece_index).await
     }
 
-    async fn get_pieces<'a, PieceIndices>(
+    #[inline]
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
+    > {
         self.as_ref().get_pieces(piece_indices).await
     }
 }
@@ -84,15 +81,12 @@ impl PieceGetter for NewArchivedSegment {
         Ok(None)
     }
 
-    async fn get_pieces<'a, PieceIndices>(
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
+    > {
         get_pieces_individually(|piece_index| self.get_piece(piece_index), piece_indices)
     }
 }
@@ -107,15 +101,12 @@ impl PieceGetter for (PieceIndex, Piece) {
         Ok(None)
     }
 
-    async fn get_pieces<'a, PieceIndices>(
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
+    > {
         get_pieces_individually(|piece_index| self.get_piece(piece_index), piece_indices)
     }
 }

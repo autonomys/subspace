@@ -280,18 +280,14 @@ impl PieceGetter for ClusterPieceGetter {
             .await?)
     }
 
-    async fn get_pieces<'a, PieceIndices>(
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
+    > {
         let (tx, mut rx) = mpsc::unbounded();
 
-        let piece_indices = piece_indices.into_iter().collect::<Vec<_>>();
         let piece_indices_to_get =
             Mutex::new(piece_indices.iter().copied().collect::<HashSet<_>>());
 
