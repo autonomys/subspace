@@ -7,13 +7,13 @@ use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
-use subspace_data_retrieval::piece_getter::ObjectPieceGetter;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 
 /// The maximum number of peer-to-peer walking rounds for L1 archival storage.
 const MAX_RANDOM_WALK_ROUNDS: usize = 15;
 
-/// Wrapper type for PieceProvider, so it can implement ObjectPieceGetter.
+/// Wrapper type for [`PieceProvider`], so it can implement [`PieceGetter`].
 pub struct DsnPieceGetter<PV: PieceValidator>(pub Arc<PieceProvider<PV>>);
 
 impl<PV> fmt::Debug for DsnPieceGetter<PV>
@@ -51,7 +51,7 @@ where
 // - reconstruct segment if piece is missing
 // - move this piece getter impl into a new library part of this crate
 #[async_trait]
-impl<PV> ObjectPieceGetter for DsnPieceGetter<PV>
+impl<PV> PieceGetter for DsnPieceGetter<PV>
 where
     PV: PieceValidator,
 {

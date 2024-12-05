@@ -23,9 +23,9 @@ use std::sync::Arc;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 
-/// Trait representing a way to get pieces from the DSN for object reconstruction
+/// Trait representing a way to get pieces
 #[async_trait]
-pub trait ObjectPieceGetter: fmt::Debug {
+pub trait PieceGetter: fmt::Debug {
     /// Get piece by index.
     ///
     /// Returns `Ok(None)` if the piece is not found.
@@ -47,9 +47,9 @@ pub trait ObjectPieceGetter: fmt::Debug {
 }
 
 #[async_trait]
-impl<T> ObjectPieceGetter for Arc<T>
+impl<T> PieceGetter for Arc<T>
 where
-    T: ObjectPieceGetter + Send + Sync + ?Sized,
+    T: PieceGetter + Send + Sync + ?Sized,
 {
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         self.as_ref().get_piece(piece_index).await
@@ -70,7 +70,7 @@ where
 
 // Convenience methods, mainly used in testing
 #[async_trait]
-impl ObjectPieceGetter for NewArchivedSegment {
+impl PieceGetter for NewArchivedSegment {
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         if piece_index.segment_index() == self.segment_header.segment_index() {
             return Ok(Some(
@@ -98,7 +98,7 @@ impl ObjectPieceGetter for NewArchivedSegment {
 }
 
 #[async_trait]
-impl ObjectPieceGetter for (PieceIndex, Piece) {
+impl PieceGetter for (PieceIndex, Piece) {
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         if self.0 == piece_index {
             return Ok(Some(self.1.clone()));

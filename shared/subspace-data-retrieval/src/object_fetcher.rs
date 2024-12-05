@@ -16,8 +16,8 @@
 //! Fetching objects stored in the archived history of Subspace Network.
 
 use crate::piece_fetcher::download_pieces;
-use crate::piece_getter::ObjectPieceGetter;
-use crate::segment_fetcher::{download_segment, SegmentGetterError};
+use crate::piece_getter::PieceGetter;
+use crate::segment_downloading::{download_segment, SegmentDownloadingError};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Segment, SegmentItem};
@@ -116,7 +116,7 @@ pub enum Error {
     #[error("Getting segment failed: {source:?}")]
     SegmentGetter {
         #[from]
-        source: SegmentGetterError,
+        source: SegmentDownloadingError,
     },
 
     /// Piece getter error
@@ -134,7 +134,7 @@ pub enum Error {
 /// Object fetcher for the Subspace DSN.
 pub struct ObjectFetcher<PG>
 where
-    PG: ObjectPieceGetter + Send + Sync,
+    PG: PieceGetter + Send + Sync,
 {
     /// The piece getter used to fetch pieces.
     piece_getter: Arc<PG>,
@@ -148,7 +148,7 @@ where
 
 impl<PG> ObjectFetcher<PG>
 where
-    PG: ObjectPieceGetter + Send + Sync,
+    PG: PieceGetter + Send + Sync,
 {
     /// Create a new object fetcher with the given configuration.
     ///

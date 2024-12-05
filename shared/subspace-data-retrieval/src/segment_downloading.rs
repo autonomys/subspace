@@ -15,7 +15,7 @@
 
 //! Fetching segments of the archived history of Subspace Network.
 
-use crate::piece_getter::ObjectPieceGetter;
+use crate::piece_getter::PieceGetter;
 use async_lock::Semaphore;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -31,7 +31,7 @@ use tracing::{debug, trace};
 
 /// Segment getter errors.
 #[derive(Debug, thiserror::Error)]
-pub enum SegmentGetterError {
+pub enum SegmentDownloadingError {
     /// Piece getter error
     #[error("Failed to get enough segment pieces")]
     PieceGetter { segment_index: SegmentIndex },
@@ -56,9 +56,9 @@ pub async fn download_segment<PG>(
     segment_index: SegmentIndex,
     piece_getter: &PG,
     erasure_coding: ErasureCoding,
-) -> Result<Segment, SegmentGetterError>
+) -> Result<Segment, SegmentDownloadingError>
 where
-    PG: ObjectPieceGetter,
+    PG: PieceGetter,
 {
     let reconstructor = Reconstructor::new(erasure_coding);
 
@@ -79,9 +79,9 @@ where
 pub async fn download_segment_pieces<PG>(
     segment_index: SegmentIndex,
     piece_getter: &PG,
-) -> Result<Vec<Option<Piece>>, SegmentGetterError>
+) -> Result<Vec<Option<Piece>>, SegmentDownloadingError>
 where
-    PG: ObjectPieceGetter,
+    PG: PieceGetter,
 {
     debug!(%segment_index, "Retrieving pieces of the segment");
 
@@ -156,7 +156,7 @@ where
             "Failed to get half of the pieces in the segment"
         );
 
-        Err(SegmentGetterError::PieceGetter { segment_index })
+        Err(SegmentDownloadingError::PieceGetter { segment_index })
     } else {
         trace!(
             %segment_index,
