@@ -745,7 +745,7 @@ where
             if !pieces_to_download.is_empty() {
                 debug!(
                     %num_pieces,
-                    downloaded = %pieces_to_download.len(),
+                    to_download = %pieces_to_download.len(),
                     "Finished downloading early"
                 );
                 // Nothing was downloaded, we're done here
