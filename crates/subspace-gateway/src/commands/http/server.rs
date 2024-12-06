@@ -6,12 +6,12 @@ use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
 use subspace_core_primitives::pieces::PieceIndex;
 use subspace_core_primitives::BlockNumber;
 use subspace_data_retrieval::object_fetcher::ObjectFetcher;
-use subspace_data_retrieval::piece_getter::ObjectPieceGetter;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use tracing::{debug, error, trace};
 
 pub(crate) struct ServerParameters<PG>
 where
-    PG: ObjectPieceGetter + Send + Sync + 'static,
+    PG: PieceGetter + Send + Sync + 'static,
 {
     pub(crate) object_fetcher: ObjectFetcher<PG>,
     pub(crate) indexer_endpoint: String,
@@ -65,7 +65,7 @@ async fn serve_object<PG>(
     additional_data: web::Data<Arc<ServerParameters<PG>>>,
 ) -> impl Responder
 where
-    PG: ObjectPieceGetter + Send + Sync + 'static,
+    PG: PieceGetter + Send + Sync + 'static,
 {
     let server_params = additional_data.into_inner();
     let key = key.into_inner();
@@ -136,7 +136,7 @@ where
 
 pub async fn start_server<PG>(server_params: ServerParameters<PG>) -> std::io::Result<()>
 where
-    PG: ObjectPieceGetter + Send + Sync + 'static,
+    PG: PieceGetter + Send + Sync + 'static,
 {
     let server_params = Arc::new(server_params);
     let http_endpoint = server_params.http_endpoint.clone();
