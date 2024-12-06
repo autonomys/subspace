@@ -30,7 +30,7 @@ use subspace_farmer::single_disk_farm::identity::Identity;
 use subspace_farmer::utils::{run_future_in_dedicated_thread, AsyncJoinOnDrop};
 use subspace_kzg::Kzg;
 use subspace_networking::utils::piece_provider::PieceProvider;
-use tracing::info;
+use tracing::{info, info_span, Instrument};
 
 /// Get piece retry attempts number.
 const PIECE_GETTER_MAX_RETRIES: u16 = 7;
@@ -174,8 +174,9 @@ pub(super) async fn controller(
 
     let farmer_cache_workers_fut = farmer_cache_workers
         .into_iter()
+        .zip(&cache_groups)
         .enumerate()
-        .map(|(index, farmer_cache_worker)| {
+        .map(|(index, (farmer_cache_worker, cache_group))| {
             // Each farmer cache worker gets a customized piece getter that can leverage other
             // caches than itself for sync purposes
             let piece_getter = FarmerPieceGetter::new(
@@ -184,7 +185,7 @@ pub(super) async fn controller(
                     farmer_caches
                         .iter()
                         .enumerate()
-                        .filter(|&(filter_index, _farmer_cache)| (filter_index != index))
+                        .filter(|&(filter_index, _farmer_cache)| filter_index != index)
                         .map(|(_filter_index, farmer_cache)| farmer_cache.clone())
                         .collect::<Box<_>>(),
                 )),
@@ -203,7 +204,9 @@ pub(super) async fn controller(
                 },
             );
 
-            let fut = farmer_cache_worker.run(piece_getter.downgrade());
+            let fut = farmer_cache_worker
+                .run(piece_getter.downgrade())
+                .instrument(info_span!("", %cache_group));
 
             async move {
                 let fut =
