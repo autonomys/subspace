@@ -21,7 +21,7 @@ where
 #[derive(Serialize, Deserialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 struct ObjectMapping {
-    hash: String,
+    hash: Blake3Hash,
     piece_index: PieceIndex,
     piece_offset: u32,
     #[serde(deserialize_with = "string_to_u32")]
@@ -79,7 +79,7 @@ where
                 return HttpResponse::BadRequest().finish();
             }
 
-            hash
+            Blake3Hash::try_from(hash.as_slice()).expect("Hash size was confirmed.")
         }
         Err(err) => {
             error!(?key, ?err, "Invalid hash provided.");
@@ -93,7 +93,7 @@ where
         return HttpResponse::BadRequest().finish();
     };
 
-    if object_mapping.hash != key {
+    if object_mapping.hash != object_hash {
         error!(
             ?key,
             object_mapping_hash=?object_mapping.hash,
@@ -111,10 +111,7 @@ where
         Ok(object) => {
             trace!(?key, size=%object.len(), "Object fetched successfully");
 
-            let data_hash = {
-                let data_hash = blake3_hash(&object);
-                <Blake3Hash as AsRef<[u8]>>::as_ref(&data_hash).to_vec()
-            };
+            let data_hash = blake3_hash(&object);
             if data_hash != object_hash {
                 error!(
                     ?data_hash,
