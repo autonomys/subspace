@@ -18,7 +18,6 @@ bench = false
 [dependencies]
 anyhow = "1.0.89"
 async-lock = "3.4.0"
-async-trait = "0.1.83"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bitvec = "1.0.1"
 # TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved
@@ -35,6 +34,7 @@ serde = { version = "1.0.110", features = ["derive"] }
 static_assertions = "1.1.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-data-retrieval = { version = "0.1.0", path = "../../shared/subspace-data-retrieval" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["parallel"] }

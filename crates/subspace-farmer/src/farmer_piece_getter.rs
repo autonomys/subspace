@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 use std::task::{Context, Poll};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
-use subspace_farmer_components::PieceGetter;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tracing::{debug, error, trace};
@@ -260,15 +260,12 @@ where
         Ok(None)
     }
 
-    async fn get_pieces<'a, PieceIndices>(
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
+    > {
         let (tx, mut rx) = mpsc::unbounded();
 
         let fut = async move {
@@ -467,15 +464,12 @@ where
         piece_getter.get_piece(piece_index).await
     }
 
-    async fn get_pieces<'a, PieceIndices>(
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
+    > {
         let Some(piece_getter) = self.upgrade() else {
             debug!("Farmer piece getter upgrade didn't succeed");
             return Ok(Box::new(stream::iter(
@@ -487,7 +481,6 @@ where
 
         // TODO: This is necessary due to more complex lifetimes not yet supported by ouroboros, see
         //  https://github.com/someguynamedjosh/ouroboros/issues/112
-        let piece_indices = piece_indices.into_iter().collect::<Vec<_>>();
         let stream_with_piece_getter =
             StreamWithPieceGetter::try_new_async_send(piece_getter, move |piece_getter| {
                 piece_getter.get_pieces(piece_indices)

@@ -239,7 +239,7 @@ where
     let plotted_sector = plot_sector(PlotSectorOptions {
         public_key: &public_key,
         sector_index,
-        piece_getter: &archived_segment.pieces,
+        piece_getter: &archived_segment,
         farmer_protocol_info,
         kzg: &kzg,
         erasure_coding,

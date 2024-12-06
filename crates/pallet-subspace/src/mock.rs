@@ -41,8 +41,8 @@ use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::sectors::SectorId;
 use subspace_core_primitives::segments::{
-    ArchivedBlockProgress, ArchivedHistorySegment, HistorySize, LastArchivedBlock,
-    RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
+    ArchivedBlockProgress, HistorySize, LastArchivedBlock, RecordedHistorySegment,
+    SegmentCommitment, SegmentHeader, SegmentIndex,
 };
 use subspace_core_primitives::solutions::{RewardSignature, Solution, SolutionRange};
 use subspace_core_primitives::{BlockNumber, PublicKey, SlotNumber, REWARD_SIGNING_CONTEXT};
@@ -304,7 +304,7 @@ pub fn create_signed_vote(
     slot: Slot,
     proof_of_time: PotOutput,
     future_proof_of_time: PotOutput,
-    archived_history_segment: &ArchivedHistorySegment,
+    archived_history_segment: &NewArchivedSegment,
     reward_address: <Test as frame_system::Config>::AccountId,
     solution_range: SolutionRange,
     vote_solution_range: SolutionRange,

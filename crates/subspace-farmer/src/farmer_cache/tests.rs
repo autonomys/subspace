@@ -17,7 +17,8 @@ use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{
     HistorySize, LastArchivedBlock, SegmentHeader, SegmentIndex,
 };
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
+use subspace_data_retrieval::piece_getter::PieceGetter;
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::identity;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
@@ -154,15 +155,12 @@ impl PieceGetter for MockPieceGetter {
         ))
     }
 
-    async fn get_pieces<'a, PieceIndices>(
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
+    > {
         Ok(Box::new(
             piece_indices
                 .into_iter()

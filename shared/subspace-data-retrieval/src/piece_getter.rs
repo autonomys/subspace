@@ -23,9 +23,9 @@ use std::sync::Arc;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 
-/// Trait representing a way to get pieces from the DSN for object reconstruction
+/// Trait representing a way to get pieces
 #[async_trait]
-pub trait ObjectPieceGetter: fmt::Debug {
+pub trait PieceGetter: fmt::Debug {
     /// Get piece by index.
     ///
     /// Returns `Ok(None)` if the piece is not found.
@@ -36,41 +36,38 @@ pub trait ObjectPieceGetter: fmt::Debug {
     ///
     /// The number of elements in the returned stream is the same as the number of unique
     /// `piece_indices`.
-    async fn get_pieces<'a, PieceIndices>(
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a;
+    >;
 }
 
 #[async_trait]
-impl<T> ObjectPieceGetter for Arc<T>
+impl<T> PieceGetter for Arc<T>
 where
-    T: ObjectPieceGetter + Send + Sync + ?Sized,
+    T: PieceGetter + Send + Sync + ?Sized,
 {
+    #[inline]
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         self.as_ref().get_piece(piece_index).await
     }
 
-    async fn get_pieces<'a, PieceIndices>(
+    #[inline]
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
+    > {
         self.as_ref().get_pieces(piece_indices).await
     }
 }
 
 // Convenience methods, mainly used in testing
 #[async_trait]
-impl ObjectPieceGetter for NewArchivedSegment {
+impl PieceGetter for NewArchivedSegment {
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         if piece_index.segment_index() == self.segment_header.segment_index() {
             return Ok(Some(
@@ -84,21 +81,18 @@ impl ObjectPieceGetter for NewArchivedSegment {
         Ok(None)
     }
 
-    async fn get_pieces<'a, PieceIndices>(
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
+    > {
         get_pieces_individually(|piece_index| self.get_piece(piece_index), piece_indices)
     }
 }
 
 #[async_trait]
-impl ObjectPieceGetter for (PieceIndex, Piece) {
+impl PieceGetter for (PieceIndex, Piece) {
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         if self.0 == piece_index {
             return Ok(Some(self.1.clone()));
@@ -107,15 +101,12 @@ impl ObjectPieceGetter for (PieceIndex, Piece) {
         Ok(None)
     }
 
-    async fn get_pieces<'a, PieceIndices>(
+    async fn get_pieces<'a>(
         &'a self,
-        piece_indices: PieceIndices,
+        piece_indices: Vec<PieceIndex>,
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
-    >
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
+    > {
         get_pieces_individually(|piece_index| self.get_piece(piece_index), piece_indices)
     }
 }

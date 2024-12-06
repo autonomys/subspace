@@ -8,7 +8,7 @@ use std::ops::{Deref, DerefMut};
 use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
 use subspace_core_primitives::objects::GlobalObjectMapping;
 use subspace_data_retrieval::object_fetcher::{self, ObjectFetcher};
-use subspace_data_retrieval::piece_getter::ObjectPieceGetter;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use tracing::debug;
 
 const SUBSPACE_ERROR: i32 = 9000;
@@ -104,7 +104,7 @@ pub trait SubspaceGatewayRpcApi {
 /// Subspace Gateway RPC configuration
 pub struct SubspaceGatewayRpcConfig<PG>
 where
-    PG: ObjectPieceGetter + Send + Sync + 'static,
+    PG: PieceGetter + Send + Sync + 'static,
 {
     /// DSN object fetcher instance.
     pub object_fetcher: ObjectFetcher<PG>,
@@ -113,7 +113,7 @@ where
 /// Implements the [`SubspaceGatewayRpcApiServer`] trait for interacting with the Subspace Gateway.
 pub struct SubspaceGatewayRpc<PG>
 where
-    PG: ObjectPieceGetter + Send + Sync + 'static,
+    PG: PieceGetter + Send + Sync + 'static,
 {
     /// DSN object fetcher instance.
     object_fetcher: ObjectFetcher<PG>,
@@ -122,7 +122,7 @@ where
 /// [`SubspaceGatewayRpc`] is used to fetch objects from the DSN.
 impl<PG> SubspaceGatewayRpc<PG>
 where
-    PG: ObjectPieceGetter + Send + Sync + 'static,
+    PG: PieceGetter + Send + Sync + 'static,
 {
     /// Creates a new instance of the `SubspaceGatewayRpc` handler.
     pub fn new(config: SubspaceGatewayRpcConfig<PG>) -> Self {
@@ -135,7 +135,7 @@ where
 #[async_trait]
 impl<PG> SubspaceGatewayRpcApiServer for SubspaceGatewayRpc<PG>
 where
-    PG: ObjectPieceGetter + Send + Sync + 'static,
+    PG: PieceGetter + Send + Sync + 'static,
 {
     async fn fetch_object(&self, mappings: GlobalObjectMapping) -> Result<Vec<HexData>, Error> {
         let count = mappings.objects().len();
