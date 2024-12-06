@@ -16,7 +16,7 @@
 //! Fetching pieces of the archived history of Subspace Network.
 
 use crate::object_fetcher::Error;
-use crate::piece_getter::ObjectPieceGetter;
+use crate::piece_getter::PieceGetter;
 use futures::StreamExt;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tracing::{debug, trace};
@@ -28,11 +28,11 @@ use tracing::{debug, trace};
 // This code was copied and modified from subspace_service::sync_from_dsn::download_and_reconstruct_blocks():
 // <https://github.com/autonomys/subspace/blob/d71ca47e45e1b53cd2e472413caa23472a91cd74/crates/subspace-service/src/sync_from_dsn/import_blocks.rs#L236-L322>
 pub async fn download_pieces<PG>(
-    piece_indexes: &[PieceIndex],
+    piece_indexes: Vec<PieceIndex>,
     piece_getter: &PG,
 ) -> anyhow::Result<Vec<Piece>>
 where
-    PG: ObjectPieceGetter,
+    PG: PieceGetter,
 {
     debug!(
         count = piece_indexes.len(),
@@ -44,9 +44,7 @@ where
     // - if we're close to the number of pieces in a segment, or we can't find a piece, use segment downloading and piece
     //   reconstruction instead
     // Currently most objects are limited to 4 pieces, so this isn't needed yet.
-    let mut received_pieces = piece_getter
-        .get_pieces(piece_indexes.iter().copied())
-        .await?;
+    let mut received_pieces = piece_getter.get_pieces(piece_indexes.clone()).await?;
 
     let mut pieces = Vec::new();
     pieces.resize(piece_indexes.len(), Piece::default());

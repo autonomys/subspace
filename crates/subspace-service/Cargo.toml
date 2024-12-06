@@ -16,6 +16,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+anyhow = "1.0.89"
 array-bytes = "6.2.3"
 async-channel = "1.8.0"
 async-lock = "3.4.0"
@@ -81,6 +82,7 @@ sp-transaction-pool = { git = "https://github.com/subspace/polkadot-sdk", rev = 
 static_assertions = "1.1.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-data-retrieval = { version = "0.1.0", path = "../../shared/subspace-data-retrieval" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }

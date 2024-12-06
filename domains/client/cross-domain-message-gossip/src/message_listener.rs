@@ -1,4 +1,7 @@
-use crate::aux_schema::{get_channel_state, set_channel_state};
+use crate::aux_schema::{
+    cleanup_chain_channel_storages, get_channel_state, get_xdm_processed_block_number,
+    set_channel_state, set_xdm_message_processed_at, BlockId,
+};
 use crate::gossip_worker::{ChannelUpdate, MessageData};
 use crate::{ChainMsg, ChannelDetail};
 use domain_block_preprocessor::stateless_runtime::StatelessRuntime;
@@ -8,7 +11,7 @@ use sc_client_api::AuxStore;
 use sc_executor::RuntimeVersionOf;
 use sc_network::NetworkPeers;
 use sc_transaction_pool_api::{TransactionPool, TransactionSource};
-use sp_api::{ApiError, ProvideRuntimeApi, StorageProof};
+use sp_api::{ApiError, ApiExt, ProvideRuntimeApi, StorageProof};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_core::crypto::AccountId32;
@@ -18,17 +21,21 @@ use sp_core::{Hasher, H256};
 use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
 use sp_domains::{DomainId, DomainsApi, RuntimeType};
 use sp_messenger::messages::{ChainId, Channel, ChannelId};
-use sp_messenger::RelayerApi;
+use sp_messenger::{ChannelNonce, MessengerApi, RelayerApi, XdmId};
 use sp_runtime::codec::Decode;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header, NumberFor};
+use sp_runtime::{SaturatedConversion, Saturating};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use subspace_runtime_primitives::{Balance, BlockNumber};
 use thiserror::Error;
 
-const LOG_TARGET: &str = "domain_message_listener";
+pub(crate) const LOG_TARGET: &str = "domain_message_listener";
+/// Number of blocks an already submitted XDM is not accepted since last submission.
+const XDM_ACCEPT_BLOCK_LIMIT: u32 = 5;
 
 type BlockOf<T> = <T as TransactionPool>::Block;
+type HeaderOf<T> = <<T as TransactionPool>::Block as BlockT>::Header;
 type ExtrinsicOf<T> = <<T as TransactionPool>::Block as BlockT>::Extrinsic;
 type HashingFor<B> = <<B as BlockT>::Header as Header>::Hashing;
 
@@ -88,7 +95,6 @@ pub async fn start_cross_chain_message_listener<
     TxnListener,
     CClient,
     CBlock,
-    Block,
     Executor,
     SO,
 >(
@@ -102,11 +108,11 @@ pub async fn start_cross_chain_message_listener<
     sync_oracle: SO,
 ) where
     TxPool: TransactionPool + 'static,
-    Client: ProvideRuntimeApi<BlockOf<TxPool>> + HeaderBackend<BlockOf<TxPool>>,
+    Client: ProvideRuntimeApi<BlockOf<TxPool>> + HeaderBackend<BlockOf<TxPool>> + AuxStore,
     CBlock: BlockT,
-    Block: BlockT,
+    Client::Api: MessengerApi<BlockOf<TxPool>, NumberFor<CBlock>, CBlock::Hash>,
     CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock> + AuxStore,
-    CClient::Api: DomainsApi<CBlock, Block::Header>
+    CClient::Api: DomainsApi<CBlock, HeaderOf<TxPool>>
         + RelayerApi<CBlock, NumberFor<CBlock>, NumberFor<CBlock>, CBlock::Hash>,
     TxnListener: Stream<Item = ChainMsg> + Unpin,
     Executor: CodeExecutor + RuntimeVersionOf,
@@ -153,15 +159,25 @@ pub async fn start_cross_chain_message_listener<
                     }
                 };
 
-                handle_xdm_message(&client, &tx_pool, chain_id, ext).await;
+                if let Ok(valid) =
+                    handle_xdm_message::<_, _, CBlock>(&client, &tx_pool, chain_id, ext).await
+                    && !valid
+                {
+                    if let Some(peer_id) = msg.maybe_peer {
+                        network.report_peer(peer_id, crate::gossip_worker::rep::NOT_XDM);
+                    }
+                    continue;
+                }
             }
-            MessageData::ChannelUpdate(channel_update) => handle_channel_update::<_, _, _, Block>(
-                chain_id,
-                channel_update,
-                &consensus_client,
-                domain_executor.clone(),
-                &mut domain_storage_key_cache,
-            ),
+            MessageData::ChannelUpdate(channel_update) => {
+                handle_channel_update::<_, _, _, BlockOf<TxPool>>(
+                    chain_id,
+                    channel_update,
+                    &consensus_client,
+                    domain_executor.clone(),
+                    &mut domain_storage_key_cache,
+                )
+            }
         }
     }
 }
@@ -460,32 +476,175 @@ where
     Ok(())
 }
 
-async fn handle_xdm_message<TxPool, Client>(
+fn can_allow_xdm_submission<Client, Block>(
+    client: &Arc<Client>,
+    xdm_id: XdmId,
+    submitted_block_id: BlockId<Block>,
+    current_block_id: BlockId<Block>,
+    maybe_channel_nonce: Option<ChannelNonce>,
+) -> bool
+where
+    Client: HeaderBackend<Block>,
+    Block: BlockT,
+{
+    if let Some(channel_nonce) = maybe_channel_nonce {
+        let maybe_nonces = match (
+            xdm_id,
+            channel_nonce.relay_msg_nonce,
+            channel_nonce.relay_response_msg_nonce,
+        ) {
+            (XdmId::RelayMessage((_, _, nonce)), Some(channel_nonce), _) => {
+                Some((nonce, channel_nonce))
+            }
+            (XdmId::RelayResponseMessage((_, _, nonce)), _, Some(channel_nonce)) => {
+                Some((nonce, channel_nonce))
+            }
+            _ => None,
+        };
+
+        if let Some((xdm_nonce, channel_nonce)) = maybe_nonces
+            && (xdm_nonce <= channel_nonce)
+        {
+            tracing::debug!(
+                target: LOG_TARGET,
+                "Stale XDM submitted: XDM Nonce: {:?}, Channel Nonce: {:?}",
+                xdm_nonce,
+                channel_nonce
+            );
+            return false;
+        }
+    }
+
+    match client.hash(submitted_block_id.number).ok().flatten() {
+        // there is no block at this number, allow xdm submission
+        None => return true,
+        Some(hash) => {
+            if hash != submitted_block_id.hash {
+                // client re-org'ed, allow xdm submission
+                return true;
+            }
+        }
+    }
+
+    let latest_block_number = current_block_id.number;
+    let block_limit: NumberFor<Block> = XDM_ACCEPT_BLOCK_LIMIT.saturated_into();
+    submitted_block_id.number < latest_block_number.saturating_sub(block_limit)
+}
+
+async fn handle_xdm_message<TxPool, Client, CBlock>(
     client: &Arc<Client>,
     tx_pool: &Arc<TxPool>,
     chain_id: ChainId,
     ext: ExtrinsicOf<TxPool>,
-) where
+) -> Result<bool, Error>
+where
     TxPool: TransactionPool + 'static,
-    Client: HeaderBackend<BlockOf<TxPool>>,
+    CBlock: BlockT,
+    Client: ProvideRuntimeApi<BlockOf<TxPool>> + HeaderBackend<BlockOf<TxPool>> + AuxStore,
+    Client::Api: MessengerApi<BlockOf<TxPool>, NumberFor<CBlock>, CBlock::Hash>,
 {
-    let at = client.info().best_hash;
-    tracing::debug!(
-        target: LOG_TARGET,
-        "Submitting extrinsic to tx pool at block: {:?}",
-        at
-    );
+    let block_id: BlockId<BlockOf<TxPool>> = client.info().into();
+    let runtime_api = client.runtime_api();
+    let api_version = runtime_api
+        .api_version::<dyn MessengerApi<BlockOf<TxPool>, NumberFor<CBlock>, CBlock::Hash>>(
+            block_id.hash,
+        )?
+        .unwrap_or(1);
 
-    let tx_pool_res = tx_pool
-        .submit_one(at, TransactionSource::External, ext)
-        .await;
+    let api_available = api_version >= 2;
+    if api_available {
+        let xdm_id = match runtime_api.xdm_id(block_id.hash, &ext)? {
+            // not a valid xdm, so return as invalid
+            None => return Ok(false),
+            Some(xdm_id) => xdm_id,
+        };
 
-    if let Err(err) = tx_pool_res {
-        tracing::error!(
+        let (src_chain_id, channel_id) = xdm_id.get_chain_id_and_channel_id();
+        let maybe_channel_nonce =
+            runtime_api.channel_nonce(block_id.hash, src_chain_id, channel_id)?;
+
+        if let Some(submitted_block_id) =
+            get_xdm_processed_block_number::<_, BlockOf<TxPool>>(&**client, xdm_id)?
+            && !can_allow_xdm_submission(
+                client,
+                xdm_id,
+                submitted_block_id.clone(),
+                block_id.clone(),
+                maybe_channel_nonce,
+            )
+        {
+            tracing::debug!(
+                target: LOG_TARGET,
+                "Skipping XDM[{:?}] submission. At: {:?} and Now: {:?}",
+                xdm_id,
+                submitted_block_id,
+                block_id
+            );
+            return Ok(true);
+        }
+
+        tracing::debug!(
             target: LOG_TARGET,
-            "Failed to submit extrinsic to tx pool for Chain {:?} with error: {:?}",
+            "Submitting XDM[{:?}] to tx pool for chain {:?} at block: {:?}",
+            xdm_id,
             chain_id,
-            err
+            block_id
         );
+
+        let tx_pool_res = tx_pool
+            .submit_one(block_id.hash, TransactionSource::External, ext)
+            .await;
+
+        let block_id: BlockId<BlockOf<TxPool>> = client.info().into();
+        if let Err(err) = tx_pool_res {
+            tracing::error!(
+                target: LOG_TARGET,
+                "Failed to submit XDM[{:?}] to tx pool for Chain {:?} with error: {:?} at block: {:?}",
+                xdm_id,
+                chain_id,
+                err,
+                block_id
+            );
+        } else {
+            tracing::debug!(
+                target: LOG_TARGET,
+                "Submitted XDM[{:?}] to tx pool for chain {:?} at {:?}",
+                xdm_id,
+                chain_id,
+                block_id
+            );
+
+            set_xdm_message_processed_at(&**client, xdm_id, block_id)?;
+        }
+
+        if let Some(channel_nonce) = maybe_channel_nonce {
+            cleanup_chain_channel_storages(&**client, src_chain_id, channel_id, channel_nonce)?;
+        }
+
+        Ok(true)
+    } else {
+        let tx_pool_res = tx_pool
+            .submit_one(block_id.hash, TransactionSource::External, ext)
+            .await;
+
+        let block_id: BlockId<BlockOf<TxPool>> = client.info().into();
+        if let Err(err) = tx_pool_res {
+            tracing::error!(
+                target: LOG_TARGET,
+                "Failed to submit XDM to tx pool for Chain {:?} with error: {:?} at block: {:?}",
+                chain_id,
+                err,
+                block_id
+            );
+        } else {
+            tracing::debug!(
+                target: LOG_TARGET,
+                "Submitted XDM to tx pool for chain {:?} at {:?}",
+                chain_id,
+                block_id
+            );
+        }
+
+        Ok(true)
     }
 }

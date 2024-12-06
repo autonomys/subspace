@@ -30,12 +30,13 @@ use std::task::Poll;
 use std::time::Instant;
 use subspace_core_primitives::sectors::SectorIndex;
 use subspace_core_primitives::PublicKey;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{
     download_sector, encode_sector, write_sector, DownloadSectorOptions, EncodeSectorOptions,
     PlottingError, RecordsEncoder,
 };
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_kzg::Kzg;
 use tokio::task::yield_now;
 use tracing::{warn, Instrument};

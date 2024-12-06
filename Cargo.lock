@@ -12590,7 +12590,6 @@ name = "subspace-data-retrieval"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-lock 3.4.0",
  "async-trait",
  "futures",
  "parity-scale-codec",
@@ -12685,6 +12684,7 @@ dependencies = [
  "ss58-registry",
  "static_assertions",
  "subspace-core-primitives",
+ "subspace-data-retrieval",
  "subspace-erasure-coding",
  "subspace-farmer-components",
  "subspace-kzg",
@@ -12713,7 +12713,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-lock 3.4.0",
- "async-trait",
  "backoff",
  "bitvec",
  "criterion",
@@ -12730,6 +12729,7 @@ dependencies = [
  "static_assertions",
  "subspace-archiving",
  "subspace-core-primitives",
+ "subspace-data-retrieval",
  "subspace-erasure-coding",
  "subspace-kzg",
  "subspace-proof-of-space",
@@ -13124,6 +13124,7 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "array-bytes",
  "async-channel 1.9.0",
  "async-lock 3.4.0",
@@ -13193,6 +13194,7 @@ dependencies = [
  "static_assertions",
  "subspace-archiving",
  "subspace-core-primitives",
+ "subspace-data-retrieval",
  "subspace-erasure-coding",
  "subspace-kzg",
  "subspace-networking",

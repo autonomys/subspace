@@ -3,7 +3,7 @@
 use clap::Parser;
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use subspace_data_retrieval::piece_getter::ObjectPieceGetter;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_gateway_rpc::{SubspaceGatewayRpc, SubspaceGatewayRpcApiServer};
 use tracing::info;
 
@@ -33,7 +33,7 @@ pub async fn launch_rpc_server<PG, const DEFAULT_PORT: u16>(
     rpc_options: RpcOptions<DEFAULT_PORT>,
 ) -> anyhow::Result<ServerHandle>
 where
-    PG: ObjectPieceGetter + Send + Sync + 'static,
+    PG: PieceGetter + Send + Sync + 'static,
 {
     let server = ServerBuilder::default()
         .build(rpc_options.rpc_listen_on)

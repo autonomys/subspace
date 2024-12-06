@@ -28,7 +28,7 @@ clap = { version = "4.5.18", features = ["derive"] }
 fdlimit = "0.3.0"
 futures = "0.3.31"
 hex = "0.4.3"
-jsonrpsee = { version = "0.24.5", features = ["server"] }
+jsonrpsee = { version = "0.24.5", features = ["server", "ws-client"] }
 mimalloc = "0.1.43"
 reqwest = { version = "0.12.9", features = ["json", "rustls-tls"], default-features = false }
 serde = { version = "1.0", features = ["derive"] }

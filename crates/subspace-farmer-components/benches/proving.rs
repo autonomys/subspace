@@ -75,8 +75,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         .archived_segments
         .into_iter()
         .next()
-        .unwrap()
-        .pieces;
+        .unwrap();
 
     let farmer_protocol_info = FarmerProtocolInfo {
         history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
