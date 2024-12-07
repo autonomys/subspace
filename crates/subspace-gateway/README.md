@@ -61,7 +61,7 @@ target/production/subspace-gateway --version
 
 Start a gateway connected to a single node development chain:
 ```bash
-target/production/subspace-gateway run \
+target/production/subspace-gateway rpc \
     --dev
 ```
 
