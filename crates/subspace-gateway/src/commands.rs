@@ -7,11 +7,7 @@ use clap::Parser;
 use std::panic;
 use std::process::exit;
 use tokio::signal;
-use tracing::level_filters::LevelFilter;
 use tracing::{debug, warn};
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter, Layer};
 
 /// Commands for working with a gateway.
 #[derive(Debug, Parser)]
@@ -30,25 +26,6 @@ pub(crate) fn set_exit_on_panic() {
         default_panic_hook(panic_info);
         exit(1);
     }));
-}
-
-pub(crate) fn init_logger() {
-    // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
-    //  Windows terminal doesn't support the same colors as bash does
-    let enable_color = if cfg!(windows) {
-        false
-    } else {
-        supports_color::on(supports_color::Stream::Stderr).is_some()
-    };
-    tracing_subscriber::registry()
-        .with(
-            fmt::layer().with_ansi(enable_color).with_filter(
-                EnvFilter::builder()
-                    .with_default_directive(LevelFilter::INFO.into())
-                    .from_env_lossy(),
-            ),
-        )
-        .init();
 }
 
 pub(crate) fn raise_fd_limit() {

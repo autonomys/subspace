@@ -9,9 +9,6 @@ use sp_keystore::Keystore;
 use std::panic;
 use std::path::PathBuf;
 use std::process::exit;
-use tracing_subscriber::filter::LevelFilter;
-use tracing_subscriber::prelude::*;
-use tracing_subscriber::{fmt, EnvFilter};
 
 /// Options used for keystore
 #[derive(Debug, Parser)]
@@ -62,23 +59,4 @@ pub(crate) fn set_exit_on_panic() {
         default_panic_hook(panic_info);
         exit(1);
     }));
-}
-
-pub(super) fn init_logger() {
-    // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
-    //  Windows terminal doesn't support the same colors as bash does
-    let enable_color = if cfg!(windows) {
-        false
-    } else {
-        supports_color::on(supports_color::Stream::Stderr).is_some()
-    };
-    tracing_subscriber::registry()
-        .with(
-            fmt::layer().with_ansi(enable_color).with_filter(
-                EnvFilter::builder()
-                    .with_default_directive(LevelFilter::INFO.into())
-                    .from_env_lossy(),
-            ),
-        )
-        .init();
 }
