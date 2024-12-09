@@ -15,7 +15,7 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 use crate::bundle_processor::BundleProcessor;
-use crate::domain_bundle_producer::{DomainBundleProducer, DomainProposal};
+use crate::domain_bundle_producer::{BundleProducer, DomainProposal};
 use crate::utils::{BlockInfo, OperatorSlotInfo};
 use crate::{NewSlotNotification, OperatorStreams};
 use futures::channel::mpsc;
@@ -36,8 +36,9 @@ use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
-use std::pin::pin;
+use std::pin::{pin, Pin};
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use subspace_runtime_primitives::Balance;
 use tracing::{info, Instrument};
 
@@ -50,7 +51,6 @@ pub(super) async fn start_worker<
     CBlock,
     Client,
     CClient,
-    TransactionPool,
     Backend,
     IBNS,
     CIBNS,
@@ -62,7 +62,7 @@ pub(super) async fn start_worker<
     consensus_client: Arc<CClient>,
     consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     maybe_operator_id: Option<OperatorId>,
-    mut bundle_producer: DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>,
+    mut bundle_producer: Box<dyn BundleProducer<Block, CBlock> + Send>,
     bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
     operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
 ) where
@@ -95,8 +95,6 @@ pub(super) async fn start_worker<
         + BundleProducerElectionApi<CBlock, Balance>
         + FraudProofApi<CBlock, Block::Header>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>,
-    TransactionPool:
-        sc_transaction_pool_api::TransactionPool<Block = Block, Hash = Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
@@ -126,7 +124,8 @@ pub(super) async fn start_worker<
 
     if let Some(operator_id) = maybe_operator_id {
         info!("👷 Running as Operator[{operator_id}]...");
-        let mut new_slot_notification_stream = pin!(new_slot_notification_stream);
+        let mut latest_slot_notification_stream =
+            LatestItemStream::new(new_slot_notification_stream);
         let mut acknowledgement_sender_stream = pin!(acknowledgement_sender_stream);
         loop {
             tokio::select! {
@@ -134,7 +133,7 @@ pub(super) async fn start_worker<
                 // NOTE: this is only necessary for the test.
                 biased;
 
-                Some((slot, proof_of_time)) = new_slot_notification_stream.next() => {
+                Some((slot, proof_of_time)) = latest_slot_notification_stream.next() => {
                     let res = bundle_producer
                         .produce_bundle(
                             operator_id,
@@ -315,4 +314,43 @@ where
     );
 
     block_info_receiver
+}
+
+struct LatestItemStream<S: Stream> {
+    inner: Pin<Box<S>>,
+}
+
+impl<S: Stream> LatestItemStream<S> {
+    fn new(stream: S) -> Self {
+        Self {
+            inner: Box::pin(stream),
+        }
+    }
+}
+
+impl<S> Stream for LatestItemStream<S>
+where
+    S: Stream,
+{
+    type Item = S::Item;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut last_item = None;
+        while let Poll::Ready(poll) = self.inner.as_mut().poll_next(cx) {
+            match poll {
+                Some(item) => {
+                    last_item = Some(item);
+                }
+                None => {
+                    return Poll::Ready(last_item);
+                }
+            }
+        }
+
+        if last_item.is_some() {
+            Poll::Ready(last_item)
+        } else {
+            Poll::Pending
+        }
+    }
 }

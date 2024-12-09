@@ -1,6 +1,7 @@
 //! Proof of space-related data structures.
 
 use crate::hashes::{blake3_hash, Blake3Hash};
+use core::fmt;
 use derive_more::{Deref, DerefMut, From, Into};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -12,8 +13,14 @@ use serde::{Deserializer, Serializer};
 use serde_big_array::BigArray;
 
 /// Proof of space seed.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, From, Into)]
+#[derive(Copy, Clone, Eq, PartialEq, Deref, From, Into)]
 pub struct PosSeed([u8; PosSeed::SIZE]);
+
+impl fmt::Debug for PosSeed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 impl PosSeed {
     /// Size of proof of space seed in bytes.
@@ -22,21 +29,15 @@ impl PosSeed {
 
 /// Proof of space proof bytes.
 #[derive(
-    Debug,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Deref,
-    DerefMut,
-    From,
-    Into,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
+    Copy, Clone, Eq, PartialEq, Deref, DerefMut, From, Into, Encode, Decode, TypeInfo, MaxEncodedLen,
 )]
 pub struct PosProof([u8; PosProof::SIZE]);
+
+impl fmt::Debug for PosProof {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 #[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]

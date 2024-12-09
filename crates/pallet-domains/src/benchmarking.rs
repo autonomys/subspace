@@ -25,7 +25,6 @@ use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::Hooks;
 use frame_system::{Pallet as System, RawOrigin};
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
-use sp_core::ByteArray;
 use sp_domains::{
     dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
     OperatorPublicKey, OperatorRewardSource, OperatorSignature, PermissionedActionAllowedBy,
@@ -577,26 +576,9 @@ mod benchmarks {
 
         let domain_id = register_domain::<T>();
         let operator_id = NextOperatorId::<T>::get();
-
-        // TODO: the `(key, signature)` is failed to verify in `cargo test --features runtime-benchmarks` but it
-        // will pass when doing the actual benchmark with `subspace-node benchmark pallet ...`, need more investigations.
-        let (key, signature) = {
-            let key = OperatorPublicKey::from_ss58check(
-                "5Gv1Uopoqo1k7125oDtFSCmxH4DzuCiBU7HBKu2bF1GZFsEb",
-            )
-            .unwrap();
-
-            // signature data included operator_account since result from `account` with same
-            // input is always deterministic
-            let sig = OperatorSignature::from_slice(&[
-                88, 91, 154, 118, 137, 117, 109, 164, 232, 186, 101, 199, 94, 12, 91, 47, 228, 198,
-                61, 146, 200, 227, 152, 191, 205, 114, 81, 127, 192, 158, 48, 96, 211, 199, 237,
-                121, 170, 38, 118, 109, 3, 44, 198, 54, 155, 133, 240, 77, 200, 117, 107, 34, 248,
-                238, 144, 101, 200, 146, 20, 94, 180, 98, 40, 134,
-            ])
-            .unwrap();
-            (key, sig)
-        };
+        let key =
+            OperatorPublicKey::from_ss58check("5Gv1Uopoqo1k7125oDtFSCmxH4DzuCiBU7HBKu2bF1GZFsEb")
+                .unwrap();
         let operator_config = OperatorConfig {
             signing_key: key,
             minimum_nominator_stake: T::MinNominatorStake::get(),
@@ -609,7 +591,6 @@ mod benchmarks {
             domain_id,
             T::MinOperatorStake::get(),
             operator_config.clone(),
-            signature,
         );
 
         assert_eq!(NextOperatorId::<T>::get(), operator_id + 1);
@@ -986,7 +967,6 @@ mod benchmarks {
             domain_id,
             T::MinOperatorStake::get(),
             operator_config.clone(),
-            None,
         ));
         assert_eq!(
             OperatorIdOwner::<T>::get(operator_id),

@@ -16,11 +16,12 @@ use crate::utils::run_future_in_dedicated_thread;
 use async_lock::RwLock as AsyncRwLock;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
-use futures::future::FusedFuture;
+use futures::future::{Either, FusedFuture};
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{select, stream, FutureExt, SinkExt, Stream, StreamExt};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use prometheus_client::registry::Registry;
+use rand::prelude::*;
 use rayon::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -32,7 +33,7 @@ use std::time::Duration;
 use std::{fmt, mem};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
-use subspace_farmer_components::PieceGetter;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
@@ -541,6 +542,7 @@ where
         let piece_indices_to_store = piece_indices_to_store.into_iter().enumerate();
 
         let downloading_semaphore = &Semaphore::new(SYNC_BATCH_SIZE * SYNC_CONCURRENT_BATCHES);
+        let ignored_cache_indices = &RwLock::new(HashSet::new());
 
         let downloading_pieces_stream =
             stream::iter(piece_indices_to_store.map(|(batch, piece_indices)| {
@@ -571,15 +573,16 @@ where
 
                         let piece = match result {
                             Ok(Some(piece)) => {
-                                trace!(%piece_index, "Downloaded piece successfully");
+                                trace!(%batch, %piece_index, "Downloaded piece successfully");
                                 piece
                             }
                             Ok(None) => {
-                                debug!(%piece_index, "Couldn't find piece");
+                                debug!(%batch, %piece_index, "Couldn't find piece");
                                 continue;
                             }
                             Err(error) => {
                                 debug!(
+                                    %batch,
                                     %error,
                                     %piece_index,
                                     "Failed to get piece for piece cache"
@@ -596,6 +599,7 @@ where
                             // Find plot in which there is a place for new piece to be stored
                             let Some(offset) = caches.pop_free_offset() else {
                                 error!(
+                                    %batch,
                                     %piece_index,
                                     "Failed to store piece in cache, there was no space"
                                 );
@@ -608,23 +612,37 @@ where
                         let cache_index = offset.cache_index;
                         let piece_offset = offset.piece_offset;
 
-                        if let Some(backend) = maybe_backend
-                            && let Err(error) =
-                                backend.write_piece(piece_offset, piece_index, &piece).await
-                        {
-                            // TODO: Will likely need to cache problematic backend indices to avoid hitting it over and over again repeatedly
-                            error!(
-                                %error,
+                        let skip_write = ignored_cache_indices.read().contains(&cache_index);
+                        if skip_write {
+                            trace!(
+                                %batch,
                                 %cache_index,
                                 %piece_index,
                                 %piece_offset,
-                                "Failed to write piece into cache"
+                                "Skipping known problematic cache index"
                             );
-                            continue;
-                        }
+                        } else {
+                            if let Some(backend) = maybe_backend
+                                && let Err(error) =
+                                    backend.write_piece(piece_offset, piece_index, &piece).await
+                            {
+                                error!(
+                                    %error,
+                                    %batch,
+                                    %cache_index,
+                                    %piece_index,
+                                    %piece_offset,
+                                    "Failed to write piece into cache, ignoring this cache going \
+                                    forward"
+                                );
+                                ignored_cache_indices.write().insert(cache_index);
+                                continue;
+                            }
 
-                        let key = KeyWithDistance::new(self.peer_id, piece_index.to_multihash());
-                        caches.lock().push_stored_piece(key, offset);
+                            let key =
+                                KeyWithDistance::new(self.peer_id, piece_index.to_multihash());
+                            caches.lock().push_stored_piece(key, offset);
+                        }
 
                         let prev_downloaded_pieces_count =
                             downloaded_pieces_count.fetch_add(1, Ordering::Relaxed);
@@ -654,7 +672,7 @@ where
         downloading_pieces_stream
             // This allows to schedule new batch while previous batches partially completed, but
             // avoids excessive memory usage like when all futures are created upfront
-            .buffer_unordered(SYNC_CONCURRENT_BATCHES * 2)
+            .buffer_unordered(SYNC_CONCURRENT_BATCHES * 10)
             // Simply drain everything
             .for_each(|()| async {})
             .await;
@@ -1641,6 +1659,83 @@ impl LocalRecordProvider for FarmerCache {
             expires: None,
             addresses: Vec::new(),
         })
+    }
+}
+
+/// Collection of [`FarmerCache`] instances for load balancing
+#[derive(Debug, Clone)]
+pub struct FarmerCaches {
+    caches: Arc<[FarmerCache]>,
+}
+
+impl From<Arc<[FarmerCache]>> for FarmerCaches {
+    fn from(caches: Arc<[FarmerCache]>) -> Self {
+        Self { caches }
+    }
+}
+
+impl From<FarmerCache> for FarmerCaches {
+    fn from(cache: FarmerCache) -> Self {
+        Self {
+            caches: Arc::new([cache]),
+        }
+    }
+}
+
+impl FarmerCaches {
+    /// Get piece from cache
+    pub async fn get_piece<Key>(&self, key: Key) -> Option<Piece>
+    where
+        RecordKey: From<Key>,
+    {
+        let farmer_cache = self.caches.choose(&mut thread_rng())?;
+        farmer_cache.get_piece(key).await
+    }
+
+    /// Get pieces from cache.
+    ///
+    /// Number of elements in returned stream is the same as number of unique `piece_indices`.
+    pub async fn get_pieces<'a, PieceIndices>(
+        &'a self,
+        piece_indices: PieceIndices,
+    ) -> impl Stream<Item = (PieceIndex, Option<Piece>)> + Send + Unpin + 'a
+    where
+        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send + 'a> + Send + 'a,
+    {
+        let Some(farmer_cache) = self.caches.choose(&mut thread_rng()) else {
+            return Either::Left(stream::iter(
+                piece_indices
+                    .into_iter()
+                    .map(|piece_index| (piece_index, None)),
+            ));
+        };
+
+        Either::Right(farmer_cache.get_pieces(piece_indices).await)
+    }
+
+    /// Returns a filtered list of pieces that were found in farmer cache, order is not guaranteed
+    pub async fn has_pieces(&self, piece_indices: Vec<PieceIndex>) -> Vec<PieceIndex> {
+        let Some(farmer_cache) = self.caches.choose(&mut thread_rng()) else {
+            return Vec::new();
+        };
+
+        farmer_cache.has_pieces(piece_indices).await
+    }
+
+    /// Try to store a piece in additional downloaded pieces, if there is space for them
+    pub async fn maybe_store_additional_piece(&self, piece_index: PieceIndex, piece: &Piece) {
+        self.caches
+            .iter()
+            .map(|farmer_cache| farmer_cache.maybe_store_additional_piece(piece_index, piece))
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|()| async {})
+            .await;
+    }
+}
+
+impl LocalRecordProvider for FarmerCaches {
+    fn record(&self, key: &RecordKey) -> Option<ProviderRecord> {
+        self.caches.choose(&mut thread_rng())?.record(key)
     }
 }
 

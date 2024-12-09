@@ -16,13 +16,12 @@ include = [
 ]
 
 [dependencies]
-async-mutex = "1.4.0"
+async-lock = "3.4.0"
 async-trait = "0.1.83"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bytes = "1.7.2"
 clap = { version = "4.5.18", features = ["color", "derive"] }
 derive_more = { version = "1.0.0", features = ["full"] }
-either = "1.13.0"
 event-listener-primitives = "2.0.1"
 # TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved
 fs2 = "0.4.3"
@@ -41,14 +40,15 @@ schnellru = "0.2.3"
 serde = { version = "1.0.110", features = ["derive"] }
 serde_json = "1.0.128"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-logging = { version = "0.0.1", path = "../../shared/subspace-logging" }
 subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 thiserror = "2.0.0"
 tokio = { version = "1.40.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = "0.1.16"
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 unsigned-varint = { version = "0.8.0", features = ["futures", "asynchronous_codec"] }
 void = "1.0.2"
+
 
 [dependencies.libp2p]
 # TODO: Replace with upstream once https://github.com/libp2p/rust-libp2p/issues/5626 and

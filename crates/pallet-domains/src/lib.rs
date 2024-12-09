@@ -231,8 +231,7 @@ mod pallet {
     use sp_domains::{
         BundleDigest, DomainBundleSubmitted, DomainId, DomainSudoCall, DomainsTransfersTracker,
         EpochIndex, GenesisDomain, OnChainRewards, OnDomainInstantiated, OperatorAllowList,
-        OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature, RuntimeId,
-        RuntimeObject, RuntimeType,
+        OperatorId, OperatorRewardSource, RuntimeId, RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof_runtime_interface::domain_runtime_call;
     use sp_domains_fraud_proof::storage_proof::{self, FraudProofStorageKeyProvider};
@@ -484,12 +483,6 @@ mod pallet {
     #[pallet::storage]
     pub(super) type OperatorIdOwner<T: Config> =
         StorageMap<_, Identity, OperatorId, T::AccountId, OptionQuery>;
-
-    /// Indexes operator signing key against OperatorId.
-    #[pallet::storage]
-    #[pallet::getter(fn operator_signing_key)]
-    pub(super) type OperatorSigningKey<T: Config> =
-        StorageMap<_, Identity, OperatorPublicKey, OperatorId, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn domain_staking_summary)]
@@ -1357,18 +1350,12 @@ mod pallet {
             domain_id: DomainId,
             amount: BalanceOf<T>,
             config: OperatorConfig<BalanceOf<T>>,
-            signing_key_proof_of_ownership: OperatorSignature,
         ) -> DispatchResult {
             let owner = ensure_signed(origin)?;
 
-            let (operator_id, current_epoch_index) = do_register_operator::<T>(
-                owner,
-                domain_id,
-                amount,
-                config,
-                Some(signing_key_proof_of_ownership),
-            )
-            .map_err(Error::<T>::from)?;
+            let (operator_id, current_epoch_index) =
+                do_register_operator::<T>(owner, domain_id, amount, config)
+                    .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::OperatorRegistered {
                 operator_id,
@@ -1854,8 +1841,6 @@ mod pallet {
                         domain_id,
                         operator_stake,
                         operator_config,
-                        // safe to not check the signing key ownership during genesis
-                        None,
                     )
                     .expect("Genesis operator registration must succeed");
 

@@ -32,6 +32,7 @@ use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
 };
+use sp_messenger::{ChannelNonce, XdmId};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode};
@@ -253,10 +254,6 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn operator_id_by_signing_key(_signing_key: OperatorPublicKey) -> Option<OperatorId> {
-            unreachable!()
-        }
-
         fn receipt_hash(_domain_id: DomainId, _domain_number: DomainNumber) -> Option<DomainHash> {
             unreachable!()
         }
@@ -363,6 +360,14 @@ sp_api::impl_runtime_apis! {
         }
 
         fn domain_chains_allowlist_update(_domain_id: DomainId) -> Option<DomainAllowlistUpdates>{
+            unreachable!()
+        }
+
+        fn xdm_id(_ext: &<Block as BlockT>::Extrinsic) -> Option<XdmId> {
+            unreachable!()
+        }
+
+        fn channel_nonce(_chain_id: ChainId, _channel_id: ChannelId) -> Option<ChannelNonce> {
             unreachable!()
         }
     }

@@ -571,7 +571,7 @@ impl Node {
     pub async fn connected_peers(&self) -> Result<Vec<PeerId>, ConnectedPeersError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
-        trace!("Starting 'connected_peers' request.");
+        trace!("Starting `connected_peers` request");
 
         self.shared
             .command_sender
@@ -584,11 +584,28 @@ impl Node {
             .map_err(|_| ConnectedPeersError::ConnectedPeers)
     }
 
+    /// Returns a collection of currently connected servers (typically farmers).
+    pub async fn connected_servers(&self) -> Result<Vec<PeerId>, ConnectedPeersError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        trace!("Starting `connected_servers` request.");
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::ConnectedServers { result_sender })
+            .await?;
+
+        result_receiver
+            .await
+            .map_err(|_| ConnectedPeersError::ConnectedPeers)
+    }
+
     /// Bootstraps Kademlia network
     pub async fn bootstrap(&self) -> Result<(), BootstrapError> {
         let (result_sender, mut result_receiver) = mpsc::unbounded();
 
-        debug!("Starting 'bootstrap' request.");
+        debug!("Starting `bootstrap` request");
 
         self.shared
             .command_sender

@@ -1,5 +1,5 @@
 use crate::malicious_bundle_tamper::MaliciousBundleTamper;
-use domain_client_operator::domain_bundle_producer::DomainBundleProducer;
+use domain_client_operator::domain_bundle_producer::{BundleProducer, TestBundleProducer};
 use domain_client_operator::domain_bundle_proposer::DomainBundleProposer;
 use domain_client_operator::{OpaqueBundleFor, OperatorSlotInfo};
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -18,10 +18,7 @@ use sp_blockchain::Info;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::{
-    BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
-    OperatorSignature, OperatorSigningKeyProofOfOwnershipData,
-};
+use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey};
 use sp_keyring::Sr25519Keyring;
 use sp_keystore::{Keystore, KeystorePtr};
 use sp_messenger::MessengerApi;
@@ -89,7 +86,7 @@ pub struct MaliciousBundleProducer<Client, CClient, TransactionPool> {
     operator_keystore: KeystorePtr,
     consensus_client: Arc<CClient>,
     consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
-    bundle_producer: DomainBundleProducer<DomainBlock, CBlock, Client, CClient, TransactionPool>,
+    bundle_producer: TestBundleProducer<DomainBlock, CBlock, Client, CClient, TransactionPool>,
     malicious_bundle_tamper: MaliciousBundleTamper<DomainBlock, CBlock, Client>,
     malicious_operator_status: MaliciousOperatorStatus,
 }
@@ -135,7 +132,7 @@ where
         );
 
         let (bundle_sender, _bundle_receiver) = tracing_unbounded("domain_bundle_stream", 100);
-        let bundle_producer = DomainBundleProducer::new(
+        let bundle_producer = TestBundleProducer::new(
             domain_id,
             consensus_client.clone(),
             domain_client.clone(),
@@ -272,25 +269,21 @@ where
             }
         };
 
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: self.sudo_account.clone(),
-        };
-        let signature = OperatorSignature::from(
-            self.operator_keystore
-                .sr25519_sign(
-                    OperatorPublicKey::ID,
-                    signing_key.clone().as_ref(),
-                    &data.encode(),
-                )?
-                .expect("key pair must be avaible on keystore for signing"),
-        );
+        let mut maybe_operator_id = None;
+        for operator_id in current_operators.keys().chain(next_operators.iter()) {
+            if let Some((operator_signing_key, _)) = self
+                .consensus_client
+                .runtime_api()
+                .operator(consensus_best_hash, *operator_id)?
+            {
+                if operator_signing_key == signing_key {
+                    maybe_operator_id = Some(*operator_id);
+                    break;
+                }
+            }
+        }
 
-        let maybe_operator_id = self
-            .consensus_client
-            .runtime_api()
-            .operator_id_by_signing_key(consensus_best_hash, signing_key.clone())?;
-
-        // The `signing_key` is linked to a operator means the previous registeration request is succeeded
+        // If the `signing_key` is linked to a operator, the previous registration request succeeded,
         // otherwise we need to retry
         match maybe_operator_id {
             None => {
@@ -299,7 +292,6 @@ where
                 self.submit_register_operator(
                     nonce,
                     signing_key,
-                    signature,
                     // Ideally we should use the `next_total_stake` but it is tricky to get
                     MALICIOUS_OPR_STAKE_MULTIPLIER * current_total_stake,
                 )?;
@@ -347,7 +339,6 @@ where
         &self,
         nonce: Nonce,
         signing_key: OperatorPublicKey,
-        signature: OperatorSignature,
         staking_amount: Balance,
     ) -> Result<(), Box<dyn Error>> {
         let call = pallet_domains::Call::register_operator {
@@ -358,7 +349,6 @@ where
                 minimum_nominator_stake: Balance::MAX,
                 nomination_tax: Default::default(),
             },
-            signing_key_proof_of_ownership: signature,
         };
         self.submit_consensus_extrinsic(Some(nonce), call.into())
     }

@@ -42,7 +42,9 @@ use crate::mmr::request_handler::MmrRequestHandler;
 pub use crate::mmr::sync::mmr_sync;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::sync_from_dsn::snap_sync::snap_sync;
+use crate::sync_from_dsn::DsnPieceGetter;
 use crate::transaction_pool::FullPool;
+use async_lock::Semaphore;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::xdm_gossip_peers_set_config;
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
@@ -136,7 +138,6 @@ use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
 use tokio::sync::broadcast;
-use tokio::sync::broadcast::Receiver;
 use tracing::{debug, error, info, Instrument};
 pub use utils::wait_for_block_import;
 
@@ -148,6 +149,8 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 /// too large to handle
 const POT_VERIFIER_CACHE_SIZE: u32 = 30_000;
 const SYNC_TARGET_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
+/// Multiplier on top of outgoing connections number for piece downloading purposes
+const PIECE_PROVIDER_MULTIPLIER: usize = 10;
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -735,7 +738,7 @@ pub async fn new_full<PosTable, RuntimeApi>(
     prometheus_registry: Option<&mut Registry>,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
-    consensus_snap_sync_target_block_receiver: Option<Receiver<BlockNumber>>,
+    consensus_snap_sync_target_block_receiver: Option<broadcast::Receiver<BlockNumber>>,
 ) -> Result<FullNode<RuntimeApi>, Error>
 where
     PosTable: Table,
@@ -775,11 +778,12 @@ where
     } = other;
 
     let offchain_indexing_enabled = config.base.offchain_worker.indexing_enabled;
-    let (node, bootstrap_nodes) = match config.subspace_networking {
+    let (node, bootstrap_nodes, piece_getter) = match config.subspace_networking {
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
-        } => (node, bootstrap_nodes),
+            piece_getter,
+        } => (node, bootstrap_nodes, piece_getter),
         SubspaceNetworking::Create { config: dsn_config } => {
             let dsn_protocol_version = hex::encode(client.chain_info().genesis_hash);
 
@@ -789,6 +793,7 @@ where
                 "Setting DSN protocol version..."
             );
 
+            let out_connections = dsn_config.max_out_connections;
             let (node, mut node_runner) = create_dsn_instance(
                 dsn_protocol_version,
                 dsn_config.clone(),
@@ -822,7 +827,23 @@ where
                     ),
                 );
 
-            (node, dsn_config.bootstrap_nodes)
+            let piece_provider = PieceProvider::new(
+                node.clone(),
+                SegmentCommitmentPieceValidator::new(
+                    node.clone(),
+                    subspace_link.kzg().clone(),
+                    segment_headers_store.clone(),
+                ),
+                Arc::new(Semaphore::new(
+                    out_connections as usize * PIECE_PROVIDER_MULTIPLIER,
+                )),
+            );
+
+            (
+                node,
+                dsn_config.bootstrap_nodes,
+                Arc::new(DsnPieceGetter::new(piece_provider)) as _,
+            )
         }
     };
 
@@ -1049,17 +1070,6 @@ where
 
     network_wrapper.set(network_service.clone());
 
-    let dsn_sync_piece_getter = config.dsn_piece_getter.unwrap_or_else(|| {
-        Arc::new(PieceProvider::new(
-            node.clone(),
-            SegmentCommitmentPieceValidator::new(
-                node.clone(),
-                subspace_link.kzg().clone(),
-                segment_headers_store.clone(),
-            ),
-        ))
-    });
-
     if !config.base.network.force_synced {
         // Start with DSN sync in this case
         pause_sync.store(true, Ordering::Release);
@@ -1072,7 +1082,7 @@ where
         Arc::clone(&client),
         import_queue_service1,
         pause_sync.clone(),
-        dsn_sync_piece_getter.clone(),
+        piece_getter.clone(),
         sync_service.clone(),
         network_service_handle,
         subspace_link.erasure_coding().clone(),
@@ -1090,7 +1100,7 @@ where
         sync_service.clone(),
         sync_target_block_number,
         pause_sync,
-        dsn_sync_piece_getter,
+        piece_getter,
         subspace_link.erasure_coding().clone(),
     );
     task_manager

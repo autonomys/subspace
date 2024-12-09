@@ -7,7 +7,7 @@ use crate::sync_from_dsn::import_blocks::import_blocks_from_dsn;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use async_trait::async_trait;
 use futures::channel::mpsc;
-use futures::{select, FutureExt, StreamExt};
+use futures::{select, FutureExt, Stream, StreamExt};
 use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
@@ -17,7 +17,6 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::SubspaceApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
-use std::error::Error;
 use std::fmt;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -26,6 +25,7 @@ use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::SegmentIndex;
 use subspace_core_primitives::PublicKey;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use subspace_networking::Node;
@@ -40,38 +40,53 @@ const CHECK_ALMOST_SYNCED_INTERVAL: Duration = Duration::from_secs(1);
 /// Period of time during which node should be offline for DSN sync to kick-in
 const MIN_OFFLINE_PERIOD: Duration = Duration::from_secs(60);
 
-/// Trait representing a way to get pieces for DSN sync purposes
-#[async_trait]
-pub trait DsnSyncPieceGetter: fmt::Debug {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
-}
+/// Wrapper type for [`PieceProvider`], so it can implement [`PieceGetter`]
+pub struct DsnPieceGetter<PV: PieceValidator>(PieceProvider<PV>);
 
-#[async_trait]
-impl<T> DsnSyncPieceGetter for Arc<T>
+impl<PV> fmt::Debug for DsnPieceGetter<PV>
 where
-    T: DsnSyncPieceGetter + Send + Sync + ?Sized,
+    PV: PieceValidator,
 {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        self.as_ref().get_piece(piece_index).await
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("DsnPieceGetter")
+            .field(&format!("{:?}", self.0))
+            .finish()
     }
 }
 
 #[async_trait]
-impl<PV> DsnSyncPieceGetter for PieceProvider<PV>
+impl<PV> PieceGetter for DsnPieceGetter<PV>
 where
     PV: PieceValidator,
 {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        Ok(self.get_piece_from_cache(piece_index).await)
+    #[inline]
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
+        Ok(self.0.get_piece_from_cache(piece_index).await)
+    }
+
+    #[inline]
+    async fn get_pieces<'a>(
+        &'a self,
+        piece_indices: Vec<PieceIndex>,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    > {
+        let stream = self
+            .0
+            .get_from_cache(piece_indices)
+            .await
+            .map(|(piece_index, maybe_piece)| (piece_index, Ok(maybe_piece)));
+        Ok(Box::new(stream))
+    }
+}
+
+impl<PV> DsnPieceGetter<PV>
+where
+    PV: PieceValidator,
+{
+    /// Creates new DSN piece getter
+    pub fn new(piece_provider: PieceProvider<PV>) -> Self {
+        Self(piece_provider)
     }
 }
 
@@ -114,7 +129,7 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceApi<Block, PublicKey>,
-    PG: DsnSyncPieceGetter + Send + Sync + 'static,
+    PG: PieceGetter + Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(0);
     let observer_fut = {
@@ -278,7 +293,7 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceApi<Block, PublicKey>,
-    PG: DsnSyncPieceGetter,
+    PG: PieceGetter,
 {
     let info = client.info();
     let chain_constants = client

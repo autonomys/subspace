@@ -8,11 +8,9 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::{fs, panic};
 use subspace_farmer::single_disk_farm::{ScrubTarget, SingleDiskFarm};
+use subspace_logging::init_logger;
 use subspace_proof_of_space::chia::ChiaTable;
 use tracing::info;
-use tracing_subscriber::filter::LevelFilter;
-use tracing_subscriber::prelude::*;
-use tracing_subscriber::{fmt, EnvFilter};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -77,23 +75,7 @@ async fn main() -> anyhow::Result<()> {
         exit(1);
     }));
 
-    tracing_subscriber::registry()
-        .with(
-            fmt::layer()
-                // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
-                //  Windows terminal doesn't support the same colors as bash does
-                .with_ansi(if cfg!(windows) {
-                    false
-                } else {
-                    supports_color::on(supports_color::Stream::Stderr).is_some()
-                })
-                .with_filter(
-                    EnvFilter::builder()
-                        .with_default_directive(LevelFilter::INFO.into())
-                        .from_env_lossy(),
-                ),
-        )
-        .init();
+    init_logger();
     utils::raise_fd_limit();
 
     let command = Command::parse();

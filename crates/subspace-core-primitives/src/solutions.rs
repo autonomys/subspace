@@ -6,6 +6,7 @@ use crate::sectors::SectorIndex;
 use crate::segments::{HistorySize, SegmentIndex};
 use crate::{PublicKey, ScalarBytes};
 use core::array::TryFromSliceError;
+use core::fmt;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
 use num_traits::WrappingSub;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
@@ -64,22 +65,15 @@ const_assert!(solution_range_to_pieces(pieces_to_solution_range(5, (1, 6)), (1, 
 
 /// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
 #[derive(
-    Debug,
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Deref,
-    From,
-    Into,
+    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, Deref, From, Into,
 )]
 pub struct RewardSignature([u8; RewardSignature::SIZE]);
+
+impl fmt::Debug for RewardSignature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 #[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]
@@ -135,7 +129,6 @@ impl RewardSignature {
 
 /// Witness for chunk contained within a record.
 #[derive(
-    Debug,
     Copy,
     Clone,
     Eq,
@@ -152,6 +145,12 @@ impl RewardSignature {
 )]
 #[repr(transparent)]
 pub struct ChunkWitness([u8; ChunkWitness::SIZE]);
+
+impl fmt::Debug for ChunkWitness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 #[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]

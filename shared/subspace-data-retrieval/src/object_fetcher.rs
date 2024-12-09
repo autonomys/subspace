@@ -16,8 +16,8 @@
 //! Fetching objects stored in the archived history of Subspace Network.
 
 use crate::piece_fetcher::download_pieces;
-use crate::piece_getter::{BoxError, ObjectPieceGetter};
-use crate::segment_fetcher::{download_segment, SegmentGetterError};
+use crate::piece_getter::PieceGetter;
+use crate::segment_downloading::{download_segment, SegmentDownloadingError};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Segment, SegmentItem};
@@ -116,14 +116,14 @@ pub enum Error {
     #[error("Getting segment failed: {source:?}")]
     SegmentGetter {
         #[from]
-        source: SegmentGetterError,
+        source: SegmentDownloadingError,
     },
 
     /// Piece getter error
     #[error("Getting piece caused an error: {source:?}")]
     PieceGetterError {
         #[from]
-        source: BoxError,
+        source: anyhow::Error,
     },
 
     /// Piece getter couldn't find the piece
@@ -132,9 +132,12 @@ pub enum Error {
 }
 
 /// Object fetcher for the Subspace DSN.
-pub struct ObjectFetcher {
+pub struct ObjectFetcher<PG>
+where
+    PG: PieceGetter + Send + Sync,
+{
     /// The piece getter used to fetch pieces.
-    piece_getter: Arc<dyn ObjectPieceGetter + Send + Sync + 'static>,
+    piece_getter: Arc<PG>,
 
     /// The erasure coding configuration of those pieces.
     erasure_coding: ErasureCoding,
@@ -143,21 +146,21 @@ pub struct ObjectFetcher {
     max_object_len: usize,
 }
 
-impl ObjectFetcher {
+impl<PG> ObjectFetcher<PG>
+where
+    PG: PieceGetter + Send + Sync,
+{
     /// Create a new object fetcher with the given configuration.
     ///
     /// `max_object_len` is the amount of data bytes we'll read for a single object before giving
     /// up and returning an error, or `None` for no limit (`usize::MAX`).
-    pub fn new<PG>(
-        piece_getter: PG,
+    pub fn new(
+        piece_getter: Arc<PG>,
         erasure_coding: ErasureCoding,
         max_object_len: Option<usize>,
-    ) -> Self
-    where
-        PG: ObjectPieceGetter + Send + Sync + 'static,
-    {
+    ) -> Self {
         Self {
-            piece_getter: Arc::new(piece_getter),
+            piece_getter,
             erasure_coding,
             max_object_len: max_object_len.unwrap_or(usize::MAX),
         }
@@ -356,7 +359,7 @@ impl ObjectFetcher {
                 .filter(|i| i.is_source())
                 .take(remaining_piece_count)
                 .collect::<Vec<_>>();
-            self.read_pieces(&remaining_piece_indexes)
+            self.read_pieces(remaining_piece_indexes)
                 .await?
                 .into_iter()
                 .for_each(|piece| {
@@ -554,7 +557,7 @@ impl ObjectFetcher {
     }
 
     /// Concurrently read multiple pieces, and return them in the supplied order.
-    async fn read_pieces(&self, piece_indexes: &[PieceIndex]) -> Result<Vec<Piece>, Error> {
+    async fn read_pieces(&self, piece_indexes: Vec<PieceIndex>) -> Result<Vec<Piece>, Error> {
         download_pieces(piece_indexes, &self.piece_getter)
             .await
             .map_err(|source| Error::PieceGetterError { source })

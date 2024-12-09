@@ -1,10 +1,13 @@
 //! Schema for channel update storage.
 
+use crate::message_listener::LOG_TARGET;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
-use sp_blockchain::{Error as ClientError, Result as ClientResult};
+use sp_blockchain::{Error as ClientError, Info, Result as ClientResult};
 use sp_core::H256;
 use sp_messenger::messages::{ChainId, ChannelId, ChannelState, Nonce};
+use sp_messenger::{ChannelNonce, XdmId};
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use subspace_runtime_primitives::BlockNumber;
 
 const CHANNEL_DETAIL: &[u8] = b"channel_detail";
@@ -84,5 +87,178 @@ where
             channel_detail.encode().as_slice(),
         )],
         vec![],
+    )
+}
+
+mod xdm_keys {
+    use parity_scale_codec::Encode;
+    use sp_domains::{ChainId, ChannelId};
+    use sp_messenger::messages::MessageKey;
+    use sp_messenger::XdmId;
+
+    const XDM: &[u8] = b"xdm";
+    const XDM_RELAY: &[u8] = b"relay_msg";
+    const XDM_RELAY_RESPONSE: &[u8] = b"relay_msg_response";
+    const XDM_LAST_CLEANUP_NONCE: &[u8] = b"xdm_last_cleanup_nonce";
+
+    pub(super) fn get_key_for_xdm_id(xdm_id: XdmId) -> Vec<u8> {
+        match xdm_id {
+            XdmId::RelayMessage(id) => get_key_for_xdm_relay(id),
+            XdmId::RelayResponseMessage(id) => get_key_for_xdm_relay_response(id),
+        }
+    }
+
+    pub(super) fn get_key_for_last_cleanup_relay_nonce(
+        chain_id: ChainId,
+        channel_id: ChannelId,
+    ) -> Vec<u8> {
+        (XDM, XDM_RELAY, XDM_LAST_CLEANUP_NONCE, chain_id, channel_id).encode()
+    }
+
+    pub(super) fn get_key_for_last_cleanup_relay_response_nonce(
+        chain_id: ChainId,
+        channel_id: ChannelId,
+    ) -> Vec<u8> {
+        (
+            XDM,
+            XDM_RELAY_RESPONSE,
+            XDM_LAST_CLEANUP_NONCE,
+            chain_id,
+            channel_id,
+        )
+            .encode()
+    }
+
+    pub(super) fn get_key_for_xdm_relay(id: MessageKey) -> Vec<u8> {
+        (XDM, XDM_RELAY, id).encode()
+    }
+
+    pub(super) fn get_key_for_xdm_relay_response(id: MessageKey) -> Vec<u8> {
+        (XDM, XDM_RELAY_RESPONSE, id).encode()
+    }
+}
+
+#[derive(Debug, Encode, Decode, Clone)]
+pub(super) struct BlockId<Block: BlockT> {
+    pub(super) number: NumberFor<Block>,
+    pub(super) hash: Block::Hash,
+}
+
+impl<Block: BlockT> From<Info<Block>> for BlockId<Block> {
+    fn from(value: Info<Block>) -> Self {
+        BlockId {
+            number: value.best_number,
+            hash: value.best_hash,
+        }
+    }
+}
+
+/// Store the given XDM ID as processed at given block.
+pub fn set_xdm_message_processed_at<Backend, Block>(
+    backend: &Backend,
+    xdm_id: XdmId,
+    block_id: BlockId<Block>,
+) -> ClientResult<()>
+where
+    Backend: AuxStore,
+    Block: BlockT,
+{
+    let key = xdm_keys::get_key_for_xdm_id(xdm_id);
+    backend.insert_aux(&[(key.as_slice(), block_id.encode().as_slice())], vec![])
+}
+
+/// Returns the maybe last processed block number for given xdm.
+pub fn get_xdm_processed_block_number<Backend, Block>(
+    backend: &Backend,
+    xdm_id: XdmId,
+) -> ClientResult<Option<BlockId<Block>>>
+where
+    Backend: AuxStore,
+    Block: BlockT,
+{
+    load_decode(backend, xdm_keys::get_key_for_xdm_id(xdm_id).as_slice())
+}
+
+/// Cleans up all the xdm storages until the latest nonces.
+pub fn cleanup_chain_channel_storages<Backend>(
+    backend: &Backend,
+    chain_id: ChainId,
+    channel_id: ChannelId,
+    channel_nonce: ChannelNonce,
+) -> ClientResult<()>
+where
+    Backend: AuxStore,
+{
+    let mut to_insert = vec![];
+    let mut to_delete = vec![];
+    if let Some(latest_relay_nonce) = channel_nonce.relay_msg_nonce {
+        let last_cleanup_relay_nonce_key =
+            xdm_keys::get_key_for_last_cleanup_relay_nonce(chain_id, channel_id);
+        let last_cleaned_up_nonce =
+            load_decode::<_, Nonce>(backend, last_cleanup_relay_nonce_key.as_slice())?;
+
+        let mut from_nonce = match last_cleaned_up_nonce {
+            None => Nonce::zero(),
+            Some(last_nonce) => last_nonce.saturating_add(Nonce::one()),
+        };
+
+        tracing::debug!(
+            target: LOG_TARGET,
+            "Cleaning Relay xdm keys for {:?} channel: {:?} from: {:?} to: {:?}",
+            chain_id,
+            channel_id,
+            from_nonce,
+            latest_relay_nonce
+        );
+
+        while from_nonce <= latest_relay_nonce {
+            to_delete.push(xdm_keys::get_key_for_xdm_relay((
+                chain_id, channel_id, from_nonce,
+            )));
+            from_nonce = from_nonce.saturating_add(Nonce::one());
+        }
+
+        to_insert.push((last_cleanup_relay_nonce_key, latest_relay_nonce.encode()));
+    }
+
+    if let Some(latest_relay_response_nonce) = channel_nonce.relay_response_msg_nonce {
+        let last_cleanup_relay_response_nonce_key =
+            xdm_keys::get_key_for_last_cleanup_relay_response_nonce(chain_id, channel_id);
+        let last_cleaned_up_nonce =
+            load_decode::<_, Nonce>(backend, last_cleanup_relay_response_nonce_key.as_slice())?;
+
+        let mut from_nonce = match last_cleaned_up_nonce {
+            None => Nonce::zero(),
+            Some(last_nonce) => last_nonce.saturating_add(Nonce::one()),
+        };
+
+        tracing::debug!(
+            target: LOG_TARGET,
+            "Cleaning Relay response xdm keys for {:?} channel: {:?} from: {:?} to: {:?}",
+            chain_id,
+            channel_id,
+            from_nonce,
+            latest_relay_response_nonce
+        );
+
+        while from_nonce <= latest_relay_response_nonce {
+            to_delete.push(xdm_keys::get_key_for_xdm_relay_response((
+                chain_id, channel_id, from_nonce,
+            )));
+            from_nonce = from_nonce.saturating_add(Nonce::one());
+        }
+
+        to_insert.push((
+            last_cleanup_relay_response_nonce_key,
+            latest_relay_response_nonce.encode(),
+        ));
+    }
+
+    backend.insert_aux(
+        &to_insert
+            .iter()
+            .map(|(k, v)| (k.as_slice(), v.as_slice()))
+            .collect::<Vec<_>>(),
+        &to_delete.iter().map(|k| k.as_slice()).collect::<Vec<_>>(),
     )
 }

@@ -15,11 +15,6 @@ include = [
     "/README.md"
 ]
 
-# TODO: remove when cargo-audit supports v4 lock files
-# https://github.com/rustsec/rustsec/issues/1249
-# This setting applies to the workspace lockfile, even though it's in a crate.
-rust-version = "1.81" # ensure we stay at lockfile v3
-
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
@@ -28,7 +23,6 @@ auto-id-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/auto
 bip39 = { version = "2.0.0", features = ["rand"] }
 clap = { version = "4.5.18", features = ["derive"] }
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
-dirs = "5.0.1"
 domain-client-message-relayer = { version = "0.1.0", path = "../../domains/client/relayer" }
 domain-client-operator = { version = "0.1.0", path = "../../domains/client/domain-operator" }
 domain-eth-service = { version = "0.1.0", path = "../../domains/client/eth-service" }
@@ -70,7 +64,6 @@ sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
 sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
 sp-domains = { version = "0.1.0", path = "../sp-domains" }
 sp-domain-digests = { version = "0.1.0", path = "../../domains/primitives/digests" }
-sp-domains-fraud-proof = { version = "0.1.0", path = "../sp-domains-fraud-proof" }
 sp-keystore = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
 sp-messenger = { version = "0.1.0", path = "../../domains/primitives/messenger" }
 sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
@@ -82,13 +75,12 @@ subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
-supports-color = "3.0.1"
 tempfile = "3.13.0"
 thiserror = "2.0.0"
 tokio = { version = "1.40.0", features = ["macros"] }
 tokio-stream = "0.1.16"
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+subspace-logging = { version = "0.0.1", path = "../../shared/subspace-logging" }
 
 [build-dependencies]
 substrate-build-script-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }

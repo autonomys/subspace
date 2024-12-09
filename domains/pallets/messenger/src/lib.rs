@@ -47,9 +47,9 @@ use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
 
 pub(crate) mod verification_errors {
-    pub(crate) const INVALID_CHANNEL: u8 = 100;
-    pub(crate) const INVALID_NONCE: u8 = 101;
-    pub(crate) const NONCE_OVERFLOW: u8 = 102;
+    pub(crate) const INVALID_CHANNEL: u8 = 200;
+    pub(crate) const INVALID_NONCE: u8 = 201;
+    pub(crate) const NONCE_OVERFLOW: u8 = 202;
 }
 
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
@@ -139,7 +139,7 @@ mod pallet {
         MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
-        DomainRegistration, InherentError, InherentType, OnXDMRewards, StorageKeys,
+        ChannelNonce, DomainRegistration, InherentError, InherentType, OnXDMRewards, StorageKeys,
         INHERENT_IDENTIFIER,
     };
     use sp_runtime::traits::Zero;
@@ -1348,6 +1348,16 @@ mod pallet {
 
         pub fn updated_channels() -> BTreeSet<(ChainId, ChannelId)> {
             UpdatedChannels::<T>::get()
+        }
+
+        pub fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce> {
+            Channels::<T>::get(chain_id, channel_id).map(|channel| {
+                let last_inbox_nonce = channel.next_inbox_nonce.checked_sub(U256::one());
+                ChannelNonce {
+                    relay_msg_nonce: last_inbox_nonce,
+                    relay_response_msg_nonce: channel.latest_response_received_message_nonce,
+                }
+            })
         }
 
         pub fn pre_dispatch_with_trusted_mmr_proof(

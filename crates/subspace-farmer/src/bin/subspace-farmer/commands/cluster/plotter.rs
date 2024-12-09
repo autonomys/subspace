@@ -1,6 +1,6 @@
 use crate::commands::shared::PlottingThreadPriority;
 use anyhow::anyhow;
-use async_lock::Mutex as AsyncMutex;
+use async_lock::{Mutex as AsyncMutex, Semaphore};
 use clap::Parser;
 use prometheus_client::registry::Registry;
 use std::future::Future;
@@ -9,6 +9,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::pieces::Record;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::cluster::controller::ClusterPieceGetter;
 use subspace_farmer::cluster::nats_client::NatsClient;
@@ -25,10 +26,8 @@ use subspace_farmer::plotter::Plotter;
 use subspace_farmer::utils::{
     create_plotting_thread_pool_manager, parse_cpu_cores_sets, thread_pool_core_indices,
 };
-use subspace_farmer_components::PieceGetter;
 use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
-use tokio::sync::Semaphore;
 use tracing::info;
 
 const PLOTTING_RETRY_INTERVAL: Duration = Duration::from_secs(5);
@@ -134,6 +133,9 @@ pub(super) struct PlotterArgs {
     #[cfg(feature = "rocm")]
     #[clap(flatten)]
     rocm_plotting_options: RocmPlottingOptions,
+    /// Cache group to use if specified, otherwise all caches are usable by this plotter
+    #[arg(long)]
+    cache_group: Option<String>,
     /// Additional cluster components
     #[clap(raw = true)]
     pub(super) additional_components: Vec<String>,
@@ -153,6 +155,7 @@ where
         cuda_plotting_options,
         #[cfg(feature = "rocm")]
         rocm_plotting_options,
+        cache_group,
         additional_components: _,
     } = plotter_args;
 
@@ -162,7 +165,7 @@ where
             .expect("Not zero; qed"),
     )
     .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
-    let piece_getter = ClusterPieceGetter::new(nats_client.clone());
+    let piece_getter = ClusterPieceGetter::new(nats_client.clone(), cache_group);
 
     let global_mutex = Arc::default();
 
@@ -398,7 +401,10 @@ where
             cuda_devices
                 .into_iter()
                 .map(|cuda_device| CudaRecordsEncoder::new(cuda_device, Arc::clone(&global_mutex)))
-                .collect(),
+                .collect::<Result<_, _>>()
+                .map_err(|error| {
+                    anyhow::anyhow!("Failed to create CUDA records encoder: {error}")
+                })?,
             global_mutex,
             kzg,
             erasure_coding,
@@ -477,7 +483,10 @@ where
             rocm_devices
                 .into_iter()
                 .map(|rocm_device| RocmRecordsEncoder::new(rocm_device, Arc::clone(&global_mutex)))
-                .collect(),
+                .collect::<Result<_, _>>()
+                .map_err(|error| {
+                    anyhow::anyhow!("Failed to create ROCm records encoder: {error}")
+                })?,
             global_mutex,
             kzg,
             erasure_coding,

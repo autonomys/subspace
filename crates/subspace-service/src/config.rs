@@ -1,5 +1,4 @@
 use crate::dsn::DsnConfig;
-use crate::sync_from_dsn::DsnSyncPieceGetter;
 use sc_chain_spec::ChainSpec;
 use sc_consensus_subspace::archiver::CreateObjectMappings;
 use sc_network::config::{
@@ -24,6 +23,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::Node;
 use tokio::runtime::Handle;
@@ -287,6 +287,8 @@ pub enum SubspaceNetworking {
         node: Node,
         /// Bootstrap nodes used (that can be also sent to the farmer over RPC)
         bootstrap_nodes: Vec<Multiaddr>,
+        /// Piece getter
+        piece_getter: Arc<dyn PieceGetter + Send + Sync + 'static>,
     },
     /// Networking must be instantiated internally
     Create {
@@ -307,8 +309,6 @@ pub struct SubspaceConfiguration {
     pub create_object_mappings: CreateObjectMappings,
     /// Subspace networking (DSN).
     pub subspace_networking: SubspaceNetworking,
-    /// DSN piece getter
-    pub dsn_piece_getter: Option<Arc<dyn DsnSyncPieceGetter + Send + Sync + 'static>>,
     /// Is this node a Timekeeper
     pub is_timekeeper: bool,
     /// CPU cores that timekeeper can use

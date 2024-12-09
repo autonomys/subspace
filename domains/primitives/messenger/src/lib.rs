@@ -23,7 +23,7 @@ pub mod messages;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::messages::MessageKey;
+use crate::messages::{MessageKey, Nonce};
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
 #[cfg(not(feature = "std"))]
@@ -33,6 +33,7 @@ use codec::{Decode, Encode};
 use frame_support::inherent::InherentData;
 use frame_support::inherent::{InherentIdentifier, IsFatalError};
 use messages::{BlockMessagesWithStorageKey, ChannelId, CrossDomainMessage, MessageId};
+use scale_info::TypeInfo;
 use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 #[cfg(feature = "std")]
@@ -159,6 +160,32 @@ impl sp_inherents::InherentDataProvider for InherentDataProvider {
     }
 }
 
+/// Represent a union of XDM types with their message ID
+#[derive(Debug, Encode, Decode, TypeInfo, Copy, Clone)]
+pub enum XdmId {
+    RelayMessage(MessageKey),
+    RelayResponseMessage(MessageKey),
+}
+
+impl XdmId {
+    pub fn get_chain_id_and_channel_id(&self) -> (ChainId, ChannelId) {
+        match self {
+            XdmId::RelayMessage(key) => (key.0, key.1),
+            XdmId::RelayResponseMessage(key) => (key.0, key.1),
+        }
+    }
+}
+
+#[derive(Debug, Encode, Decode, TypeInfo, Copy, Clone)]
+pub struct ChannelNonce {
+    /// Last processed relay message nonce.
+    /// Could be None if there is no relay message yet.
+    pub relay_msg_nonce: Option<Nonce>,
+    /// Last processed relay response message nonce.
+    /// Could be None if there is no first response yet
+    pub relay_response_msg_nonce: Option<Nonce>,
+}
+
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
     pub trait RelayerApi<BlockNumber, CNumber, CHash>
@@ -195,6 +222,7 @@ sp_api::decl_runtime_apis! {
     }
 
     /// Api to provide XDM extraction from Runtime Calls.
+    #[api_version(2)]
     pub trait MessengerApi<CNumber, CHash>
     where
         CNumber: Encode + Decode,
@@ -220,5 +248,11 @@ sp_api::decl_runtime_apis! {
 
         /// Returns any domain's chains allowlist updates on consensus chain.
         fn domain_chains_allowlist_update(domain_id: DomainId) -> Option<DomainAllowlistUpdates>;
+
+        /// Returns XDM message ID
+        fn xdm_id(ext: &Block::Extrinsic) -> Option<XdmId>;
+
+        /// Get Channel nonce for given chain and channel id.
+        fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce>;
     }
 }

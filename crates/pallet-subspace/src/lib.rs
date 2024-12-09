@@ -371,8 +371,6 @@ pub mod pallet {
     pub enum Error<T> {
         /// Solution range adjustment already enabled.
         SolutionRangeAdjustmentAlreadyEnabled,
-        /// Rewards already active.
-        RewardsAlreadyEnabled,
         /// Iterations are not multiple of number of checkpoints times two
         NotMultipleOfCheckpoints,
         /// Proof of time slot iterations must increase as hardware improves
@@ -1116,10 +1114,6 @@ impl<T: Config> Pallet<T> {
     fn do_enable_rewards_at(
         enable_rewards_at: EnableRewardsAt<BlockNumberFor<T>>,
     ) -> DispatchResult {
-        if EnableRewards::<T>::get().is_some() {
-            return Err(Error::<T>::RewardsAlreadyEnabled.into());
-        }
-
         match enable_rewards_at {
             EnableRewardsAt::Height(block_number) => {
                 // Enable rewards at a particular block height (default to the next block after

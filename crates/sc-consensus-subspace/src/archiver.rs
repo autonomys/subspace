@@ -73,6 +73,7 @@ use sp_runtime::traits::{
 use sp_runtime::Justifications;
 use std::error::Error;
 use std::future::Future;
+use std::num::NonZeroU32;
 use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -365,8 +366,13 @@ pub struct ObjectMappingNotification {
 pub enum CreateObjectMappings {
     /// Start creating object mappings from this block number.
     ///
-    /// This can be lower than the latest archived block.
-    Block(BlockNumber),
+    /// This can be lower than the latest archived block, but must be greater than genesis.
+    ///
+    /// The genesis block doesn't have mappings, so starting mappings at genesis is pointless.
+    /// The archiver will fail if it can't get the data for this block, but snap sync doesn't store
+    /// the genesis data on disk.  So avoiding genesis also avoids this error.
+    /// <https://github.com/paritytech/polkadot-sdk/issues/5366>
+    Block(NonZeroU32),
 
     /// Create object mappings as archiving is happening.
     Yes,
@@ -381,7 +387,7 @@ impl CreateObjectMappings {
     /// If there is no fixed block number, or mappings are disabled, returns None.
     fn block(&self) -> Option<BlockNumber> {
         match self {
-            CreateObjectMappings::Block(block) => Some(*block),
+            CreateObjectMappings::Block(block) => Some(block.get()),
             CreateObjectMappings::Yes => None,
             CreateObjectMappings::No => None,
         }
@@ -610,16 +616,58 @@ where
     // If there is no path to this block from the tip due to snap sync, we'll start archiving from
     // an earlier segment, then start mapping again once archiving reaches this block.
     if let Some(block_number) = create_object_mappings.block() {
+        // There aren't any mappings in the genesis block, so starting there is pointless.
+        // (And causes errors on restart, because genesis block data is never stored during snap sync.)
         best_block_to_archive = best_block_to_archive.min(block_number);
     }
 
     if (best_block_to_archive..best_block_number)
         .any(|block_number| client.hash(block_number.into()).ok().flatten().is_none())
     {
-        // If there are blocks missing blocks between best block to archive and best block of the
+        // If there are blocks missing headers between best block to archive and best block of the
         // blockchain it means newer block was inserted in some special way and as such is by
         // definition valid, so we can simply assume that is our best block to archive instead
         best_block_to_archive = best_block_number;
+    }
+
+    // If the user chooses an object mapping start block we don't have data or state for, we can't
+    // create mappings for it, so the node must exit with an error. We ignore genesis here, because
+    // it doesn't have mappings.
+    if create_object_mappings.is_enabled() && best_block_to_archive >= 1 {
+        let Some(best_block_to_archive_hash) = client.hash(best_block_to_archive.into())? else {
+            let error = format!(
+                "Missing hash for mapping block {best_block_to_archive}, \
+                try a higher block number, or wipe your node and restart with `--sync full`"
+            );
+            return Err(sp_blockchain::Error::Application(error.into()));
+        };
+
+        let Some(best_block_data) = client.block(best_block_to_archive_hash)? else {
+            let error = format!(
+                "Missing data for mapping block {best_block_to_archive} \
+                hash {best_block_to_archive_hash}, \
+                try a higher block number, or wipe your node and restart with `--sync full`"
+            );
+            return Err(sp_blockchain::Error::Application(error.into()));
+        };
+
+        // Similarly, state can be pruned, even if the data is present
+        client
+            .runtime_api()
+            .extract_block_object_mapping(
+                *best_block_data.block.header().parent_hash(),
+                best_block_data.block.clone(),
+            )
+            .map_err(|error| {
+                sp_blockchain::Error::Application(
+                    format!(
+                        "Missing state for mapping block {best_block_to_archive} \
+                        hash {best_block_to_archive_hash}: {error}, \
+                        try a higher block number, or wipe your node and restart with `--sync full`"
+                    )
+                    .into(),
+                )
+            })?;
     }
 
     let maybe_last_archived_block = find_last_archived_block(

@@ -336,18 +336,23 @@ pub struct FraudProof<Number, Hash, DomainHeader: HeaderT, MmrHash> {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum FraudProofVariant<Number, Hash, MmrHash, DomainHeader: HeaderT> {
+    #[codec(index = 0)]
     InvalidStateTransition(InvalidStateTransitionProof),
+    #[codec(index = 1)]
     ValidBundle(ValidBundleProof<Number, Hash, DomainHeader>),
+    #[codec(index = 2)]
     InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof),
+    #[codec(index = 3)]
     InvalidBundles(InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader>),
+    #[codec(index = 4)]
     InvalidDomainBlockHash(InvalidDomainBlockHashProof),
+    #[codec(index = 5)]
     InvalidBlockFees(InvalidBlockFeesProof),
+    #[codec(index = 6)]
     InvalidTransfers(InvalidTransfersProof),
-    // Dummy fraud proof only used in test and benchmark
-    //
-    // NOTE: the `Dummy` must be the last variant, because the `#[cfg(..)]` will apply to
-    // all the variants after it.
+    /// Dummy fraud proof only used in tests and benchmarks
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+    #[codec(index = 100)]
     Dummy,
 }
 

@@ -67,6 +67,7 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
 ) -> Result<u32, Error> {
     let mut rewarded_operator_count = 0;
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
+        let mut to_treasury = BalanceOf::<T>::zero();
         let stake_summary = maybe_domain_stake_summary
             .as_mut()
             .ok_or(TransitionError::DomainNotInitialized)?;
@@ -74,9 +75,17 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
         while let Some((operator_id, reward)) = stake_summary.current_epoch_rewards.pop_first() {
             Operators::<T>::try_mutate(operator_id, |maybe_operator| {
                 let operator = match maybe_operator.as_mut() {
-                    // it is possible that operator may have de registered by the time they got rewards
-                    // if not available, skip the operator
-                    None => return Ok(()),
+                    // It is possible that operator may have de registered and unlocked by the time they
+                    // got rewards, in this case, move the reward to the treasury
+                    None => {
+                        to_treasury += reward;
+                        return Ok(())
+                    }
+                    // Move the reward of slashed and pening slash operator to the treasury
+                    Some(operator) if matches!(*operator.status::<T>(operator_id), OperatorStatus::Slashed | OperatorStatus::PendingSlash) => {
+                        to_treasury += reward;
+                        return Ok(())
+                    }
                     Some(operator) => operator,
                 };
 
@@ -125,13 +134,14 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                     });
                 }
 
-                // add remaining rewards to nominators to be distributed during the epoch transition
+                // Add the remaining rewards to the operator's `current_total_stake` which increases the
+                // share price of the staking pool and as a way to distribute the reward to the nominator
                 let rewards = reward
                     .checked_sub(&operator_tax_amount)
                     .ok_or(TransitionError::BalanceUnderflow)?;
 
-                operator.current_epoch_rewards = operator
-                    .current_epoch_rewards
+                operator.current_total_stake = operator
+                    .current_total_stake
                     .checked_add(&rewards)
                     .ok_or(TransitionError::BalanceOverflow)?;
 
@@ -140,6 +150,8 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                 Ok(())
             })?;
         }
+
+        mint_into_treasury::<T>(to_treasury)?;
 
         Ok(())
     })
@@ -228,51 +240,38 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
 
     // if there are no deposits, withdrawls, and epoch rewards for this operator
     // then short-circuit and return early.
-    if operator.deposits_in_epoch.is_zero()
-        && operator.withdrawals_in_epoch.is_zero()
-        && operator.current_epoch_rewards.is_zero()
-    {
+    if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
         return Ok((operator.current_total_stake, false));
     }
 
-    let total_stake = operator
-        .current_total_stake
-        .checked_add(&operator.current_epoch_rewards)
-        .ok_or(TransitionError::BalanceOverflow)?;
-
-    let total_shares = operator.current_total_shares;
-
+    let mut total_stake = operator.current_total_stake;
+    let mut total_shares = operator.current_total_shares;
     let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
     // calculate and subtract total withdrew shares from previous epoch
-    let (total_stake, total_shares) = if !operator.withdrawals_in_epoch.is_zero() {
+    if !operator.withdrawals_in_epoch.is_zero() {
         let withdraw_stake = share_price.shares_to_stake::<T>(operator.withdrawals_in_epoch);
-        let total_stake = total_stake
+        total_stake = total_stake
             .checked_sub(&withdraw_stake)
             .ok_or(TransitionError::BalanceUnderflow)?;
-        let total_shares = total_shares
+        total_shares = total_shares
             .checked_sub(&operator.withdrawals_in_epoch)
             .ok_or(TransitionError::ShareUnderflow)?;
 
         operator.withdrawals_in_epoch = Zero::zero();
-        (total_stake, total_shares)
-    } else {
-        (total_stake, total_shares)
     };
 
     // calculate and add total deposits from the previous epoch
-    let (total_stake, total_shares) = if !operator.deposits_in_epoch.is_zero() {
+    if !operator.deposits_in_epoch.is_zero() {
         let deposited_shares = share_price.stake_to_shares::<T>(operator.deposits_in_epoch);
-        let total_stake = total_stake
+        total_stake = total_stake
             .checked_add(&operator.deposits_in_epoch)
             .ok_or(TransitionError::BalanceOverflow)?;
-        let total_shares = total_shares
+        total_shares = total_shares
             .checked_add(&deposited_shares)
             .ok_or(TransitionError::ShareOverflow)?;
+
         operator.deposits_in_epoch = Zero::zero();
-        (total_stake, total_shares)
-    } else {
-        (total_stake, total_shares)
     };
 
     // update operator pool epoch share price
@@ -288,7 +287,6 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
     // update operator state
     operator.current_total_shares = total_shares;
     operator.current_total_stake = total_stake;
-    operator.current_epoch_rewards = Zero::zero();
     Operators::<T>::set(operator_id, Some(operator));
 
     Ok((total_stake, true))
@@ -306,23 +304,26 @@ pub(crate) fn mint_funds<T: Config>(
     Ok(())
 }
 
-pub(crate) fn mint_into_treasury<T: Config>(amount: BalanceOf<T>) -> Option<()> {
-    let existing_funds = AccumulatedTreasuryFunds::<T>::get();
-    let total_funds = existing_funds.checked_add(&amount)?;
-    if total_funds.is_zero() {
-        return Some(());
+pub(crate) fn mint_into_treasury<T: Config>(amount: BalanceOf<T>) -> Result<(), TransitionError> {
+    if amount.is_zero() {
+        return Ok(());
     }
+
+    let total_funds = AccumulatedTreasuryFunds::<T>::get()
+        .checked_add(&amount)
+        .ok_or(TransitionError::BalanceOverflow)?;
 
     match T::Currency::can_deposit(&T::TreasuryAccount::get(), total_funds, Provenance::Minted) {
         // Deposit is possible, so we mint the funds into treasury.
         DepositConsequence::Success => {
-            T::Currency::mint_into(&T::TreasuryAccount::get(), total_funds).ok()?;
+            T::Currency::mint_into(&T::TreasuryAccount::get(), total_funds)
+                .map_err(|_| TransitionError::MintBalance)?;
             AccumulatedTreasuryFunds::<T>::kill();
         }
         // Deposit cannot be done to treasury, so hold the funds until we can.
         _ => AccumulatedTreasuryFunds::<T>::set(total_funds),
     }
-    Some(())
+    Ok(())
 }
 
 /// Slashes any pending slashed operators.
@@ -354,12 +355,7 @@ pub(crate) fn do_slash_operator<T: Config>(
 
         let staked_hold_id = T::HoldIdentifier::staking_staked();
 
-        let mut total_stake = operator
-            .current_total_stake
-            .checked_add(&operator.current_epoch_rewards)
-            .ok_or(TransitionError::BalanceOverflow)?;
-
-        operator.current_epoch_rewards = Zero::zero();
+        let mut total_stake = operator.current_total_stake;
         let mut total_shares = operator.current_total_shares;
         let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
@@ -441,7 +437,7 @@ pub(crate) fn do_slash_operator<T: Config>(
                 .checked_sub(&amount_to_slash_in_holding)
                 .ok_or(TransitionError::BalanceUnderflow)?;
 
-            mint_into_treasury::<T>(nominator_reward).ok_or(TransitionError::MintBalance)?;
+            mint_into_treasury::<T>(nominator_reward)?;
 
             total_stake = total_stake.saturating_sub(nominator_staked_amount);
             total_shares = total_shares.saturating_sub(nominator_shares);
@@ -493,7 +489,7 @@ pub(crate) fn do_slash_operator<T: Config>(
             nominator_count == 0 && !Deposits::<T>::contains_key(operator_id, operator_owner);
 
         if cleanup_operator {
-            do_cleanup_operator::<T>(operator_id, total_stake, operator.signing_key)?;
+            do_cleanup_operator::<T>(operator_id, total_stake)?;
             if slashed_operators.is_empty() {
                 PendingSlashes::<T>::remove(domain_id);
             } else {
@@ -516,7 +512,7 @@ mod tests {
     use crate::bundle_storage_fund::STORAGE_FEE_RESERVE;
     use crate::pallet::{
         Deposits, DomainStakingSummary, HeadDomainNumber, LastEpochStakingDistribution,
-        NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, Withdrawals,
+        NominatorCount, OperatorIdOwner, Operators, Withdrawals,
     };
     use crate::staking::tests::{register_operator, Share};
     use crate::staking::{
@@ -530,13 +526,10 @@ mod tests {
     use crate::{BalanceOf, Config, HoldIdentifier, NominatorId};
     #[cfg(not(feature = "std"))]
     use alloc::vec;
-    use codec::Encode;
     use frame_support::assert_ok;
     use frame_support::traits::fungible::InspectHold;
     use sp_core::{Pair, U256};
-    use sp_domains::{
-        DomainId, OperatorPair, OperatorRewardSource, OperatorSigningKeyProofOfOwnershipData,
-    };
+    use sp_domains::{DomainId, OperatorPair, OperatorRewardSource};
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Percent};
     use std::collections::BTreeMap;
@@ -554,10 +547,6 @@ mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
         let minimum_free_balance = 10 * SSC;
         let mut nominators = BTreeMap::from_iter(
             nominators
@@ -586,7 +575,6 @@ mod tests {
                 operator_stake,
                 10 * SSC,
                 pair.public(),
-                signature,
                 BTreeMap::from_iter(nominators.clone()),
             );
 
@@ -649,7 +637,6 @@ mod tests {
 
             assert_eq!(Operators::<Test>::get(operator_id), None);
             assert_eq!(OperatorIdOwner::<Test>::get(operator_id), None);
-            assert_eq!(OperatorSigningKey::<Test>::get(pair.public()), None);
             assert_eq!(NominatorCount::<Test>::get(operator_id), 0);
         });
     }
@@ -692,10 +679,6 @@ mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 0;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
         let FinalizeDomainParams {
             total_deposit,
             rewards,
@@ -729,7 +712,6 @@ mod tests {
                 operator_stake,
                 10 * SSC,
                 pair.public(),
-                signature,
                 BTreeMap::from_iter(nominators),
             );
 
@@ -771,7 +753,6 @@ mod tests {
                 operator.current_total_stake + operator.total_storage_fee_deposit,
                 total_updated_stake
             );
-            assert_eq!(operator.current_epoch_rewards, Zero::zero());
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert_eq!(
@@ -808,10 +789,6 @@ mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
         let operator_rewards = 10 * SSC;
         let mut nominators =
             BTreeMap::from_iter(vec![(1, (110 * SSC, 100 * SSC)), (2, (60 * SSC, 50 * SSC))]);
@@ -827,7 +804,6 @@ mod tests {
                 operator_stake,
                 10 * SSC,
                 pair.public(),
-                signature,
                 BTreeMap::from_iter(nominators),
             );
 
@@ -836,6 +812,7 @@ mod tests {
             // 10% tax
             let nomination_tax = Percent::from_parts(10);
             let mut operator = Operators::<Test>::get(operator_id).unwrap();
+            let pre_total_stake = operator.current_total_stake;
             let pre_storage_fund_deposit = operator.total_storage_fee_deposit;
             operator.nomination_tax = nomination_tax;
             Operators::<Test>::insert(operator_id, operator);
@@ -854,7 +831,7 @@ mod tests {
             let new_storage_fund_deposit =
                 operator.total_storage_fee_deposit - pre_storage_fund_deposit;
             assert_eq!(
-                operator.current_epoch_rewards,
+                operator.current_total_stake - pre_total_stake,
                 (10 * SSC - expected_operator_tax)
             );
 

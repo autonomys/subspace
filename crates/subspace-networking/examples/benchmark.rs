@@ -1,3 +1,4 @@
+use async_lock::Semaphore;
 use backoff::future::retry;
 use backoff::ExponentialBackoff;
 use clap::Parser;
@@ -14,14 +15,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
+use subspace_logging::init_logger;
 use subspace_networking::protocols::request_response::handlers::piece_by_index::PieceByIndexRequestHandler;
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, PieceValidator};
 use subspace_networking::{Config, Node};
-use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn, Level};
-use tracing_subscriber::fmt::Subscriber;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
 
 /// Defines initial duration between get_piece calls.
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
@@ -128,8 +126,7 @@ enum Command {
 
 #[tokio::main]
 async fn main() {
-    init_logging();
-
+    init_logger();
     let args: Args = Args::parse();
 
     info!(?args, "Benchmark started.");
@@ -214,7 +211,7 @@ async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize, retr
         return;
     }
 
-    let piece_provider = PieceProvider::new(node, NoPieceValidator);
+    let piece_provider = PieceProvider::new(node, NoPieceValidator, Arc::new(Semaphore::new(100)));
     let mut total_duration = Duration::default();
     for i in start_with..(start_with + max_pieces) {
         let piece_index = PieceIndex::from(i as u64);
@@ -266,7 +263,11 @@ async fn parallel_benchmark(
 
     let semaphore = &Semaphore::new(parallelism_level.into());
 
-    let piece_provider = &PieceProvider::new(node, NoPieceValidator);
+    let piece_provider = &PieceProvider::new(
+        node,
+        NoPieceValidator,
+        Arc::new(Semaphore::new(parallelism_level.into())),
+    );
     let mut total_duration = Duration::default();
     let mut pure_total_duration = Duration::default();
     let mut pending_pieces = (start_with..(start_with + max_pieces))
@@ -277,10 +278,7 @@ async fn parallel_benchmark(
             async move {
                 let start = Instant::now();
 
-                let permit = semaphore
-                    .acquire()
-                    .await
-                    .expect("Semaphore cannot be closed.");
+                let permit = semaphore.acquire().await;
                 let semaphore_acquired = Instant::now();
                 let maybe_piece = get_piece_from_dsn_cache_with_retries(
                     piece_provider,
@@ -394,15 +392,4 @@ pub async fn configure_dsn(
     println!("Node address {}", node_addr);
 
     node
-}
-
-fn init_logging() {
-    // set default log to info if the RUST_LOG is not set.
-    let env_filter = EnvFilter::builder()
-        .with_default_directive(Level::INFO.into())
-        .from_env_lossy();
-
-    let builder = Subscriber::builder().with_env_filter(env_filter).finish();
-
-    builder.init()
 }

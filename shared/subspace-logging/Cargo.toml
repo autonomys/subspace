@@ -1,0 +1,16 @@
+[package]
+name = "subspace-logging"
+description = "Ensure all logging uilities are centralized for the whole project"
+license = "Apache-2.0"
+version = "0.0.1"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+edition = "2021"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+supports-color = "3.0.1"

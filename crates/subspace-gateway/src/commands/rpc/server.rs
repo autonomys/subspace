@@ -3,6 +3,7 @@
 use clap::Parser;
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_gateway_rpc::{SubspaceGatewayRpc, SubspaceGatewayRpcApiServer};
 use tracing::info;
 
@@ -27,10 +28,13 @@ pub(crate) struct RpcOptions<const DEFAULT_PORT: u16> {
 // - add an argument for a custom tokio runtime
 // - move this RPC code into a new library part of this crate
 // - make a RPC config that is independent of clap
-pub async fn launch_rpc_server<const P: u16>(
-    rpc_api: SubspaceGatewayRpc,
-    rpc_options: RpcOptions<P>,
-) -> anyhow::Result<ServerHandle> {
+pub async fn launch_rpc_server<PG, const DEFAULT_PORT: u16>(
+    rpc_api: SubspaceGatewayRpc<PG>,
+    rpc_options: RpcOptions<DEFAULT_PORT>,
+) -> anyhow::Result<ServerHandle>
+where
+    PG: PieceGetter + Send + Sync + 'static,
+{
     let server = ServerBuilder::default()
         .build(rpc_options.rpc_listen_on)
         .await?;

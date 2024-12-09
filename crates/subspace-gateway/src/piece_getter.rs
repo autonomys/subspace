@@ -2,18 +2,17 @@
 
 use async_trait::async_trait;
 use futures::stream::StreamExt;
+use futures::{FutureExt, Stream};
 use std::fmt;
-use std::ops::{Deref, DerefMut};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
-use subspace_data_retrieval::piece_getter::{BoxError, ObjectPieceGetter};
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
-use subspace_networking::Node;
 
 /// The maximum number of peer-to-peer walking rounds for L1 archival storage.
 const MAX_RANDOM_WALK_ROUNDS: usize = 15;
 
-/// Wrapper type for PieceProvider, so it can implement ObjectPieceGetter.
-pub struct DsnPieceGetter<PV: PieceValidator>(pub PieceProvider<PV>);
+/// Wrapper type for [`PieceProvider`], so it can implement [`PieceGetter`]
+pub struct DsnPieceGetter<PV: PieceValidator>(PieceProvider<PV>);
 
 impl<PV> fmt::Debug for DsnPieceGetter<PV>
 where
@@ -26,37 +25,17 @@ where
     }
 }
 
-impl<PV> Deref for DsnPieceGetter<PV>
-where
-    PV: PieceValidator,
-{
-    type Target = PieceProvider<PV>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<PV> DerefMut for DsnPieceGetter<PV>
-where
-    PV: PieceValidator,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
 // TODO:
-// - change ObjectPieceGetter trait to take a list of piece indexes
+// - reconstruct segment if piece is missing
 // - move this piece getter impl into a new library part of this crate
 #[async_trait]
-impl<PV> ObjectPieceGetter for DsnPieceGetter<PV>
+impl<PV> PieceGetter for DsnPieceGetter<PV>
 where
     PV: PieceValidator,
 {
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         if let Some((got_piece_index, maybe_piece)) =
-            self.get_from_cache([piece_index]).await.next().await
+            self.0.get_from_cache([piece_index]).await.next().await
         {
             assert_eq!(piece_index, got_piece_index);
 
@@ -66,8 +45,36 @@ where
         }
 
         Ok(self
+            .0
             .get_piece_from_archival_storage(piece_index, MAX_RANDOM_WALK_ROUNDS)
             .await)
+    }
+
+    async fn get_pieces<'a>(
+        &'a self,
+        piece_indices: Vec<PieceIndex>,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    > {
+        let stream =
+            self.0
+                .get_from_cache(piece_indices)
+                .await
+                .then(move |(piece_index, maybe_piece)| {
+                    let fut = async move {
+                        if let Some(piece) = maybe_piece {
+                            return (piece_index, Ok(Some(piece)));
+                        }
+
+                        self.0
+                            .get_piece_from_archival_storage(piece_index, MAX_RANDOM_WALK_ROUNDS)
+                            .map(|piece| (piece_index, Ok(piece)))
+                            .await
+                    };
+                    Box::pin(fut)
+                });
+
+        Ok(Box::new(stream))
     }
 }
 
@@ -76,7 +83,7 @@ where
     PV: PieceValidator,
 {
     /// Creates new DSN piece getter.
-    pub fn new(node: Node, piece_validator: PV) -> Self {
-        Self(PieceProvider::new(node, piece_validator))
+    pub fn new(piece_provider: PieceProvider<PV>) -> Self {
+        Self(piece_provider)
     }
 }

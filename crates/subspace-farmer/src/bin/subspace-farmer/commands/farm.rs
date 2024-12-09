@@ -2,7 +2,7 @@ use crate::commands::shared::network::{configure_network, NetworkArgs};
 use crate::commands::shared::{derive_libp2p_keypair, DiskFarm, PlottingThreadPriority};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock, Semaphore};
 use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
@@ -20,10 +20,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::PublicKey;
+use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farm::{PlottedSectors, SectorPlottingDetails, SectorUpdate};
-use subspace_farmer::farmer_cache::FarmerCache;
+use subspace_farmer::farmer_cache::{FarmerCache, FarmerCaches};
 use subspace_farmer::farmer_piece_getter::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
 use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeClient;
@@ -49,12 +50,10 @@ use subspace_farmer::utils::{
     thread_pool_core_indices, AsyncJoinOnDrop,
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
-use subspace_farmer_components::PieceGetter;
 use subspace_kzg::Kzg;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
-use tokio::sync::{Barrier, Semaphore};
 use tracing::{error, info, info_span, warn, Instrument};
 
 /// Get piece retry attempts number.
@@ -68,6 +67,8 @@ const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 const MAX_SPACE_PLEDGED_FOR_PLOT_CACHE_ON_WINDOWS: u64 = 7 * 1024 * 1024 * 1024 * 1024;
 const FARM_ERROR_PRINT_INTERVAL: Duration = Duration::from_secs(30);
 const PLOTTING_RETRY_INTERVAL: Duration = Duration::from_secs(5);
+/// Multiplier on top of outgoing connections number for piece downloading purposes
+const PIECE_PROVIDER_MULTIPLIER: usize = 10;
 
 type FarmIndex = u8;
 
@@ -196,8 +197,7 @@ pub(crate) struct FarmingArgs {
     /// `size` is max allocated size in human-readable format (e.g. 10GB, 2TiB) or just bytes that
     /// farmer will make sure to not exceed (and will pre-allocated all the space on startup to
     /// ensure it will not run out of space in runtime). Optionally, `record-chunks-mode` can be
-    /// set to `ConcurrentChunks` or `WholeSector` in order to avoid internal benchmarking during
-    /// startup.
+    /// set to `ConcurrentChunks` (default) or `WholeSector`.
     disk_farms: Vec<DiskFarm>,
     /// WebSocket RPC URL of the Subspace node to connect to
     #[arg(long, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
@@ -426,11 +426,13 @@ where
 
     let (farmer_cache, farmer_cache_worker) =
         FarmerCache::new(node_client.clone(), peer_id, Some(&mut registry));
+    let farmer_caches = FarmerCaches::from(farmer_cache.clone());
 
     let node_client = CachingProxyNodeClient::new(node_client)
         .await
         .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
 
+    let out_connections = network_args.out_connections;
     let (node, mut node_runner) = {
         if network_args.bootstrap_nodes.is_empty() {
             network_args
@@ -445,7 +447,7 @@ where
             network_args,
             Arc::downgrade(&plotted_pieces),
             node_client.clone(),
-            farmer_cache.clone(),
+            farmer_caches.clone(),
             should_start_prometheus_server.then_some(&mut registry),
         )
         .map_err(|error| anyhow!("Failed to configure networking: {error}"))?
@@ -460,11 +462,14 @@ where
     let piece_provider = PieceProvider::new(
         node.clone(),
         SegmentCommitmentPieceValidator::new(node.clone(), node_client.clone(), kzg.clone()),
+        Arc::new(Semaphore::new(
+            out_connections as usize * PIECE_PROVIDER_MULTIPLIER,
+        )),
     );
 
     let piece_getter = FarmerPieceGetter::new(
         piece_provider,
-        farmer_cache.clone(),
+        farmer_caches,
         node_client.clone(),
         Arc::clone(&plotted_pieces),
         DsnCacheRetryPolicy {
@@ -567,9 +572,6 @@ where
 
     let (farms, plotting_delay_senders) = {
         let info_mutex = &AsyncMutex::new(());
-        let faster_read_sector_record_chunks_mode_barrier =
-            Arc::new(Barrier::new(disk_farms.len()));
-        let faster_read_sector_record_chunks_mode_concurrency = Arc::new(Semaphore::new(1));
         let (plotting_delay_senders, plotting_delay_receivers) = (0..disk_farms.len())
             .map(|_| oneshot::channel())
             .unzip::<_, _, Vec<_>, Vec<_>>();
@@ -587,10 +589,6 @@ where
                 let erasure_coding = erasure_coding.clone();
                 let plotter = Arc::clone(&plotter);
                 let global_mutex = Arc::clone(&global_mutex);
-                let faster_read_sector_record_chunks_mode_barrier =
-                    Arc::clone(&faster_read_sector_record_chunks_mode_barrier);
-                let faster_read_sector_record_chunks_mode_concurrency =
-                    Arc::clone(&faster_read_sector_record_chunks_mode_concurrency);
 
                 async move {
                     let farm_fut = SingleDiskFarm::new::<_, PosTable>(
@@ -611,9 +609,8 @@ where
                             max_plotting_sectors_per_farm,
                             disable_farm_locking,
                             read_sector_record_chunks_mode: disk_farm
-                                .read_sector_record_chunks_mode,
-                            faster_read_sector_record_chunks_mode_barrier,
-                            faster_read_sector_record_chunks_mode_concurrency,
+                                .read_sector_record_chunks_mode
+                                .unwrap_or(ReadSectorRecordChunksMode::ConcurrentChunks),
                             registry: Some(registry),
                             create,
                         },
@@ -1072,7 +1069,10 @@ where
             cuda_devices
                 .into_iter()
                 .map(|cuda_device| CudaRecordsEncoder::new(cuda_device, Arc::clone(&global_mutex)))
-                .collect(),
+                .collect::<Result<_, _>>()
+                .map_err(|error| {
+                    anyhow::anyhow!("Failed to create CUDA records encoder: {error}")
+                })?,
             global_mutex,
             kzg,
             erasure_coding,
@@ -1151,7 +1151,10 @@ where
             rocm_devices
                 .into_iter()
                 .map(|rocm_device| RocmRecordsEncoder::new(rocm_device, Arc::clone(&global_mutex)))
-                .collect(),
+                .collect::<Result<_, _>>()
+                .map_err(|error| {
+                    anyhow::anyhow!("Failed to create ROCm records encoder: {error}")
+                })?,
             global_mutex,
             kzg,
             erasure_coding,

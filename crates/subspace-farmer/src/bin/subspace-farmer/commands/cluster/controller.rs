@@ -3,7 +3,7 @@ use crate::commands::cluster::farmer::FARMER_IDENTIFICATION_BROADCAST_INTERVAL;
 use crate::commands::shared::derive_libp2p_keypair;
 use crate::commands::shared::network::{configure_network, NetworkArgs};
 use anyhow::anyhow;
-use async_lock::RwLock as AsyncRwLock;
+use async_lock::{RwLock as AsyncRwLock, Semaphore};
 use backoff::ExponentialBackoff;
 use clap::{Parser, ValueHint};
 use futures::stream::FuturesUnordered;
@@ -20,7 +20,7 @@ use subspace_farmer::cluster::controller::controller_service;
 use subspace_farmer::cluster::controller::farms::{maintain_farms, FarmIndex};
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
-use subspace_farmer::farmer_cache::FarmerCache;
+use subspace_farmer::farmer_cache::{FarmerCache, FarmerCaches};
 use subspace_farmer::farmer_piece_getter::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
 use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeClient;
@@ -30,7 +30,7 @@ use subspace_farmer::single_disk_farm::identity::Identity;
 use subspace_farmer::utils::{run_future_in_dedicated_thread, AsyncJoinOnDrop};
 use subspace_kzg::Kzg;
 use subspace_networking::utils::piece_provider::PieceProvider;
-use tracing::info;
+use tracing::{info, info_span, Instrument};
 
 /// Get piece retry attempts number.
 const PIECE_GETTER_MAX_RETRIES: u16 = 7;
@@ -38,6 +38,8 @@ const PIECE_GETTER_MAX_RETRIES: u16 = 7;
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
 /// Defines max duration between get_piece calls.
 const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
+/// Multiplier on top of outgoing connections number for piece downloading purposes
+const PIECE_PROVIDER_MULTIPLIER: usize = 10;
 
 /// Arguments for controller
 #[derive(Debug, Parser)]
@@ -55,7 +57,7 @@ pub(super) struct ControllerArgs {
     /// It is strongly recommended to use alphanumeric values for cache group, the same cache group
     /// must be also specified on corresponding caches.
     #[arg(long, default_value = "default")]
-    cache_group: String,
+    cache_groups: Vec<String>,
     /// Number of service instances.
     ///
     /// Increasing number of services allows to process more concurrent requests, but increasing
@@ -84,7 +86,7 @@ pub(super) async fn controller(
     let ControllerArgs {
         base_path,
         node_rpc_url,
-        cache_group,
+        cache_groups,
         service_instances,
         mut network_args,
         dev,
@@ -128,8 +130,11 @@ pub(super) async fn controller(
     let peer_id = keypair.public().to_peer_id();
     let instance = peer_id.to_string();
 
-    let (farmer_cache, farmer_cache_worker) =
-        FarmerCache::new(node_client.clone(), peer_id, Some(registry));
+    let (farmer_caches, farmer_cache_workers) = cache_groups
+        .iter()
+        .map(|_cache_group| FarmerCache::new(node_client.clone(), peer_id, Some(registry)))
+        .unzip::<_, _, Vec<_>, Vec<_>>();
+    let farmer_caches = Arc::from(farmer_caches.into_boxed_slice());
 
     // TODO: Metrics
 
@@ -137,6 +142,7 @@ pub(super) async fn controller(
         .await
         .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
 
+    let out_connections = network_args.out_connections;
     let (node, mut node_runner) = {
         if network_args.bootstrap_nodes.is_empty() {
             network_args
@@ -151,7 +157,7 @@ pub(super) async fn controller(
             network_args,
             Arc::downgrade(&plotted_pieces),
             node_client.clone(),
-            farmer_cache.clone(),
+            FarmerCaches::from(Arc::clone(&farmer_caches)),
             Some(registry),
         )
         .map_err(|error| anyhow!("Failed to configure networking: {error}"))?
@@ -161,11 +167,58 @@ pub(super) async fn controller(
     let piece_provider = PieceProvider::new(
         node.clone(),
         SegmentCommitmentPieceValidator::new(node.clone(), node_client.clone(), kzg.clone()),
+        Arc::new(Semaphore::new(
+            out_connections as usize * PIECE_PROVIDER_MULTIPLIER,
+        )),
     );
+
+    let farmer_cache_workers_fut = farmer_cache_workers
+        .into_iter()
+        .zip(&cache_groups)
+        .enumerate()
+        .map(|(index, (farmer_cache_worker, cache_group))| {
+            // Each farmer cache worker gets a customized piece getter that can leverage other
+            // caches than itself for sync purposes
+            let piece_getter = FarmerPieceGetter::new(
+                piece_provider.clone(),
+                FarmerCaches::from(Arc::from(
+                    farmer_caches
+                        .iter()
+                        .enumerate()
+                        .filter(|&(filter_index, _farmer_cache)| filter_index != index)
+                        .map(|(_filter_index, farmer_cache)| farmer_cache.clone())
+                        .collect::<Box<_>>(),
+                )),
+                node_client.clone(),
+                Arc::clone(&plotted_pieces),
+                DsnCacheRetryPolicy {
+                    max_retries: PIECE_GETTER_MAX_RETRIES,
+                    backoff: ExponentialBackoff {
+                        initial_interval: GET_PIECE_INITIAL_INTERVAL,
+                        max_interval: GET_PIECE_MAX_INTERVAL,
+                        // Try until we get a valid piece
+                        max_elapsed_time: None,
+                        multiplier: 1.75,
+                        ..ExponentialBackoff::default()
+                    },
+                },
+            );
+
+            let fut = farmer_cache_worker
+                .run(piece_getter.downgrade())
+                .instrument(info_span!("", %cache_group));
+
+            async move {
+                let fut =
+                    run_future_in_dedicated_thread(move || fut, format!("cache-worker-{index}"));
+                anyhow::Ok(fut?.await?)
+            }
+        })
+        .collect::<FuturesUnordered<_>>();
 
     let piece_getter = FarmerPieceGetter::new(
         piece_provider,
-        farmer_cache.clone(),
+        FarmerCaches::from(Arc::clone(&farmer_caches)),
         node_client.clone(),
         Arc::clone(&plotted_pieces),
         DsnCacheRetryPolicy {
@@ -181,30 +234,28 @@ pub(super) async fn controller(
         },
     );
 
-    let farmer_cache_worker_fut = run_future_in_dedicated_thread(
-        {
-            let future = farmer_cache_worker.run(piece_getter.downgrade());
-
-            move || future
-        },
-        "controller-cache-worker".to_string(),
-    )?;
-
     let mut controller_services = (0..service_instances.get())
         .map(|index| {
             let nats_client = nats_client.clone();
             let node_client = node_client.clone();
             let piece_getter = piece_getter.clone();
-            let farmer_cache = farmer_cache.clone();
+            let farmer_caches = Arc::clone(&farmer_caches);
+            let cache_groups = cache_groups.clone();
             let instance = instance.clone();
 
             AsyncJoinOnDrop::new(
                 tokio::spawn(async move {
+                    let farmer_caches = cache_groups
+                        .iter()
+                        .zip(farmer_caches.as_ref())
+                        .map(|(cache_group, farmer_cache)| (cache_group.as_str(), farmer_cache))
+                        .collect::<Vec<_>>();
+
                     controller_service(
                         &nats_client,
                         &node_client,
                         &piece_getter,
-                        &farmer_cache,
+                        &farmer_caches,
                         &instance,
                         index == 0,
                     )
@@ -238,39 +289,56 @@ pub(super) async fn controller(
                 .await
             }
         },
-        "controller-farms".to_string(),
+        "farms".to_string(),
     )?;
 
-    let caches_fut = run_future_in_dedicated_thread(
-        move || async move {
-            maintain_caches(
-                &cache_group,
-                &nats_client,
-                farmer_cache,
-                CACHE_IDENTIFICATION_BROADCAST_INTERVAL,
-            )
-            .await
-        },
-        "controller-caches".to_string(),
-    )?;
+    let caches_fut = farmer_caches
+        .iter()
+        .cloned()
+        .zip(cache_groups)
+        .enumerate()
+        .map(|(index, (farmer_cache, cache_group))| {
+            let nats_client = nats_client.clone();
+
+            async move {
+                let fut = run_future_in_dedicated_thread(
+                    move || async move {
+                        maintain_caches(
+                            &cache_group,
+                            &nats_client,
+                            &farmer_cache,
+                            CACHE_IDENTIFICATION_BROADCAST_INTERVAL,
+                        )
+                        .await
+                    },
+                    format!("caches-{index}"),
+                );
+                anyhow::Ok(fut?.await?)
+            }
+        })
+        .collect::<FuturesUnordered<_>>();
 
     let networking_fut = run_future_in_dedicated_thread(
         move || async move { node_runner.run().await },
-        "controller-networking".to_string(),
+        "networking".to_string(),
     )?;
 
     Ok(Box::pin(async move {
         // This defines order in which things are dropped
         let networking_fut = networking_fut;
         let farms_fut = farms_fut;
-        let caches_fut = caches_fut;
-        let farmer_cache_worker_fut = farmer_cache_worker_fut;
+        let mut caches_fut = caches_fut;
+        let caches_fut = caches_fut.next().map(|result| result.unwrap_or(Ok(Ok(()))));
+        let mut farmer_cache_workers_fut = farmer_cache_workers_fut;
+        let farmer_cache_workers_fut = farmer_cache_workers_fut
+            .next()
+            .map(|result| result.unwrap_or(Ok(())));
         let controller_service_fut = controller_service_fut;
 
         let networking_fut = pin!(networking_fut);
         let farms_fut = pin!(farms_fut);
         let caches_fut = pin!(caches_fut);
-        let farmer_cache_worker_fut = pin!(farmer_cache_worker_fut);
+        let farmer_cache_workers_fut = pin!(farmer_cache_workers_fut);
         let controller_service_fut = pin!(controller_service_fut);
 
         select! {
@@ -290,7 +358,7 @@ pub(super) async fn controller(
             },
 
             // Piece cache worker future
-            _ = farmer_cache_worker_fut.fuse() => {
+            _ = farmer_cache_workers_fut.fuse() => {
                 info!("Farmer cache worker exited.")
             },
 

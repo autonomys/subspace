@@ -12,7 +12,7 @@ include = [
 ]
 
 [dependencies]
-async-lock = "3.4.0"
+anyhow = "1.0.89"
 async-trait = "0.1.83"
 futures = "0.3.31"
 parity-scale-codec = { version = "3.6.12", features = ["derive"] }
@@ -28,5 +28,4 @@ tracing = "0.1.40"
 [features]
 parallel = [
     "subspace-archiving/parallel",
-    "subspace-core-primitives/parallel",
 ]

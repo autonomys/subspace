@@ -1456,14 +1456,6 @@ pub fn operator_block_fees_final_key() -> Vec<u8> {
         .to_vec()
 }
 
-/// Preimage to verify the proof of ownership of Operator Signing key.
-/// Operator owner is used to ensure the signature is used by anyone except
-/// the owner of the Signing key pair.
-#[derive(Debug, Encode)]
-pub struct OperatorSigningKeyProofOfOwnershipData<AccountId> {
-    pub operator_owner: AccountId,
-}
-
 /// Hook to handle chain rewards.
 pub trait OnChainRewards<Balance> {
     fn on_chain_rewards(chain_id: ChainId, reward: Balance);
@@ -1539,9 +1531,6 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the current epoch and the next epoch operators of the given domain
         fn domain_operators(domain_id: DomainId) -> Option<(BTreeMap<OperatorId, Balance>, Vec<OperatorId>)>;
-
-        /// Get operator id by signing key
-        fn operator_id_by_signing_key(signing_key: OperatorPublicKey) -> Option<OperatorId>;
 
         /// Returns the execution receipt hash of the given domain and domain block number
         fn receipt_hash(domain_id: DomainId, domain_number: HeaderNumberFor<DomainHeader>) -> Option<HeaderHashFor<DomainHeader>>;
