@@ -98,12 +98,13 @@ where
 
     let object = match object_fetcher_result {
         Ok(object) => {
-            trace!(?hash, size=%object.len(), "Object fetched successfully");
+            trace!(?hash, size = %object.len(), "Object fetched successfully");
 
             let data_hash = blake3_hash(&object);
             if data_hash != hash {
                 error!(
                     ?data_hash,
+                    data_size = %object.len(),
                     ?hash,
                     "Retrieved data doesn't match requested mapping hash"
                 );
