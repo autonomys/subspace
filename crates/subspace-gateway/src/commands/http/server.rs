@@ -108,6 +108,7 @@ where
                     ?hash,
                     "Retrieved data doesn't match requested mapping hash"
                 );
+                trace!(data = %hex::encode(object), "Retrieved data");
                 return HttpResponse::ServiceUnavailable().finish();
             }
 
