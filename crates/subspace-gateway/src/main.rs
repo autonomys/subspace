@@ -7,6 +7,7 @@ mod piece_validator;
 
 use crate::commands::{init_logger, raise_fd_limit, set_exit_on_panic, Command};
 use clap::Parser;
+use tracing::info;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -17,11 +18,18 @@ async fn main() -> anyhow::Result<()> {
     init_logger();
     raise_fd_limit();
 
+    info!("Subspace Gateway");
+    info!("✌️  version {}", env!("CARGO_PKG_VERSION"));
+    info!("❤️  by {}", env!("CARGO_PKG_AUTHORS"));
+
     let command = Command::parse();
 
     match command {
-        Command::Run(run_options) => {
-            commands::run::run(run_options).await?;
+        Command::Rpc(run_options) => {
+            commands::rpc::run(run_options).await?;
+        }
+        Command::Http(run_options) => {
+            commands::http::run(run_options).await?;
         }
     }
     Ok(())
