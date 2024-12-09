@@ -1,5 +1,5 @@
 //! Gateway http command.
-//! This command start an HTTP server to serve object requests.
+//! This command starts an HTTP server to serve object requests.
 
 pub(crate) mod server;
 

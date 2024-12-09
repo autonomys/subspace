@@ -36,21 +36,22 @@ where
     s.parse::<u32>().map_err(serde::de::Error::custom)
 }
 
-async fn request_object_mappings(endpoint: String, key: String) -> anyhow::Result<ObjectMapping> {
+/// Requests an object mapping with `key` from the indexer service.
+async fn request_object_mapping(endpoint: &str, key: Blake3Hash) -> anyhow::Result<ObjectMapping> {
     let client = reqwest::Client::new();
-    let object_mappings_url = format!("http://{}/objects/{}", endpoint, key,);
+    let object_mappings_url = format!("http://{}/objects/{}", endpoint, hex::encode(key));
 
     debug!(?key, ?object_mappings_url, "Requesting object mapping...");
 
     let response = client
-        .get(object_mappings_url.clone())
+        .get(&object_mappings_url)
         .send()
         .await?
         .json::<ObjectMapping>()
         .await;
     match &response {
         Ok(json) => {
-            trace!(?key, ?json, "Requested object mapping.");
+            trace!(?key, ?json, "Received object mapping");
         }
         Err(err) => {
             error!(?key, ?err, ?object_mappings_url, "Request failed");
@@ -60,8 +61,9 @@ async fn request_object_mappings(endpoint: String, key: String) -> anyhow::Resul
     response.map_err(|err| err.into())
 }
 
+/// Fetches a DSN object with `key`, using the mapping indexer service.
 async fn serve_object<PG>(
-    key: web::Path<String>,
+    key: web::Path<Blake3Hash>,
     additional_data: web::Data<Arc<ServerParameters<PG>>>,
 ) -> impl Responder
 where
@@ -70,34 +72,16 @@ where
     let server_params = additional_data.into_inner();
     let key = key.into_inner();
 
-    // Validate object hash
-    let decode_result = hex::decode(key.clone());
-    let object_hash = match decode_result {
-        Ok(hash) => {
-            if hash.len() != Blake3Hash::SIZE {
-                error!(?key, ?hash, "Invalid hash provided.");
-                return HttpResponse::BadRequest().finish();
-            }
-
-            Blake3Hash::try_from(hash.as_slice()).expect("Hash size was confirmed.")
-        }
-        Err(err) => {
-            error!(?key, ?err, "Invalid hash provided.");
-            return HttpResponse::BadRequest().finish();
-        }
-    };
-
-    let Ok(object_mapping) =
-        request_object_mappings(server_params.indexer_endpoint.clone(), key.clone()).await
+    let Ok(object_mapping) = request_object_mapping(&server_params.indexer_endpoint, key).await
     else {
         return HttpResponse::BadRequest().finish();
     };
 
-    if object_mapping.hash != object_hash {
+    if object_mapping.hash != key {
         error!(
+            ?object_mapping,
             ?key,
-            object_mapping_hash=?object_mapping.hash,
-            "Requested hash doesn't match object mapping."
+            "Returned object mapping doesn't match requested hash"
         );
         return HttpResponse::ServiceUnavailable().finish();
     }
@@ -112,11 +96,11 @@ where
             trace!(?key, size=%object.len(), "Object fetched successfully");
 
             let data_hash = blake3_hash(&object);
-            if data_hash != object_hash {
+            if data_hash != key {
                 error!(
                     ?data_hash,
-                    ?object_hash,
-                    "Retrieved data did not match mapping hash"
+                    ?key,
+                    "Retrieved data doesn't match requested mapping hash"
                 );
                 return HttpResponse::ServiceUnavailable().finish();
             }
@@ -124,7 +108,7 @@ where
             object
         }
         Err(err) => {
-            error!(?key, ?err, "Failed to fetch object.");
+            error!(?key, ?err, "Failed to fetch object");
             return HttpResponse::ServiceUnavailable().finish();
         }
     };
