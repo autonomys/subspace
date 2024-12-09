@@ -15,7 +15,7 @@ pub(crate) struct HttpCommandOptions {
     #[clap(flatten)]
     gateway_options: GatewayOptions,
 
-    #[arg(long, default_value = "127.0.0.1:3000")]
+    #[arg(long, default_value = "http://127.0.0.1:3000")]
     indexer_endpoint: String,
 
     #[arg(long, default_value = "127.0.0.1:8080")]
