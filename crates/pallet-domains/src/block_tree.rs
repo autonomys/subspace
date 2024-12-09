@@ -598,7 +598,7 @@ pub(crate) fn prune_receipt<T: Config>(
     // If the pruned ER is the operator's `latest_submitted_er` for this domain, it means either:
     //
     // - All the ER the operator submitted for this domain are confirmed and pruned, so the operator
-    //   can't be targetted by fraud proof later unless it submit other new ERs.
+    //   can't be targeted by fraud proof later unless it submit other new ERs.
     //
     // - All the bad ER the operator submitted for this domain are pruned and the operator is already
     //   slashed, so wwe don't need `LatestSubmittedER` to determine if the operator is pending slash.

@@ -777,7 +777,7 @@ fn test_basic_fraud_proof_processing() {
 
             for block_number in bad_receipt_at..=head_domain_number {
                 if block_number == bad_receipt_at {
-                    // The targetted ER should be removed from the block tree
+                    // The targeted ER should be removed from the block tree
                     assert!(BlockTree::<Test>::get(domain_id, block_number).is_none());
                 } else {
                     // All the bad ER's descendants should be marked as pending to prune and the submitter
