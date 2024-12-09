@@ -9,7 +9,7 @@ use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
 use subspace_core_primitives::objects::GlobalObjectMapping;
 use subspace_data_retrieval::object_fetcher::{self, ObjectFetcher};
 use subspace_data_retrieval::piece_getter::PieceGetter;
-use tracing::debug;
+use tracing::{debug, error, trace};
 
 const SUBSPACE_ERROR: i32 = 9000;
 
@@ -154,7 +154,13 @@ where
 
             let data_hash = blake3_hash(&data);
             if data_hash != mapping.hash {
-                debug!(?data_hash, ?mapping.hash, "Retrieved data did not match mapping hash");
+                error!(
+                    ?data_hash,
+                    data_size = %data.len(),
+                    ?mapping.hash,
+                    "Retrieved data did not match mapping hash",
+                );
+                trace!(data = %hex::encode(data), "Retrieved data");
                 return Err(Error::InvalidObjectHash {
                     mapping_hash: mapping.hash,
                     data_hash,
