@@ -1367,9 +1367,14 @@ pub(crate) fn do_mark_operators_as_slashed<T: Config>(
                         .as_mut()
                         .ok_or(Error::DomainNotInitialized)?;
 
-                    // slash and remove operator from next epoch set
+                    // slash and remove operator from next and current epoch set
                     operator.update_status(OperatorStatus::Slashed);
+                    stake_summary.current_operators.remove(operator_id);
                     stake_summary.next_operators.remove(operator_id);
+                    stake_summary.current_total_stake = stake_summary
+                        .current_total_stake
+                        .checked_sub(&operator.current_total_stake)
+                        .ok_or(Error::BalanceUnderflow)?;
 
                     pending_slashes.insert(*operator_id);
                     PendingSlashes::<T>::insert(operator.current_domain_id, pending_slashes);
