@@ -1,3 +1,5 @@
+//! HTTP server which fetches objects from the DSN based on a hash, using a mapping indexer service.
+
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::default::Default;
@@ -9,6 +11,7 @@ use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_data_retrieval::piece_getter::PieceGetter;
 use tracing::{debug, error, trace};
 
+/// Parameters for the DSN object HTTP server.
 pub(crate) struct ServerParameters<PG>
 where
     PG: PieceGetter + Send + Sync + 'static,
@@ -18,6 +21,7 @@ where
     pub(crate) http_endpoint: String,
 }
 
+/// Object mapping format from the indexer service.
 #[derive(Serialize, Deserialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 struct ObjectMapping {
@@ -28,6 +32,7 @@ struct ObjectMapping {
     block_number: BlockNumber,
 }
 
+/// Utility function to deserialize a JSON string into a u32.
 fn string_to_u32<'de, D>(deserializer: D) -> Result<u32, D::Error>
 where
     D: Deserializer<'de>,
@@ -118,6 +123,7 @@ where
         .body(object)
 }
 
+/// Starts the DSN object HTTP server.
 pub async fn start_server<PG>(server_params: ServerParameters<PG>) -> std::io::Result<()>
 where
     PG: PieceGetter + Send + Sync + 'static,

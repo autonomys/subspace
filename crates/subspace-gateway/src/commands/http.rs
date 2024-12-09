@@ -22,7 +22,7 @@ pub(crate) struct HttpCommandOptions {
     http_listen_on: String,
 }
 
-/// Runs an HTTP server
+/// Runs an HTTP server which fetches DSN objects based on object hashes.
 pub async fn run(run_options: HttpCommandOptions) -> anyhow::Result<()> {
     let signal = shutdown_signal();
 
