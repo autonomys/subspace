@@ -56,7 +56,7 @@ pub(super) struct ControllerArgs {
     ///
     /// It is strongly recommended to use alphanumeric values for cache group, the same cache group
     /// must be also specified on corresponding caches.
-    #[arg(long, default_value = "default")]
+    #[arg(long = "cache-group", default_value = "default")]
     cache_groups: Vec<String>,
     /// Number of service instances.
     ///
