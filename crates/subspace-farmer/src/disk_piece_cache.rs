@@ -27,7 +27,7 @@ use subspace_farmer_components::file_ext::FileExt;
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::task;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, warn, Span};
 
 /// How many pieces should be skipped before stopping to check the rest of contents, this allows to
 /// not miss most of the pieces after one or two corrupted pieces
@@ -129,7 +129,10 @@ impl farm::PieceCache for DiskPieceCache {
     > {
         let this = self.clone();
         let (mut sender, receiver) = mpsc::channel(100_000);
+        let span = Span::current();
         let read_contents = task::spawn_blocking(move || {
+            let _guard = span.enter();
+
             let contents = this.contents();
             for (piece_cache_offset, maybe_piece) in contents {
                 if let Err(error) =
@@ -175,8 +178,13 @@ impl farm::PieceCache for DiskPieceCache {
         offset: PieceCacheOffset,
     ) -> Result<Option<PieceIndex>, FarmError> {
         let piece_cache = self.clone();
+        let span = Span::current();
         Ok(AsyncJoinOnDrop::new(
-            task::spawn_blocking(move || piece_cache.read_piece_index(offset)),
+            task::spawn_blocking(move || {
+                let _guard = span.enter();
+
+                piece_cache.read_piece_index(offset)
+            }),
             false,
         )
         .await??)
@@ -186,6 +194,8 @@ impl farm::PieceCache for DiskPieceCache {
         &self,
         offset: PieceCacheOffset,
     ) -> Result<Option<(PieceIndex, Piece)>, FarmError> {
+        let span = Span::current();
+
         // TODO: On Windows spawning blocking task that allows concurrent reads causes huge memory
         //  usage. No idea why it happens, but not spawning anything at all helps for some reason.
         //  Someone at some point should figure it out and fix, but it will probably be not me
@@ -193,11 +203,19 @@ impl farm::PieceCache for DiskPieceCache {
         //  See https://github.com/autonomys/subspace/issues/2813 and linked forum post for details.
         //  This TODO exists in multiple files
         if cfg!(windows) {
-            Ok(task::block_in_place(|| self.read_piece(offset))?)
+            Ok(task::block_in_place(|| {
+                let _guard = span.enter();
+
+                self.read_piece(offset)
+            })?)
         } else {
             let piece_cache = self.clone();
             Ok(AsyncJoinOnDrop::new(
-                task::spawn_blocking(move || piece_cache.read_piece(offset)),
+                task::spawn_blocking(move || {
+                    let _guard = span.enter();
+
+                    piece_cache.read_piece(offset)
+                }),
                 false,
             )
             .await??)
