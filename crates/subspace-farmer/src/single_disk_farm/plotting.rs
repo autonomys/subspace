@@ -11,6 +11,7 @@ use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesOrdered;
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use parity_scale_codec::Encode;
+use rand::prelude::*;
 use std::collections::HashSet;
 use std::future::Future;
 use std::io;
@@ -700,8 +701,8 @@ pub(super) struct PlottingSchedulerOptions<NC> {
     pub(super) handlers: Arc<Handlers>,
     pub(super) sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
-    // Delay between segment header being acknowledged by farmer and potentially triggering
-    // replotting
+    // Max delay between segment header being acknowledged by farmer and potentially
+    // triggering replotting
     pub(super) new_segment_processing_delay: Duration,
     pub(super) metrics: Option<Arc<SingleDiskFarmMetrics>>,
 }
@@ -798,7 +799,10 @@ where
 
         // There is no urgent need to rush replotting sectors immediately and this delay allows for
         // newly archived pieces to be both cached locally and on other farmers on the network
-        tokio::time::sleep(new_segment_processing_delay).await;
+        let delay = Duration::from_secs(thread_rng().gen_range(
+            new_segment_processing_delay.as_secs() / 10..=new_segment_processing_delay.as_secs(),
+        ));
+        tokio::time::sleep(delay).await;
 
         if archived_segments_sender.send(segment_header).is_err() {
             break;
