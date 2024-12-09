@@ -8,6 +8,7 @@ mod piece_validator;
 use crate::commands::{raise_fd_limit, set_exit_on_panic, Command};
 use clap::Parser;
 use subspace_logging::init_logger;
+use tracing::info;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
