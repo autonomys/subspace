@@ -379,22 +379,22 @@ where
         let maybe_domain_runtime_code_proof =
             self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
 
-        let block_randomness_proof = BlockRandomnessProof::generate(
-            self.consensus_client.as_ref(),
-            consensus_block_hash,
-            (),
-            &self.storage_key_provider,
-        )?;
-
         let maybe_runtime_id =
             self.is_domain_runtime_updraded_at(domain_id, consensus_block_hash)?;
 
-        let domain_inherent_extrinsic_data_proof = DomainInherentExtrinsicDataProof::generate(
+        let invalid_extrinsics_data_proof = InvalidExtrinsicsDataProof::generate(
             &self.storage_key_provider,
             self.consensus_client.as_ref(),
             domain_id,
             consensus_block_hash,
             maybe_runtime_id,
+        )?;
+
+        let domain_sudo_call_proof = DomainSudoCallStorageProof::generate(
+            self.consensus_client.as_ref(),
+            consensus_block_hash,
+            domain_id,
+            &self.storage_key_provider,
         )?;
 
         let invalid_domain_extrinsics_root_proof = FraudProof {
@@ -404,8 +404,8 @@ where
             maybe_domain_runtime_code_proof,
             proof: FraudProofVariant::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof {
                 valid_bundle_digests,
-                block_randomness_proof,
-                domain_inherent_extrinsic_data_proof,
+                invalid_extrinsics_data_proof,
+                domain_sudo_call_proof,
             }),
         };
 

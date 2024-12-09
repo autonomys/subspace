@@ -493,10 +493,12 @@ pub struct ValidBundleProof<Number, Hash, DomainHeader: HeaderT> {
 pub struct InvalidExtrinsicsRootProof {
     /// Valid Bundle digests
     pub valid_bundle_digests: Vec<ValidBundleDigest>,
-    /// Block randomness storage proof
-    pub block_randomness_proof: BlockRandomnessProof,
+
     /// The storage proof used during verification
-    pub domain_inherent_extrinsic_data_proof: DomainInherentExtrinsicDataProof,
+    pub invalid_extrinsics_data_proof: InvalidExtrinsicsDataProof,
+
+    /// Optional sudo extrinsic call storage proof
+    pub domain_sudo_call_proof: DomainSudoCallStorageProof,
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]

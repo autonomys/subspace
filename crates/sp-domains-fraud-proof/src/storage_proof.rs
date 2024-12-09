@@ -414,16 +414,27 @@ impl MaybeDomainRuntimeUpgradedProof {
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct DomainInherentExtrinsicDataProof {
+pub struct InvalidExtrinsicsDataProof {
+    /// Block randomness storage proof
+    pub block_randomness_proof: BlockRandomnessProof,
+
+    /// Block timestamp storage proof
     pub timestamp_proof: TimestampStorageProof,
+
+    /// Optional domain runtime code upgrade storage proof
     pub maybe_domain_runtime_upgrade_proof: MaybeDomainRuntimeUpgradedProof,
+
+    /// Boolean indicating if dynamic cost of storage was used (but as a storage proof)
     pub dynamic_cost_of_storage_proof: DynamicCostOfStorageProof,
+
+    /// Transaction fee storage proof
     pub consensus_chain_byte_fee_proof: ConsensusTransactionByteFeeProof,
+
+    /// Change in the allowed chains storage proof
     pub domain_chain_allowlist_proof: DomainChainsAllowlistUpdateStorageProof,
-    pub domain_sudo_call_proof: DomainSudoCallStorageProof,
 }
 
-impl DomainInherentExtrinsicDataProof {
+impl InvalidExtrinsicsDataProof {
     #[cfg(feature = "std")]
     #[allow(clippy::let_and_return)]
     pub fn generate<
@@ -437,6 +448,8 @@ impl DomainInherentExtrinsicDataProof {
         block_hash: Block::Hash,
         maybe_runtime_id: Option<RuntimeId>,
     ) -> Result<Self, GenerationError> {
+        let block_randomness_proof =
+            BlockRandomnessProof::generate(proof_provider, block_hash, (), storage_key_provider)?;
         let timestamp_proof =
             TimestampStorageProof::generate(proof_provider, block_hash, (), storage_key_provider)?;
         let maybe_domain_runtime_upgrade_proof = MaybeDomainRuntimeUpgradedProof::generate(
@@ -464,20 +477,13 @@ impl DomainInherentExtrinsicDataProof {
             storage_key_provider,
         )?;
 
-        let domain_sudo_call_proof = DomainSudoCallStorageProof::generate(
-            proof_provider,
-            block_hash,
-            domain_id,
-            storage_key_provider,
-        )?;
-
         Ok(Self {
+            block_randomness_proof,
             timestamp_proof,
             maybe_domain_runtime_upgrade_proof,
             dynamic_cost_of_storage_proof,
             consensus_chain_byte_fee_proof,
             domain_chain_allowlist_proof,
-            domain_sudo_call_proof,
         })
     }
 
@@ -487,6 +493,12 @@ impl DomainInherentExtrinsicDataProof {
         runtime_id: RuntimeId,
         state_root: &Block::Hash,
     ) -> Result<DomainInherentExtrinsicData, VerificationError> {
+        let block_randomness = <BlockRandomnessProof as BasicStorageProof<Block>>::verify::<SKP>(
+            self.block_randomness_proof.clone(),
+            (),
+            state_root,
+        )?;
+
         let timestamp = <TimestampStorageProof as BasicStorageProof<Block>>::verify::<SKP>(
             self.timestamp_proof.clone(),
             (),
@@ -523,18 +535,14 @@ impl DomainInherentExtrinsicDataProof {
                 state_root,
             )?;
 
-        let domain_sudo_call = <DomainSudoCallStorageProof as BasicStorageProof<Block>>::verify::<
-            SKP,
-        >(
-            self.domain_sudo_call_proof.clone(), domain_id, state_root
-        )?;
-
         Ok(DomainInherentExtrinsicData {
+            block_randomness,
             timestamp,
             maybe_domain_runtime_upgrade,
             consensus_transaction_byte_fee,
             domain_chain_allowlist,
-            maybe_sudo_runtime_call: domain_sudo_call.maybe_call,
+            // Populated by caller
+            maybe_sudo_runtime_call: None,
         })
     }
 }
