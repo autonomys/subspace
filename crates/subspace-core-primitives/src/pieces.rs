@@ -143,7 +143,7 @@ impl PieceIndex {
     /// Returns the next source piece index
     #[inline]
     pub const fn next_source_index(&self) -> PieceIndex {
-        PieceIndex(self.0.next_multiple_of(Self::source_ratio()))
+        PieceIndex(self.0 + Self::source_ratio() - (self.0 % Self::source_ratio()))
     }
 
     /// The ratio of source pieces to all pieces
