@@ -10,6 +10,7 @@ use crate::cluster::nats_client::{GenericRequest, GenericStreamRequest, NatsClie
 use crate::plotter::{Plotter, SectorPlottingProgress};
 use crate::utils::AsyncJoinOnDrop;
 use anyhow::anyhow;
+use async_nats::RequestErrorKind;
 use async_trait::async_trait;
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
@@ -494,19 +495,37 @@ where
                     return None;
                 }
             }
-            // TODO: Handle different kinds of errors differently, not all of them are
-            //  fatal
-            Err(error) => {
-                progress_updater
-                    .update_progress_and_events(
-                        progress_sender,
-                        SectorPlottingProgress::Error {
-                            error: format!("Failed to get free plotter instance: {error}"),
-                        },
-                    )
-                    .await;
-                return None;
-            }
+            Err(error) => match error.kind() {
+                RequestErrorKind::NoResponders => {
+                    if let Some(delay) = retry_backoff_policy.next_backoff() {
+                        debug!("No plotters, retrying");
+
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    } else {
+                        progress_updater
+                            .update_progress_and_events(
+                                progress_sender,
+                                SectorPlottingProgress::Error {
+                                    error: "No plotters, exiting".to_string(),
+                                },
+                            )
+                            .await;
+                        return None;
+                    }
+                }
+                RequestErrorKind::TimedOut | RequestErrorKind::Other => {
+                    progress_updater
+                        .update_progress_and_events(
+                            progress_sender,
+                            SectorPlottingProgress::Error {
+                                error: format!("Failed to get free plotter instance: {error}"),
+                            },
+                        )
+                        .await;
+                    return None;
+                }
+            },
         };
     }
 }
