@@ -1,5 +1,5 @@
 //! Gateway rpc command.
-//! This command start an RPC server to serve object requests.
+//! This command starts an RPC server to serve object requests from the DSN.
 pub(crate) mod server;
 
 use crate::commands::rpc::server::{launch_rpc_server, RpcOptions, RPC_DEFAULT_PORT};
@@ -21,7 +21,7 @@ pub(crate) struct RpcCommandOptions {
     rpc_options: RpcOptions<RPC_DEFAULT_PORT>,
 }
 
-/// Runs an RPC server
+/// Runs an RPC server which fetches DSN objects based on mappings.
 pub async fn run(run_options: RpcCommandOptions) -> anyhow::Result<()> {
     let signal = shutdown_signal();
 
