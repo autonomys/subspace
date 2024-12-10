@@ -44,7 +44,7 @@ where
 /// Requests an object mapping with `hash` from the indexer service.
 async fn request_object_mapping(endpoint: &str, hash: Blake3Hash) -> anyhow::Result<ObjectMapping> {
     let client = reqwest::Client::new();
-    let object_mappings_url = format!("http://{}/objects/{}", endpoint, hex::encode(hash));
+    let object_mappings_url = format!("{}/objects/{}", endpoint, hex::encode(hash));
 
     debug!(?hash, ?object_mappings_url, "Requesting object mapping...");
 
