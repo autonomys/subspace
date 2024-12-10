@@ -15,7 +15,7 @@ use subspace_networking::protocols::request_response::handlers::piece_by_index::
     PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
 };
 use subspace_networking::{Config, Multihash, Node, PeerDiscovered, SendRequestError};
-use tracing::{debug, error, info, warn, Level};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Parser)]
 struct Args {

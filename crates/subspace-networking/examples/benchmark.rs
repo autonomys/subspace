@@ -19,7 +19,7 @@ use subspace_logging::init_logger;
 use subspace_networking::protocols::request_response::handlers::piece_by_index::PieceByIndexRequestHandler;
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, PieceValidator};
 use subspace_networking::{Config, Node};
-use tracing::{debug, error, info, trace, warn, Level};
+use tracing::{debug, error, info, trace, warn};
 
 /// Defines initial duration between get_piece calls.
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(5);

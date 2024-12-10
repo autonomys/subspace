@@ -12765,7 +12765,6 @@ dependencies = [
  "subspace-networking",
  "subspace-rpc-primitives",
  "subspace-verification",
- "supports-color",
  "tokio",
  "tracing",
 ]
