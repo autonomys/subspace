@@ -100,6 +100,12 @@ impl PieceIndex {
     /// Piece index 1.
     pub const ONE: PieceIndex = PieceIndex(1);
 
+    /// Create new instance
+    #[inline]
+    pub const fn new(n: u64) -> Self {
+        Self(n)
+    }
+
     /// Create piece index from bytes.
     #[inline]
     pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
@@ -114,8 +120,8 @@ impl PieceIndex {
 
     /// Segment index piece index corresponds to
     #[inline]
-    pub fn segment_index(&self) -> SegmentIndex {
-        SegmentIndex::from(self.0 / ArchivedHistorySegment::NUM_PIECES as u64)
+    pub const fn segment_index(&self) -> SegmentIndex {
+        SegmentIndex::new(self.0 / ArchivedHistorySegment::NUM_PIECES as u64)
     }
 
     /// Position of a piece in a segment
@@ -130,28 +136,41 @@ impl PieceIndex {
     #[inline]
     pub const fn source_position(&self) -> u32 {
         assert!(self.is_source());
-        self.position() / (Self::source_ratio() as u32)
+
+        let source_start = self.position() / RecordedHistorySegment::ERASURE_CODING_RATE.1 as u32
+            * RecordedHistorySegment::ERASURE_CODING_RATE.0 as u32;
+        let source_offset = self.position() % RecordedHistorySegment::ERASURE_CODING_RATE.1 as u32;
+
+        source_start + source_offset
+    }
+
+    /// Returns the piece index for a source position and segment index.
+    /// Panics if the piece is not a source piece.
+    #[inline]
+    pub const fn from_source_position(
+        source_position: u32,
+        segment_index: SegmentIndex,
+    ) -> PieceIndex {
+        let source_position = source_position as u64;
+        let start = source_position / RecordedHistorySegment::ERASURE_CODING_RATE.0 as u64
+            * RecordedHistorySegment::ERASURE_CODING_RATE.1 as u64;
+        let offset = source_position % RecordedHistorySegment::ERASURE_CODING_RATE.0 as u64;
+
+        PieceIndex(segment_index.first_piece_index().0 + start + offset)
     }
 
     /// Is this piece index a source piece?
     #[inline]
     pub const fn is_source(&self) -> bool {
         // Source pieces are interleaved with parity pieces, source first
-        self.0 % Self::source_ratio() == 0
+        self.0 % (RecordedHistorySegment::ERASURE_CODING_RATE.1 as u64)
+            < (RecordedHistorySegment::ERASURE_CODING_RATE.0 as u64)
     }
 
     /// Returns the next source piece index
     #[inline]
     pub const fn next_source_index(&self) -> PieceIndex {
-        PieceIndex(self.0.next_multiple_of(Self::source_ratio()))
-    }
-
-    /// The ratio of source pieces to all pieces
-    #[inline]
-    const fn source_ratio() -> u64 {
-        // Assumes the result is an integer
-        (RecordedHistorySegment::ERASURE_CODING_RATE.1
-            / RecordedHistorySegment::ERASURE_CODING_RATE.0) as u64
+        PieceIndex::from_source_position(self.source_position() + 1, self.segment_index())
     }
 }
 
