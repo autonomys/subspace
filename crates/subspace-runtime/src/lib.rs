@@ -37,7 +37,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
-pub use crate::signed_extensions::{CheckHistorySeeder, DisablePallets};
+pub use crate::signed_extensions::DisablePallets;
 use alloc::borrow::Cow;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
@@ -576,10 +576,6 @@ impl pallet_democracy::Config for Runtime {
     type WeightInfo = pallet_democracy::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_history_seeding::Config for Runtime {
-    type WeightInfo = pallet_history_seeding::weights::SubstrateWeight<Runtime>;
-}
-
 parameter_types! {
     pub const SelfChainId: ChainId = ChainId::Consensus;
 }
@@ -941,8 +937,6 @@ construct_runtime!(
         Democracy: pallet_democracy = 83,
         Preimage: pallet_preimage = 84,
 
-        HistorySeeding: pallet_history_seeding = 91,
-
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,
     }
@@ -966,7 +960,6 @@ pub type SignedExtra = (
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     DisablePallets,
-    CheckHistorySeeder<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
@@ -1084,7 +1077,6 @@ mod benches {
         [pallet_timestamp, Timestamp]
         [pallet_messenger, Messenger]
         [pallet_transporter, Transporter]
-        [pallet_history_seeding, HistorySeeding]
     );
 }
 
