@@ -12,7 +12,7 @@ use cross_domain_message_gossip::{
 use parity_scale_codec::{Codec, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiRef, ProvideRuntimeApi};
 use sp_core::H256;
 use sp_domains::DomainsApi;
 use sp_messenger::messages::{
@@ -229,6 +229,123 @@ where
     .map_err(Error::UnableToSubmitCrossDomainMessage)
 }
 
+fn should_relay_outbox_message<Client, Block, CClient, CNumber, CHash>(
+    consensus_client: &Arc<CClient>,
+    api: &ApiRef<'_, Client::Api>,
+    best_hash: Block::Hash,
+    msg: &BlockMessageWithStorageKey,
+) -> bool
+where
+    Block: BlockT,
+    CNumber: Codec,
+    CHash: Codec,
+    Client: ProvideRuntimeApi<Block>,
+    CClient: AuxStore,
+    Client::Api: RelayerApi<Block, NumberFor<Block>, CNumber, CHash>,
+{
+    let id = msg.id();
+    let should_relay = match api.should_relay_outbox_message(best_hash, msg.dst_chain_id, id) {
+        Ok(valid) => valid,
+        Err(err) => {
+            tracing::error!(
+                target: LOG_TARGET,
+                ?err,
+                "Failed to fetch validity of outbox message {id:?} for domain {0:?}",
+                msg.dst_chain_id
+            );
+            false
+        }
+    };
+
+    if !should_relay {
+        return false;
+    }
+
+    if let Some(dst_channel_state) = get_channel_state(
+        &**consensus_client,
+        msg.dst_chain_id,
+        msg.src_chain_id,
+        msg.channel_id,
+    )
+    .ok()
+    .flatten()
+    {
+        // if this message should relay,
+        // check if the dst_chain inbox nonce is more than message nonce,
+        // if so, skip relaying since message is already executed on dst_chain
+        let relay_message = msg.nonce >= dst_channel_state.next_inbox_nonce;
+        if !relay_message {
+            log::debug!(
+                "Skipping message relay from {:?} to {:?}",
+                msg.src_chain_id,
+                msg.dst_chain_id,
+            );
+        }
+        relay_message
+    } else {
+        should_relay
+    }
+}
+
+fn should_relay_inbox_responses_message<Client, Block, CClient, CNumber, CHash>(
+    consensus_client: &Arc<CClient>,
+    api: &ApiRef<'_, Client::Api>,
+    best_hash: Block::Hash,
+    msg: &BlockMessageWithStorageKey,
+) -> bool
+where
+    Block: BlockT,
+    CNumber: Codec,
+    CHash: Codec,
+    Client: ProvideRuntimeApi<Block>,
+    CClient: AuxStore,
+    Client::Api: RelayerApi<Block, NumberFor<Block>, CNumber, CHash>,
+{
+    let id = msg.id();
+    let should_relay =
+        match api.should_relay_inbox_message_response(best_hash, msg.dst_chain_id, id) {
+            Ok(valid) => valid,
+            Err(err) => {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    ?err,
+                    "Failed to fetch validity of inbox message response {id:?} for domain {0:?}",
+                    msg.dst_chain_id
+                );
+                false
+            }
+        };
+
+    if !should_relay {
+        return false;
+    }
+
+    if let Some(dst_channel_state) = get_channel_state(
+        &**consensus_client,
+        msg.dst_chain_id,
+        msg.src_chain_id,
+        msg.channel_id,
+    )
+    .ok()
+    .flatten()
+        && let Some(dst_chain_outbox_response_nonce) =
+            dst_channel_state.latest_response_received_message_nonce
+    {
+        // relay inbox response if the dst_chain did not execute is already
+        let relay_message = msg.nonce > dst_chain_outbox_response_nonce;
+        if !relay_message {
+            log::debug!(
+                "Skipping message relay from {:?} to {:?}",
+                msg.src_chain_id,
+                msg.dst_chain_id,
+            );
+        }
+        relay_message
+    } else {
+        should_relay
+    }
+}
+
 // Fetch the XDM at the a given block and filter any already relayed XDM according to the best block
 fn fetch_and_filter_messages<Client, Block, CClient, CNumber, CHash>(
     client: &Arc<Client>,
@@ -251,91 +368,21 @@ where
     let api = client.runtime_api();
     let best_hash = client.info().best_hash;
     msgs.outbox.retain(|msg| {
-        let id = msg.id();
-        let should_relay = match api.should_relay_outbox_message(best_hash, msg.dst_chain_id, id) {
-            Ok(valid) => valid,
-            Err(err) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    ?err,
-                    "Failed to fetch validity of outbox message {id:?} for domain {0:?}",
-                    msg.dst_chain_id
-                );
-                false
-            }
-        };
-
-        if should_relay
-            && let Some(dst_channel_state) = get_channel_state(
-                &**consensus_client,
-                msg.dst_chain_id,
-                msg.src_chain_id,
-                msg.channel_id,
-            )
-            .ok()
-            .flatten()
-        {
-            // if this message should relay,
-            // check if the dst_chain inbox nonce is more than message nonce,
-            // if so, skip relaying since message is already executed on dst_chain
-            let relay_message = msg.nonce >= dst_channel_state.next_inbox_nonce;
-            if !relay_message {
-                log::debug!(
-                    "Skipping message relay from {:?} to {:?}",
-                    msg.src_chain_id,
-                    msg.dst_chain_id,
-                );
-            }
-            relay_message
-        } else {
-            should_relay
-        }
+        should_relay_outbox_message::<Client, _, _, CNumber, CHash>(
+            consensus_client,
+            &api,
+            best_hash,
+            msg,
+        )
     });
 
     msgs.inbox_responses.retain(|msg| {
-        let id = msg.id();
-        let should_relay = match api.should_relay_inbox_message_response(
+        should_relay_inbox_responses_message::<Client, _, _, CNumber, CHash>(
+            consensus_client,
+            &api,
             best_hash,
-            msg.dst_chain_id,
-            id,
-        ) {
-            Ok(valid) => valid,
-            Err(err) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    ?err,
-                    "Failed to fetch validity of inbox message response {id:?} for domain {0:?}",
-                    msg.dst_chain_id
-                );
-                false
-            }
-        };
-
-        if should_relay
-            && let Some(dst_channel_state) = get_channel_state(
-                &**consensus_client,
-                msg.dst_chain_id,
-                msg.src_chain_id,
-                msg.channel_id,
-            )
-            .ok()
-            .flatten()
-            && let Some(dst_chain_outbox_response_nonce) =
-                dst_channel_state.latest_response_received_message_nonce
-        {
-            // relay inbox response if the dst_chain did not execute is already
-            let relay_message = msg.nonce > dst_chain_outbox_response_nonce;
-            if !relay_message {
-                log::debug!(
-                    "Skipping message relay from {:?} to {:?}",
-                    msg.src_chain_id,
-                    msg.dst_chain_id,
-                );
-            }
-            relay_message
-        } else {
-            should_relay
-        }
+            msg,
+        )
     });
 
     Ok(msgs)
@@ -397,11 +444,17 @@ where
             "Checking messages to be submitted from chain: {chain_id:?} at block: ({to_process_consensus_number:?}, {to_process_consensus_hash:?})",
         );
 
-        let xdm_proof_data = match chain_id {
-            ChainId::Consensus => XDMProofData::Consensus(to_process_consensus_hash),
+        let consensus_chain_api = consensus_chain_client.runtime_api();
+        let (block_messages, maybe_domain_data) = match chain_id {
+            ChainId::Consensus => (
+                fetch_and_filter_messages(
+                    consensus_chain_client,
+                    to_process_consensus_hash,
+                    consensus_chain_client,
+                )?,
+                None,
+            ),
             ChainId::Domain(domain_id) => {
-                let consensus_chain_api = consensus_chain_client.runtime_api();
-
                 let confirmed_domain_block_hash = {
                     match consensus_chain_api
                         .latest_confirmed_domain_block(to_process_consensus_hash, domain_id)?
@@ -411,7 +464,25 @@ where
                         None => return Ok(()),
                     }
                 };
+                (
+                    fetch_and_filter_messages(
+                        domain_client,
+                        confirmed_domain_block_hash,
+                        consensus_chain_client,
+                    )?,
+                    Some((domain_id, confirmed_domain_block_hash)),
+                )
+            }
+        };
 
+        // short circuit if the there are no messages to relay
+        if block_messages.is_empty() {
+            return Ok(());
+        }
+
+        let xdm_proof_data = match maybe_domain_data {
+            None => XDMProofData::Consensus(to_process_consensus_hash),
+            Some((domain_id, confirmed_domain_block_hash)) => {
                 let storage_key = consensus_chain_api
                     .confirmed_domain_block_storage_key(to_process_consensus_hash, domain_id)?;
 
@@ -426,28 +497,6 @@ where
                 }
             }
         };
-
-        // Fetch messages to be relayed and filter out already relayed messages
-        let block_messages = match &xdm_proof_data {
-            XDMProofData::Consensus(consensus_hash) => fetch_and_filter_messages(
-                consensus_chain_client,
-                *consensus_hash,
-                consensus_chain_client,
-            )?,
-            XDMProofData::Domain {
-                confirmed_domain_block_hash,
-                ..
-            } => fetch_and_filter_messages(
-                domain_client,
-                *confirmed_domain_block_hash,
-                consensus_chain_client,
-            )?,
-        };
-
-        // short circuit if the there are no messages to relay
-        if block_messages.is_empty() {
-            return Ok(());
-        }
 
         construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
             block_messages.outbox,

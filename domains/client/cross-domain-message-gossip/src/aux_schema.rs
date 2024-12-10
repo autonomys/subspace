@@ -3,6 +3,7 @@
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Info, Result as ClientResult};
+use sp_core::bytes::to_hex;
 use sp_core::H256;
 use sp_messenger::messages::{ChainId, ChannelId, ChannelState, Nonce};
 use sp_messenger::{ChannelNonce, XdmId};
@@ -222,7 +223,7 @@ where
         tracing::debug!(
             target: LOG_TARGET,
             "[{:?}]Cleaning Relay xdm keys for {:?} channel: {:?} from: {:?} to: {:?}",
-            prefix,
+            to_hex(prefix, false),
             chain_id,
             channel_id,
             from_nonce,
@@ -254,7 +255,7 @@ where
         tracing::debug!(
             target: LOG_TARGET,
             "[{:?}]Cleaning Relay response xdm keys for {:?} channel: {:?} from: {:?} to: {:?}",
-            prefix,
+            to_hex(prefix, false),
             chain_id,
             channel_id,
             from_nonce,
