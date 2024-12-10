@@ -7,6 +7,7 @@ use libp2p::multiaddr::Protocol;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::sync::Arc;
+use subspace_logging::init_logger;
 
 #[derive(Encode, Decode)]
 struct ExampleRequest;
@@ -22,7 +23,7 @@ struct ExampleResponse;
 
 #[tokio::test]
 async fn request_with_addresses() {
-    tracing_subscriber::fmt::init();
+    init_logger();
 
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],

@@ -75,13 +75,12 @@ subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
-supports-color = "3.0.1"
 tempfile = "3.13.0"
 thiserror = "2.0.0"
 tokio = { version = "1.40.0", features = ["macros"] }
 tokio-stream = "0.1.16"
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+subspace-logging = { version = "0.0.1", path = "../../shared/subspace-logging" }
 
 [build-dependencies]
 substrate-build-script-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
