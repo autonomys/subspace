@@ -5,8 +5,9 @@ mod node_client;
 mod piece_getter;
 mod piece_validator;
 
-use crate::commands::{init_logger, raise_fd_limit, set_exit_on_panic, Command};
+use crate::commands::{raise_fd_limit, set_exit_on_panic, Command};
 use clap::Parser;
+use subspace_logging::init_logger;
 use tracing::info;
 
 #[global_allocator]

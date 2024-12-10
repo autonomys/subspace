@@ -10,14 +10,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::PieceIndex;
+use subspace_logging::init_logger;
 use subspace_networking::protocols::request_response::handlers::piece_by_index::{
     PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
 };
 use subspace_networking::{Config, Multihash, Node, PeerDiscovered, SendRequestError};
-use tracing::{debug, error, info, warn, Level};
-use tracing_subscriber::fmt::Subscriber;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -47,7 +45,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    init_logging();
+    init_logger();
 
     let args: Args = Args::parse();
 
@@ -415,15 +413,4 @@ async fn configure_dsn(
     println!("Node address {}", node_addr);
 
     node
-}
-
-fn init_logging() {
-    // set default log to info if the RUST_LOG is not set.
-    let env_filter = EnvFilter::builder()
-        .with_default_directive(Level::INFO.into())
-        .from_env_lossy();
-
-    let builder = Subscriber::builder().with_env_filter(env_filter).finish();
-
-    builder.init()
 }
