@@ -439,7 +439,7 @@ impl<T: Config> Pallet<T> {
                     );
 
                     ensure!(
-                        !CertificateRevocationList::<T>::get(issuer_id).map_or(false, |serials| {
+                        !CertificateRevocationList::<T>::get(issuer_id).is_some_and(|serials| {
                             serials.iter().any(|s| {
                                 *s == issuer_auto_id.certificate.serial()
                                     || *s == tbs_certificate.serial
@@ -517,7 +517,7 @@ impl<T: Config> Pallet<T> {
                     Error::<T>::ExpiredCertificate
                 );
                 ensure!(
-                    !CertificateRevocationList::<T>::get(issuer_id).map_or(false, |serials| {
+                    !CertificateRevocationList::<T>::get(issuer_id).is_some_and(|serials| {
                         serials.iter().any(|s| {
                             *s == issuer_auto_id.certificate.serial()
                                 || *s == tbs_certificate.serial
@@ -627,7 +627,7 @@ impl<T: Config> Pallet<T> {
         };
 
         ensure!(
-            !CertificateRevocationList::<T>::get(issuer_id).map_or(false, |serials| {
+            !CertificateRevocationList::<T>::get(issuer_id).is_some_and(|serials| {
                 serials.iter().any(|s| {
                     *s == auto_id.certificate.serial() || *s == issuer_auto_id.certificate.serial()
                 })

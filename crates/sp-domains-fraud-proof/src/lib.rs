@@ -16,6 +16,11 @@
 
 //! Subspace fraud proof primitives for consensus chain.
 #![cfg_attr(not(feature = "std"), no_std)]
+// `generic_const_exprs` is an incomplete feature
+#![allow(incomplete_features)]
+// TODO: This feature is not actually used in this crate, but is added as a workaround for
+//  https://github.com/rust-lang/rust/issues/133199
+#![feature(generic_const_exprs)]
 #![feature(associated_type_defaults)]
 
 #[cfg(feature = "std")]

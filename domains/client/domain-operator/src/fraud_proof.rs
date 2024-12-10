@@ -560,7 +560,7 @@ where
 
         let proof_data = if invalid_type
             .extrinsic_index()
-            .map_or(false, |idx| bundle.extrinsics.len() as u32 <= idx)
+            .is_some_and(|idx| bundle.extrinsics.len() as u32 <= idx)
         {
             // The bad receipt claims a non-exist extrinsic is invalid, in this case, generate a
             // `bundle_with_proof` as proof data is enough

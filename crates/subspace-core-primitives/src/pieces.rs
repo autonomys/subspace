@@ -63,7 +63,7 @@ pub struct PieceIndex(u64);
 
 impl Step for PieceIndex {
     #[inline]
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+    fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
         u64::steps_between(&start.0, &end.0)
     }
 
@@ -206,7 +206,7 @@ pub struct PieceOffset(u16);
 
 impl Step for PieceOffset {
     #[inline]
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+    fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
         u16::steps_between(&start.0, &end.0)
     }
 

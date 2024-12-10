@@ -527,7 +527,7 @@ impl Archiver {
                     let continuation_object_mapping = BlockObjectMapping::V0 {
                         objects: object_mapping
                             .objects_mut()
-                            .extract_if(|block_object: &mut BlockObject| {
+                            .extract_if(.., |block_object: &mut BlockObject| {
                                 if block_object.offset >= split_point as u32 {
                                     block_object.offset -= split_point as u32;
                                     true
@@ -570,7 +570,7 @@ impl Archiver {
                     let continuation_object_mapping = BlockObjectMapping::V0 {
                         objects: object_mapping
                             .objects_mut()
-                            .extract_if(|block_object: &mut BlockObject| {
+                            .extract_if(.., |block_object: &mut BlockObject| {
                                 if block_object.offset >= split_point as u32 {
                                     block_object.offset -= split_point as u32;
                                     true
