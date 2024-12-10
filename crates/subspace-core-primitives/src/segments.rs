@@ -86,13 +86,15 @@ impl SegmentIndex {
     }
 
     /// Get the first piece index in this segment.
-    pub fn first_piece_index(&self) -> PieceIndex {
-        PieceIndex::from(self.0 * ArchivedHistorySegment::NUM_PIECES as u64)
+    #[inline]
+    pub const fn first_piece_index(&self) -> PieceIndex {
+        PieceIndex::new(self.0 * ArchivedHistorySegment::NUM_PIECES as u64)
     }
 
     /// Get the last piece index in this segment.
-    pub fn last_piece_index(&self) -> PieceIndex {
-        PieceIndex::from((self.0 + 1) * ArchivedHistorySegment::NUM_PIECES as u64 - 1)
+    #[inline]
+    pub const fn last_piece_index(&self) -> PieceIndex {
+        PieceIndex::new((self.0 + 1) * ArchivedHistorySegment::NUM_PIECES as u64 - 1)
     }
 
     /// List of piece indexes that belong to this segment.
