@@ -31,11 +31,6 @@ pub const DEFAULT_MAX_SIZE: usize = 5 * 1024 * 1024;
 /// Multiplier on top of outgoing connections number for piece downloading purposes
 const PIECE_PROVIDER_MULTIPLIER: usize = 10;
 
-/// The default size limit, based on the maximum block size in some domains.
-pub const DEFAULT_MAX_SIZE: usize = 5 * 1024 * 1024;
-/// Multiplier on top of outgoing connections number for piece downloading purposes
-const PIECE_PROVIDER_MULTIPLIER: usize = 10;
-
 /// Commands for working with a gateway.
 #[derive(Debug, Parser)]
 #[clap(about, version)]
