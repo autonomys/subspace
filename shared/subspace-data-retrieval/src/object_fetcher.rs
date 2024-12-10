@@ -278,18 +278,22 @@ where
             .read_piece(next_source_piece_index, piece_index, piece_offset)
             .await?;
         next_source_piece_index = next_source_piece_index.next_source_index();
-        read_records_data.extend(piece.record().to_raw_record_chunks().flatten().copied());
+        // Discard piece data before the offset
+        read_records_data.extend(
+            piece
+                .record()
+                .to_raw_record_chunks()
+                .flatten()
+                .skip(piece_offset as usize)
+                .copied(),
+        );
 
         if last_data_piece_in_segment {
             // The last 2 bytes might contain segment padding, so we can't use them for object length or object data.
-            read_records_data.truncate(RawRecord::SIZE - 2);
+            read_records_data.truncate(read_records_data.len() - 2);
         }
 
-        let data_length = self.decode_data_length(
-            &read_records_data[piece_offset as usize..],
-            piece_index,
-            piece_offset,
-        )?;
+        let data_length = self.decode_data_length(&read_records_data, piece_index, piece_offset)?;
 
         let data_length = if let Some(data_length) = data_length {
             data_length
@@ -311,12 +315,8 @@ where
             next_source_piece_index = next_source_piece_index.next_source_index();
             read_records_data.extend(piece.record().to_raw_record_chunks().flatten().copied());
 
-            self.decode_data_length(
-                &read_records_data[piece_offset as usize..],
-                piece_index,
-                piece_offset,
-            )?
-            .expect("Extra RawRecord is larger than the length encoding; qed")
+            self.decode_data_length(&read_records_data, piece_index, piece_offset)?
+                .expect("Extra RawRecord is larger than the length encoding; qed")
         } else {
             trace!(
                 piece_position_in_segment,
@@ -347,14 +347,10 @@ where
             return Ok(None);
         }
 
-        // Discard piece data before the offset
-        let mut data = read_records_data[piece_offset as usize..].to_vec();
-        drop(read_records_data);
-
         // Read more pieces until we have enough data
-        if data_length as usize > data.len() {
+        if data_length as usize > read_records_data.len() {
             let remaining_piece_count =
-                (data_length as usize - data.len()).div_ceil(RawRecord::SIZE);
+                (data_length as usize - read_records_data.len()).div_ceil(RawRecord::SIZE);
             let remaining_piece_indexes = (next_source_piece_index..)
                 .filter(|i| i.is_source())
                 .take(remaining_piece_count)
@@ -363,14 +359,15 @@ where
                 .await?
                 .into_iter()
                 .for_each(|piece| {
-                    data.extend(piece.record().to_raw_record_chunks().flatten().copied())
+                    read_records_data
+                        .extend(piece.record().to_raw_record_chunks().flatten().copied())
                 });
         }
 
         // Decode the data, and return it if it's valid
-        let data = Vec::<u8>::decode(&mut data.as_slice())?;
+        let read_records_data = Vec::<u8>::decode(&mut read_records_data.as_slice())?;
 
-        Ok(Some(data))
+        Ok(Some(read_records_data))
     }
 
     /// Fetch and assemble an object that can cross segment boundaries, which requires assembling
