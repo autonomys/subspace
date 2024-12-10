@@ -20,5 +20,6 @@ jobs:
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 #v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          # TODO: Remove once Substrate upgrades litep2p and we no longer have rustls 0.20.9 in our dependencies
-          ignore: RUSTSEC-2024-0336
+          # TODO: Remove first once Substrate upgrades litep2p and we no longer have rustls 0.20.9 in our dependencies
+          # TODO: Remove second once Substrate upgrades libp2p and we no longer have old idna in our dependencies
+          ignore: RUSTSEC-2024-0336,RUSTSEC-2024-0421
