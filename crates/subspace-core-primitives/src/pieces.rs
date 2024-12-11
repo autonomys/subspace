@@ -145,7 +145,7 @@ impl PieceIndex {
     }
 
     /// Returns the piece index for a source position and segment index.
-    /// Panics if the piece is not a source piece.
+    /// Overflows to the next segment if the position is greater than the last source position.
     #[inline]
     pub const fn from_source_position(
         source_position: u32,
@@ -167,7 +167,8 @@ impl PieceIndex {
             < (RecordedHistorySegment::ERASURE_CODING_RATE.0 as u64)
     }
 
-    /// Returns the next source piece index
+    /// Returns the next source piece index.
+    /// Panics if the piece is not a source piece.
     #[inline]
     pub const fn next_source_index(&self) -> PieceIndex {
         PieceIndex::from_source_position(self.source_position() + 1, self.segment_index())
