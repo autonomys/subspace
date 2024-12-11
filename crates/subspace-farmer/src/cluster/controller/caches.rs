@@ -6,8 +6,8 @@
 //! piece cache sync, etc.
 
 use crate::cluster::cache::{
-    ClusterCacheDetailsRequest, ClusterCacheIdentifyBroadcast, ClusterPieceCache,
-    ClusterPieceCacheDetails,
+    ClusterCacheDetailsRequest, ClusterCacheIdentifyBroadcast,
+    ClusterCacheIdentifyPieceCacheBroadcast, ClusterPieceCache, ClusterPieceCacheDetails,
 };
 use crate::cluster::controller::ClusterControllerCacheIdentifyBroadcast;
 use crate::cluster::nats_client::NatsClient;
@@ -16,7 +16,7 @@ use crate::farmer_cache::FarmerCache;
 use anyhow::anyhow;
 use futures::channel::oneshot;
 use futures::future::FusedFuture;
-use futures::{select, FutureExt, Stream, StreamExt};
+use futures::{select, stream, FutureExt, Stream, StreamExt};
 use parking_lot::Mutex;
 use std::future::{ready, Future};
 use std::pin::{pin, Pin};
@@ -135,6 +135,11 @@ pub async fn maintain_caches(
     let mut cache_reinitialization =
         (Box::pin(ready(())) as Pin<Box<dyn Future<Output = ()>>>).fuse();
 
+    let piece_cache_identify_subscription = pin!(nats_client
+        .subscribe_to_broadcasts::<ClusterCacheIdentifyPieceCacheBroadcast>(Some(cache_group), None)
+        .await
+        .map_err(|error| anyhow!("Failed to subscribe to cache identify broadcast: {error}"))?);
+
     let cache_identify_subscription = pin!(nats_client
         .subscribe_to_broadcasts::<ClusterCacheIdentifyBroadcast>(Some(cache_group), None)
         .await
@@ -148,6 +153,7 @@ pub async fn maintain_caches(
         warn!(%error, "Failed to send cache identification broadcast");
     }
 
+    let mut piece_cache_identify_subscription = piece_cache_identify_subscription.fuse();
     let mut cache_identify_subscription = cache_identify_subscription.fuse();
     let mut cache_pruning_interval = tokio::time::interval_at(
         (Instant::now() + identification_broadcast_interval * 2).into(),
@@ -190,6 +196,34 @@ pub async fn maintain_caches(
         }
 
         select! {
+            maybe_piece_cache_identify_message = piece_cache_identify_subscription.next() => {
+                let Some(piece_cache_identify_message) = maybe_piece_cache_identify_message else {
+                    return Err(anyhow!("Piece cache identify stream ended"));
+                };
+
+                let ClusterCacheIdentifyPieceCacheBroadcast {
+                    cache_id: piece_cache_id,
+                    max_num_elements,
+                } = piece_cache_identify_message;
+                let cache_id = CacheId::from(piece_cache_id);
+
+                known_caches.update_cache(
+                    cache_id,
+                    &mut scheduled_reinitialization_for,
+                    nats_client,
+                    async {
+                        Some(
+                            stream::once(async {
+                                ClusterPieceCacheDetails {
+                                    piece_cache_id,
+                                    max_num_elements,
+                                }
+                            })
+                            .boxed(),
+                        )
+                    },
+                ).await
+            }
             maybe_identify_message = cache_identify_subscription.next() => {
                 let Some(identify_message) = maybe_identify_message else {
                     return Err(anyhow!("Cache identify stream ended"));

@@ -103,6 +103,15 @@ impl CacheId {
     }
 }
 
+impl From<PieceCacheId> for CacheId {
+    #[inline]
+    fn from(id: PieceCacheId) -> Self {
+        match id {
+            PieceCacheId::Ulid(ulid) => CacheId::Ulid(ulid),
+        }
+    }
+}
+
 /// An identifier for a piece cache, can be used for in logs, thread names, etc.
 #[derive(
     Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
@@ -575,6 +584,15 @@ impl FarmerId {
     #[inline]
     pub fn new() -> Self {
         Self::Ulid(Ulid::new())
+    }
+}
+
+impl From<FarmId> for FarmerId {
+    #[inline]
+    fn from(id: FarmId) -> Self {
+        match id {
+            FarmId::Ulid(ulid) => FarmerId::Ulid(ulid),
+        }
     }
 }
 

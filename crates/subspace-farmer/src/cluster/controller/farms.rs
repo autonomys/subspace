@@ -7,7 +7,7 @@
 use crate::cluster::controller::ClusterControllerFarmerIdentifyBroadcast;
 use crate::cluster::farmer::{
     ClusterFarm, ClusterFarmerFarmDetails, ClusterFarmerFarmDetailsRequest,
-    ClusterFarmerIdentifyBroadcast,
+    ClusterFarmerIdentifyBroadcast, ClusterFarmerIdentifyFarmBroadcast,
 };
 use crate::cluster::nats_client::NatsClient;
 use crate::farm::plotted_pieces::PlottedPieces;
@@ -16,7 +16,7 @@ use anyhow::anyhow;
 use async_lock::RwLock as AsyncRwLock;
 use futures::channel::oneshot;
 use futures::future::FusedFuture;
-use futures::stream::FuturesUnordered;
+use futures::stream::{self, FuturesUnordered};
 use futures::{select, FutureExt, Stream, StreamExt};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -304,6 +304,12 @@ pub async fn maintain_farms(
     // Initialize with pending future so it never ends
     let mut farms = FuturesUnordered::new();
 
+    let farm_identify_subscription = pin!(nats_client
+        .subscribe_to_broadcasts::<ClusterFarmerIdentifyFarmBroadcast>(None, None)
+        .await
+        .map_err(|error| anyhow!(
+            "Failed to subscribe to farmer identify farm broadcast: {error}"
+        ))?);
     let farmer_identify_subscription = pin!(nats_client
         .subscribe_to_broadcasts::<ClusterFarmerIdentifyBroadcast>(None, None)
         .await
@@ -317,6 +323,7 @@ pub async fn maintain_farms(
         warn!(%error, "Failed to send farmer identification broadcast");
     }
 
+    let mut farm_identify_subscription = farm_identify_subscription.fuse();
     let mut farmer_identify_subscription = farmer_identify_subscription.fuse();
     let mut farm_pruning_interval = tokio::time::interval_at(
         (Instant::now() + identification_broadcast_interval * 2).into(),
@@ -359,6 +366,42 @@ pub async fn maintain_farms(
                         error!(%farm_index, %error, "Farm exited with error");
                     }
                 }
+            }
+            maybe_farm_identify_message = farm_identify_subscription.next() => {
+                let Some(farm_identify_message) = maybe_farm_identify_message else {
+                    return Err(anyhow!("Farmer identify stream ended"));
+                };
+
+                let ClusterFarmerIdentifyFarmBroadcast {
+                    farm_id,
+                    total_sectors_count,
+                    fingerprint,
+                } = farm_identify_message;
+                let farmer_id = FarmerId::from(farm_id);
+                let farmer_identify_message = ClusterFarmerIdentifyBroadcast {
+                    farmer_id,
+                    fingerprint,
+                };
+
+                process_farmer_identify_message(
+                    farmer_identify_message,
+                    nats_client,
+                    &mut known_farms,
+                    &mut farms_to_add_remove,
+                    plotted_pieces,
+                    async {
+                        Some(
+                            stream::once(async {
+                                ClusterFarmerFarmDetails {
+                                    farm_id,
+                                    total_sectors_count,
+                                    fingerprint,
+                                }
+                            })
+                            .boxed(),
+                        )
+                    },
+                ).await;
             }
             maybe_identify_message = farmer_identify_subscription.next() => {
                 let Some(identify_message) = maybe_identify_message else {
