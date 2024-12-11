@@ -31,7 +31,9 @@ use subspace_runtime_primitives::{Balance, BlockNumber};
 use thiserror::Error;
 
 pub(crate) const LOG_TARGET: &str = "domain_message_listener";
-const AUX_PREFIX: &[u8] = b"xdm_tx_pool_listener";
+const TX_POOL_PREFIX: &[u8] = b"xdm_tx_pool_listener";
+pub const RELAYER_PREFIX: &[u8] = b"xdm_relayer";
+
 /// Number of blocks an already submitted XDM is not accepted since last submission.
 const XDM_ACCEPT_BLOCK_LIMIT: u32 = 5;
 
@@ -477,7 +479,7 @@ where
     Ok(())
 }
 
-fn can_allow_xdm_submission<Client, Block>(
+pub fn can_allow_xdm_submission<Client, Block>(
     client: &Arc<Client>,
     xdm_id: XdmId,
     submitted_block_id: BlockId<Block>,
@@ -565,7 +567,7 @@ where
             runtime_api.channel_nonce(block_id.hash, src_chain_id, channel_id)?;
 
         if let Some(submitted_block_id) =
-            get_xdm_processed_block_number::<_, BlockOf<TxPool>>(&**client, AUX_PREFIX, xdm_id)?
+            get_xdm_processed_block_number::<_, BlockOf<TxPool>>(&**client, TX_POOL_PREFIX, xdm_id)?
             && !can_allow_xdm_submission(
                 client,
                 xdm_id,
@@ -615,13 +617,13 @@ where
                 block_id
             );
 
-            set_xdm_message_processed_at(&**client, AUX_PREFIX, xdm_id, block_id)?;
+            set_xdm_message_processed_at(&**client, TX_POOL_PREFIX, xdm_id, block_id)?;
         }
 
         if let Some(channel_nonce) = maybe_channel_nonce {
             cleanup_chain_channel_storages(
                 &**client,
-                AUX_PREFIX,
+                TX_POOL_PREFIX,
                 src_chain_id,
                 channel_id,
                 channel_nonce,

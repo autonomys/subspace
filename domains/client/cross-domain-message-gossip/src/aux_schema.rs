@@ -151,9 +151,9 @@ mod xdm_keys {
 }
 
 #[derive(Debug, Encode, Decode, Clone)]
-pub(super) struct BlockId<Block: BlockT> {
-    pub(super) number: NumberFor<Block>,
-    pub(super) hash: Block::Hash,
+pub struct BlockId<Block: BlockT> {
+    pub number: NumberFor<Block>,
+    pub hash: Block::Hash,
 }
 
 impl<Block: BlockT> From<Info<Block>> for BlockId<Block> {
