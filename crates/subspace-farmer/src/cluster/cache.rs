@@ -85,7 +85,7 @@ impl ClusterCacheId {
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct ClusterCacheIdentifyBroadcast {
     /// Cache ID
-    pub cache_id: ClusterCacheId,
+    pub cluster_cache_id: ClusterCacheId,
 }
 
 impl GenericBroadcast for ClusterCacheIdentifyBroadcast {
@@ -334,18 +334,6 @@ struct CacheDetails<'a, C> {
     cache: &'a C,
 }
 
-impl<C> CacheDetails<'_, C>
-where
-    C: PieceCache,
-{
-    fn derive_identification(&self) -> ClusterPieceCacheDetails {
-        ClusterPieceCacheDetails {
-            piece_cache_id: self.piece_cache_id,
-            max_num_elements: self.cache.max_num_elements(),
-        }
-    }
-}
-
 /// Create cache service for specified caches that will be processing incoming requests and send
 /// periodic identify notifications
 pub async fn cache_service<C>(
@@ -358,13 +346,14 @@ pub async fn cache_service<C>(
 where
     C: PieceCache,
 {
-    let cache_id = ClusterCacheId::new();
-    let cache_id_string = cache_id.to_string();
+    let cluster_cache_id = ClusterCacheId::new();
+    let cluster_cache_id_string = cluster_cache_id.to_string();
 
     let caches_details = caches
         .iter()
         .map(|cache| {
             let piece_cache_id = *cache.id();
+
             if primary_instance {
                 info!(%piece_cache_id, max_num_elements = %cache.max_num_elements(), "Created piece cache");
             }
@@ -381,15 +370,15 @@ where
         select! {
             result = identify_responder(
                 &nats_client,
-                cache_id,
+                cluster_cache_id,
                 cache_group,
                 identification_broadcast_interval
             ).fuse() => {
                 result
             },
-            result = caches_details_responder(
+            result = piece_cache_details_responder(
                 &nats_client,
-                &cache_id_string,
+                &cluster_cache_id_string,
                 &caches_details
             ).fuse() => {
                 result
@@ -438,7 +427,7 @@ where
 /// per controller instance in order to parallelize more work across threads if needed.
 async fn identify_responder(
     nats_client: &NatsClient,
-    cache_id: ClusterCacheId,
+    cluster_cache_id: ClusterCacheId,
     cache_group: &str,
     identification_broadcast_interval: Duration,
 ) -> anyhow::Result<()> {
@@ -472,14 +461,14 @@ async fn identify_responder(
                 }
 
                 last_identification = Instant::now();
-                send_identify_broadcast(nats_client, cache_id, cache_group).await;
+                send_identify_broadcast(nats_client, cluster_cache_id, cache_group).await;
                 interval.reset();
             }
             _ = interval.tick().fuse() => {
                 last_identification = Instant::now();
                 trace!("Cache self-identification");
 
-                send_identify_broadcast(nats_client, cache_id, cache_group).await;
+                send_identify_broadcast(nats_client, cluster_cache_id, cache_group).await;
             }
         }
     }
@@ -489,20 +478,23 @@ async fn identify_responder(
 
 async fn send_identify_broadcast(
     nats_client: &NatsClient,
-    cache_id: ClusterCacheId,
+    cluster_cache_id: ClusterCacheId,
     cache_group: &str,
 ) {
     if let Err(error) = nats_client
-        .broadcast(&ClusterCacheIdentifyBroadcast { cache_id }, cache_group)
+        .broadcast(
+            &ClusterCacheIdentifyBroadcast { cluster_cache_id },
+            cache_group,
+        )
         .await
     {
-        warn!(%cache_id, %error, "Failed to send cache identify notification");
+        warn!(%cluster_cache_id, %error, "Failed to send cache identify notification");
     }
 }
 
-async fn caches_details_responder<C>(
+async fn piece_cache_details_responder<C>(
     nats_client: &NatsClient,
-    cache_id_string: &str,
+    cluster_cache_id_string: &str,
     caches_details: &[CacheDetails<'_, C>],
 ) -> anyhow::Result<()>
 where
@@ -510,14 +502,15 @@ where
 {
     nats_client
         .stream_request_responder(
-            Some(cache_id_string),
-            Some(cache_id_string.to_string()),
+            Some(cluster_cache_id_string),
+            Some(cluster_cache_id_string.to_string()),
             |_request: ClusterCacheDetailsRequest| async {
-                Some(stream::iter(
-                    caches_details
-                        .iter()
-                        .map(CacheDetails::derive_identification),
-                ))
+                Some(stream::iter(caches_details.iter().map(|cache_details| {
+                    ClusterPieceCacheDetails {
+                        piece_cache_id: cache_details.piece_cache_id,
+                        max_num_elements: cache_details.cache.max_num_elements(),
+                    }
+                })))
             },
         )
         .await
