@@ -100,7 +100,7 @@ use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{hashes, PublicKey, Randomness, SlotNumber, U256};
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce,
-    Signature, MIN_REPLICATION_FACTOR,
+    Signature, MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -129,13 +129,6 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     transaction_version: 1,
     system_version: 2,
 };
-
-/// The smallest unit of the token is called Shannon.
-pub const SHANNON: Balance = 1;
-/// Subspace Credits have 18 decimal places.
-pub const DECIMAL_PLACES: u8 = 18;
-/// One Subspace Credit.
-pub const SSC: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
 
 // TODO: Many of below constants should probably be updatable but currently they are not
 
@@ -364,8 +357,7 @@ impl pallet_balances::Config for Runtime {
     /// The ubiquitous event type.
     type RuntimeEvent = RuntimeEvent;
     type DustRemoval = ();
-    // TODO: Correct value
-    type ExistentialDeposit = ConstU128<{ 500 * SHANNON }>;
+    type ExistentialDeposit = ConstU128<{ 10_000_000_000_000 * SHANNON }>;
     type AccountStore = System;
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
     type FreezeIdentifier = ();
