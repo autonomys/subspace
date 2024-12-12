@@ -54,7 +54,7 @@ use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
-use subspace_core_primitives::U256;
+use subspace_core_primitives::{Randomness, U256};
 use subspace_runtime_primitives::{Balance, Moment};
 
 /// Custom invalid validity code for the extrinsics in pallet-domains.
@@ -108,6 +108,7 @@ pub enum DomainChainAllowlistUpdateExtrinsic {
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct DomainInherentExtrinsicData {
+    pub block_randomness: Randomness,
     pub timestamp: Moment,
     pub maybe_domain_runtime_upgrade: Option<Vec<u8>>,
     pub consensus_transaction_byte_fee: Balance,
