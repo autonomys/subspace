@@ -45,7 +45,7 @@ pub enum VerificationError {
     RuntimeRegistryStorageProof(StorageProofVerificationError),
     DynamicCostOfStorageStorageProof(StorageProofVerificationError),
     DigestStorageProof(StorageProofVerificationError),
-    BlockFessStorageProof(StorageProofVerificationError),
+    BlockFeesStorageProof(StorageProofVerificationError),
     TransfersStorageProof(StorageProofVerificationError),
     ExtrinsicStorageProof(StorageProofVerificationError),
     DomainSudoCallStorageProof(StorageProofVerificationError),
@@ -414,7 +414,7 @@ impl MaybeDomainRuntimeUpgradedProof {
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidExtrinsicsDataProof {
+pub struct InvalidInherentExtrinsicProof {
     /// Block randomness storage proof
     pub block_randomness_proof: BlockRandomnessProof,
 
@@ -434,7 +434,7 @@ pub struct InvalidExtrinsicsDataProof {
     pub domain_chain_allowlist_proof: DomainChainsAllowlistUpdateStorageProof,
 }
 
-impl InvalidExtrinsicsDataProof {
+impl InvalidInherentExtrinsicProof {
     #[cfg(feature = "std")]
     #[allow(clippy::let_and_return)]
     pub fn generate<
