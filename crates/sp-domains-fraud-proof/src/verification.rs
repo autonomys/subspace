@@ -65,12 +65,12 @@ where
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
-        invalid_extrinsics_data_proof,
+        invalid_inherent_extrinsic_proof,
         domain_sudo_call_proof,
     } = fraud_proof;
 
-    let mut domain_inherent_extrinsic_data =
-        invalid_extrinsics_data_proof.verify::<CBlock, SKP>(domain_id, runtime_id, &state_root)?;
+    let mut domain_inherent_extrinsic_data = invalid_inherent_extrinsic_proof
+        .verify::<CBlock, SKP>(domain_id, runtime_id, &state_root)?;
 
     let domain_sudo_call = <DomainSudoCallStorageProof as BasicStorageProof<CBlock>>::verify::<SKP>(
         domain_sudo_call_proof.clone(),

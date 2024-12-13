@@ -495,7 +495,7 @@ pub struct InvalidExtrinsicsRootProof {
     pub valid_bundle_digests: Vec<ValidBundleDigest>,
 
     /// The storage proof used during verification
-    pub invalid_extrinsics_data_proof: InvalidExtrinsicsDataProof,
+    pub invalid_inherent_extrinsic_proof: InvalidInherentExtrinsicProof,
 
     /// Optional sudo extrinsic call storage proof
     pub domain_sudo_call_proof: DomainSudoCallStorageProof,
