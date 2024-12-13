@@ -45,7 +45,7 @@ pub enum VerificationError {
     RuntimeRegistryStorageProof(StorageProofVerificationError),
     DynamicCostOfStorageStorageProof(StorageProofVerificationError),
     DigestStorageProof(StorageProofVerificationError),
-    BlockFessStorageProof(StorageProofVerificationError),
+    BlockFeesStorageProof(StorageProofVerificationError),
     TransfersStorageProof(StorageProofVerificationError),
     ExtrinsicStorageProof(StorageProofVerificationError),
     DomainSudoCallStorageProof(StorageProofVerificationError),

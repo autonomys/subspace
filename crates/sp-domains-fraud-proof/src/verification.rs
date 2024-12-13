@@ -381,7 +381,7 @@ where
         )
         .map_err(|err| {
             VerificationError::StorageProof(
-                storage_proof::VerificationError::BlockFessStorageProof(err),
+                storage_proof::VerificationError::BlockFeesStorageProof(err),
             )
         })?;
 

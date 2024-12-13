@@ -380,7 +380,7 @@ where
             self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
 
         let maybe_runtime_id =
-            self.is_domain_runtime_updraded_at(domain_id, consensus_block_hash)?;
+            self.is_domain_runtime_upgraded_at(domain_id, consensus_block_hash)?;
 
         let invalid_inherent_extrinsic_proof = InvalidInherentExtrinsicProof::generate(
             &self.storage_key_provider,
@@ -412,7 +412,7 @@ where
         Ok(invalid_domain_extrinsics_root_proof)
     }
 
-    pub fn is_domain_runtime_updraded_at(
+    pub fn is_domain_runtime_upgraded_at(
         &self,
         domain_id: DomainId,
         at: CBlock::Hash,
