@@ -5,10 +5,10 @@ use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
-use subspace_runtime_primitives::{AccountId, Balance, Signature};
+use subspace_runtime_primitives::{AccountId, Balance, Signature, SSC};
 use subspace_test_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, RewardsConfig,
-    RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, SSC, WASM_BINARY,
+    RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, WASM_BINARY,
 };
 
 /// Generate a crypto pair from seed.

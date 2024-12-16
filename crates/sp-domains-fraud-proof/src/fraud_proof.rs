@@ -320,13 +320,13 @@ pub struct FraudProof<Number, Hash, DomainHeader: HeaderT, MmrHash> {
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted
     pub bad_receipt_hash: HeaderHashFor<DomainHeader>,
-    /// The MMR proof for the consensus state root that used to verify the storage proof
+    /// The MMR proof for the consensus state root that is used to verify the storage proof
     ///
-    /// It is set `None` if the specific fraud proof variant doesn't contains storage proof
+    /// It is set `None` if the specific fraud proof variant doesn't contain a storage proof
     pub maybe_mmr_proof: Option<ConsensusChainMmrLeafProof<Number, Hash, MmrHash>>,
     /// The domain runtime code storage proof
     ///
-    /// It is set `None` if the specific fraud proof variant doesn't required domain runtime code
+    /// It is set `None` if the specific fraud proof variant doesn't require domain runtime code
     /// or the required domain runtime code is available from the current runtime state.
     pub maybe_domain_runtime_code_proof: Option<DomainRuntimeCodeAt<Number, Hash, MmrHash>>,
     /// The specific fraud proof variant
@@ -485,7 +485,7 @@ pub struct InvalidStateTransitionProof {
 /// Fraud proof for the valid bundles in `ExecutionReceipt::inboxed_bundles`
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct ValidBundleProof<Number, Hash, DomainHeader: HeaderT> {
-    /// The targetted bundle with proof
+    /// The targeted bundle with proof
     pub bundle_with_proof: OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>,
 }
 
@@ -493,10 +493,12 @@ pub struct ValidBundleProof<Number, Hash, DomainHeader: HeaderT> {
 pub struct InvalidExtrinsicsRootProof {
     /// Valid Bundle digests
     pub valid_bundle_digests: Vec<ValidBundleDigest>,
-    /// Block randomness storage proof
-    pub block_randomness_proof: BlockRandomnessProof,
+
     /// The storage proof used during verification
-    pub domain_inherent_extrinsic_data_proof: DomainInherentExtrinsicDataProof,
+    pub invalid_inherent_extrinsic_proof: InvalidInherentExtrinsicProof,
+
+    /// Optional sudo extrinsic call storage proof
+    pub domain_sudo_call_proof: DomainSudoCallStorageProof,
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]

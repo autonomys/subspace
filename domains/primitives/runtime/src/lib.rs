@@ -93,8 +93,13 @@ pub fn maximum_block_length() -> BlockLength {
     BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO)
 }
 
-/// The existential deposit. Same with the one on primary chain.
-pub const EXISTENTIAL_DEPOSIT: Balance = 500 * SHANNON;
+/// Computed as ED = Account data size * Price per byte, where
+/// Price per byte = Min Number of validators * Storage duration (years) * Storage cost per year
+/// Account data size (80 bytes)
+/// Min Number of redundant validators (10) - For a stable and redundant blockchain we need at least a certain number of full nodes/collators.
+/// Storage duration (1 year) - It is theoretically unlimited, accounts will stay around while the chain is alive.
+/// Storage cost per year of (12 * 1e-9 * 0.1 ) - SSD storage on cloud hosting costs about 0.1 USD per Gb per month
+pub const EXISTENTIAL_DEPOSIT: Balance = 1_000_000_000_000 * SHANNON;
 
 /// We assume that ~5% of the block weight is consumed by `on_initialize` handlers. This is
 /// used to limit the maximal weight of a single extrinsic.

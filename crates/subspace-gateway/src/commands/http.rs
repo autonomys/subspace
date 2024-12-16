@@ -1,5 +1,5 @@
 //! Gateway http command.
-//! This command start an HTTP server to serve object requests.
+//! This command starts an HTTP server to serve object requests.
 
 pub(crate) mod server;
 
@@ -15,14 +15,14 @@ pub(crate) struct HttpCommandOptions {
     #[clap(flatten)]
     gateway_options: GatewayOptions,
 
-    #[arg(long, default_value = "127.0.0.1:3000")]
+    #[arg(long, default_value = "http://127.0.0.1:3000")]
     indexer_endpoint: String,
 
     #[arg(long, default_value = "127.0.0.1:8080")]
     http_listen_on: String,
 }
 
-/// Runs an HTTP server
+/// Runs an HTTP server which fetches DSN objects based on object hashes.
 pub async fn run(run_options: HttpCommandOptions) -> anyhow::Result<()> {
     let signal = shutdown_signal();
 

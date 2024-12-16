@@ -55,15 +55,6 @@ RUN \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION && \
     /root/.cargo/bin/rustup target add wasm32-unknown-unknown
 
-COPY Cargo.lock /code/Cargo.lock
-COPY Cargo.toml /code/Cargo.toml
-COPY rust-toolchain.toml /code/rust-toolchain.toml
-
-COPY crates /code/crates
-COPY domains /code/domains
-COPY shared /code/shared
-COPY test /code/test
-
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
 # CUDA toolchain, including support for cross-compilation from x86-64 to aarch64, but NOT from aarch64 to x86-64
@@ -103,6 +94,8 @@ RUN \
       echo "/opt/rocm/lib" > /etc/ld.so.conf.d/rocm.conf && \
       ldconfig \
     ; fi
+
+COPY . /code
 
 ARG TARGETVARIANT
 

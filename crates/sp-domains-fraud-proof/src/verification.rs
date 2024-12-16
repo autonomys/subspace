@@ -65,19 +65,24 @@ where
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
-        block_randomness_proof,
-        domain_inherent_extrinsic_data_proof,
-        ..
+        invalid_inherent_extrinsic_proof,
+        domain_sudo_call_proof,
     } = fraud_proof;
 
-    let domain_inherent_extrinsic_data = domain_inherent_extrinsic_data_proof
+    let mut domain_inherent_extrinsic_data = invalid_inherent_extrinsic_proof
         .verify::<CBlock, SKP>(domain_id, runtime_id, &state_root)?;
 
-    let block_randomness = <BlockRandomnessProof as BasicStorageProof<CBlock>>::verify::<SKP>(
-        block_randomness_proof.clone(),
-        (),
+    let domain_sudo_call = <DomainSudoCallStorageProof as BasicStorageProof<CBlock>>::verify::<SKP>(
+        domain_sudo_call_proof.clone(),
+        domain_id,
         &state_root,
     )?;
+    domain_inherent_extrinsic_data.maybe_sudo_runtime_call = domain_sudo_call.maybe_call;
+
+    let shuffling_seed = H256::from_slice(
+        extrinsics_shuffling_seed::<Hashing>(domain_inherent_extrinsic_data.block_randomness)
+            .as_ref(),
+    );
 
     let DomainInherentExtrinsic {
         domain_timestamp_extrinsic,
@@ -109,9 +114,6 @@ where
 
         bundle_extrinsics_digests.extend(bundle_digest.bundle_digest.clone());
     }
-
-    let shuffling_seed =
-        H256::from_slice(extrinsics_shuffling_seed::<Hashing>(block_randomness).as_ref());
 
     let mut ordered_extrinsics = deduplicate_and_shuffle_extrinsics(
         bundle_extrinsics_digests,
@@ -379,7 +381,7 @@ where
         )
         .map_err(|err| {
             VerificationError::StorageProof(
-                storage_proof::VerificationError::BlockFessStorageProof(err),
+                storage_proof::VerificationError::BlockFeesStorageProof(err),
             )
         })?;
 
