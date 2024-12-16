@@ -2717,8 +2717,8 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn extrinsics_shuffling_seed() -> T::Hash {
-        let seed = DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT;
-        let (randomness, _) = T::Randomness::random(seed);
+        let subject = DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT;
+        let (randomness, _) = T::Randomness::random(subject);
         randomness
     }
 
