@@ -223,7 +223,7 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
     use frame_support::traits::tokens::Preservation;
-    use frame_support::traits::Randomness as RandomnessT;
+    use frame_support::traits::{Randomness as RandomnessT, Time};
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
@@ -248,7 +248,7 @@ mod pallet {
     use sp_std::fmt::Debug;
     use sp_subspace_mmr::MmrProofVerifier;
     use subspace_core_primitives::{Randomness, U256};
-    use subspace_runtime_primitives::{Moment, StorageFee};
+    use subspace_runtime_primitives::StorageFee;
 
     #[pallet::config]
     pub trait Config: frame_system::Config<Hash: Into<H256>> {
@@ -389,6 +389,9 @@ mod pallet {
 
         /// Storage fee interface used to deal with bundle storage fee
         type StorageFee: StorageFee<BalanceOf<Self>>;
+
+        /// The block timestamp
+        type BlockTimestamp: Time;
 
         /// The block slot
         type BlockSlot: BlockSlot<Self>;
@@ -1913,7 +1916,12 @@ mod pallet {
                     Into::<H256>::into(Self::extrinsics_shuffling_seed()).to_fixed_bytes(),
                 );
 
-                let timestamp = Moment::default();
+                // There is no actual conversion here, but the trait bounds required to prove that
+                // (and debug-print the error in expect()) are very verbose.
+                let timestamp = T::BlockTimestamp::now()
+                    .try_into()
+                    .map_err(|_| ())
+                    .expect("Moment is the same type in both pallets; qed");
 
                 let invalid_inherent_extrinsic_data = InvalidInherentExtrinsicData {
                     extrinsics_shuffling_seed,
