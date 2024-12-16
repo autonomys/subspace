@@ -1118,9 +1118,6 @@ impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
             FraudProofStorageKeyRequest::InvalidInherentExtrinsicData => {
                 pallet_domains::BlockInvalidInherentExtrinsicData::<Runtime>::hashed_key().to_vec()
             }
-            FraudProofStorageKeyRequest::Timestamp => {
-                pallet_timestamp::Now::<Runtime>::hashed_key().to_vec()
-            }
             FraudProofStorageKeyRequest::SuccessfulBundles(domain_id) => {
                 pallet_domains::SuccessfulBundles::<Runtime>::hashed_key_for(domain_id)
             }
