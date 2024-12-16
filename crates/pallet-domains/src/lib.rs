@@ -2889,9 +2889,9 @@ impl<T: Config> Pallet<T> {
             parent_receipt.consensus_block_number
         };
 
-        let is_domain_runtime_updraded = current_runtime_obj.updated_at >= at;
+        let is_domain_runtime_upgraded = current_runtime_obj.updated_at >= at;
 
-        let mut runtime_obj = match (is_domain_runtime_updraded, maybe_domain_runtime_code_at) {
+        let mut runtime_obj = match (is_domain_runtime_upgraded, maybe_domain_runtime_code_at) {
             //  The domain runtime is upgraded since `at`, the domain runtime code in `at` is not available
             // so `domain_runtime_code_proof` must be provided
             (true, None) => return Err(FraudProofError::DomainRuntimeCodeProofNotFound),
