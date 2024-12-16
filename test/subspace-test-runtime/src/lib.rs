@@ -766,6 +766,7 @@ impl pallet_domains::Config for Runtime {
     type MinNominatorStake = MinNominatorStake;
     type PalletId = DomainsPalletId;
     type StorageFee = TransactionFees;
+    type BlockTimestamp = pallet_timestamp::Pallet<Runtime>;
     type BlockSlot = BlockSlot;
     type BundleLongevity = BundleLongevity;
     type DomainsTransfersTracker = Transporter;
