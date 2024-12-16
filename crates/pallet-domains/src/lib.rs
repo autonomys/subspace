@@ -248,7 +248,7 @@ mod pallet {
     use sp_std::fmt::Debug;
     use sp_subspace_mmr::MmrProofVerifier;
     use subspace_core_primitives::{Randomness, U256};
-    use subspace_runtime_primitives::StorageFee;
+    use subspace_runtime_primitives::{Moment, StorageFee};
 
     #[pallet::config]
     pub trait Config: frame_system::Config<Hash: Into<H256>> {
@@ -1913,8 +1913,11 @@ mod pallet {
                     Into::<H256>::into(Self::extrinsics_shuffling_seed()).to_fixed_bytes(),
                 );
 
+                let timestamp = Moment::default();
+
                 let invalid_inherent_extrinsic_data = InvalidInherentExtrinsicData {
                     extrinsics_shuffling_seed,
+                    timestamp,
                 };
 
                 BlockInvalidInherentExtrinsicData::<T>::set(Some(invalid_inherent_extrinsic_data));
