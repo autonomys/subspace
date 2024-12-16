@@ -1,4 +1,3 @@
-use crate::DomainInherentExtrinsicData;
 use codec::{Decode, Encode};
 use frame_support::PalletError;
 use scale_info::TypeInfo;
@@ -13,6 +12,8 @@ use sp_domains::{
 };
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
+use sp_runtime_interface::pass_by;
+use sp_runtime_interface::pass_by::PassBy;
 use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
@@ -36,7 +37,7 @@ pub enum VerificationError {
     InvalidBundleStorageProof,
     RuntimeCodeNotFound,
     UnexpectedDomainRuntimeUpgrade,
-    BlockRandomnessStorageProof(StorageProofVerificationError),
+    InvalidInherentExtrinsicStorageProof(StorageProofVerificationError),
     TimestampStorageProof(StorageProofVerificationError),
     SuccessfulBundlesStorageProof(StorageProofVerificationError),
     TransactionByteFeeStorageProof(StorageProofVerificationError),
@@ -54,7 +55,7 @@ pub enum VerificationError {
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub enum FraudProofStorageKeyRequest<Number> {
-    BlockRandomness,
+    InvalidInherentExtrinsicData,
     Timestamp,
     SuccessfulBundles(DomainId),
     TransactionByteFee,
@@ -69,7 +70,9 @@ pub enum FraudProofStorageKeyRequest<Number> {
 impl<Number> FraudProofStorageKeyRequest<Number> {
     fn into_error(self, err: StorageProofVerificationError) -> VerificationError {
         match self {
-            Self::BlockRandomness => VerificationError::BlockRandomnessStorageProof(err),
+            Self::InvalidInherentExtrinsicData => {
+                VerificationError::InvalidInherentExtrinsicStorageProof(err)
+            }
             Self::Timestamp => VerificationError::TimestampStorageProof(err),
             Self::SuccessfulBundles(_) => VerificationError::SuccessfulBundlesStorageProof(err),
             Self::TransactionByteFee => VerificationError::TransactionByteFeeStorageProof(err),
@@ -170,17 +173,6 @@ impl<Block: BlockT> BasicStorageProof<Block> for SuccessfulBundlesProof {
     type Key = DomainId;
     fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::SuccessfulBundles(key)
-    }
-}
-
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct BlockRandomnessProof(StorageProof);
-
-impl_storage_proof!(BlockRandomnessProof);
-impl<Block: BlockT> BasicStorageProof<Block> for BlockRandomnessProof {
-    type StorageValue = Randomness;
-    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
-        FraudProofStorageKeyRequest::BlockRandomness
     }
 }
 
@@ -414,10 +406,28 @@ impl MaybeDomainRuntimeUpgradedProof {
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidInherentExtrinsicProof {
-    /// Block randomness storage proof
-    pub block_randomness_proof: BlockRandomnessProof,
+pub struct InvalidInherentExtrinsicData {
+    /// Extrinsics shuffling seed, derived from block randomness
+    pub extrinsics_shuffling_seed: Randomness,
+}
 
+impl PassBy for InvalidInherentExtrinsicData {
+    type PassBy = pass_by::Codec<Self>;
+}
+
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct InvalidInherentExtrinsicDataProof(StorageProof);
+
+impl_storage_proof!(InvalidInherentExtrinsicDataProof);
+impl<Block: BlockT> BasicStorageProof<Block> for InvalidInherentExtrinsicDataProof {
+    type StorageValue = InvalidInherentExtrinsicData;
+    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
+        FraudProofStorageKeyRequest::InvalidInherentExtrinsicData
+    }
+}
+
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct InvalidInherentExtrinsicProof {
     /// Block timestamp storage proof
     pub timestamp_proof: TimestampStorageProof,
 
@@ -434,6 +444,15 @@ pub struct InvalidInherentExtrinsicProof {
     pub domain_chain_allowlist_proof: DomainChainsAllowlistUpdateStorageProof,
 }
 
+/// The verified data from an `InvalidInherentExtrinsicProof`
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct InvalidInherentExtrinsicVerified {
+    pub timestamp: Moment,
+    pub maybe_domain_runtime_upgrade: Option<Vec<u8>>,
+    pub consensus_transaction_byte_fee: Balance,
+    pub domain_chain_allowlist: DomainAllowlistUpdates,
+}
+
 impl InvalidInherentExtrinsicProof {
     #[cfg(feature = "std")]
     #[allow(clippy::let_and_return)]
@@ -448,8 +467,6 @@ impl InvalidInherentExtrinsicProof {
         block_hash: Block::Hash,
         maybe_runtime_id: Option<RuntimeId>,
     ) -> Result<Self, GenerationError> {
-        let block_randomness_proof =
-            BlockRandomnessProof::generate(proof_provider, block_hash, (), storage_key_provider)?;
         let timestamp_proof =
             TimestampStorageProof::generate(proof_provider, block_hash, (), storage_key_provider)?;
         let maybe_domain_runtime_upgrade_proof = MaybeDomainRuntimeUpgradedProof::generate(
@@ -478,7 +495,6 @@ impl InvalidInherentExtrinsicProof {
         )?;
 
         Ok(Self {
-            block_randomness_proof,
             timestamp_proof,
             maybe_domain_runtime_upgrade_proof,
             dynamic_cost_of_storage_proof,
@@ -492,13 +508,7 @@ impl InvalidInherentExtrinsicProof {
         domain_id: DomainId,
         runtime_id: RuntimeId,
         state_root: &Block::Hash,
-    ) -> Result<DomainInherentExtrinsicData, VerificationError> {
-        let block_randomness = <BlockRandomnessProof as BasicStorageProof<Block>>::verify::<SKP>(
-            self.block_randomness_proof.clone(),
-            (),
-            state_root,
-        )?;
-
+    ) -> Result<InvalidInherentExtrinsicVerified, VerificationError> {
         let timestamp = <TimestampStorageProof as BasicStorageProof<Block>>::verify::<SKP>(
             self.timestamp_proof.clone(),
             (),
@@ -535,14 +545,11 @@ impl InvalidInherentExtrinsicProof {
                 state_root,
             )?;
 
-        Ok(DomainInherentExtrinsicData {
-            block_randomness,
+        Ok(InvalidInherentExtrinsicVerified {
             timestamp,
             maybe_domain_runtime_upgrade,
             consensus_transaction_byte_fee,
             domain_chain_allowlist,
-            // Populated by caller
-            maybe_sudo_runtime_call: None,
         })
     }
 }

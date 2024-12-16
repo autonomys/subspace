@@ -201,6 +201,7 @@ mod pallet {
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_slash_operator;
     use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
+    use crate::storage_proof::InvalidInherentExtrinsicData;
     use crate::weights::WeightInfo;
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::DomainHashingFor;
@@ -246,7 +247,7 @@ mod pallet {
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_subspace_mmr::MmrProofVerifier;
-    use subspace_core_primitives::U256;
+    use subspace_core_primitives::{Randomness, U256};
     use subspace_runtime_primitives::StorageFee;
 
     #[pallet::config]
@@ -1850,6 +1851,10 @@ mod pallet {
         }
     }
 
+    /// Combined fraud proof data for the InvalidInherentExtrinsic fraud proof
+    #[pallet::storage]
+    pub type BlockInvalidInherentExtrinsicData<T> = StorageValue<_, InvalidInherentExtrinsicData>;
+
     #[pallet::hooks]
     // TODO: proper benchmark
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
@@ -1894,10 +1899,27 @@ mod pallet {
                 }
             }
 
+            BlockInvalidInherentExtrinsicData::<T>::kill();
+
             Weight::zero()
         }
 
         fn on_finalize(_: BlockNumberFor<T>) {
+            // If this consensus block will derive any domain block, gather the necessary storage for potential fraud proof usage
+            if SuccessfulBundles::<T>::iter_keys().count() > 0
+                || DomainRuntimeUpgrades::<T>::exists()
+            {
+                let extrinsics_shuffling_seed = Randomness::from(
+                    Into::<H256>::into(Self::extrinsics_shuffling_seed()).to_fixed_bytes(),
+                );
+
+                let invalid_inherent_extrinsic_data = InvalidInherentExtrinsicData {
+                    extrinsics_shuffling_seed,
+                };
+
+                BlockInvalidInherentExtrinsicData::<T>::set(Some(invalid_inherent_extrinsic_data));
+            }
+
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
             let _ = NewAddedHeadReceipt::<T>::clear(u32::MAX, None);
         }
