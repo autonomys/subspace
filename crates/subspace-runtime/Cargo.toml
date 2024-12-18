@@ -28,7 +28,6 @@ pallet-balances = { default-features = false, git = "https://github.com/subspace
 pallet-collective = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
 pallet-democracy = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
 pallet-domains = { version = "0.1.0", default-features = false, path = "../pallet-domains" }
-pallet-history-seeding = { version = "0.1.0", default-features = false, path = "../pallet-history-seeding" }
 pallet-messenger = { version = "0.1.0", path = "../../domains/pallets/messenger", default-features = false }
 pallet-mmr = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
 pallet-preimage = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
@@ -92,7 +91,6 @@ std = [
     "pallet-collective/std",
     "pallet-democracy/std",
     "pallet-domains/std",
-    "pallet-history-seeding/std",
     "pallet-messenger/std",
     "pallet-mmr/std",
     "pallet-preimage/std",
@@ -145,7 +143,6 @@ runtime-benchmarks = [
     "pallet-balances/runtime-benchmarks",
     "pallet-collective/runtime-benchmarks",
     "pallet-domains/runtime-benchmarks",
-    "pallet-history-seeding/runtime-benchmarks",
     "pallet-mmr/runtime-benchmarks",
     "pallet-messenger/runtime-benchmarks",
     "pallet-rewards/runtime-benchmarks",
