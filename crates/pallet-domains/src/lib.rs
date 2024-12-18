@@ -248,7 +248,7 @@ mod pallet {
     use sp_std::fmt::Debug;
     use sp_subspace_mmr::MmrProofVerifier;
     use subspace_core_primitives::{Randomness, U256};
-    use subspace_runtime_primitives::StorageFee;
+    use subspace_runtime_primitives::{Balance, StorageFee};
 
     #[pallet::config]
     pub trait Config: frame_system::Config<Hash: Into<H256>> {
@@ -1916,16 +1916,25 @@ mod pallet {
                     Into::<H256>::into(Self::extrinsics_shuffling_seed()).to_fixed_bytes(),
                 );
 
-                // There is no actual conversion here, but the trait bounds required to prove that
+                // There are no actual conversions here, but the trait bounds required to prove that
                 // (and debug-print the error in expect()) are very verbose.
                 let timestamp = T::BlockTimestamp::now()
                     .try_into()
                     .map_err(|_| ())
                     .expect("Moment is the same type in both pallets; qed");
+                let transaction_byte_fee: Balance = T::StorageFee::transaction_byte_fee()
+                    .try_into()
+                    .map_err(|_| ())
+                    .expect("Balance is the same type in both pallets; qed");
+
+                // The value returned by the consensus_chain_byte_fee() runtime API
+                let consensus_transaction_byte_fee =
+                    sp_domains::DOMAIN_STORAGE_FEE_MULTIPLIER * transaction_byte_fee;
 
                 let invalid_inherent_extrinsic_data = InvalidInherentExtrinsicData {
                     extrinsics_shuffling_seed,
                     timestamp,
+                    consensus_transaction_byte_fee,
                 };
 
                 BlockInvalidInherentExtrinsicData::<T>::set(Some(invalid_inherent_extrinsic_data));
