@@ -1115,8 +1115,8 @@ pub struct StorageKeyProvider;
 impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
     fn storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8> {
         match req {
-            FraudProofStorageKeyRequest::BlockRandomness => {
-                pallet_subspace::BlockRandomness::<Runtime>::hashed_key().to_vec()
+            FraudProofStorageKeyRequest::InvalidInherentExtrinsicData => {
+                pallet_domains::BlockInvalidInherentExtrinsicData::<Runtime>::hashed_key().to_vec()
             }
             FraudProofStorageKeyRequest::Timestamp => {
                 pallet_timestamp::Now::<Runtime>::hashed_key().to_vec()

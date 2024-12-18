@@ -263,7 +263,7 @@ where
     ) -> Option<DomainInherentExtrinsic> {
         let DomainInherentExtrinsicData {
             // Used by caller
-            block_randomness: _,
+            extrinsics_shuffling_seed: _,
             timestamp,
             maybe_domain_runtime_upgrade,
             consensus_transaction_byte_fee,

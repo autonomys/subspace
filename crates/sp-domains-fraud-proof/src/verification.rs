@@ -7,8 +7,8 @@ use crate::fraud_proof::{
 };
 use crate::storage_proof::{self, *};
 use crate::{
-    fraud_proof_runtime_interface, DomainInherentExtrinsic, DomainStorageKeyRequest,
-    StatelessDomainRuntimeCall,
+    fraud_proof_runtime_interface, DomainInherentExtrinsic, DomainInherentExtrinsicData,
+    DomainStorageKeyRequest, StatelessDomainRuntimeCall,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -17,7 +17,7 @@ use domain_runtime_primitives::BlockNumber;
 use hash_db::Hasher;
 use sp_core::storage::StorageKey;
 use sp_core::H256;
-use sp_domains::extrinsics::{deduplicate_and_shuffle_extrinsics, extrinsics_shuffling_seed};
+use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::valued_trie::valued_ordered_trie_root;
 use sp_domains::{
@@ -32,7 +32,7 @@ use sp_runtime::traits::{
 use sp_runtime::{OpaqueExtrinsic, SaturatedConversion};
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrProofVerifier};
 use sp_trie::{LayoutV1, StorageProof};
-use subspace_core_primitives::{Randomness, U256};
+use subspace_core_primitives::U256;
 use trie_db::node::Value;
 
 /// Verifies invalid domain extrinsic root fraud proof.
@@ -65,24 +65,40 @@ where
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
+        invalid_inherent_extrinsic_proofs,
         invalid_inherent_extrinsic_proof,
         domain_sudo_call_proof,
     } = fraud_proof;
 
-    let mut domain_inherent_extrinsic_data = invalid_inherent_extrinsic_proof
-        .verify::<CBlock, SKP>(domain_id, runtime_id, &state_root)?;
+    let invalid_inherent_extrinsic_data =
+        <InvalidInherentExtrinsicDataProof as BasicStorageProof<CBlock>>::verify::<SKP>(
+            invalid_inherent_extrinsic_proofs.clone(),
+            (),
+            &state_root,
+        )?;
+
+    let inherent_extrinsic_verified = invalid_inherent_extrinsic_proof.verify::<CBlock, SKP>(
+        domain_id,
+        runtime_id,
+        &state_root,
+    )?;
 
     let domain_sudo_call = <DomainSudoCallStorageProof as BasicStorageProof<CBlock>>::verify::<SKP>(
         domain_sudo_call_proof.clone(),
         domain_id,
         &state_root,
     )?;
-    domain_inherent_extrinsic_data.maybe_sudo_runtime_call = domain_sudo_call.maybe_call;
 
-    let shuffling_seed = H256::from_slice(
-        extrinsics_shuffling_seed::<Hashing>(domain_inherent_extrinsic_data.block_randomness)
-            .as_ref(),
-    );
+    let shuffling_seed = invalid_inherent_extrinsic_data.extrinsics_shuffling_seed;
+
+    let domain_inherent_extrinsic_data = DomainInherentExtrinsicData {
+        extrinsics_shuffling_seed: invalid_inherent_extrinsic_data.extrinsics_shuffling_seed,
+        timestamp: inherent_extrinsic_verified.timestamp,
+        maybe_domain_runtime_upgrade: inherent_extrinsic_verified.maybe_domain_runtime_upgrade,
+        consensus_transaction_byte_fee: inherent_extrinsic_verified.consensus_transaction_byte_fee,
+        domain_chain_allowlist: inherent_extrinsic_verified.domain_chain_allowlist,
+        maybe_sudo_runtime_call: domain_sudo_call.maybe_call,
+    };
 
     let DomainInherentExtrinsic {
         domain_timestamp_extrinsic,
@@ -115,10 +131,8 @@ where
         bundle_extrinsics_digests.extend(bundle_digest.bundle_digest.clone());
     }
 
-    let mut ordered_extrinsics = deduplicate_and_shuffle_extrinsics(
-        bundle_extrinsics_digests,
-        Randomness::from(shuffling_seed.to_fixed_bytes()),
-    );
+    let mut ordered_extrinsics =
+        deduplicate_and_shuffle_extrinsics(bundle_extrinsics_digests, shuffling_seed);
 
     // NOTE: the order of the inherent extrinsic MUST aligned with the
     // pallets order defined in `construct_runtime` macro for domains.
