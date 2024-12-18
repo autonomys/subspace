@@ -1122,18 +1122,12 @@ impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
             FraudProofStorageKeyRequest::SuccessfulBundles(domain_id) => {
                 pallet_domains::SuccessfulBundles::<Runtime>::hashed_key_for(domain_id)
             }
-            FraudProofStorageKeyRequest::TransactionByteFee => {
-                TransactionFees::transaction_byte_fee_storage_key()
-            }
             FraudProofStorageKeyRequest::DomainAllowlistUpdates(domain_id) => {
                 Messenger::domain_allow_list_update_storage_key(domain_id)
             }
             FraudProofStorageKeyRequest::BlockDigest => sp_domains::system_digest_final_key(),
             FraudProofStorageKeyRequest::RuntimeRegistry(runtime_id) => {
                 pallet_domains::RuntimeRegistry::<Runtime>::hashed_key_for(runtime_id)
-            }
-            FraudProofStorageKeyRequest::DynamicCostOfStorage => {
-                pallet_runtime_configs::EnableDynamicCostOfStorage::<Runtime>::hashed_key().to_vec()
             }
             FraudProofStorageKeyRequest::DomainSudoCall(domain_id) => {
                 pallet_domains::DomainSudoCalls::<Runtime>::hashed_key_for(domain_id)

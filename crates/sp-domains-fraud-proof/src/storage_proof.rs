@@ -18,7 +18,7 @@ use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::{Balance, BlockTransactionByteFee, Moment};
+use subspace_runtime_primitives::{Balance, Moment};
 
 #[cfg(feature = "std")]
 use sc_client_api::ProofProvider;
@@ -39,11 +39,9 @@ pub enum VerificationError {
     UnexpectedDomainRuntimeUpgrade,
     InvalidInherentExtrinsicStorageProof(StorageProofVerificationError),
     SuccessfulBundlesStorageProof(StorageProofVerificationError),
-    TransactionByteFeeStorageProof(StorageProofVerificationError),
     DomainAllowlistUpdatesStorageProof(StorageProofVerificationError),
     BlockDigestStorageProof(StorageProofVerificationError),
     RuntimeRegistryStorageProof(StorageProofVerificationError),
-    DynamicCostOfStorageStorageProof(StorageProofVerificationError),
     DigestStorageProof(StorageProofVerificationError),
     BlockFeesStorageProof(StorageProofVerificationError),
     TransfersStorageProof(StorageProofVerificationError),
@@ -56,11 +54,9 @@ pub enum VerificationError {
 pub enum FraudProofStorageKeyRequest<Number> {
     InvalidInherentExtrinsicData,
     SuccessfulBundles(DomainId),
-    TransactionByteFee,
     DomainAllowlistUpdates(DomainId),
     BlockDigest,
     RuntimeRegistry(RuntimeId),
-    DynamicCostOfStorage,
     DomainSudoCall(DomainId),
     MmrRoot(Number),
 }
@@ -72,13 +68,11 @@ impl<Number> FraudProofStorageKeyRequest<Number> {
                 VerificationError::InvalidInherentExtrinsicStorageProof(err)
             }
             Self::SuccessfulBundles(_) => VerificationError::SuccessfulBundlesStorageProof(err),
-            Self::TransactionByteFee => VerificationError::TransactionByteFeeStorageProof(err),
             Self::DomainAllowlistUpdates(_) => {
                 VerificationError::DomainAllowlistUpdatesStorageProof(err)
             }
             Self::BlockDigest => VerificationError::BlockDigestStorageProof(err),
             Self::RuntimeRegistry(_) => VerificationError::RuntimeRegistryStorageProof(err),
-            Self::DynamicCostOfStorage => VerificationError::DynamicCostOfStorageStorageProof(err),
             FraudProofStorageKeyRequest::DomainSudoCall(_) => {
                 VerificationError::DomainSudoCallStorageProof(err)
             }
@@ -182,28 +176,6 @@ impl<Block: BlockT> BasicStorageProof<Block> for DomainChainsAllowlistUpdateStor
     type Key = DomainId;
     fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::DomainAllowlistUpdates(key)
-    }
-}
-
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct DynamicCostOfStorageProof(StorageProof);
-
-impl_storage_proof!(DynamicCostOfStorageProof);
-impl<Block: BlockT> BasicStorageProof<Block> for DynamicCostOfStorageProof {
-    type StorageValue = bool;
-    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
-        FraudProofStorageKeyRequest::DynamicCostOfStorage
-    }
-}
-
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct ConsensusTransactionByteFeeProof(StorageProof);
-
-impl_storage_proof!(ConsensusTransactionByteFeeProof);
-impl<Block: BlockT> BasicStorageProof<Block> for ConsensusTransactionByteFeeProof {
-    type StorageValue = BlockTransactionByteFee<Balance>;
-    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
-        FraudProofStorageKeyRequest::TransactionByteFee
     }
 }
 
@@ -398,6 +370,9 @@ pub struct InvalidInherentExtrinsicData {
 
     /// Block timestamp
     pub timestamp: Moment,
+
+    /// Transaction byte fee, derived from dynamic cost of storage and the consensus chain byte fee
+    pub consensus_transaction_byte_fee: Balance,
 }
 
 impl PassBy for InvalidInherentExtrinsicData {
@@ -420,12 +395,6 @@ pub struct InvalidInherentExtrinsicProof {
     /// Optional domain runtime code upgrade storage proof
     pub maybe_domain_runtime_upgrade_proof: MaybeDomainRuntimeUpgradedProof,
 
-    /// Boolean indicating if dynamic cost of storage was used (but as a storage proof)
-    pub dynamic_cost_of_storage_proof: DynamicCostOfStorageProof,
-
-    /// Transaction fee storage proof
-    pub consensus_chain_byte_fee_proof: ConsensusTransactionByteFeeProof,
-
     /// Change in the allowed chains storage proof
     pub domain_chain_allowlist_proof: DomainChainsAllowlistUpdateStorageProof,
 }
@@ -434,7 +403,6 @@ pub struct InvalidInherentExtrinsicProof {
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidInherentExtrinsicVerified {
     pub maybe_domain_runtime_upgrade: Option<Vec<u8>>,
-    pub consensus_transaction_byte_fee: Balance,
     pub domain_chain_allowlist: DomainAllowlistUpdates,
 }
 
@@ -458,18 +426,6 @@ impl InvalidInherentExtrinsicProof {
             block_hash,
             maybe_runtime_id,
         )?;
-        let dynamic_cost_of_storage_proof = DynamicCostOfStorageProof::generate(
-            proof_provider,
-            block_hash,
-            (),
-            storage_key_provider,
-        )?;
-        let consensus_chain_byte_fee_proof = ConsensusTransactionByteFeeProof::generate(
-            proof_provider,
-            block_hash,
-            (),
-            storage_key_provider,
-        )?;
         let domain_chain_allowlist_proof = DomainChainsAllowlistUpdateStorageProof::generate(
             proof_provider,
             block_hash,
@@ -479,8 +435,6 @@ impl InvalidInherentExtrinsicProof {
 
         Ok(Self {
             maybe_domain_runtime_upgrade_proof,
-            dynamic_cost_of_storage_proof,
-            consensus_chain_byte_fee_proof,
             domain_chain_allowlist_proof,
         })
     }
@@ -495,25 +449,6 @@ impl InvalidInherentExtrinsicProof {
             .maybe_domain_runtime_upgrade_proof
             .verify::<Block, SKP>(runtime_id, state_root)?;
 
-        let dynamic_cost_of_storage =
-            <DynamicCostOfStorageProof as BasicStorageProof<Block>>::verify::<SKP>(
-                self.dynamic_cost_of_storage_proof.clone(),
-                (),
-                state_root,
-            )?;
-        let consensus_transaction_byte_fee = if dynamic_cost_of_storage {
-            let raw_transaction_byte_fee =
-                <ConsensusTransactionByteFeeProof as BasicStorageProof<Block>>::verify::<SKP>(
-                    self.consensus_chain_byte_fee_proof.clone(),
-                    (),
-                    state_root,
-                )?;
-
-            sp_domains::DOMAIN_STORAGE_FEE_MULTIPLIER * raw_transaction_byte_fee.next
-        } else {
-            Balance::from(1u32)
-        };
-
         let domain_chain_allowlist =
             <DomainChainsAllowlistUpdateStorageProof as BasicStorageProof<Block>>::verify::<SKP>(
                 self.domain_chain_allowlist_proof.clone(),
@@ -523,7 +458,6 @@ impl InvalidInherentExtrinsicProof {
 
         Ok(InvalidInherentExtrinsicVerified {
             maybe_domain_runtime_upgrade,
-            consensus_transaction_byte_fee,
             domain_chain_allowlist,
         })
     }
