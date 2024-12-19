@@ -67,6 +67,7 @@ where
         valid_bundle_digests,
         invalid_inherent_extrinsic_proofs,
         invalid_inherent_extrinsic_proof,
+        maybe_domain_runtime_upgrade_proof,
         domain_sudo_call_proof,
     } = fraud_proof;
 
@@ -77,11 +78,11 @@ where
             &state_root,
         )?;
 
-    let inherent_extrinsic_verified = invalid_inherent_extrinsic_proof.verify::<CBlock, SKP>(
-        domain_id,
-        runtime_id,
-        &state_root,
-    )?;
+    let inherent_extrinsic_verified =
+        invalid_inherent_extrinsic_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
+
+    let maybe_domain_runtime_upgrade =
+        maybe_domain_runtime_upgrade_proof.verify::<CBlock, SKP>(runtime_id, &state_root)?;
 
     let domain_sudo_call = <DomainSudoCallStorageProof as BasicStorageProof<CBlock>>::verify::<SKP>(
         domain_sudo_call_proof.clone(),
@@ -93,7 +94,7 @@ where
 
     let domain_inherent_extrinsic_data = DomainInherentExtrinsicData {
         timestamp: invalid_inherent_extrinsic_data.timestamp,
-        maybe_domain_runtime_upgrade: inherent_extrinsic_verified.maybe_domain_runtime_upgrade,
+        maybe_domain_runtime_upgrade,
         consensus_transaction_byte_fee: invalid_inherent_extrinsic_data
             .consensus_transaction_byte_fee,
         domain_chain_allowlist: inherent_extrinsic_verified.domain_chain_allowlist,

@@ -501,6 +501,9 @@ pub struct InvalidExtrinsicsRootProof {
     // TODO: combine these proofs into `InvalidInherentExtrinsicDataProof`
     pub invalid_inherent_extrinsic_proof: InvalidInherentExtrinsicProof,
 
+    /// Optional domain runtime code upgrade storage proof
+    pub maybe_domain_runtime_upgrade_proof: MaybeDomainRuntimeUpgradedProof,
+
     /// Optional sudo extrinsic call storage proof
     pub domain_sudo_call_proof: DomainSudoCallStorageProof,
 }
