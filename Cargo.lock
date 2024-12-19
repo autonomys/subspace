@@ -13001,7 +13001,6 @@ dependencies = [
  "criterion",
  "derive_more 1.0.0",
  "parking_lot 0.12.3",
- "rand",
  "rayon",
  "seq-macro",
  "sha2 0.10.8",

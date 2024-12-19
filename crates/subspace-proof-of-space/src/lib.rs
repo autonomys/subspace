@@ -6,9 +6,7 @@
 #![feature(
     array_chunks,
     array_windows,
-    const_trait_impl,
     generic_const_exprs,
-    int_roundings,
     portable_simd,
     step_trait
 )]

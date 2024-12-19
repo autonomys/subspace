@@ -30,7 +30,6 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 [dev-dependencies]
 bitvec = "1.0.1"
 criterion = "0.5.1"
-rand = "0.8.5"
 rayon = "1.10.0"
 
 [[bench]]
