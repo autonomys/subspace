@@ -452,9 +452,10 @@ where
             continue;
         };
 
-        let last_archived_block = client
-            .block(last_archived_block_hash)?
-            .expect("Last archived block must always be retrievable; qed");
+        let Some(last_archived_block) = client.block(last_archived_block_hash)? else {
+            // This block data was already pruned (but the headers weren't)
+            continue;
+        };
 
         // If we're starting mapping creation at this block, return its mappings.
         let block_object_mappings = if create_object_mappings {
