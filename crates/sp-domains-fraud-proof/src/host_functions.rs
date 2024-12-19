@@ -262,8 +262,6 @@ where
         domain_inherent_extrinsic_data: DomainInherentExtrinsicData,
     ) -> Option<DomainInherentExtrinsic> {
         let DomainInherentExtrinsicData {
-            // Used by caller
-            extrinsics_shuffling_seed: _,
             timestamp,
             maybe_domain_runtime_upgrade,
             consensus_transaction_byte_fee,

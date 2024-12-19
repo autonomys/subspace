@@ -92,7 +92,6 @@ where
     let shuffling_seed = invalid_inherent_extrinsic_data.extrinsics_shuffling_seed;
 
     let domain_inherent_extrinsic_data = DomainInherentExtrinsicData {
-        extrinsics_shuffling_seed: invalid_inherent_extrinsic_data.extrinsics_shuffling_seed,
         timestamp: inherent_extrinsic_verified.timestamp,
         maybe_domain_runtime_upgrade: inherent_extrinsic_verified.maybe_domain_runtime_upgrade,
         consensus_transaction_byte_fee: inherent_extrinsic_verified.consensus_transaction_byte_fee,
