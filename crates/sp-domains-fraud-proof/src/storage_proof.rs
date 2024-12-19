@@ -395,9 +395,6 @@ impl<Block: BlockT> BasicStorageProof<Block> for InvalidInherentExtrinsicDataPro
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidInherentExtrinsicProof {
-    /// Optional domain runtime code upgrade storage proof
-    pub maybe_domain_runtime_upgrade_proof: MaybeDomainRuntimeUpgradedProof,
-
     /// Change in the allowed chains storage proof
     pub domain_chain_allowlist_proof: DomainChainsAllowlistUpdateStorageProof,
 }
@@ -405,7 +402,6 @@ pub struct InvalidInherentExtrinsicProof {
 /// The verified data from an `InvalidInherentExtrinsicProof`
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidInherentExtrinsicVerified {
-    pub maybe_domain_runtime_upgrade: Option<Vec<u8>>,
     pub domain_chain_allowlist: DomainAllowlistUpdates,
 }
 
@@ -421,14 +417,7 @@ impl InvalidInherentExtrinsicProof {
         proof_provider: &PP,
         domain_id: DomainId,
         block_hash: Block::Hash,
-        maybe_runtime_id: Option<RuntimeId>,
     ) -> Result<Self, GenerationError> {
-        let maybe_domain_runtime_upgrade_proof = MaybeDomainRuntimeUpgradedProof::generate(
-            storage_key_provider,
-            proof_provider,
-            block_hash,
-            maybe_runtime_id,
-        )?;
         let domain_chain_allowlist_proof = DomainChainsAllowlistUpdateStorageProof::generate(
             proof_provider,
             block_hash,
@@ -437,7 +426,6 @@ impl InvalidInherentExtrinsicProof {
         )?;
 
         Ok(Self {
-            maybe_domain_runtime_upgrade_proof,
             domain_chain_allowlist_proof,
         })
     }
@@ -445,13 +433,8 @@ impl InvalidInherentExtrinsicProof {
     pub fn verify<Block: BlockT, SKP: FraudProofStorageKeyProvider<NumberFor<Block>>>(
         &self,
         domain_id: DomainId,
-        runtime_id: RuntimeId,
         state_root: &Block::Hash,
     ) -> Result<InvalidInherentExtrinsicVerified, VerificationError> {
-        let maybe_domain_runtime_upgrade = self
-            .maybe_domain_runtime_upgrade_proof
-            .verify::<Block, SKP>(runtime_id, state_root)?;
-
         let domain_chain_allowlist =
             <DomainChainsAllowlistUpdateStorageProof as BasicStorageProof<Block>>::verify::<SKP>(
                 self.domain_chain_allowlist_proof.clone(),
@@ -460,7 +443,6 @@ impl InvalidInherentExtrinsicProof {
             )?;
 
         Ok(InvalidInherentExtrinsicVerified {
-            maybe_domain_runtime_upgrade,
             domain_chain_allowlist,
         })
     }

@@ -394,6 +394,12 @@ where
             self.consensus_client.as_ref(),
             domain_id,
             consensus_block_hash,
+        )?;
+
+        let maybe_domain_runtime_upgrade_proof = MaybeDomainRuntimeUpgradedProof::generate(
+            &self.storage_key_provider,
+            self.consensus_client.as_ref(),
+            consensus_block_hash,
             maybe_runtime_id,
         )?;
 
@@ -413,6 +419,7 @@ where
                 valid_bundle_digests,
                 invalid_inherent_extrinsic_proofs,
                 invalid_inherent_extrinsic_proof,
+                maybe_domain_runtime_upgrade_proof,
                 domain_sudo_call_proof,
             }),
         };
