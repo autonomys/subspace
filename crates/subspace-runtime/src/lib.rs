@@ -125,13 +125,13 @@ sp_runtime::impl_opaque_keys! {
 const MAX_PIECES_IN_SECTOR: u16 = 1000;
 
 // To learn more about runtime versioning and what each of the following value means:
-//   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning
+//   https://paritytech.github.io/polkadot-sdk/master/sp_version/struct.RuntimeVersion.html
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: Cow::Borrowed("subspace"),
     impl_name: Cow::Borrowed("subspace"),
     authoring_version: 0,
-    spec_version: 1,
+    spec_version: 2,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
