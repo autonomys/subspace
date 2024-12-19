@@ -94,7 +94,8 @@ where
     let domain_inherent_extrinsic_data = DomainInherentExtrinsicData {
         timestamp: invalid_inherent_extrinsic_data.timestamp,
         maybe_domain_runtime_upgrade: inherent_extrinsic_verified.maybe_domain_runtime_upgrade,
-        consensus_transaction_byte_fee: inherent_extrinsic_verified.consensus_transaction_byte_fee,
+        consensus_transaction_byte_fee: invalid_inherent_extrinsic_data
+            .consensus_transaction_byte_fee,
         domain_chain_allowlist: inherent_extrinsic_verified.domain_chain_allowlist,
         maybe_sudo_runtime_call: domain_sudo_call.maybe_call,
     };
