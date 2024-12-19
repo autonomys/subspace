@@ -25,6 +25,8 @@ extern crate alloc;
 
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(all(feature = "kzg", not(feature = "std")))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 #[cfg(feature = "kzg")]
