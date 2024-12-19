@@ -242,10 +242,6 @@ where
         }
     }
 
-    pub fn transaction_byte_fee_storage_key() -> Vec<u8> {
-        TransactionByteFee::<T>::hashed_key().to_vec()
-    }
-
     pub fn calculate_transaction_byte_fee() -> BalanceOf<T> {
         let credit_supply = T::CreditSupply::get();
 
