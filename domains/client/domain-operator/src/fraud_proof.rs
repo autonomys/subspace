@@ -382,6 +382,13 @@ where
         let maybe_runtime_id =
             self.is_domain_runtime_upgraded_at(domain_id, consensus_block_hash)?;
 
+        let invalid_inherent_extrinsic_proofs = InvalidInherentExtrinsicDataProof::generate(
+            self.consensus_client.as_ref(),
+            consensus_block_hash,
+            (),
+            &self.storage_key_provider,
+        )?;
+
         let invalid_inherent_extrinsic_proof = InvalidInherentExtrinsicProof::generate(
             &self.storage_key_provider,
             self.consensus_client.as_ref(),
@@ -404,6 +411,7 @@ where
             maybe_domain_runtime_code_proof,
             proof: FraudProofVariant::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof {
                 valid_bundle_digests,
+                invalid_inherent_extrinsic_proofs,
                 invalid_inherent_extrinsic_proof,
                 domain_sudo_call_proof,
             }),
