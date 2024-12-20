@@ -4,13 +4,11 @@
 # Global owners
 *                                 @nazar-pc
 
-/crates                           @nazar-pc
-/crates/pallet-*                  @nazar-pc @vedhavyas @NingLin-P
-/crates/sp-*                      @nazar-pc @vedhavyas @NingLin-P
+/crates/pallet-*                  @NingLin-P @vedhavyas
+/crates/sp-*                      @NingLin-P @vedhavyas
 /crates/subspace-archiving        @shamil-gadelshin @nazar-pc
-/crates/subspace-farmer           @nazar-pc @shamil-gadelshin
+/crates/subspace-farmer           @shamil-gadelshin @nazar-pc
 /crates/subspace-networking       @shamil-gadelshin @nazar-pc
 /crates/subspace-runtime*         @vedhavyas @nazar-pc
-/crates/subspace-node             @NingLin-P @nazar-pc @vedhavyas
-/crates/substrate                 @nazar-pc
-/domains                          @vedhavyas @NingLin-P @nazar-pc
+/crates/subspace-node             @NingLin-P @vedhavyas @nazar-pc
+/domains                          @NingLin-P @vedhavyas
