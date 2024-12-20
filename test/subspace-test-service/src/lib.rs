@@ -809,11 +809,11 @@ impl MockConsensusNode {
             .is_some())
     }
 
-    /// Return a future that only resolve if a fraud proof that the given `fraud_proof_predict`
+    /// Return a future that only resolve if a fraud proof that the given `fraud_proof_predicate`
     /// return true is submitted to the consensus tx pool
     pub fn wait_for_fraud_proof<FP>(
         &self,
-        fraud_proof_predict: FP,
+        fraud_proof_predicate: FP,
     ) -> Pin<Box<dyn Future<Output = ()> + Send>>
     where
         FP: Fn(&FraudProofFor<Block, DomainBlock>) -> bool + Send + 'static,
@@ -833,7 +833,7 @@ impl MockConsensusNode {
                     pallet_domains::Call::submit_fraud_proof { fraud_proof },
                 ) = ext.function
                 {
-                    if fraud_proof_predict(&fraud_proof) {
+                    if fraud_proof_predicate(&fraud_proof) {
                         break;
                     }
                 }
