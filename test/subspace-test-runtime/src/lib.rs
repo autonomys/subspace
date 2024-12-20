@@ -720,6 +720,14 @@ impl pallet_domains::BlockSlot<Runtime> for BlockSlot {
     }
 }
 
+pub struct DomainAllowlistUpdatesSource;
+
+impl pallet_domains::DomainAllowlistUpdatesProvider for DomainAllowlistUpdatesSource {
+    fn domain_allowlist_updates(_domain_id: DomainId) -> Option<DomainAllowlistUpdates> {
+        None
+    }
+}
+
 pub struct OnChainRewards;
 
 impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
@@ -774,6 +782,7 @@ impl pallet_domains::Config for Runtime {
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
     type DomainBundleSubmitted = Messenger;
     type OnDomainInstantiated = Messenger;
+    type DomainAllowlistUpdates = DomainAllowlistUpdatesSource;
     type Balance = Balance;
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
@@ -1116,14 +1125,13 @@ pub struct StorageKeyProvider;
 impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
     fn storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8> {
         match req {
-            FraudProofStorageKeyRequest::InvalidInherentExtrinsicData => {
-                pallet_domains::BlockInvalidInherentExtrinsicData::<Runtime>::hashed_key().to_vec()
+            FraudProofStorageKeyRequest::InvalidInherentExtrinsicData(domain_id) => {
+                pallet_domains::BlockInvalidInherentExtrinsicData::<Runtime>::hashed_key_for(
+                    domain_id,
+                )
             }
             FraudProofStorageKeyRequest::SuccessfulBundles(domain_id) => {
                 pallet_domains::SuccessfulBundles::<Runtime>::hashed_key_for(domain_id)
-            }
-            FraudProofStorageKeyRequest::DomainAllowlistUpdates(domain_id) => {
-                Messenger::domain_allow_list_update_storage_key(domain_id)
             }
             FraudProofStorageKeyRequest::DomainRuntimeUpgrades => {
                 pallet_domains::DomainRuntimeUpgrades::<Runtime>::hashed_key().to_vec()
