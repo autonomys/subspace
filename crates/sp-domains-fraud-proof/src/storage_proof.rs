@@ -37,7 +37,6 @@ pub enum VerificationError {
     UnexpectedDomainRuntimeUpgrade,
     InvalidInherentExtrinsicStorageProof(StorageProofVerificationError),
     SuccessfulBundlesStorageProof(StorageProofVerificationError),
-    DomainAllowlistUpdatesStorageProof(StorageProofVerificationError),
     DomainRuntimeUpgradesStorageProof(StorageProofVerificationError),
     RuntimeRegistryStorageProof(StorageProofVerificationError),
     DigestStorageProof(StorageProofVerificationError),
@@ -50,9 +49,8 @@ pub enum VerificationError {
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub enum FraudProofStorageKeyRequest<Number> {
-    InvalidInherentExtrinsicData,
+    InvalidInherentExtrinsicData(DomainId),
     SuccessfulBundles(DomainId),
-    DomainAllowlistUpdates(DomainId),
     DomainRuntimeUpgrades,
     RuntimeRegistry(RuntimeId),
     DomainSudoCall(DomainId),
@@ -62,13 +60,10 @@ pub enum FraudProofStorageKeyRequest<Number> {
 impl<Number> FraudProofStorageKeyRequest<Number> {
     fn into_error(self, err: StorageProofVerificationError) -> VerificationError {
         match self {
-            Self::InvalidInherentExtrinsicData => {
+            Self::InvalidInherentExtrinsicData(_) => {
                 VerificationError::InvalidInherentExtrinsicStorageProof(err)
             }
             Self::SuccessfulBundles(_) => VerificationError::SuccessfulBundlesStorageProof(err),
-            Self::DomainAllowlistUpdates(_) => {
-                VerificationError::DomainAllowlistUpdatesStorageProof(err)
-            }
             Self::DomainRuntimeUpgrades => {
                 VerificationError::DomainRuntimeUpgradesStorageProof(err)
             }
@@ -164,18 +159,6 @@ impl<Block: BlockT> BasicStorageProof<Block> for SuccessfulBundlesProof {
     type Key = DomainId;
     fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::SuccessfulBundles(key)
-    }
-}
-
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct DomainChainsAllowlistUpdateStorageProof(StorageProof);
-
-impl_storage_proof!(DomainChainsAllowlistUpdateStorageProof);
-impl<Block: BlockT> BasicStorageProof<Block> for DomainChainsAllowlistUpdateStorageProof {
-    type StorageValue = DomainAllowlistUpdates;
-    type Key = DomainId;
-    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
-        FraudProofStorageKeyRequest::DomainAllowlistUpdates(key)
     }
 }
 
@@ -366,7 +349,7 @@ impl MaybeDomainRuntimeUpgradedProof {
     }
 }
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Default, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidInherentExtrinsicData {
     /// Extrinsics shuffling seed, derived from block randomness
     pub extrinsics_shuffling_seed: Randomness,
@@ -376,6 +359,9 @@ pub struct InvalidInherentExtrinsicData {
 
     /// Transaction byte fee, derived from dynamic cost of storage and the consensus chain byte fee
     pub consensus_transaction_byte_fee: Balance,
+
+    /// Changes in the chains that are allowed to open a channel with each domain
+    pub domain_chain_allowlist: DomainAllowlistUpdates,
 }
 
 impl PassBy for InvalidInherentExtrinsicData {
@@ -388,63 +374,9 @@ pub struct InvalidInherentExtrinsicDataProof(StorageProof);
 impl_storage_proof!(InvalidInherentExtrinsicDataProof);
 impl<Block: BlockT> BasicStorageProof<Block> for InvalidInherentExtrinsicDataProof {
     type StorageValue = InvalidInherentExtrinsicData;
-    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
-        FraudProofStorageKeyRequest::InvalidInherentExtrinsicData
-    }
-}
-
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidInherentExtrinsicProof {
-    /// Change in the allowed chains storage proof
-    pub domain_chain_allowlist_proof: DomainChainsAllowlistUpdateStorageProof,
-}
-
-/// The verified data from an `InvalidInherentExtrinsicProof`
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidInherentExtrinsicVerified {
-    pub domain_chain_allowlist: DomainAllowlistUpdates,
-}
-
-impl InvalidInherentExtrinsicProof {
-    #[cfg(feature = "std")]
-    #[allow(clippy::let_and_return)]
-    pub fn generate<
-        Block: BlockT,
-        PP: ProofProvider<Block>,
-        SKP: FraudProofStorageKeyProviderInstance<NumberFor<Block>>,
-    >(
-        storage_key_provider: &SKP,
-        proof_provider: &PP,
-        domain_id: DomainId,
-        block_hash: Block::Hash,
-    ) -> Result<Self, GenerationError> {
-        let domain_chain_allowlist_proof = DomainChainsAllowlistUpdateStorageProof::generate(
-            proof_provider,
-            block_hash,
-            domain_id,
-            storage_key_provider,
-        )?;
-
-        Ok(Self {
-            domain_chain_allowlist_proof,
-        })
-    }
-
-    pub fn verify<Block: BlockT, SKP: FraudProofStorageKeyProvider<NumberFor<Block>>>(
-        &self,
-        domain_id: DomainId,
-        state_root: &Block::Hash,
-    ) -> Result<InvalidInherentExtrinsicVerified, VerificationError> {
-        let domain_chain_allowlist =
-            <DomainChainsAllowlistUpdateStorageProof as BasicStorageProof<Block>>::verify::<SKP>(
-                self.domain_chain_allowlist_proof.clone(),
-                domain_id,
-                state_root,
-            )?;
-
-        Ok(InvalidInherentExtrinsicVerified {
-            domain_chain_allowlist,
-        })
+    type Key = DomainId;
+    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
+        FraudProofStorageKeyRequest::InvalidInherentExtrinsicData(key)
     }
 }
 

@@ -497,10 +497,6 @@ pub struct InvalidExtrinsicsRootProof {
     /// The combined storage proofs used during verification
     pub invalid_inherent_extrinsic_proofs: InvalidInherentExtrinsicDataProof,
 
-    /// The individual storage proofs used during verification
-    // TODO: combine these proofs into `InvalidInherentExtrinsicDataProof`
-    pub invalid_inherent_extrinsic_proof: InvalidInherentExtrinsicProof,
-
     /// Optional domain runtime code upgrade storage proof
     pub maybe_domain_runtime_upgrade_proof: MaybeDomainRuntimeUpgradedProof,
 

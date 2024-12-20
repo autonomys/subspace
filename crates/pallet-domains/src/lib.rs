@@ -64,9 +64,10 @@ use sp_consensus_subspace::WrappedPotOutput;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, OperatorRewardSource, OperatorSignature, ProofOfElection, RuntimeId,
-    SealedSingletonReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
+    DomainAllowlistUpdates, DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt,
+    OpaqueBundle, OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature,
+    ProofOfElection, RuntimeId, SealedSingletonReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT,
+    EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
@@ -208,9 +209,10 @@ mod pallet {
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::MAX_NOMINATORS_TO_SLASH;
     use crate::{
-        BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
-        ExecutionReceiptOf, FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf,
-        ReceiptHashFor, SingletonReceiptOf, StateRootOf, MAX_BUNDLE_PER_BLOCK, STORAGE_VERSION,
+        BalanceOf, BlockSlot, BlockTreeNodeFor, DomainAllowlistUpdatesProvider,
+        DomainBlockNumberFor, ElectionVerificationParams, ExecutionReceiptOf, FraudProofFor,
+        HoldIdentifier, NominatorId, OpaqueBundleOf, ReceiptHashFor, SingletonReceiptOf,
+        StateRootOf, MAX_BUNDLE_PER_BLOCK, STORAGE_VERSION,
     };
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
@@ -414,6 +416,9 @@ mod pallet {
 
         /// A hook to call after a domain is instantiated
         type OnDomainInstantiated: OnDomainInstantiated;
+
+        /// Domain allow list update source
+        type DomainAllowlistUpdates: DomainAllowlistUpdatesProvider;
 
         /// Hash type of MMR
         type MmrHash: Parameter + Member + Default + Clone;
@@ -1856,7 +1861,8 @@ mod pallet {
 
     /// Combined fraud proof data for the InvalidInherentExtrinsic fraud proof
     #[pallet::storage]
-    pub type BlockInvalidInherentExtrinsicData<T> = StorageValue<_, InvalidInherentExtrinsicData>;
+    pub type BlockInvalidInherentExtrinsicData<T> =
+        StorageMap<_, Identity, DomainId, InvalidInherentExtrinsicData, ValueQuery>;
 
     #[pallet::hooks]
     // TODO: proper benchmark
@@ -1902,7 +1908,7 @@ mod pallet {
                 }
             }
 
-            BlockInvalidInherentExtrinsicData::<T>::kill();
+            let _ = BlockInvalidInherentExtrinsicData::<T>::clear(u32::MAX, None);
 
             Weight::zero()
         }
@@ -1931,13 +1937,23 @@ mod pallet {
                 let consensus_transaction_byte_fee =
                     sp_domains::DOMAIN_STORAGE_FEE_MULTIPLIER * transaction_byte_fee;
 
-                let invalid_inherent_extrinsic_data = InvalidInherentExtrinsicData {
-                    extrinsics_shuffling_seed,
-                    timestamp,
-                    consensus_transaction_byte_fee,
-                };
+                for domain_id in SuccessfulBundles::<T>::iter_keys() {
+                    let domain_chain_allowlist =
+                        T::DomainAllowlistUpdates::domain_allowlist_updates(domain_id)
+                            .unwrap_or_default();
 
-                BlockInvalidInherentExtrinsicData::<T>::set(Some(invalid_inherent_extrinsic_data));
+                    let invalid_inherent_extrinsic_data = InvalidInherentExtrinsicData {
+                        extrinsics_shuffling_seed,
+                        timestamp,
+                        consensus_transaction_byte_fee,
+                        domain_chain_allowlist,
+                    };
+
+                    BlockInvalidInherentExtrinsicData::<T>::insert(
+                        domain_id,
+                        invalid_inherent_extrinsic_data,
+                    );
+                }
             }
 
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
@@ -3119,4 +3135,9 @@ pub fn calculate_tx_range(
         return cur_tx_range;
     };
     new_tx_range.clamp(lower_bound, upper_bound)
+}
+
+/// An abstraction that gets domain allow list updates from pallet-messenger.
+pub trait DomainAllowlistUpdatesProvider {
+    fn domain_allowlist_updates(domain_id: DomainId) -> Option<DomainAllowlistUpdates>;
 }
