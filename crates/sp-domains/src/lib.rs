@@ -1394,9 +1394,9 @@ pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
 /// Domain chains allowlist updates.
 #[derive(Default, Debug, Encode, Decode, PartialEq, Eq, Clone, TypeInfo)]
 pub struct DomainAllowlistUpdates {
-    /// Chains that are allowed to open channel with this chain.
+    /// Chains that are allowed to open a channel with this chain.
     pub allow_chains: BTreeSet<ChainId>,
-    /// Chains that are not allowed to open channel with this chain.
+    /// Chains that are not allowed to open a channel with this chain.
     pub remove_chains: BTreeSet<ChainId>,
 }
 

@@ -5,10 +5,11 @@ use crate::runtime_registry::ScheduledRuntimeUpgrade;
 use crate::staking::Operator;
 use crate::{
     self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
-    ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry,
-    DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptOf,
-    FraudProofError, FungibleHoldId, HeadDomainNumber, HeadReceiptNumber, NextDomainId, Operators,
-    RuntimeRegistry, ScheduledRuntimeUpgrades,
+    ConsensusBlockHash, DomainAllowlistUpdates, DomainAllowlistUpdatesProvider,
+    DomainBlockNumberFor, DomainHashingFor, DomainRegistry, DomainRuntimeUpgradeRecords,
+    DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptOf, FraudProofError, FungibleHoldId,
+    HeadDomainNumber, HeadReceiptNumber, NextDomainId, Operators, RuntimeRegistry,
+    ScheduledRuntimeUpgrades,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
@@ -237,6 +238,12 @@ impl sp_domains::DomainsTransfersTracker<Balance> for MockDomainsTransfersTracke
     }
 }
 
+impl DomainAllowlistUpdatesProvider for () {
+    fn domain_allowlist_updates(_domain_id: DomainId) -> Option<DomainAllowlistUpdates> {
+        None
+    }
+}
+
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = sp_core::H256;
@@ -272,6 +279,7 @@ impl pallet_domains::Config for Test {
     type ConsensusSlotProbability = SlotProbability;
     type DomainBundleSubmitted = ();
     type OnDomainInstantiated = ();
+    type DomainAllowlistUpdates = ();
     type Balance = Balance;
     type MmrHash = H256;
     type MmrProofVerifier = ();
