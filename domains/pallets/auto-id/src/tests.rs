@@ -86,6 +86,7 @@ impl frame_system::Config for Test {
     type PostInherents = ();
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtensionsWeightInfo = ();
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {

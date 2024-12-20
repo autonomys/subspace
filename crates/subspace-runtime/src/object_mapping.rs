@@ -118,9 +118,10 @@ pub(crate) fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
         block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
     for extrinsic in block.extrinsics {
         let signature_size = extrinsic
-            .signature
-            .as_ref()
-            .map(|s| s.encoded_size())
+            .preamble
+            .clone()
+            .to_signed()
+            .map(|(_, signature, _)| signature.encoded_size())
             .unwrap_or_default();
         // Extrinsic starts with vector length and version byte, followed by optional signature and
         // `function` encoding.

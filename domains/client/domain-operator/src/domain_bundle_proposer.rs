@@ -132,7 +132,7 @@ where
         let (parent_number, parent_hash) = (receipt.domain_block_number, receipt.domain_block_hash);
         let consensus_best_hash = self.consensus_client.info().best_hash;
 
-        let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
+        let mut t1 = self.transaction_pool.ready_at(parent_hash).fuse();
         // TODO: proper timeout
         let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
 
@@ -299,7 +299,7 @@ where
                     runtime_api_instance.execute_in_transaction(|api| {
                         let transaction_validity_result = api.check_extrinsics_and_do_pre_dispatch(
                             parent_hash,
-                            vec![pending_tx_data.clone()],
+                            vec![pending_tx_data.as_ref().clone()],
                             parent_number,
                             parent_hash,
                         );
@@ -316,7 +316,7 @@ where
 
                 estimated_bundle_weight = next_estimated_bundle_weight;
                 bundle_size = next_bundle_size;
-                extrinsics.push(pending_tx_data.clone());
+                extrinsics.push(pending_tx_data.as_ref().clone());
 
                 self.previous_bundled_tx
                     .add_bundled(self.transaction_pool.hash_of(pending_tx_data));

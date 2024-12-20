@@ -19,19 +19,19 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
-frame-benchmarking = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305", optional = true }
-frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
-frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+frame-benchmarking = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997", optional = true }
+frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
 log = { version = "0.4.22", default-features = false }
 scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
-serde = { version = "1.0.110", default-features = false, features = ["alloc", "derive"] }
-sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+serde = { version = "1.0.216", default-features = false, features = ["alloc", "derive"] }
+sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 
 [dev-dependencies]
-pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
-sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
 
 [features]
 default = ["std"]

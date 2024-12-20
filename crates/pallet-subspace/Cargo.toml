@@ -14,17 +14,17 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
-frame-benchmarking = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305", optional = true }
-frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
-frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+frame-benchmarking = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997", optional = true }
+frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
 log = { version = "0.4.22", default-features = false }
 scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.11.4", default-features = false }
-serde = { version = "1.0.110", optional = true, default-features = false, features = ["alloc", "derive"] }
+serde = { version = "1.0.216", optional = true, default-features = false, features = ["alloc", "derive"] }
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
-sp-consensus-slots = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
-sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+sp-consensus-slots = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
@@ -32,9 +32,9 @@ subspace-verification = { version = "0.1.0", path = "../subspace-verification", 
 [dev-dependencies]
 env_logger = "0.11.5"
 futures = "0.3.31"
-pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
 rand = { version = "0.8.5", features = ["min_const_gen"] }
-sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }

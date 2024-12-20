@@ -1,9 +1,14 @@
 use crate::{Runtime, RuntimeCall, RuntimeConfigs};
 use codec::{Decode, Encode};
+use frame_support::pallet_prelude::Weight;
+use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use scale_info::TypeInfo;
-use sp_runtime::traits::{DispatchInfoOf, SignedExtension};
+use sp_runtime::traits::{
+    AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, TransactionExtension, ValidateResult,
+};
 use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionValidity, TransactionValidityError, ValidTransaction,
+    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+    ValidTransaction,
 };
 use sp_std::prelude::*;
 use subspace_runtime_primitives::utility::nested_utility_call_iter;
@@ -12,53 +17,84 @@ use subspace_runtime_primitives::utility::nested_utility_call_iter;
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
 pub struct DisablePallets;
 
-impl SignedExtension for DisablePallets {
-    const IDENTIFIER: &'static str = "DisablePallets";
-    type AccountId = <Runtime as frame_system::Config>::AccountId;
-    type Call = <Runtime as frame_system::Config>::RuntimeCall;
-    type AdditionalSigned = ();
-    type Pre = ();
-
-    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
-        Ok(())
-    }
-
-    fn validate(
-        &self,
-        _who: &Self::AccountId,
-        call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> TransactionValidity {
-        // Disable normal balance transfers.
-        if !RuntimeConfigs::enable_balance_transfers() && contains_balance_transfer(call) {
-            InvalidTransaction::Call.into()
-        } else {
-            Ok(ValidTransaction::default())
-        }
-    }
-
-    fn pre_dispatch(
-        self,
-        who: &Self::AccountId,
-        call: &Self::Call,
-        info: &DispatchInfoOf<Self::Call>,
-        len: usize,
-    ) -> Result<Self::Pre, TransactionValidityError> {
-        self.validate(who, call, info, len)?;
-        Ok(())
-    }
-
-    fn validate_unsigned(
-        call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> TransactionValidity {
+impl DisablePallets {
+    fn do_validate_unsigned(call: &RuntimeCall) -> TransactionValidity {
         if matches!(call, RuntimeCall::Domains(_)) && !RuntimeConfigs::enable_domains() {
             InvalidTransaction::Call.into()
         } else {
             Ok(ValidTransaction::default())
         }
+    }
+
+    fn do_validate_signed(call: &RuntimeCall) -> TransactionValidity {
+        // Disable normal balance transfers.
+        if !RuntimeConfigs::enable_balance_transfers() && contains_balance_transfer(call) {
+            Err(InvalidTransaction::Call.into())
+        } else {
+            Ok(ValidTransaction::default())
+        }
+    }
+
+    fn do_validate(origin: &OriginFor<Runtime>, call: &RuntimeCall) -> TransactionValidity {
+        match origin.as_system_origin_signer() {
+            None => Self::do_validate_unsigned(call),
+            Some(_) => Self::do_validate_signed(call),
+        }
+    }
+}
+
+impl TransactionExtension<RuntimeCall> for DisablePallets {
+    const IDENTIFIER: &'static str = "DisablePallets";
+    type Implicit = ();
+    type Val = ();
+    type Pre = ();
+
+    // TODO: calculate weight for extension
+    fn weight(&self, _call: &RuntimeCall) -> Weight {
+        // there is always one storage read
+        <Runtime as frame_system::Config>::DbWeight::get().reads(1)
+    }
+
+    fn validate(
+        &self,
+        origin: OriginFor<Runtime>,
+        call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+        _self_implicit: Self::Implicit,
+        _inherited_implication: &impl Encode,
+        _source: TransactionSource,
+    ) -> ValidateResult<Self::Val, RuntimeCallFor<Runtime>> {
+        let validity = Self::do_validate(&origin, call)?;
+        Ok((validity, (), origin))
+    }
+
+    fn prepare(
+        self,
+        _val: Self::Val,
+        _origin: &DispatchOriginOf<RuntimeCallFor<Runtime>>,
+        _call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+    ) -> Result<Self::Pre, TransactionValidityError> {
+        Ok(())
+    }
+
+    fn bare_validate(
+        call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+    ) -> TransactionValidity {
+        Self::do_validate_unsigned(call)
+    }
+
+    fn bare_validate_and_prepare(
+        call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+    ) -> Result<(), TransactionValidityError> {
+        Self::do_validate_unsigned(call)?;
+        Ok(())
     }
 }
 

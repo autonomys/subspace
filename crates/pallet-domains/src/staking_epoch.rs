@@ -528,7 +528,7 @@ mod tests {
     use alloc::vec;
     use frame_support::assert_ok;
     use frame_support::traits::fungible::InspectHold;
-    use sp_core::{Pair, U256};
+    use sp_core::Pair;
     use sp_domains::{DomainId, OperatorPair, OperatorRewardSource};
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Percent};
@@ -546,7 +546,7 @@ mod tests {
     ) {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&[0; 32]);
         let minimum_free_balance = 10 * SSC;
         let mut nominators = BTreeMap::from_iter(
             nominators
@@ -678,7 +678,7 @@ mod tests {
     fn finalize_domain_epoch(params: FinalizeDomainParams) {
         let domain_id = DomainId::new(0);
         let operator_account = 0;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&[0; 32]);
         let FinalizeDomainParams {
             total_deposit,
             rewards,
@@ -788,7 +788,7 @@ mod tests {
     fn operator_tax_and_staking() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&[0; 32]);
         let operator_rewards = 10 * SSC;
         let mut nominators =
             BTreeMap::from_iter(vec![(1, (110 * SSC, 100 * SSC)), (2, (60 * SSC, 50 * SSC))]);

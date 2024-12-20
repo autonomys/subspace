@@ -1412,7 +1412,7 @@ pub(crate) mod tests {
     use frame_support::traits::Currency;
     use frame_support::weights::Weight;
     use frame_support::{assert_err, assert_ok};
-    use sp_core::{sr25519, Pair, U256};
+    use sp_core::{sr25519, Pair};
     use sp_domains::{
         DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
         OperatorRewardSource,
@@ -1547,7 +1547,7 @@ pub(crate) mod tests {
     fn test_register_operator_minimum_nominator_stake() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&[0; 32]);
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
@@ -1578,7 +1578,7 @@ pub(crate) mod tests {
         let operator_total_stake = 1000 * SSC;
         let operator_stake = 800 * SSC;
         let operator_storage_fee_deposit = 200 * SSC;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&[0; 32]);
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
@@ -1634,7 +1634,7 @@ pub(crate) mod tests {
             assert_ok!(res);
 
             // cannot use the locked funds to register a new operator
-            let new_pair = OperatorPair::from_seed(&U256::from(1u32).into());
+            let new_pair = OperatorPair::from_seed(&[1; 32]);
             operator_config.signing_key = new_pair.public();
             let res = Domains::register_operator(
                 RuntimeOrigin::signed(operator_account),
@@ -1660,7 +1660,7 @@ pub(crate) mod tests {
         let operator_total_stake = 1000 * SSC;
         let operator_stake = 800 * SSC;
         let operator_storage_fee_deposit = 200 * SSC;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&[0; 32]);
 
         let nominator_account = 2;
         let nominator_free_balance = 150 * SSC;
@@ -1773,7 +1773,7 @@ pub(crate) mod tests {
         let operator_account = 1;
         let operator_stake = 200 * SSC;
         let operator_free_balance = 250 * SSC;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&[0; 32]);
         let mut ext = new_test_ext();
         ext.execute_with(|| {
             let (operator_id, _) = register_operator(
@@ -1893,7 +1893,7 @@ pub(crate) mod tests {
         } = params;
         let domain_id = DomainId::new(0);
         let operator_account = 0;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&[0; 32]);
         let mut total_balance = nominators.iter().map(|n| n.1).sum::<BalanceOf<Test>>()
             + operator_reward
             + maybe_deposit.unwrap_or(0);
@@ -2529,7 +2529,7 @@ pub(crate) mod tests {
         let operator_account = 1;
         let operator_free_balance = 250 * SSC;
         let operator_stake = 200 * SSC;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&[0; 32]);
         let nominator_account = 2;
         let nominator_free_balance = 150 * SSC;
         let nominator_stake = 100 * SSC;
@@ -2655,7 +2655,7 @@ pub(crate) mod tests {
         let operator_free_balance = 250 * SSC;
         let operator_stake = 200 * SSC;
         let operator_extra_deposit = 40 * SSC;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&[0; 32]);
         let nominator_account = 2;
         let nominator_free_balance = 150 * SSC;
         let nominator_stake = 100 * SSC;
@@ -2806,7 +2806,7 @@ pub(crate) mod tests {
         let operator_free_balance = 250 * SSC;
         let operator_stake = 200 * SSC;
         let operator_extra_deposit = 40 * SSC;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&[0; 32]);
 
         let nominator_accounts: Vec<crate::tests::AccountId> = (2..22).collect();
         let nominator_free_balance = 150 * SSC;
@@ -2976,9 +2976,9 @@ pub(crate) mod tests {
         let operator_account_2 = 2;
         let operator_account_3 = 3;
 
-        let pair_1 = OperatorPair::from_seed(&U256::from(0u32).into());
-        let pair_2 = OperatorPair::from_seed(&U256::from(1u32).into());
-        let pair_3 = OperatorPair::from_seed(&U256::from(2u32).into());
+        let pair_1 = OperatorPair::from_seed(&[0; 32]);
+        let pair_2 = OperatorPair::from_seed(&[1; 32]);
+        let pair_3 = OperatorPair::from_seed(&[2; 32]);
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
@@ -3108,7 +3108,7 @@ pub(crate) mod tests {
         let operator_total_stake = 100 * SSC;
         let operator_stake = 80 * SSC;
         let operator_storage_fee_deposit = 20 * SSC;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&[0; 32]);
         let nominator_account = 2;
 
         let mut ext = new_test_ext();

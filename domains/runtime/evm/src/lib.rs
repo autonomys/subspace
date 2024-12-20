@@ -63,11 +63,11 @@ use sp_messenger::messages::{
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
-use sp_runtime::generic::Era;
+use sp_runtime::generic::{Era, ExtrinsicFormat, Preamble};
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Checkable, DispatchInfoOf, Dispatchable, IdentityLookup,
-    Keccak256, NumberFor, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
-    ValidateUnsigned, Zero,
+    Keccak256, NumberFor, One, PostDispatchInfoOf, TransactionExtension, TxBaseImplication,
+    UniqueSaturatedInto, ValidateUnsigned, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -238,10 +238,16 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
                 // Copied from [`pallet_ethereum::Call::pre_dispatch_self_contained`] with `frame_system::CheckWeight`
                 // replaced with `domain_check_weight::CheckWeight`
                 if let pallet_ethereum::Call::transact { transaction } = call {
-                    if let Err(e) = domain_check_weight::CheckWeight::<Runtime>::do_pre_dispatch(
-                        dispatch_info,
-                        len,
-                    ) {
+                    if let Err(e) =
+                        frame_system::CheckWeight::<Runtime>::do_validate(dispatch_info, len)
+                            .and_then(|(_, next_len)| {
+                                domain_check_weight::CheckWeight::<Runtime>::do_prepare(
+                                    dispatch_info,
+                                    len,
+                                    next_len,
+                                )
+                            })
+                    {
                         return Some(Err(e));
                     }
 
@@ -352,6 +358,7 @@ impl frame_system::Config for Runtime {
     type PostInherents = ();
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtensionsWeightInfo = ();
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -393,6 +400,7 @@ impl pallet_balances::Config for Runtime {
     type FreezeIdentifier = ();
     type MaxFreezes = ();
     type RuntimeHoldReason = HoldIdentifierWrapper;
+    type DoneSlashHandler = ();
 }
 
 parameter_types! {
@@ -423,6 +431,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type LengthToFee = ConstantMultiplier<Balance, FinalDomainTransactionByteFee>;
     type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
+    type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
 
 pub struct ExtrinsicStorageFees;
@@ -587,12 +596,21 @@ impl pallet_messenger::Config for Runtime {
     type MaxOutgoingMessages = MaxOutgoingMessages;
 }
 
-impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
+impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
 where
     RuntimeCall: From<C>,
 {
     type Extrinsic = UncheckedExtrinsic;
-    type OverarchingCall = RuntimeCall;
+    type RuntimeCall = RuntimeCall;
+}
+
+impl<C> frame_system::offchain::CreateInherent<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    fn create_inherent(call: Self::RuntimeCall) -> Self::Extrinsic {
+        UncheckedExtrinsic::new_bare(call)
+    }
 }
 
 parameter_types! {
@@ -682,7 +700,6 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
 
 parameter_types! {
     pub const GasLimitPovSizeRatio: u64 = 4;
-    pub const SuicideQuickClearLimit: u32 = 0;
 }
 
 impl pallet_evm::Config for Runtime {
@@ -704,9 +721,11 @@ impl pallet_evm::Config for Runtime {
     type OnCreate = ();
     type FindAuthor = FindAuthorTruncated;
     type GasLimitPovSizeRatio = GasLimitPovSizeRatio;
-    type SuicideQuickClearLimit = SuicideQuickClearLimit;
     type Timestamp = Timestamp;
     type WeightInfo = pallet_evm::weights::SubstrateWeight<Self>;
+    type AccountProvider = pallet_evm::FrameSystemAccountProvider<Self>;
+    // TODO: re-check this value mostly from moonbeam
+    type GasLimitStorageGrowthRatio = ();
 }
 
 impl MaybeIntoEvmCall<Runtime> for RuntimeCall {
@@ -727,7 +746,7 @@ parameter_types! {
 
 impl pallet_ethereum::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type StateRoot = pallet_ethereum::IntermediateStateRoot<Self>;
+    type StateRoot = pallet_ethereum::IntermediateStateRoot<Self::Version>;
     type PostLogContent = PostOnlyBlockHash;
     type ExtraDataLength = ConstU32<30>;
 }
@@ -853,7 +872,7 @@ pub struct TransactionConverter;
 
 impl fp_rpc::ConvertTransaction<UncheckedExtrinsic> for TransactionConverter {
     fn convert_transaction(&self, transaction: pallet_ethereum::Transaction) -> UncheckedExtrinsic {
-        UncheckedExtrinsic::new_unsigned(
+        UncheckedExtrinsic::new_bare(
             pallet_ethereum::Call::<Runtime>::transact { transaction }.into(),
         )
     }
@@ -864,7 +883,7 @@ impl fp_rpc::ConvertTransaction<opaque::UncheckedExtrinsic> for TransactionConve
         &self,
         transaction: pallet_ethereum::Transaction,
     ) -> opaque::UncheckedExtrinsic {
-        let extrinsic = UncheckedExtrinsic::new_unsigned(
+        let extrinsic = UncheckedExtrinsic::new_bare(
             pallet_ethereum::Call::<Runtime>::transact { transaction }.into(),
         );
         let encoded = extrinsic.encode();
@@ -903,7 +922,7 @@ fn is_valid_sudo_call(encoded_ext: Vec<u8>) -> bool {
 fn construct_sudo_call_extrinsic(encoded_ext: Vec<u8>) -> <Block as BlockT>::Extrinsic {
     let ext = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice())
         .expect("must always be an valid extrinsic due to the check above; qed");
-    UncheckedExtrinsic::new_unsigned(
+    UncheckedExtrinsic::new_bare(
         pallet_domain_sudo::Call::sudo {
             call: Box::new(ext.0.function),
         }
@@ -924,10 +943,10 @@ where
             .check_self_contained()
             .map(|signed_info| signed_info.map(|signer| signer.into()))
     } else {
-        ext.0
-            .signature
-            .as_ref()
-            .map(|(signed, _, _)| lookup.lookup(*signed).map_err(|e| e.into()))
+        match &ext.0.preamble {
+            Preamble::Bare(_) | Preamble::General(_, _) => None,
+            Preamble::Signed(address, _, _) => Some(lookup.lookup(*address).map_err(|e| e.into())),
+        }
     }
 }
 
@@ -949,11 +968,10 @@ pub fn extract_signer(
 }
 
 fn extrinsic_era(extrinsic: &<Block as BlockT>::Extrinsic) -> Option<Era> {
-    extrinsic
-        .0
-        .signature
-        .as_ref()
-        .map(|(_, _, extra)| extra.4 .0)
+    match &extrinsic.0.preamble {
+        Preamble::Bare(_) | Preamble::General(_, _) => None,
+        Preamble::Signed(_, _, extra) => Some(extra.4 .0),
+    }
 }
 
 #[cfg(feature = "runtime-benchmarks")]
@@ -1001,7 +1019,15 @@ fn pre_dispatch_evm_transaction(
                 let _ = transaction_validity?;
 
                 let pallet_ethereum::Call::transact { transaction } = call;
-                domain_check_weight::CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
+                frame_system::CheckWeight::<Runtime>::do_validate(dispatch_info, len).and_then(
+                    |(_, next_len)| {
+                        domain_check_weight::CheckWeight::<Runtime>::do_prepare(
+                            dispatch_info,
+                            len,
+                            next_len,
+                        )
+                    },
+                )?;
 
                 let transaction_data: TransactionData = (&transaction).into();
                 let transaction_nonce = transaction_data.nonce;
@@ -1053,32 +1079,74 @@ fn check_transaction_and_do_pre_dispatch_inner(
     // which would help to maintain context across multiple transaction validity check against same
     // runtime instance.
     match xt.signed {
-        CheckedSignature::Signed(account_id, extra) => {
-            let custom_extra: CustomSignedExtra = (
-                extra.0,
-                extra.1,
-                extra.2,
-                extra.3,
-                extra.4,
-                pallet_evm_tracker::CheckNonce::from(extra.5 .0),
-                extra.6,
-                extra.7,
-                extra.8,
-            );
-
-            custom_extra
-                .pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len)
+        CheckedSignature::GenericDelegated(format) => match format {
+            ExtrinsicFormat::Bare | ExtrinsicFormat::General(_, _) => {
+                if let RuntimeCall::Messenger(call) = &xt.function {
+                    Messenger::pre_dispatch_with_trusted_mmr_proof(call)?;
+                } else {
+                    Runtime::pre_dispatch(&xt.function).map(|_| ())?;
+                }
+                <SignedExtra as TransactionExtension<RuntimeCall>>::bare_validate_and_prepare(
+                    &xt.function,
+                    &dispatch_info,
+                    encoded_len,
+                )
                 .map(|_| ())
-        }
-        CheckedSignature::Unsigned => {
-            if let RuntimeCall::Messenger(call) = &xt.function {
-                Messenger::pre_dispatch_with_trusted_mmr_proof(call)?;
-            } else {
-                Runtime::pre_dispatch(&xt.function).map(|_| ())?;
             }
-            SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len)
+            ExtrinsicFormat::Signed(account_id, extra) => {
+                let custom_extra: CustomSignedExtra = (
+                    extra.0,
+                    extra.1,
+                    extra.2,
+                    extra.3,
+                    extra.4,
+                    pallet_evm_tracker::CheckNonce::from(extra.5 .0),
+                    extra.6,
+                    extra.7.clone(),
+                    extra.8,
+                );
+
+                let nonce_val =
+                    pallet_evm_tracker::check_nonce::Val::CheckNonce((account_id, extra.5 .0));
+                let (_, weight_val) =
+                    frame_system::CheckWeight::<Runtime>::do_validate(&dispatch_info, encoded_len)?;
+
+                let origin = RuntimeOrigin::signed(account_id);
+
+                let implication = TxBaseImplication(xt.function.clone());
+                let (_, transaction_payment_val, origin) =
+                    pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::validate(
+                        &extra.7,
+                        origin,
+                        &xt.function,
+                        &dispatch_info,
+                        encoded_len,
+                        (),
+                        &implication,
+                        TransactionSource::External,
+                    )?;
+
+                <CustomSignedExtra as TransactionExtension<RuntimeCall>>::prepare(
+                    custom_extra,
+                    (
+                        (),
+                        (),
+                        (),
+                        (),
+                        (),
+                        nonce_val,
+                        weight_val,
+                        transaction_payment_val,
+                        (),
+                    ),
+                    &origin,
+                    &xt.function,
+                    &dispatch_info,
+                    encoded_len,
+                )
                 .map(|_| ())
-        }
+            }
+        },
         CheckedSignature::SelfContained(account_id) => {
             pre_dispatch_evm_transaction(account_id, xt.function, &dispatch_info, encoded_len)
         }
@@ -1235,7 +1303,7 @@ impl_runtime_apis! {
         }
 
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
-            UncheckedExtrinsic::new_unsigned(
+            UncheckedExtrinsic::new_bare(
                 domain_pallet_executive::Call::set_code {
                     code
                 }.into()
@@ -1243,7 +1311,7 @@ impl_runtime_apis! {
         }
 
         fn construct_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
-            UncheckedExtrinsic::new_unsigned(
+            UncheckedExtrinsic::new_bare(
                 pallet_timestamp::Call::set{ now: moment }.into()
             )
         }
@@ -1296,7 +1364,7 @@ impl_runtime_apis! {
         fn extrinsic_weight(ext: &<Block as BlockT>::Extrinsic) -> Weight {
             let len = ext.encoded_size() as u64;
             let info = ext.get_dispatch_info();
-            info.weight
+            info.call_weight.saturating_add(info.extension_weight)
                 .saturating_add(<Runtime as frame_system::Config>::BlockWeights::get().get(info.class).base_extrinsic)
                 .saturating_add(Weight::from_parts(0, len))
         }
@@ -1314,13 +1382,13 @@ impl_runtime_apis! {
         }
 
         fn construct_consensus_chain_byte_fee_extrinsic(transaction_byte_fee: Balance) -> <Block as BlockT>::Extrinsic {
-            UncheckedExtrinsic::new_unsigned(
+            UncheckedExtrinsic::new_bare(
                 pallet_block_fees::Call::set_next_consensus_chain_byte_fee{ transaction_byte_fee }.into()
             )
         }
 
         fn construct_domain_update_chain_allowlist_extrinsic(updates: DomainAllowlistUpdates) -> <Block as BlockT>::Extrinsic {
-             UncheckedExtrinsic::new_unsigned(
+             UncheckedExtrinsic::new_bare(
                 pallet_messenger::Call::update_domain_allowlist{ updates }.into()
             )
         }
@@ -1448,8 +1516,7 @@ impl_runtime_apis! {
         }
 
         fn storage_at(address: H160, index: U256) -> H256 {
-            let mut tmp = [0u8; 32];
-            index.to_big_endian(&mut tmp);
+            let tmp = index.to_big_endian();
             pallet_evm::AccountStorages::<Runtime>::get(address, H256::from_slice(&tmp[..]))
         }
 
@@ -1614,7 +1681,7 @@ impl_runtime_apis! {
 
     impl fp_rpc::ConvertTransactionRuntimeApi<Block> for Runtime {
         fn convert_transaction(transaction: EthereumTransaction) -> <Block as BlockT>::Extrinsic {
-            UncheckedExtrinsic::new_unsigned(
+            UncheckedExtrinsic::new_bare(
                 pallet_ethereum::Call::transact { transaction }.into(),
             )
         }

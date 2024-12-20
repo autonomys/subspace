@@ -31,15 +31,15 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
-use sp_runtime::generic::UncheckedExtrinsic;
-use sp_runtime::traits::{Convert, IdentifyAccount, Verify};
+use sp_runtime::generic::{Preamble, UncheckedExtrinsic};
+use sp_runtime::traits::transaction_extension::TransactionExtension;
+use sp_runtime::traits::{Convert, Dispatchable, IdentifyAccount, Verify};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{MultiAddress, MultiSignature, Perbill};
 use sp_weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use sp_weights::Weight;
 pub use subspace_runtime_primitives::HoldIdentifier;
 use subspace_runtime_primitives::{MAX_BLOCK_LENGTH, SHANNON};
-
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
 
@@ -163,13 +163,16 @@ impl<Address, AccountId, Call, Signature, Extra, Lookup> Signer<AccountId, Looku
     for UncheckedExtrinsic<Address, Call, Signature, Extra>
 where
     Address: Clone,
-    Extra: sp_runtime::traits::SignedExtension<AccountId = AccountId>,
+    Call: Dispatchable,
+    Extra: TransactionExtension<Call>,
     Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
 {
     fn signer(&self, lookup: &Lookup) -> Option<AccountId> {
-        self.signature
-            .as_ref()
-            .and_then(|(signed, _, _)| lookup.lookup(signed.clone()).ok())
+        match &self.preamble {
+            Preamble::Bare(_) => None,
+            Preamble::Signed(address, _, _) => lookup.lookup(address.clone()).ok(),
+            Preamble::General(_, _) => None,
+        }
     }
 }
 

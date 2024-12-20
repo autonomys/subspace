@@ -26,6 +26,8 @@ mod rep {
     pub(super) const REFUSED: Rep = Rep::new(-(1 << 10), "Request refused");
     /// Reputation change when a peer doesn't respond in time to our messages.
     pub(super) const TIMEOUT: Rep = Rep::new(-(1 << 10), "Request timeout");
+    /// Reputation change when a peer connection failed with IO error.
+    pub(super) const IO: Rep = Rep::new(-(1 << 10), "IO error during request");
 }
 
 pub struct SnapSyncingEngine<'a, Block>
@@ -213,6 +215,11 @@ where
                             "Can not receive `RequestFailure::Obsolete` after dropping the \
                             response receiver.",
                         );
+                    }
+                    RequestFailure::Network(OutboundFailure::Io(_)) => {
+                        self.network_service_handle.report_peer(peer_id, rep::IO);
+                        self.network_service_handle
+                            .disconnect_peer(peer_id, self.block_announces_protocol_name.clone());
                     }
                 }
             }

@@ -45,6 +45,8 @@ use domain_runtime_primitives::{
 };
 use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::inherent::ProvideInherent;
+use frame_support::traits::fungible::Inspect;
+use frame_support::traits::tokens::WithdrawConsequence;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, Time, VariantCount, WithdrawReasons,
@@ -269,6 +271,7 @@ impl frame_system::Config for Runtime {
     type PostInherents = ();
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtensionsWeightInfo = ();
 }
 
 parameter_types! {
@@ -365,6 +368,7 @@ impl pallet_balances::Config for Runtime {
     type FreezeIdentifier = ();
     type MaxFreezes = ();
     type RuntimeHoldReason = HoldIdentifierWrapper;
+    type DoneSlashHandler = ();
 }
 
 pub struct CreditSupply;
@@ -500,6 +504,23 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
         }
         Ok(())
     }
+
+    fn can_withdraw_fee(
+        who: &AccountId,
+        _call: &RuntimeCall,
+        _dispatch_info: &DispatchInfoOf<RuntimeCall>,
+        fee: Self::Balance,
+        _tip: Self::Balance,
+    ) -> Result<(), TransactionValidityError> {
+        if fee.is_zero() {
+            return Ok(());
+        }
+
+        match Balances::can_withdraw(who, fee) {
+            WithdrawConsequence::Success => Ok(()),
+            _ => Err(InvalidTransaction::Payment.into()),
+        }
+    }
 }
 
 impl pallet_transaction_payment::Config for Runtime {
@@ -509,6 +530,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     type FeeMultiplierUpdate = ();
+    type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_utility::Config for Runtime {
@@ -648,12 +670,21 @@ impl pallet_messenger::Config for Runtime {
     type MaxOutgoingMessages = MaxOutgoingMessages;
 }
 
-impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
+impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
 where
     RuntimeCall: From<C>,
 {
     type Extrinsic = UncheckedExtrinsic;
-    type OverarchingCall = RuntimeCall;
+    type RuntimeCall = RuntimeCall;
+}
+
+impl<C> frame_system::offchain::CreateInherent<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    fn create_inherent(call: Self::RuntimeCall) -> Self::Extrinsic {
+        UncheckedExtrinsic::new_bare(call)
+    }
 }
 
 parameter_types! {
@@ -1050,9 +1081,10 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
         block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
     for extrinsic in block.extrinsics {
         let signature_size = extrinsic
-            .signature
-            .as_ref()
-            .map(|s| s.encoded_size())
+            .preamble
+            .clone()
+            .to_signed()
+            .map(|(_, signature, _)| signature.encoded_size())
             .unwrap_or_default();
         // Extrinsic starts with vector length and version byte, followed by optional signature and
         // `function` encoding.

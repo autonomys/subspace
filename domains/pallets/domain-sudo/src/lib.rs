@@ -63,7 +63,7 @@ mod pallet {
         #[pallet::call_index(0)]
         #[pallet::weight({
             let dispatch_info = call.get_dispatch_info();
-            (dispatch_info.weight, DispatchClass::Mandatory)
+            (dispatch_info.call_weight + dispatch_info.extension_weight, DispatchClass::Mandatory)
         })]
         pub fn sudo(origin: OriginFor<T>, call: Box<<T as Config>::RuntimeCall>) -> DispatchResult {
             ensure_none(origin)?;

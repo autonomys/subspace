@@ -1,5 +1,7 @@
 use crate::{Balances, Runtime, RuntimeCall, TransactionFees};
 use codec::Encode;
+use frame_support::traits::fungible::Inspect;
+use frame_support::traits::tokens::WithdrawConsequence;
 use frame_support::traits::{Currency, ExistenceRequirement, Get, Imbalance, WithdrawReasons};
 use pallet_balances::NegativeImbalance;
 use sp_runtime::traits::{DispatchInfoOf, PostDispatchInfoOf, Zero};
@@ -100,5 +102,22 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
             );
         }
         Ok(())
+    }
+
+    fn can_withdraw_fee(
+        who: &AccountId,
+        _call: &RuntimeCall,
+        _dispatch_info: &DispatchInfoOf<RuntimeCall>,
+        fee: Self::Balance,
+        _tip: Self::Balance,
+    ) -> Result<(), TransactionValidityError> {
+        if fee.is_zero() {
+            return Ok(());
+        }
+
+        match Balances::can_withdraw(who, fee) {
+            WithdrawConsequence::Success => Ok(()),
+            _ => Err(InvalidTransaction::Payment.into()),
+        }
     }
 }

@@ -37,6 +37,7 @@ extern crate alloc;
 use codec::{Decode, Encode};
 use frame_support::pallet_prelude::StorageVersion;
 use frame_support::traits::fungible::{Inspect, InspectHold};
+use frame_system::offchain::CreateInherent;
 use frame_system::pallet_prelude::BlockNumberFor;
 pub use pallet::*;
 use scale_info::TypeInfo;
@@ -45,7 +46,7 @@ use sp_domains::{DomainAllowlistUpdates, DomainId};
 use sp_messenger::messages::{
     ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, FeeModel, MessageId, Nonce,
 };
-use sp_runtime::traits::{Extrinsic, Hash};
+use sp_runtime::traits::Hash;
 use sp_runtime::DispatchError;
 
 /// Transaction validity for a given validated XDM extrinsic.
@@ -1446,20 +1447,20 @@ mod pallet {
 
 impl<T> Pallet<T>
 where
-    T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
+    T: Config + CreateInherent<Call<T>>,
 {
     pub fn outbox_message_unsigned(
         msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message { msg };
-        T::Extrinsic::new(call.into(), None)
+        Some(T::create_inherent(call.into()))
     }
 
     pub fn inbox_response_message_unsigned(
         msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message_response { msg };
-        T::Extrinsic::new(call.into(), None)
+        Some(T::create_inherent(call.into()))
     }
 
     /// Returns true if the outbox message has not received the response yet.

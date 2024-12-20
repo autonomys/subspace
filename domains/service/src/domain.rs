@@ -15,7 +15,7 @@ use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_chain_spec::GenesisBlockBuilder;
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ExecutorProvider,
-    ProofProvider, UsageProvider,
+    ProofProvider,
 };
 use sc_consensus::{BasicQueue, BoxBlockImport};
 use sc_domains::{ExtensionsFactory, RuntimeExecutor};
@@ -26,7 +26,7 @@ use sc_service::{
     SpawnTasksParams, TFullBackend, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
-use sc_transaction_pool::{BasicPool, FullChainApi, RevalidationType};
+use sc_transaction_pool::{BasicPool, FullChainApi};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver};
 use serde::de::DeserializeOwned;
@@ -216,23 +216,12 @@ where
         telemetry
     });
 
-    let prometheus = config.prometheus_registry();
-    let pool_api = Arc::new(FullChainApi::new(
-        client.clone(),
-        prometheus,
-        &task_manager.spawn_essential_handle(),
-    ));
-
-    let transaction_pool = Arc::new(BasicPool::with_revalidation_type(
-        config.transaction_pool.clone(),
+    let transaction_pool = Arc::from(BasicPool::new_full(
+        Default::default(),
         config.role.is_authority().into(),
-        pool_api,
-        prometheus,
-        RevalidationType::Full,
+        config.prometheus_registry(),
         task_manager.spawn_essential_handle(),
-        client.usage_info().chain.best_number,
-        client.usage_info().chain.best_hash,
-        client.usage_info().chain.finalized_hash,
+        client.clone(),
     ));
 
     let import_queue = BasicQueue::new(

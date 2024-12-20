@@ -48,7 +48,7 @@ pub use sp_keyring::Sr25519Keyring;
 use sp_runtime::codec::{Decode, Encode};
 use sp_runtime::generic;
 use sp_runtime::generic::SignedPayload;
-use sp_runtime::traits::Dispatchable;
+use sp_runtime::traits::{AsSystemOriginSigner, Dispatchable};
 use std::fmt::{Debug, Display};
 use std::str::FromStr;
 
@@ -199,6 +199,8 @@ where
     BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
     u64: From<BlockNumberFor<Runtime>>,
     Client: HeaderBackend<Block>,
+    <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
+        AsSystemOriginSigner<<Runtime as frame_system::Config>::AccountId> + Clone,
 {
     let current_block_hash = client.as_ref().info().best_hash;
     let current_block = client.as_ref().info().best_number.saturated_into();
@@ -317,6 +319,8 @@ where
     BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
     u64: From<BlockNumberFor<Runtime>>,
     Client: HeaderBackend<Block>,
+    <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
+        AsSystemOriginSigner<<Runtime as frame_system::Config>::AccountId> + Clone,
 {
     let function = function.into();
     let (raw_payload, extra) =
@@ -341,5 +345,5 @@ where
     BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
 {
     let function = function.into();
-    UncheckedExtrinsicFor::<Runtime>::new_unsigned(function)
+    UncheckedExtrinsicFor::<Runtime>::new_bare(function)
 }

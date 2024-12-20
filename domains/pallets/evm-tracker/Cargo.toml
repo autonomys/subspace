@@ -15,15 +15,16 @@ include = [
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime", default-features = false }
-frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
-frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
-pallet-ethereum = { default-features = false, git = "https://github.com/autonomys/frontier", rev = "f80f9e2bad338f3bf3854b256b3c4edea23e5968" }
-pallet-evm = { version = "6.0.0-dev", default-features = false, git = "https://github.com/autonomys/frontier", rev = "f80f9e2bad338f3bf3854b256b3c4edea23e5968" }
-pallet-utility = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+pallet-ethereum = { default-features = false, git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409" }
+pallet-evm = { version = "6.0.0-dev", default-features = false, git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409" }
+pallet-utility = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
 scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
-sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
 sp-domains = { version = "0.1.0", default-features = false, path = "../../../crates/sp-domains" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+sp-weights = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives", default-features = false }
 
 [features]
@@ -40,5 +41,6 @@ std = [
     "sp-core/std",
     "sp-domains/std",
     "sp-runtime/std",
+    "sp-weights/std",
     "subspace-runtime-primitives/std",
 ]

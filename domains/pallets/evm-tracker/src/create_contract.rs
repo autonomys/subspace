@@ -7,10 +7,16 @@ use frame_support::pallet_prelude::{PhantomData, TypeInfo};
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use pallet_ethereum::{Transaction as EthereumTransaction, TransactionAction};
 use scale_info::prelude::fmt;
-use sp_runtime::traits::{DispatchInfoOf, SignedExtension};
-use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionValidity, TransactionValidityError, ValidTransaction,
+use sp_core::Get;
+use sp_runtime::traits::{
+    AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, Dispatchable, TransactionExtension,
+    ValidateResult,
 };
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+    ValidTransaction,
+};
+use sp_weights::Weight;
 use subspace_runtime_primitives::utility::{nested_utility_call_iter, MaybeIntoUtilityCall};
 
 /// Rejects contracts that can't be created under the current allow list.
@@ -131,10 +137,7 @@ impl<Runtime> Default for CheckContractCreation<Runtime> {
     }
 }
 
-// Unsigned calls can't create contracts. Only pallet-evm and pallet-ethereum can create contracts.
-// For pallet-evm all contracts are signed extrinsics, for pallet-ethereum there is only one
-// extrinsic that is self-contained.
-impl<Runtime> SignedExtension for CheckContractCreation<Runtime>
+impl<Runtime> CheckContractCreation<Runtime>
 where
     Runtime: frame_system::Config<AccountId = EthereumAccountId>
         + pallet_ethereum::Config
@@ -150,62 +153,107 @@ where
     for<'block> &'block RuntimeCallFor<Runtime>:
         From<&'block <Runtime as pallet_utility::Config>::RuntimeCall>,
     Result<pallet_ethereum::RawOrigin, OriginFor<Runtime>>: From<OriginFor<Runtime>>,
+    <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
+        AsSystemOriginSigner<AccountIdFor<Runtime>> + Clone,
+{
+    fn do_validate_unsigned(call: &RuntimeCallFor<Runtime>) -> TransactionValidity {
+        if !is_create_unsigned_contract_allowed::<Runtime>(call) {
+            Err(InvalidTransaction::Custom(ERR_CONTRACT_CREATION_NOT_ALLOWED).into())
+        } else {
+            Ok(ValidTransaction::default())
+        }
+    }
+
+    fn do_validate(
+        origin: &OriginFor<Runtime>,
+        call: &RuntimeCallFor<Runtime>,
+    ) -> TransactionValidity {
+        let Some(who) = origin.as_system_origin_signer() else {
+            // Reject unsigned contract creation unless anyone is allowed to create them.
+            return Self::do_validate_unsigned(call);
+        };
+        // Reject contract creation unless the account is in the allow list.
+        if !is_create_contract_allowed::<Runtime>(call, who) {
+            Err(InvalidTransaction::Custom(ERR_CONTRACT_CREATION_NOT_ALLOWED).into())
+        } else {
+            Ok(ValidTransaction::default())
+        }
+    }
+}
+
+// Unsigned calls can't create contracts. Only pallet-evm and pallet-ethereum can create contracts.
+// For pallet-evm all contracts are signed extrinsics, for pallet-ethereum there is only one
+// extrinsic that is self-contained.
+impl<Runtime> TransactionExtension<RuntimeCallFor<Runtime>> for CheckContractCreation<Runtime>
+where
+    Runtime: frame_system::Config<AccountId = EthereumAccountId>
+        + pallet_ethereum::Config
+        + pallet_evm::Config
+        + pallet_utility::Config
+        + crate::Config
+        + scale_info::TypeInfo
+        + fmt::Debug
+        + Send
+        + Sync,
+    RuntimeCallFor<Runtime>:
+        MaybeIntoEthCall<Runtime> + MaybeIntoEvmCall<Runtime> + MaybeIntoUtilityCall<Runtime>,
+    for<'block> &'block RuntimeCallFor<Runtime>:
+        From<&'block <Runtime as pallet_utility::Config>::RuntimeCall>,
+    Result<pallet_ethereum::RawOrigin, OriginFor<Runtime>>: From<OriginFor<Runtime>>,
+    <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
+        AsSystemOriginSigner<AccountIdFor<Runtime>> + Clone,
 {
     const IDENTIFIER: &'static str = "CheckContractCreation";
-    type AccountId = AccountIdFor<Runtime>;
-    type Call = RuntimeCallFor<Runtime>;
-    type AdditionalSigned = ();
+    type Implicit = ();
+    type Val = ();
     type Pre = ();
 
-    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
-        Ok(())
+    // TODO: calculate proper weight for this extension
+    //  Currently only accounts for storage read
+    fn weight(&self, _: &RuntimeCallFor<Runtime>) -> Weight {
+        // there will always be one storage read for this call
+        <Runtime as frame_system::Config>::DbWeight::get().reads(1)
     }
 
     fn validate(
         &self,
-        who: &Self::AccountId,
-        call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
+        origin: OriginFor<Runtime>,
+        call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
         _len: usize,
-    ) -> TransactionValidity {
-        // Reject contract creation unless the account is in the allow list.
-        if !is_create_contract_allowed::<Runtime>(call, who) {
-            InvalidTransaction::Custom(ERR_CONTRACT_CREATION_NOT_ALLOWED).into()
-        } else {
-            Ok(ValidTransaction::default())
-        }
+        _self_implicit: Self::Implicit,
+        _inherited_implication: &impl Encode,
+        _source: TransactionSource,
+    ) -> ValidateResult<Self::Val, RuntimeCallFor<Runtime>> {
+        let validity = Self::do_validate(&origin, call)?;
+        Ok((validity, (), origin))
     }
 
-    fn pre_dispatch(
+    fn prepare(
         self,
-        who: &Self::AccountId,
-        call: &Self::Call,
-        info: &DispatchInfoOf<Self::Call>,
-        len: usize,
+        _val: Self::Val,
+        _origin: &DispatchOriginOf<RuntimeCallFor<Runtime>>,
+        _call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
     ) -> Result<Self::Pre, TransactionValidityError> {
-        self.validate(who, call, info, len)?;
         Ok(())
     }
 
-    fn validate_unsigned(
-        call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
+    fn bare_validate(
+        call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
         _len: usize,
     ) -> TransactionValidity {
-        // Reject unsigned contract creation unless anyone is allowed to create them.
-        if !is_create_unsigned_contract_allowed::<Runtime>(call) {
-            InvalidTransaction::Custom(ERR_CONTRACT_CREATION_NOT_ALLOWED).into()
-        } else {
-            Ok(ValidTransaction::default())
-        }
+        Self::do_validate_unsigned(call)
     }
 
-    fn pre_dispatch_unsigned(
-        call: &Self::Call,
-        info: &DispatchInfoOf<Self::Call>,
-        len: usize,
+    fn bare_validate_and_prepare(
+        call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
     ) -> Result<(), TransactionValidityError> {
-        Self::validate_unsigned(call, info, len)?;
+        Self::do_validate_unsigned(call)?;
         Ok(())
     }
 }
