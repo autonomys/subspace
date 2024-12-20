@@ -263,6 +263,7 @@ impl pallet_domains::Config for Test {
     type Randomness = MockRandomness;
     type PalletId = DomainsPalletId;
     type StorageFee = DummyStorageFee;
+    type BlockTimestamp = pallet_timestamp::Pallet<Test>;
     type BlockSlot = DummyBlockSlot;
     type DomainsTransfersTracker = MockDomainsTransfersTracker;
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;

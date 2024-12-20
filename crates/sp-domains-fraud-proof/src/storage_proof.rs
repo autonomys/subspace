@@ -38,7 +38,6 @@ pub enum VerificationError {
     RuntimeCodeNotFound,
     UnexpectedDomainRuntimeUpgrade,
     InvalidInherentExtrinsicStorageProof(StorageProofVerificationError),
-    TimestampStorageProof(StorageProofVerificationError),
     SuccessfulBundlesStorageProof(StorageProofVerificationError),
     TransactionByteFeeStorageProof(StorageProofVerificationError),
     DomainAllowlistUpdatesStorageProof(StorageProofVerificationError),
@@ -56,7 +55,6 @@ pub enum VerificationError {
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub enum FraudProofStorageKeyRequest<Number> {
     InvalidInherentExtrinsicData,
-    Timestamp,
     SuccessfulBundles(DomainId),
     TransactionByteFee,
     DomainAllowlistUpdates(DomainId),
@@ -73,7 +71,6 @@ impl<Number> FraudProofStorageKeyRequest<Number> {
             Self::InvalidInherentExtrinsicData => {
                 VerificationError::InvalidInherentExtrinsicStorageProof(err)
             }
-            Self::Timestamp => VerificationError::TimestampStorageProof(err),
             Self::SuccessfulBundles(_) => VerificationError::SuccessfulBundlesStorageProof(err),
             Self::TransactionByteFee => VerificationError::TransactionByteFeeStorageProof(err),
             Self::DomainAllowlistUpdates(_) => {
@@ -185,17 +182,6 @@ impl<Block: BlockT> BasicStorageProof<Block> for DomainChainsAllowlistUpdateStor
     type Key = DomainId;
     fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::DomainAllowlistUpdates(key)
-    }
-}
-
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct TimestampStorageProof(StorageProof);
-
-impl_storage_proof!(TimestampStorageProof);
-impl<Block: BlockT> BasicStorageProof<Block> for TimestampStorageProof {
-    type StorageValue = Moment;
-    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
-        FraudProofStorageKeyRequest::Timestamp
     }
 }
 
@@ -409,6 +395,9 @@ impl MaybeDomainRuntimeUpgradedProof {
 pub struct InvalidInherentExtrinsicData {
     /// Extrinsics shuffling seed, derived from block randomness
     pub extrinsics_shuffling_seed: Randomness,
+
+    /// Block timestamp
+    pub timestamp: Moment,
 }
 
 impl PassBy for InvalidInherentExtrinsicData {
@@ -428,9 +417,6 @@ impl<Block: BlockT> BasicStorageProof<Block> for InvalidInherentExtrinsicDataPro
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidInherentExtrinsicProof {
-    /// Block timestamp storage proof
-    pub timestamp_proof: TimestampStorageProof,
-
     /// Optional domain runtime code upgrade storage proof
     pub maybe_domain_runtime_upgrade_proof: MaybeDomainRuntimeUpgradedProof,
 
@@ -447,7 +433,6 @@ pub struct InvalidInherentExtrinsicProof {
 /// The verified data from an `InvalidInherentExtrinsicProof`
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidInherentExtrinsicVerified {
-    pub timestamp: Moment,
     pub maybe_domain_runtime_upgrade: Option<Vec<u8>>,
     pub consensus_transaction_byte_fee: Balance,
     pub domain_chain_allowlist: DomainAllowlistUpdates,
@@ -467,8 +452,6 @@ impl InvalidInherentExtrinsicProof {
         block_hash: Block::Hash,
         maybe_runtime_id: Option<RuntimeId>,
     ) -> Result<Self, GenerationError> {
-        let timestamp_proof =
-            TimestampStorageProof::generate(proof_provider, block_hash, (), storage_key_provider)?;
         let maybe_domain_runtime_upgrade_proof = MaybeDomainRuntimeUpgradedProof::generate(
             storage_key_provider,
             proof_provider,
@@ -495,7 +478,6 @@ impl InvalidInherentExtrinsicProof {
         )?;
 
         Ok(Self {
-            timestamp_proof,
             maybe_domain_runtime_upgrade_proof,
             dynamic_cost_of_storage_proof,
             consensus_chain_byte_fee_proof,
@@ -509,12 +491,6 @@ impl InvalidInherentExtrinsicProof {
         runtime_id: RuntimeId,
         state_root: &Block::Hash,
     ) -> Result<InvalidInherentExtrinsicVerified, VerificationError> {
-        let timestamp = <TimestampStorageProof as BasicStorageProof<Block>>::verify::<SKP>(
-            self.timestamp_proof.clone(),
-            (),
-            state_root,
-        )?;
-
         let maybe_domain_runtime_upgrade = self
             .maybe_domain_runtime_upgrade_proof
             .verify::<Block, SKP>(runtime_id, state_root)?;
@@ -546,7 +522,6 @@ impl InvalidInherentExtrinsicProof {
             )?;
 
         Ok(InvalidInherentExtrinsicVerified {
-            timestamp,
             maybe_domain_runtime_upgrade,
             consensus_transaction_byte_fee,
             domain_chain_allowlist,

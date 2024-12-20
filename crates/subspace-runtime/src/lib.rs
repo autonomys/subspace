@@ -836,6 +836,7 @@ impl pallet_domains::Config for Runtime {
     type Randomness = Subspace;
     type PalletId = DomainsPalletId;
     type StorageFee = TransactionFees;
+    type BlockTimestamp = pallet_timestamp::Pallet<Runtime>;
     type BlockSlot = BlockSlot;
     type BundleLongevity = BundleLongevity;
     type DomainsTransfersTracker = Transporter;
@@ -1040,9 +1041,6 @@ impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
         match req {
             FraudProofStorageKeyRequest::InvalidInherentExtrinsicData => {
                 pallet_domains::BlockInvalidInherentExtrinsicData::<Runtime>::hashed_key().to_vec()
-            }
-            FraudProofStorageKeyRequest::Timestamp => {
-                pallet_timestamp::Now::<Runtime>::hashed_key().to_vec()
             }
             FraudProofStorageKeyRequest::SuccessfulBundles(domain_id) => {
                 pallet_domains::SuccessfulBundles::<Runtime>::hashed_key_for(domain_id)
