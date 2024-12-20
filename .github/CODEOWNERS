@@ -2,15 +2,15 @@
 # below ones takes precedence over the upper ones
 
 # Global owners
-*                                 @nazar-pc @rg3l3dr
+*                                 @nazar-pc
 
-/crates                           @nazar-pc @rg3l3dr
-/crates/pallet-*                  @nazar-pc @rg3l3dr @vedhavyas @NingLin-P
-/crates/sp-*                      @nazar-pc @rg3l3dr @vedhavyas @NingLin-P
-/crates/subspace-archiving        @shamil-gadelshin @nazar-pc @rg3l3dr
-/crates/subspace-farmer           @nazar-pc @shamil-gadelshin @rg3l3dr
-/crates/subspace-networking       @shamil-gadelshin @nazar-pc @rg3l3dr
-/crates/subspace-runtime*         @vedhavyas @nazar-pc @rg3l3dr
-/crates/subspace-node             @NingLin-P @nazar-pc @rg3l3dr @vedhavyas
-/crates/substrate                 @nazar-pc @rg3l3dr
-/domains                          @vedhavyas @NingLin-P @nazar-pc @rg3l3dr
+/crates                           @nazar-pc
+/crates/pallet-*                  @nazar-pc @vedhavyas @NingLin-P
+/crates/sp-*                      @nazar-pc @vedhavyas @NingLin-P
+/crates/subspace-archiving        @shamil-gadelshin @nazar-pc
+/crates/subspace-farmer           @nazar-pc @shamil-gadelshin
+/crates/subspace-networking       @shamil-gadelshin @nazar-pc
+/crates/subspace-runtime*         @vedhavyas @nazar-pc
+/crates/subspace-node             @NingLin-P @nazar-pc @vedhavyas
+/crates/substrate                 @nazar-pc
+/domains                          @vedhavyas @NingLin-P @nazar-pc
