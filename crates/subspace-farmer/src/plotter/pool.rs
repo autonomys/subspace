@@ -2,8 +2,11 @@
 
 use crate::plotter::{Plotter, SectorPlottingProgress};
 use async_trait::async_trait;
+use event_listener::Event;
 use futures::channel::mpsc;
+use futures::future;
 use std::any::type_name_of_val;
+use std::pin::pin;
 use std::time::Duration;
 use subspace_core_primitives::sectors::SectorIndex;
 use subspace_core_primitives::PublicKey;
@@ -18,6 +21,7 @@ use tracing::{error, trace};
 pub struct PoolPlotter {
     plotters: Vec<Box<dyn Plotter + Send + Sync>>,
     retry_interval: Duration,
+    notification: Event,
 }
 
 #[async_trait]
@@ -66,6 +70,7 @@ impl Plotter for PoolPlotter {
                     )
                     .await
                 {
+                    self.notification.notify_relaxed(1);
                     return;
                 }
             }
@@ -74,7 +79,11 @@ impl Plotter for PoolPlotter {
                 retry_interval = ?self.retry_interval,
                 "All plotters are busy, will wait and try again later"
             );
-            tokio::time::sleep(self.retry_interval).await;
+            future::select(
+                pin!(tokio::time::sleep(self.retry_interval)),
+                self.notification.listen(),
+            )
+            .await;
         }
     }
 
@@ -99,6 +108,7 @@ impl Plotter for PoolPlotter {
                 )
                 .await
             {
+                self.notification.notify_relaxed(1);
                 return true;
             }
         }
@@ -113,6 +123,7 @@ impl PoolPlotter {
         Self {
             plotters,
             retry_interval,
+            notification: Event::new(),
         }
     }
 }
