@@ -7,10 +7,8 @@ use sp_domains::proof_provider_and_verifier::{
     StorageProofVerifier, VerificationError as StorageProofVerificationError,
 };
 use sp_domains::{
-    DomainAllowlistUpdates, DomainId, DomainSudoCall, DomainsDigestItem, OpaqueBundle, RuntimeId,
-    RuntimeObject,
+    DomainAllowlistUpdates, DomainId, DomainSudoCall, OpaqueBundle, RuntimeId, RuntimeObject,
 };
-use sp_runtime::generic::Digest;
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
@@ -39,8 +37,7 @@ pub enum VerificationError {
     UnexpectedDomainRuntimeUpgrade,
     InvalidInherentExtrinsicStorageProof(StorageProofVerificationError),
     SuccessfulBundlesStorageProof(StorageProofVerificationError),
-    DomainAllowlistUpdatesStorageProof(StorageProofVerificationError),
-    BlockDigestStorageProof(StorageProofVerificationError),
+    DomainRuntimeUpgradesStorageProof(StorageProofVerificationError),
     RuntimeRegistryStorageProof(StorageProofVerificationError),
     DigestStorageProof(StorageProofVerificationError),
     BlockFeesStorageProof(StorageProofVerificationError),
@@ -52,10 +49,9 @@ pub enum VerificationError {
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub enum FraudProofStorageKeyRequest<Number> {
-    InvalidInherentExtrinsicData,
+    InvalidInherentExtrinsicData(DomainId),
     SuccessfulBundles(DomainId),
-    DomainAllowlistUpdates(DomainId),
-    BlockDigest,
+    DomainRuntimeUpgrades,
     RuntimeRegistry(RuntimeId),
     DomainSudoCall(DomainId),
     MmrRoot(Number),
@@ -64,14 +60,13 @@ pub enum FraudProofStorageKeyRequest<Number> {
 impl<Number> FraudProofStorageKeyRequest<Number> {
     fn into_error(self, err: StorageProofVerificationError) -> VerificationError {
         match self {
-            Self::InvalidInherentExtrinsicData => {
+            Self::InvalidInherentExtrinsicData(_) => {
                 VerificationError::InvalidInherentExtrinsicStorageProof(err)
             }
             Self::SuccessfulBundles(_) => VerificationError::SuccessfulBundlesStorageProof(err),
-            Self::DomainAllowlistUpdates(_) => {
-                VerificationError::DomainAllowlistUpdatesStorageProof(err)
+            Self::DomainRuntimeUpgrades => {
+                VerificationError::DomainRuntimeUpgradesStorageProof(err)
             }
-            Self::BlockDigest => VerificationError::BlockDigestStorageProof(err),
             Self::RuntimeRegistry(_) => VerificationError::RuntimeRegistryStorageProof(err),
             FraudProofStorageKeyRequest::DomainSudoCall(_) => {
                 VerificationError::DomainSudoCallStorageProof(err)
@@ -168,29 +163,6 @@ impl<Block: BlockT> BasicStorageProof<Block> for SuccessfulBundlesProof {
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct DomainChainsAllowlistUpdateStorageProof(StorageProof);
-
-impl_storage_proof!(DomainChainsAllowlistUpdateStorageProof);
-impl<Block: BlockT> BasicStorageProof<Block> for DomainChainsAllowlistUpdateStorageProof {
-    type StorageValue = DomainAllowlistUpdates;
-    type Key = DomainId;
-    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
-        FraudProofStorageKeyRequest::DomainAllowlistUpdates(key)
-    }
-}
-
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct BlockDigestProof(StorageProof);
-
-impl_storage_proof!(BlockDigestProof);
-impl<Block: BlockT> BasicStorageProof<Block> for BlockDigestProof {
-    type StorageValue = Digest;
-    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
-        FraudProofStorageKeyRequest::BlockDigest
-    }
-}
-
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct DomainSudoCallStorageProof(StorageProof);
 
 impl_storage_proof!(DomainSudoCallStorageProof);
@@ -202,7 +174,18 @@ impl<Block: BlockT> BasicStorageProof<Block> for DomainSudoCallStorageProof {
     }
 }
 
-// TODO: get the runtime id from pallet-domains since it won't change for a given domain
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct DomainRuntimeUpgradesProof(StorageProof);
+
+impl_storage_proof!(DomainRuntimeUpgradesProof);
+impl<Block: BlockT> BasicStorageProof<Block> for DomainRuntimeUpgradesProof {
+    type StorageValue = Vec<RuntimeId>;
+    type Key = ();
+    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
+        FraudProofStorageKeyRequest::DomainRuntimeUpgrades
+    }
+}
+
 // The domain runtime code with storage proof
 //
 // NOTE: usually we should use the parent consensus block hash to `generate` or `verify` the
@@ -288,7 +271,7 @@ where
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct MaybeDomainRuntimeUpgradedProof {
-    pub block_digest: BlockDigestProof,
+    pub domain_runtime_upgrades: DomainRuntimeUpgradesProof,
     pub new_domain_runtime_code: Option<DomainRuntimeCodeProof>,
 }
 
@@ -307,8 +290,12 @@ impl MaybeDomainRuntimeUpgradedProof {
         block_hash: Block::Hash,
         maybe_runtime_id: Option<RuntimeId>,
     ) -> Result<Self, GenerationError> {
-        let block_digest =
-            BlockDigestProof::generate(proof_provider, block_hash, (), storage_key_provider)?;
+        let domain_runtime_upgrades = DomainRuntimeUpgradesProof::generate(
+            proof_provider,
+            block_hash,
+            (),
+            storage_key_provider,
+        )?;
         let new_domain_runtime_code = if let Some(runtime_id) = maybe_runtime_id {
             Some(DomainRuntimeCodeProof::generate(
                 proof_provider,
@@ -320,7 +307,7 @@ impl MaybeDomainRuntimeUpgradedProof {
             None
         };
         Ok(MaybeDomainRuntimeUpgradedProof {
-            block_digest,
+            domain_runtime_upgrades,
             new_domain_runtime_code,
         })
     }
@@ -330,16 +317,15 @@ impl MaybeDomainRuntimeUpgradedProof {
         runtime_id: RuntimeId,
         state_root: &Block::Hash,
     ) -> Result<Option<Vec<u8>>, VerificationError> {
-        let block_digest = <BlockDigestProof as BasicStorageProof<Block>>::verify::<SKP>(
-            self.block_digest.clone(),
-            (),
-            state_root,
-        )?;
+        let domain_runtime_upgrades =
+            <DomainRuntimeUpgradesProof as BasicStorageProof<Block>>::verify::<SKP>(
+                self.domain_runtime_upgrades.clone(),
+                (),
+                state_root,
+            )?;
 
-        let runtime_upgraded = block_digest
-            .logs
-            .iter()
-            .filter_map(|log| log.as_domain_runtime_upgrade())
+        let runtime_upgraded = domain_runtime_upgrades
+            .into_iter()
             .any(|upgraded_runtime_id| upgraded_runtime_id == runtime_id);
 
         match (runtime_upgraded, self.new_domain_runtime_code.as_ref()) {
@@ -363,7 +349,7 @@ impl MaybeDomainRuntimeUpgradedProof {
     }
 }
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Default, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidInherentExtrinsicData {
     /// Extrinsics shuffling seed, derived from block randomness
     pub extrinsics_shuffling_seed: Randomness,
@@ -373,6 +359,9 @@ pub struct InvalidInherentExtrinsicData {
 
     /// Transaction byte fee, derived from dynamic cost of storage and the consensus chain byte fee
     pub consensus_transaction_byte_fee: Balance,
+
+    /// Changes in the chains that are allowed to open a channel with each domain
+    pub domain_chain_allowlist: DomainAllowlistUpdates,
 }
 
 impl PassBy for InvalidInherentExtrinsicData {
@@ -385,81 +374,9 @@ pub struct InvalidInherentExtrinsicDataProof(StorageProof);
 impl_storage_proof!(InvalidInherentExtrinsicDataProof);
 impl<Block: BlockT> BasicStorageProof<Block> for InvalidInherentExtrinsicDataProof {
     type StorageValue = InvalidInherentExtrinsicData;
-    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
-        FraudProofStorageKeyRequest::InvalidInherentExtrinsicData
-    }
-}
-
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidInherentExtrinsicProof {
-    /// Optional domain runtime code upgrade storage proof
-    pub maybe_domain_runtime_upgrade_proof: MaybeDomainRuntimeUpgradedProof,
-
-    /// Change in the allowed chains storage proof
-    pub domain_chain_allowlist_proof: DomainChainsAllowlistUpdateStorageProof,
-}
-
-/// The verified data from an `InvalidInherentExtrinsicProof`
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidInherentExtrinsicVerified {
-    pub maybe_domain_runtime_upgrade: Option<Vec<u8>>,
-    pub domain_chain_allowlist: DomainAllowlistUpdates,
-}
-
-impl InvalidInherentExtrinsicProof {
-    #[cfg(feature = "std")]
-    #[allow(clippy::let_and_return)]
-    pub fn generate<
-        Block: BlockT,
-        PP: ProofProvider<Block>,
-        SKP: FraudProofStorageKeyProviderInstance<NumberFor<Block>>,
-    >(
-        storage_key_provider: &SKP,
-        proof_provider: &PP,
-        domain_id: DomainId,
-        block_hash: Block::Hash,
-        maybe_runtime_id: Option<RuntimeId>,
-    ) -> Result<Self, GenerationError> {
-        let maybe_domain_runtime_upgrade_proof = MaybeDomainRuntimeUpgradedProof::generate(
-            storage_key_provider,
-            proof_provider,
-            block_hash,
-            maybe_runtime_id,
-        )?;
-        let domain_chain_allowlist_proof = DomainChainsAllowlistUpdateStorageProof::generate(
-            proof_provider,
-            block_hash,
-            domain_id,
-            storage_key_provider,
-        )?;
-
-        Ok(Self {
-            maybe_domain_runtime_upgrade_proof,
-            domain_chain_allowlist_proof,
-        })
-    }
-
-    pub fn verify<Block: BlockT, SKP: FraudProofStorageKeyProvider<NumberFor<Block>>>(
-        &self,
-        domain_id: DomainId,
-        runtime_id: RuntimeId,
-        state_root: &Block::Hash,
-    ) -> Result<InvalidInherentExtrinsicVerified, VerificationError> {
-        let maybe_domain_runtime_upgrade = self
-            .maybe_domain_runtime_upgrade_proof
-            .verify::<Block, SKP>(runtime_id, state_root)?;
-
-        let domain_chain_allowlist =
-            <DomainChainsAllowlistUpdateStorageProof as BasicStorageProof<Block>>::verify::<SKP>(
-                self.domain_chain_allowlist_proof.clone(),
-                domain_id,
-                state_root,
-            )?;
-
-        Ok(InvalidInherentExtrinsicVerified {
-            maybe_domain_runtime_upgrade,
-            domain_chain_allowlist,
-        })
+    type Key = DomainId;
+    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
+        FraudProofStorageKeyRequest::InvalidInherentExtrinsicData(key)
     }
 }
 
