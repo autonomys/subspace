@@ -201,6 +201,7 @@ mod pallet {
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_slash_operator;
     use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
+    use crate::storage_proof::InvalidInherentExtrinsicData;
     use crate::weights::WeightInfo;
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::DomainHashingFor;
@@ -222,7 +223,7 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
     use frame_support::traits::tokens::Preservation;
-    use frame_support::traits::Randomness as RandomnessT;
+    use frame_support::traits::{Randomness as RandomnessT, Time};
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
@@ -246,8 +247,8 @@ mod pallet {
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_subspace_mmr::MmrProofVerifier;
-    use subspace_core_primitives::U256;
-    use subspace_runtime_primitives::StorageFee;
+    use subspace_core_primitives::{Randomness, U256};
+    use subspace_runtime_primitives::{Balance, StorageFee};
 
     #[pallet::config]
     pub trait Config: frame_system::Config<Hash: Into<H256>> {
@@ -388,6 +389,9 @@ mod pallet {
 
         /// Storage fee interface used to deal with bundle storage fee
         type StorageFee: StorageFee<BalanceOf<Self>>;
+
+        /// The block timestamp
+        type BlockTimestamp: Time;
 
         /// The block slot
         type BlockSlot: BlockSlot<Self>;
@@ -1850,6 +1854,10 @@ mod pallet {
         }
     }
 
+    /// Combined fraud proof data for the InvalidInherentExtrinsic fraud proof
+    #[pallet::storage]
+    pub type BlockInvalidInherentExtrinsicData<T> = StorageValue<_, InvalidInherentExtrinsicData>;
+
     #[pallet::hooks]
     // TODO: proper benchmark
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
@@ -1894,10 +1902,44 @@ mod pallet {
                 }
             }
 
+            BlockInvalidInherentExtrinsicData::<T>::kill();
+
             Weight::zero()
         }
 
         fn on_finalize(_: BlockNumberFor<T>) {
+            // If this consensus block will derive any domain block, gather the necessary storage for potential fraud proof usage
+            if SuccessfulBundles::<T>::iter_keys().count() > 0
+                || DomainRuntimeUpgrades::<T>::exists()
+            {
+                let extrinsics_shuffling_seed = Randomness::from(
+                    Into::<H256>::into(Self::extrinsics_shuffling_seed()).to_fixed_bytes(),
+                );
+
+                // There are no actual conversions here, but the trait bounds required to prove that
+                // (and debug-print the error in expect()) are very verbose.
+                let timestamp = T::BlockTimestamp::now()
+                    .try_into()
+                    .map_err(|_| ())
+                    .expect("Moment is the same type in both pallets; qed");
+                let transaction_byte_fee: Balance = T::StorageFee::transaction_byte_fee()
+                    .try_into()
+                    .map_err(|_| ())
+                    .expect("Balance is the same type in both pallets; qed");
+
+                // The value returned by the consensus_chain_byte_fee() runtime API
+                let consensus_transaction_byte_fee =
+                    sp_domains::DOMAIN_STORAGE_FEE_MULTIPLIER * transaction_byte_fee;
+
+                let invalid_inherent_extrinsic_data = InvalidInherentExtrinsicData {
+                    extrinsics_shuffling_seed,
+                    timestamp,
+                    consensus_transaction_byte_fee,
+                };
+
+                BlockInvalidInherentExtrinsicData::<T>::set(Some(invalid_inherent_extrinsic_data));
+            }
+
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
             let _ = NewAddedHeadReceipt::<T>::clear(u32::MAX, None);
         }
@@ -2717,8 +2759,8 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn extrinsics_shuffling_seed() -> T::Hash {
-        let seed = DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT;
-        let (randomness, _) = T::Randomness::random(seed);
+        let subject = DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT;
+        let (randomness, _) = T::Randomness::random(subject);
         randomness
     }
 
@@ -2889,9 +2931,9 @@ impl<T: Config> Pallet<T> {
             parent_receipt.consensus_block_number
         };
 
-        let is_domain_runtime_updraded = current_runtime_obj.updated_at >= at;
+        let is_domain_runtime_upgraded = current_runtime_obj.updated_at >= at;
 
-        let mut runtime_obj = match (is_domain_runtime_updraded, maybe_domain_runtime_code_at) {
+        let mut runtime_obj = match (is_domain_runtime_upgraded, maybe_domain_runtime_code_at) {
             //  The domain runtime is upgraded since `at`, the domain runtime code in `at` is not available
             // so `domain_runtime_code_proof` must be provided
             (true, None) => return Err(FraudProofError::DomainRuntimeCodeProofNotFound),

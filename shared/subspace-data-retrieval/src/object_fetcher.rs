@@ -514,13 +514,12 @@ where
                         }
                     }
 
-                    // Padding at the end of segments can be skipped, it's not part of the object data
-                    SegmentItem::Padding => {}
+                    // Padding at the end of segments, and segment headers can be skipped,
+                    // they're not part of the object data
+                    SegmentItem::Padding | SegmentItem::ParentSegmentHeader(_) => {}
 
                     // We should not see these items while collecting data for a single object
-                    SegmentItem::Block { .. }
-                    | SegmentItem::BlockStart { .. }
-                    | SegmentItem::ParentSegmentHeader(_) => {
+                    SegmentItem::Block { .. } | SegmentItem::BlockStart { .. } => {
                         debug!(
                             collected_data = ?data.len(),
                             %segment_index,
