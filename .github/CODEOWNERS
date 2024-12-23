@@ -1,19 +1,20 @@
 # Order matters: entries that are further down override any entries above them
 
-/.github/workflows                @nazar-pc
+/.github/workflows                @nazar-pc @teor2345
 /crates/pallet-*                  @NingLin-P @vedhavyas
 /crates/pallet-subspace           @NingLin-P @vedhavyas @nazar-pc
-/crates/sc-consensus-*            @nazar-pc
+/crates/sc-consensus-*            @nazar-pc @teor2345
 /crates/sc-proof-of-time          @nazar-pc
 /crates/sp-*                      @NingLin-P @vedhavyas
 /crates/sp-consensus-subspace     @NingLin-P @vedhavyas @nazar-pc
-/crates/subspace-archiving        @nazar-pc @shamil-gadelshin
+/crates/subspace-archiving        @nazar-pc @shamil-gadelshin @teor2345
 /crates/subspace-core-primitives  @nazar-pc
 /crates/subspace-erasure-coding   @nazar-pc
 /crates/subspace-farmer*          @nazar-pc @shamil-gadelshin
-/crates/subspace-networking       @nazar-pc @shamil-gadelshin
+/crates/subspace-gateway-*        @shamil-gadelshin @teor2345
+/crates/subspace-networking       @nazar-pc @shamil-gadelshin @teor2345
 /crates/subspace-proof-*          @nazar-pc
-/crates/subspace-rpc-primitives   @nazar-pc
+/crates/subspace-rpc-primitives   @nazar-pc @teor2345
 /crates/subspace-runtime*         @vedhavyas @nazar-pc
 /crates/subspace-service          @nazar-pc
 /crates/subspace-node             @NingLin-P @vedhavyas @nazar-pc
@@ -22,4 +23,5 @@
 /domains                          @NingLin-P @vedhavyas
 /shared/subspace-kzg              @nazar-pc
 /shared/subspace-proof-*          @nazar-pc
+/shared/subspace-data-retrieval   @nazar-pc @teor2345
 /Cargo.toml                       @nazar-pc
