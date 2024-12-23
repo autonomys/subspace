@@ -2117,6 +2117,15 @@ impl<T: Config> Pallet<T> {
             .map(|domain_object| domain_object.domain_config.runtime_id)
     }
 
+    pub fn domain_id(runtime_id: RuntimeId) -> Option<DomainId> {
+        RuntimeRegistry::<T>::get(runtime_id).and_then(|runtime_object| {
+            runtime_object
+                .raw_genesis
+                .domain_id()
+                .expect("DomainId must be valid since domain is insantiated; qed")
+        })
+    }
+
     pub fn domain_instance_data(
         domain_id: DomainId,
     ) -> Option<(DomainInstanceData, BlockNumberFor<T>)> {
