@@ -24,7 +24,7 @@ use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::pieces::{Piece, PieceIndex, RawRecord};
 use subspace_core_primitives::segments::{RecordedHistorySegment, SegmentIndex};
 use subspace_erasure_coding::ErasureCoding;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 /// The maximum amount of segment padding.
 ///
@@ -166,18 +166,29 @@ where
     /// Create a new object fetcher with the given configuration.
     ///
     /// `max_object_len` is the amount of data bytes we'll read for a single object before giving
-    /// up and returning an error, or `None` for no limit (`usize::MAX`).
+    /// up and returning an error. In this implementation, it is limited to
+    /// [`MAX_SUPPORTED_OBJECT_LENGTH`], which is much larger than the largest block on any domain
+    /// (as of December 2024).
     pub fn new(
         piece_getter: Arc<PG>,
         erasure_coding: ErasureCoding,
-        max_object_len: Option<usize>,
+        mut max_object_len: usize,
     ) -> Self {
+        if max_object_len > MAX_SUPPORTED_OBJECT_LENGTH {
+            warn!(
+                max_object_len,
+                MAX_SUPPORTED_OBJECT_LENGTH,
+                "Object fetcher size limit exceeds maximum supported object size, \
+                limiting to implementation-supported size"
+            );
+
+            max_object_len = MAX_SUPPORTED_OBJECT_LENGTH;
+        }
+
         Self {
             piece_getter,
             erasure_coding,
-            max_object_len: max_object_len
-                .unwrap_or(usize::MAX)
-                .min(MAX_SUPPORTED_OBJECT_LENGTH),
+            max_object_len,
         }
     }
 
