@@ -1937,7 +1937,35 @@ mod pallet {
                 let consensus_transaction_byte_fee =
                     sp_domains::DOMAIN_STORAGE_FEE_MULTIPLIER * transaction_byte_fee;
 
+                // Record a storage proof for each domain with a successful bundle
                 for domain_id in SuccessfulBundles::<T>::iter_keys() {
+                    let domain_chain_allowlist =
+                        T::DomainAllowlistUpdates::domain_allowlist_updates(domain_id)
+                            .unwrap_or_default();
+
+                    let invalid_inherent_extrinsic_data = InvalidInherentExtrinsicData {
+                        extrinsics_shuffling_seed,
+                        timestamp,
+                        consensus_transaction_byte_fee,
+                        domain_chain_allowlist,
+                    };
+
+                    BlockInvalidInherentExtrinsicData::<T>::insert(
+                        domain_id,
+                        invalid_inherent_extrinsic_data,
+                    );
+                }
+
+                // Record a storage proof for each domain with a runtime upgrade
+                for runtime_id in DomainRuntimeUpgrades::<T>::get().iter() {
+                    let domain_id = Self::domain_id(*runtime_id)
+                        .expect("Runtime object must be present since domain is insantiated; qed");
+
+                    if BlockInvalidInherentExtrinsicData::<T>::contains_key(domain_id) {
+                        // Skip domains that already have a record due to a successful bundle
+                        continue;
+                    }
+
                     let domain_chain_allowlist =
                         T::DomainAllowlistUpdates::domain_allowlist_updates(domain_id)
                             .unwrap_or_default();
