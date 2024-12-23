@@ -24,7 +24,20 @@ use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::pieces::{Piece, PieceIndex, RawRecord};
 use subspace_core_primitives::segments::{RecordedHistorySegment, SegmentIndex};
 use subspace_erasure_coding::ErasureCoding;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
+
+/// The maximum amount of segment padding.
+///
+/// This is the difference between the compact encoding of lengths 1 to 63, and the compact
+/// encoding of lengths 2^14 to 2^30 - 1.
+/// <https://docs.substrate.io/reference/scale-codec/#fn-1>
+pub const MAX_SEGMENT_PADDING: usize = 3;
+
+/// The maximum object length this module can handle.
+///
+/// Currently objects are limited by the largest block size in any domain, which is 5 MB.
+/// But this implementation supports the maximum length of the 4 byte scale encoding.
+pub const MAX_SUPPORTED_OBJECT_LENGTH: usize = 1024 * 1024 * 1024 - 1;
 
 /// Object fetching errors.
 #[derive(Debug, thiserror::Error)]
@@ -153,16 +166,29 @@ where
     /// Create a new object fetcher with the given configuration.
     ///
     /// `max_object_len` is the amount of data bytes we'll read for a single object before giving
-    /// up and returning an error, or `None` for no limit (`usize::MAX`).
+    /// up and returning an error. In this implementation, it is limited to
+    /// [`MAX_SUPPORTED_OBJECT_LENGTH`], which is much larger than the largest block on any domain
+    /// (as of December 2024).
     pub fn new(
         piece_getter: Arc<PG>,
         erasure_coding: ErasureCoding,
-        max_object_len: Option<usize>,
+        mut max_object_len: usize,
     ) -> Self {
+        if max_object_len > MAX_SUPPORTED_OBJECT_LENGTH {
+            warn!(
+                max_object_len,
+                MAX_SUPPORTED_OBJECT_LENGTH,
+                "Object fetcher size limit exceeds maximum supported object size, \
+                limiting to implementation-supported size"
+            );
+
+            max_object_len = MAX_SUPPORTED_OBJECT_LENGTH;
+        }
+
         Self {
             piece_getter,
             erasure_coding,
-            max_object_len: max_object_len.unwrap_or(usize::MAX),
+            max_object_len,
         }
     }
 
@@ -237,16 +263,16 @@ where
         piece_index: PieceIndex,
         piece_offset: u32,
     ) -> Result<Option<Vec<u8>>, Error> {
-        // If the offset is before the last 2 bytes of a segment, we might be able to do very fast
-        // object retrieval without assembling and processing the whole segment.
+        // If the offset is before the last few bytes of a segment, we might be able to do very
+        // fast object retrieval without assembling and processing the whole segment.
         //
-        // The last 2 bytes might contain padding if a piece is the last piece in the segment.
-        let before_last_two_bytes = piece_offset as usize <= RawRecord::SIZE - 1 - 2;
+        // The last few bytes might contain padding if a piece is the last piece in the segment.
+        let before_max_padding = piece_offset as usize <= RawRecord::SIZE - 1 - MAX_SEGMENT_PADDING;
         let piece_position_in_segment = piece_index.source_position();
         let data_shards = RecordedHistorySegment::NUM_RAW_RECORDS as u32;
         let last_data_piece_in_segment = piece_position_in_segment >= data_shards - 1;
 
-        if last_data_piece_in_segment && !before_last_two_bytes {
+        if last_data_piece_in_segment && !before_max_padding {
             trace!(
                 piece_position_in_segment,
                 %piece_index,
@@ -262,10 +288,12 @@ where
         // How much bytes are definitely available starting at `piece_index` and `offset` without
         // crossing a segment boundary.
         //
-        // The last 2 bytes might contain padding if a piece is the last piece in the segment.
+        // The last few bytes might contain padding if a piece is the last piece in the segment.
         let bytes_available_in_segment =
             (data_shards - piece_position_in_segment) * RawRecord::SIZE as u32 - piece_offset;
-        let Some(bytes_available_in_segment) = bytes_available_in_segment.checked_sub(2) else {
+        let Some(bytes_available_in_segment) =
+            bytes_available_in_segment.checked_sub(MAX_SEGMENT_PADDING as u32)
+        else {
             // We need to reconstruct the full segment and discard padding before reading the length.
             return Ok(None);
         };
@@ -289,8 +317,9 @@ where
         );
 
         if last_data_piece_in_segment {
-            // The last 2 bytes might contain segment padding, so we can't use them for object length or object data.
-            read_records_data.truncate(read_records_data.len() - 2);
+            // The last few bytes might contain segment padding, so we can't use them for object
+            // length or object data.
+            read_records_data.truncate(read_records_data.len() - MAX_SEGMENT_PADDING);
         }
 
         let data_length = self.decode_data_length(&read_records_data, piece_index, piece_offset)?;
