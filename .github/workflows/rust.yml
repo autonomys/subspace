@@ -18,6 +18,7 @@ env:
   CARGO_TERM_COLOR: always
   # Build smaller artifacts to avoid running out of space in CI and make it a bit faster
   RUSTFLAGS: -C strip=symbols
+  RUST_BACKTRACE: full
 
 jobs:
   cargo-fmt:
