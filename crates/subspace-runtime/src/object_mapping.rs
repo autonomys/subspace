@@ -92,13 +92,6 @@ pub(crate) fn extract_call_block_object_mapping(
                 offset: base_offset + 1,
             });
         }
-        RuntimeCall::HistorySeeding(pallet_history_seeding::Call::seed_history { remark }) => {
-            objects.push(BlockObject {
-                hash: hashes::blake3_hash(remark),
-                // Add pallet_history_seeding::Call enum variant to the base offset.
-                offset: base_offset + 1,
-            });
-        }
 
         // Recursively extract object mappings for the call.
         RuntimeCall::Utility(call) => {

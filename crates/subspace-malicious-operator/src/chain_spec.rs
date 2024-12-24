@@ -14,7 +14,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_runtime::{
     AllowAuthoringBy, CouncilConfig, DemocracyConfig, DomainsConfig, EnableRewardsAt,
-    HistorySeedingConfig, RewardsConfig, RuntimeConfigsConfig, SubspaceConfig,
+    RewardsConfig, RuntimeConfigsConfig, SubspaceConfig,
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
@@ -261,9 +261,6 @@ fn subspace_genesis_config(
                 minimum_nominator_stake: 100 * SSC,
                 initial_balances: genesis_domain_params.initial_balances,
             }],
-        },
-        history_seeding: HistorySeedingConfig {
-            history_seeder: Some(sudo_account),
         },
     }
 }
