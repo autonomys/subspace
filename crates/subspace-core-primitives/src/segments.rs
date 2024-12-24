@@ -58,7 +58,7 @@ pub struct SegmentIndex(u64);
 
 impl Step for SegmentIndex {
     #[inline]
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+    fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
         u64::steps_between(&start.0, &end.0)
     }
 

@@ -13,7 +13,7 @@ pub(in super::super) struct X(u32);
 
 impl Step for X {
     #[inline(always)]
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+    fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
         u32::steps_between(&start.0, &end.0)
     }
 
@@ -89,7 +89,7 @@ pub(in super::super) struct Position(u32);
 
 impl Step for Position {
     #[inline(always)]
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+    fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
         u32::steps_between(&start.0, &end.0)
     }
 

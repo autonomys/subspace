@@ -84,7 +84,7 @@ impl KnownCaches {
     }
 
     fn remove_expired(&mut self) -> impl Iterator<Item = KnownCache> + '_ {
-        self.known_caches.extract_if(|known_cache| {
+        self.known_caches.extract_if(.., |known_cache| {
             known_cache.last_identification.elapsed() > self.identification_broadcast_interval * 2
         })
     }

@@ -198,7 +198,7 @@ pub struct SBucket(u16);
 
 impl Step for SBucket {
     #[inline]
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+    fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
         u16::steps_between(&start.0, &end.0)
     }
 
