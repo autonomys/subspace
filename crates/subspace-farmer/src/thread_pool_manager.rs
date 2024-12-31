@@ -109,12 +109,6 @@ impl PlottingThreadPoolManager {
             let listener = event.listen();
 
             if let Some(thread_pool_pair) = mutex.lock().thread_pool_pairs.pop() {
-                drop(listener);
-                // It is possible that we got here because there was the last free pair available
-                // and in the meantime listener received notification. Just in case that was the
-                // case, notify one more listener (if there is any) to make sure all available
-                // thread pools are utilized when there is demand for them.
-                event.notify(1);
                 break thread_pool_pair;
             }
 
