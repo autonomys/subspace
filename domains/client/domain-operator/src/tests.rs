@@ -57,6 +57,7 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::{Balance, SSC};
@@ -64,6 +65,9 @@ use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockConsensusNode,
 };
 use tempfile::TempDir;
+use tracing::error;
+
+const TIMEOUT: Duration = Duration::from_mins(2);
 
 fn number_of(consensus_node: &MockConsensusNode, block_hash: Hash) -> u32 {
     consensus_node
@@ -1165,7 +1169,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidStateTransition(proof) = &fp.proof {
             match (trace_diff_type, mismatch_trace_index) {
@@ -1215,7 +1219,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         }
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -1229,12 +1233,14 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    // When the system domain node process the primary block that contains the `bad_submit_bundle_tx`,
+    // When the system domain node process the primary block that contains `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -1318,7 +1324,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
         bundle_to_tx(opaque_bundle)
     };
 
-    // Produce a block that contains the `bad_submit_bundle_tx`
+    // Produce a block that contains `bad_submit_bundle_tx`
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
             slot,
@@ -1349,7 +1355,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
@@ -1360,7 +1366,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
         false
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -1374,10 +1380,12 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -1461,7 +1469,7 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
@@ -1472,7 +1480,7 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
         false
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -1486,10 +1494,12 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -1571,7 +1581,7 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
         bundle_to_tx(opaque_bundle)
     };
 
-    // Produce a block that contains the `bad_submit_bundle_tx`
+    // Produce a block that contains `bad_submit_bundle_tx`
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
             slot,
@@ -1602,7 +1612,7 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type {
@@ -1613,7 +1623,7 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
         false
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -1627,10 +1637,12 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -1714,7 +1726,7 @@ async fn test_false_invalid_bundles_undecodeable_tx_proof_creation_and_verificat
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type {
@@ -1725,7 +1737,7 @@ async fn test_false_invalid_bundles_undecodeable_tx_proof_creation_and_verificat
         false
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -1739,10 +1751,12 @@ async fn test_false_invalid_bundles_undecodeable_tx_proof_creation_and_verificat
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -1835,7 +1849,7 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
         bundle_to_tx(opaque_bundle)
     };
 
-    // Produce a block that contains the `bad_submit_bundle_tx`
+    // Produce a block that contains `bad_submit_bundle_tx`
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
             slot,
@@ -1866,7 +1880,7 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
@@ -1878,9 +1892,9 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
         false
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
-    // Produce a block that contains the `bad_submit_bundle_tx`
+    // Produce a block that contains `bad_submit_bundle_tx`
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
             slot,
@@ -1893,10 +1907,12 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -1999,7 +2015,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
         bundle_to_tx(opaque_bundle)
     };
 
-    // Produce a block that contains the `bad_submit_bundle_tx`
+    // Produce a block that contains `bad_submit_bundle_tx`
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
             slot,
@@ -2030,7 +2046,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
@@ -2042,7 +2058,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
         false
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -2056,10 +2072,12 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -2162,7 +2180,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
@@ -2174,7 +2192,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
         false
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -2188,10 +2206,12 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -2251,7 +2271,7 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
         bundle_to_tx(opaque_bundle)
     };
 
-    // Produce a block that contains the `bad_submit_bundle_tx`
+    // Produce a block that contains `bad_submit_bundle_tx`
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
             slot,
@@ -2282,7 +2302,7 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type {
@@ -2293,7 +2313,7 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
         false
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -2307,10 +2327,12 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -2392,7 +2414,7 @@ async fn test_false_invalid_bundle_weight_proof_creation_and_verification() {
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type {
@@ -2403,7 +2425,7 @@ async fn test_false_invalid_bundle_weight_proof_creation_and_verification() {
         false
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -2417,10 +2439,12 @@ async fn test_false_invalid_bundle_weight_proof_creation_and_verification() {
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -2503,7 +2527,7 @@ async fn test_false_invalid_bundles_non_exist_extrinsic_proof_creation_and_verif
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundlesProofData::Bundle(_) = proof.proof_data {
@@ -2514,7 +2538,7 @@ async fn test_false_invalid_bundles_non_exist_extrinsic_proof_creation_and_verif
         false
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -2528,10 +2552,12 @@ async fn test_false_invalid_bundles_non_exist_extrinsic_proof_creation_and_verif
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -2585,7 +2611,7 @@ async fn test_invalid_block_fees_proof_creation() {
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp.proof,
@@ -2593,7 +2619,7 @@ async fn test_invalid_block_fees_proof_creation() {
         )
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -2607,12 +2633,14 @@ async fn test_invalid_block_fees_proof_creation() {
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
+    // When the domain node operator processes the primary block that contains `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -2686,7 +2714,7 @@ async fn test_invalid_transfers_fraud_proof() {
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp.proof,
@@ -2694,7 +2722,7 @@ async fn test_invalid_transfers_fraud_proof() {
         )
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -2708,12 +2736,14 @@ async fn test_invalid_transfers_fraud_proof() {
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
+    // When the domain node operator processes the primary block that contains `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -2782,7 +2812,7 @@ async fn test_invalid_domain_block_hash_proof_creation() {
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp.proof,
@@ -2790,7 +2820,7 @@ async fn test_invalid_domain_block_hash_proof_creation() {
         )
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -2804,12 +2834,14 @@ async fn test_invalid_domain_block_hash_proof_creation() {
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
+    // When the domain node operator processes the primary block that contains `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -2878,7 +2910,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp.proof,
@@ -2886,7 +2918,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
         )
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -2900,12 +2932,14 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
+    // When the domain node operator processes the primary block that contains `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -3177,7 +3211,7 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         (bundle.receipt().clone(), bundle_to_tx(bundle))
     };
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     let mut import_tx_stream = ferdie.transaction_pool.import_notification_stream();
     produce_block_with!(
@@ -3194,7 +3228,7 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         .does_receipt_exist(bad_receipt.hash::<BlakeTwo256>())
         .unwrap());
 
-    // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
+    // When the domain node operator processes the primary block that contains `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
     while let Some(ready_tx_hash) = import_tx_stream.next().await {
         let ready_tx = ferdie
@@ -3239,7 +3273,7 @@ async fn test_valid_bundle_proof_generation_and_verification() {
     }
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie
         .does_receipt_exist(bad_receipt.hash::<BlakeTwo256>())
@@ -4664,7 +4698,7 @@ async fn test_bad_receipt_chain() {
         )
     };
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -4738,7 +4772,9 @@ async fn test_bad_receipt_chain() {
     }
 
     // The fraud proof should be submitted
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // The first bad ER should be pruned and its descendants are marked as pending to prune
     ferdie.produce_blocks(1).await.unwrap();
@@ -5430,7 +5466,7 @@ async fn test_xdm_false_invalid_fraud_proof() {
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
@@ -5442,9 +5478,9 @@ async fn test_xdm_false_invalid_fraud_proof() {
         false
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
-    // Produce a block that contains the `bad_submit_bundle_tx`
+    // Produce a block that contains `bad_submit_bundle_tx`
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
             slot,
@@ -5457,10 +5493,12 @@ async fn test_xdm_false_invalid_fraud_proof() {
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
@@ -5676,7 +5714,7 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
         )
     };
 
-    // Wait for the fraud proof that target the bad ER
+    // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
@@ -5688,9 +5726,9 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
         false
     });
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
     // be added to the consensus chain block tree
-    // Produce a block that contains the `bad_submit_bundle_tx`
+    // Produce a block that contains `bad_submit_bundle_tx`
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
             slot,
@@ -5703,10 +5741,12 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
     .unwrap();
     assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
-    let _ = wait_for_fraud_proof_fut.await;
+    let _ = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"));
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
+    // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }

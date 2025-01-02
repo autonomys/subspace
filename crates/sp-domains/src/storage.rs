@@ -55,6 +55,13 @@ impl RawGenesis {
         );
     }
 
+    pub fn domain_id(&self) -> Result<Option<DomainId>, parity_scale_codec::Error> {
+        match self.top.get(&self_domain_id_storage_key()) {
+            Some(sd) => Ok(Some(DomainId::decode(&mut sd.0.as_slice())?)),
+            None => Ok(None),
+        }
+    }
+
     pub fn set_evm_chain_id(&mut self, chain_id: EVMChainId) {
         let _ = self
             .top
