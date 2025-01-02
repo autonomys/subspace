@@ -5,11 +5,10 @@ use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::{ErrorObject, ErrorObjectOwned};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
-use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
 use subspace_core_primitives::objects::GlobalObjectMapping;
 use subspace_data_retrieval::object_fetcher::{self, ObjectFetcher};
 use subspace_data_retrieval::piece_getter::PieceGetter;
-use tracing::{debug, error, trace};
+use tracing::{debug, error};
 
 const SUBSPACE_ERROR: i32 = 9000;
 
@@ -33,17 +32,6 @@ pub enum Error {
     /// The object fetcher failed.
     #[error(transparent)]
     ObjectFetcherError(#[from] object_fetcher::Error),
-
-    /// The returned object data did not match the hash in the mapping.
-    #[error(
-        "Invalid object hash, mapping had {mapping_hash:?}, but fetched data had {data_hash:?}"
-    )]
-    InvalidObjectHash {
-        /// The expected hash from the mapping.
-        mapping_hash: Blake3Hash,
-        /// The actual hash of the returned object data.
-        data_hash: Blake3Hash,
-    },
 }
 
 impl From<Error> for ErrorObjectOwned {
@@ -147,25 +135,7 @@ where
         let mut objects = Vec::with_capacity(count);
         // TODO: fetch concurrently
         for mapping in mappings.objects() {
-            let data = self
-                .object_fetcher
-                .fetch_object(mapping.piece_index, mapping.offset)
-                .await?;
-
-            let data_hash = blake3_hash(&data);
-            if data_hash != mapping.hash {
-                error!(
-                    ?data_hash,
-                    data_size = %data.len(),
-                    ?mapping.hash,
-                    "Retrieved data did not match mapping hash",
-                );
-                trace!(data = %hex::encode(data), "Retrieved data");
-                return Err(Error::InvalidObjectHash {
-                    mapping_hash: mapping.hash,
-                    data_hash,
-                });
-            }
+            let data = self.object_fetcher.fetch_object(*mapping).await?;
 
             objects.push(data.into());
         }

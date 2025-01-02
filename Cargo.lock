@@ -12592,6 +12592,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "futures",
+ "hex",
  "parity-scale-codec",
  "subspace-archiving",
  "subspace-core-primitives",

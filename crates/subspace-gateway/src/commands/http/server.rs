@@ -2,7 +2,7 @@
 
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use std::sync::Arc;
-use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
+use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_core_primitives::objects::ObjectMappingResponse;
 use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_data_retrieval::piece_getter::PieceGetter;
@@ -58,7 +58,8 @@ where
         return HttpResponse::BadRequest().finish();
     };
 
-    let Some(object_mapping) = object_mapping.objects.objects().first() else {
+    // TODO: fetch multiple objects
+    let Some(&object_mapping) = object_mapping.objects.objects().first() else {
         return HttpResponse::BadRequest().finish();
     };
 
@@ -73,25 +74,12 @@ where
 
     let object_fetcher_result = server_params
         .object_fetcher
-        .fetch_object(object_mapping.piece_index, object_mapping.offset)
+        .fetch_object(object_mapping)
         .await;
 
     let object = match object_fetcher_result {
         Ok(object) => {
             trace!(?hash, size = %object.len(), "Object fetched successfully");
-
-            let data_hash = blake3_hash(&object);
-            if data_hash != hash {
-                error!(
-                    ?data_hash,
-                    data_size = %object.len(),
-                    ?hash,
-                    "Retrieved data doesn't match requested mapping hash"
-                );
-                trace!(data = %hex::encode(object), "Retrieved data");
-                return HttpResponse::ServiceUnavailable().finish();
-            }
-
             object
         }
         Err(err) => {
