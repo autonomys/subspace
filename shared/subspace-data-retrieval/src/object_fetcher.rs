@@ -206,7 +206,7 @@ where
 
         // Validate parameters
         if !piece_index.is_source() {
-            tracing::debug!(
+            debug!(
                 ?mapping,
                 "Invalid piece index for object: must be a source piece",
             );
@@ -216,7 +216,7 @@ where
         }
 
         if offset >= RawRecord::SIZE as u32 {
-            tracing::debug!(
+            debug!(
                 ?mapping,
                 RawRecord_SIZE = RawRecord::SIZE,
                 "Invalid piece offset for object: must be less than the size of a raw record",
@@ -245,13 +245,13 @@ where
 
         let data_hash = blake3_hash(&data);
         if data_hash != hash {
-            tracing::debug!(
+            debug!(
                 ?data_hash,
                 data_size = %data.len(),
                 ?mapping,
                 "Retrieved data doesn't match requested mapping hash"
             );
-            tracing::trace!(data = %hex::encode(&data), "Retrieved data");
+            trace!(data = %hex::encode(&data), "Retrieved data");
 
             return Err(Error::InvalidDataHash {
                 data_hash,
@@ -423,7 +423,7 @@ where
         let offset_in_segment =
             piece_position_in_segment as usize * RawRecord::SIZE + offset as usize;
 
-        tracing::trace!(
+        trace!(
             %segment_index,
             offset_in_segment,
             piece_position_in_segment,
@@ -466,7 +466,7 @@ where
                     }
                 })?;
 
-            tracing::trace!(
+            trace!(
                 progress,
                 %segment_index,
                 offset_in_segment,
@@ -510,7 +510,7 @@ where
             }
         };
 
-        tracing::trace!(
+        trace!(
             %segment_index,
             offset_in_segment,
             piece_position_in_segment,
