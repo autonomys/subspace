@@ -18,79 +18,101 @@ where
     pub(crate) http_endpoint: String,
 }
 
-/// Requests the object mapping with `hash` from the indexer service.
+/// Requests the object mappings for `hashes` from the indexer service.
+/// Multiple hashes are separated by `+`.
 async fn request_object_mapping(
     endpoint: &str,
-    hash: Blake3Hash,
+    hashes: &Vec<Blake3Hash>,
 ) -> anyhow::Result<ObjectMappingResponse> {
     let client = reqwest::Client::new();
-    let object_mappings_url = format!("{}/objects/{}", endpoint, hex::encode(hash));
+    let hash_list = hashes.iter().map(hex::encode).collect::<Vec<_>>();
+    let object_mappings_url = format!("{}/objects/{}", endpoint, hash_list.join("+"));
 
-    debug!(?hash, ?object_mappings_url, "Requesting object mapping...");
+    debug!(
+        ?hashes,
+        ?object_mappings_url,
+        "Requesting object mappings..."
+    );
 
     let response = client.get(&object_mappings_url).send().await?.json().await;
 
     match &response {
         Ok(json) => {
-            trace!(?hash, ?json, "Received object mapping");
+            trace!(?hashes, ?json, "Received object mappings");
         }
         Err(err) => {
-            error!(?hash, ?err, ?object_mappings_url, "Request failed");
+            error!(?hashes, ?err, ?object_mappings_url, "Request failed");
         }
     }
 
     response.map_err(|err| err.into())
 }
 
-/// Fetches a DSN object with `hash`, using the mapping indexer service.
+/// Fetches the DSN objects with `hashes`, using the mapping indexer service.
+/// Multiple hashes are separated by `+`.
 async fn serve_object<PG>(
-    hash: web::Path<Blake3Hash>,
+    hashes: web::Path<String>,
     additional_data: web::Data<Arc<ServerParameters<PG>>>,
 ) -> impl Responder
 where
     PG: PieceGetter + Send + Sync + 'static,
 {
     let server_params = additional_data.into_inner();
-    let hash = hash.into_inner();
+    let hashes = hashes.into_inner();
+    let hashes = hashes
+        .split('+')
+        .map(|s| {
+            let mut hash = Blake3Hash::default();
+            hex::decode_to_slice(s, hash.as_mut()).map(|()| hash)
+        })
+        .try_collect::<Vec<_>>();
 
-    let Ok(object_mapping) = request_object_mapping(&server_params.indexer_endpoint, hash).await
+    let Ok(hashes) = hashes else {
+        return HttpResponse::BadRequest().finish();
+    };
+
+    let Ok(object_mappings) =
+        request_object_mapping(&server_params.indexer_endpoint, &hashes).await
     else {
         return HttpResponse::BadRequest().finish();
     };
 
-    // TODO: fetch multiple objects
-    let Some(&object_mapping) = object_mapping.objects.objects().first() else {
-        return HttpResponse::BadRequest().finish();
-    };
-
-    if object_mapping.hash != hash {
-        error!(
-            ?object_mapping,
-            ?hash,
-            "Returned object mapping doesn't match requested hash"
-        );
-        return HttpResponse::ServiceUnavailable().finish();
+    for object_mapping in object_mappings.objects.objects() {
+        if !hashes.contains(&object_mapping.hash) {
+            error!(
+                ?object_mapping,
+                ?hashes,
+                "Returned object mapping wasn't in requested hashes"
+            );
+            return HttpResponse::ServiceUnavailable().finish();
+        }
     }
 
     let object_fetcher_result = server_params
         .object_fetcher
-        .fetch_object(object_mapping)
+        .fetch_objects(object_mappings.objects)
         .await;
 
-    let object = match object_fetcher_result {
-        Ok(object) => {
-            trace!(?hash, size = %object.len(), "Object fetched successfully");
-            object
+    let objects = match object_fetcher_result {
+        Ok(objects) => {
+            trace!(
+                ?hashes,
+                count = %objects.len(),
+                sizes = ?objects.iter().map(|object| object.len()),
+                "Objects fetched successfully"
+            );
+            objects
         }
         Err(err) => {
-            error!(?hash, ?err, "Failed to fetch object");
+            error!(?hashes, ?err, "Failed to fetch objects");
             return HttpResponse::ServiceUnavailable().finish();
         }
     };
 
+    // TODO: return a multi-part response, with one part per object
     HttpResponse::Ok()
         .content_type("application/octet-stream")
-        .body(object)
+        .body(objects.concat())
 }
 
 /// Starts the DSN object HTTP server.
@@ -103,7 +125,7 @@ where
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(server_params.clone()))
-            .route("/data/{hash}", web::get().to(serve_object::<PG>))
+            .route("/data/{hashes}", web::get().to(serve_object::<PG>))
     })
     .bind(http_endpoint)?
     .run()

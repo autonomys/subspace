@@ -22,7 +22,7 @@ use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
-use subspace_core_primitives::objects::GlobalObject;
+use subspace_core_primitives::objects::{GlobalObject, GlobalObjectMapping};
 use subspace_core_primitives::pieces::{Piece, PieceIndex, RawRecord};
 use subspace_core_primitives::segments::{RecordedHistorySegment, SegmentIndex};
 use subspace_erasure_coding::ErasureCoding;
@@ -193,74 +193,84 @@ where
         }
     }
 
-    /// Assemble the object in `mapping` by fetching necessary pieces using the piece getter, and
-    /// putting the object's bytes together.
+    /// Assemble the objects in `mapping` by fetching necessary pieces using the piece getter, and
+    /// putting the objects' bytes together.
     ///
-    /// Checks the object's hash to make sure the correct bytes are returned.
-    pub async fn fetch_object(&self, mapping: GlobalObject) -> Result<Vec<u8>, Error> {
-        let GlobalObject {
-            hash,
-            piece_index,
-            offset,
-        } = mapping;
+    /// Checks the objects' hashes to make sure the correct bytes are returned.
+    pub async fn fetch_objects(
+        &self,
+        mappings: GlobalObjectMapping,
+    ) -> Result<Vec<Vec<u8>>, Error> {
+        let mut objects = Vec::with_capacity(mappings.objects().len());
 
-        // Validate parameters
-        if !piece_index.is_source() {
-            debug!(
-                ?mapping,
-                "Invalid piece index for object: must be a source piece",
-            );
+        // TODO: sort mappings in piece index order, and keep pieces until they're no longer needed
+        for &mapping in mappings.objects() {
+            let GlobalObject {
+                hash,
+                piece_index,
+                offset,
+            } = mapping;
 
-            // Parity pieces contain effectively random data, and can't be used to fetch objects
-            return Err(Error::NotSourcePiece { mapping });
-        }
-
-        if offset >= RawRecord::SIZE as u32 {
-            debug!(
-                ?mapping,
-                RawRecord_SIZE = RawRecord::SIZE,
-                "Invalid piece offset for object: must be less than the size of a raw record",
-            );
-
-            return Err(Error::PieceOffsetTooLarge { mapping });
-        }
-
-        // Try fast object assembling from individual pieces,
-        // then regular object assembling from segments
-        let data = match self.fetch_object_fast(mapping).await? {
-            Some(data) => data,
-            None => {
-                let data = self.fetch_object_regular(mapping).await?;
-
+            // Validate parameters
+            if !piece_index.is_source() {
                 debug!(
                     ?mapping,
-                    len = %data.len(),
-                    "Fetched object using regular object assembling",
-
+                    "Invalid piece index for object: must be a source piece",
                 );
 
-                data
+                // Parity pieces contain effectively random data, and can't be used to fetch objects
+                return Err(Error::NotSourcePiece { mapping });
             }
-        };
 
-        let data_hash = blake3_hash(&data);
-        if data_hash != hash {
-            debug!(
-                ?data_hash,
-                data_size = %data.len(),
-                ?mapping,
-                "Retrieved data doesn't match requested mapping hash"
-            );
-            trace!(data = %hex::encode(&data), "Retrieved data");
+            if offset >= RawRecord::SIZE as u32 {
+                debug!(
+                    ?mapping,
+                    RawRecord_SIZE = RawRecord::SIZE,
+                    "Invalid piece offset for object: must be less than the size of a raw record",
+                );
 
-            return Err(Error::InvalidDataHash {
-                data_hash,
-                data_size: data.len(),
-                mapping,
-            });
+                return Err(Error::PieceOffsetTooLarge { mapping });
+            }
+
+            // Try fast object assembling from individual pieces,
+            // then regular object assembling from segments
+            let data = match self.fetch_object_fast(mapping).await? {
+                Some(data) => data,
+                None => {
+                    let data = self.fetch_object_regular(mapping).await?;
+
+                    debug!(
+                        ?mapping,
+                        len = %data.len(),
+                        "Fetched object using regular object assembling",
+
+                    );
+
+                    data
+                }
+            };
+
+            let data_hash = blake3_hash(&data);
+            if data_hash != hash {
+                debug!(
+                    ?data_hash,
+                    data_size = %data.len(),
+                    ?mapping,
+                    "Retrieved data doesn't match requested mapping hash"
+                );
+                trace!(data = %hex::encode(&data), "Retrieved data");
+
+                return Err(Error::InvalidDataHash {
+                    data_hash,
+                    data_size: data.len(),
+                    mapping,
+                });
+            }
+
+            objects.push(data);
         }
 
-        Ok(data)
+        Ok(objects)
     }
 
     /// Fast object fetching and assembling where the object doesn't cross piece (super fast) or

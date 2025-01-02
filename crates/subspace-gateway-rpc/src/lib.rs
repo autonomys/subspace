@@ -132,13 +132,8 @@ where
             return Err(Error::TooManyMappings { count });
         }
 
-        let mut objects = Vec::with_capacity(count);
-        // TODO: fetch concurrently
-        for mapping in mappings.objects() {
-            let data = self.object_fetcher.fetch_object(*mapping).await?;
-
-            objects.push(data.into());
-        }
+        let objects = self.object_fetcher.fetch_objects(mappings).await?;
+        let objects = objects.into_iter().map(HexData::from).collect();
 
         Ok(objects)
     }

@@ -1,5 +1,7 @@
 //! Subspace gateway implementation.
 
+#![feature(iterator_try_collect)]
+
 mod commands;
 mod node_client;
 mod piece_getter;
