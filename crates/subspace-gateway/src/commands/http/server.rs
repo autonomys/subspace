@@ -1,12 +1,9 @@
 //! HTTP server which fetches objects from the DSN based on a hash, using a mapping indexer service.
 
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
-use serde::{Deserialize, Deserializer, Serialize};
-use std::default::Default;
 use std::sync::Arc;
 use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
-use subspace_core_primitives::pieces::PieceIndex;
-use subspace_core_primitives::BlockNumber;
+use subspace_core_primitives::objects::ObjectMappingResponse;
 use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_data_retrieval::piece_getter::PieceGetter;
 use tracing::{debug, error, trace};
@@ -21,39 +18,18 @@ where
     pub(crate) http_endpoint: String,
 }
 
-/// Object mapping format from the indexer service.
-#[derive(Serialize, Deserialize, Debug, Default)]
-#[serde(rename_all = "camelCase")]
-struct ObjectMapping {
+/// Requests the object mapping with `hash` from the indexer service.
+async fn request_object_mapping(
+    endpoint: &str,
     hash: Blake3Hash,
-    piece_index: PieceIndex,
-    piece_offset: u32,
-    #[serde(deserialize_with = "string_to_u32")]
-    block_number: BlockNumber,
-}
-
-/// Utility function to deserialize a JSON string into a u32.
-fn string_to_u32<'de, D>(deserializer: D) -> Result<u32, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s: String = Deserialize::deserialize(deserializer)?;
-    s.parse::<u32>().map_err(serde::de::Error::custom)
-}
-
-/// Requests an object mapping with `hash` from the indexer service.
-async fn request_object_mapping(endpoint: &str, hash: Blake3Hash) -> anyhow::Result<ObjectMapping> {
+) -> anyhow::Result<ObjectMappingResponse> {
     let client = reqwest::Client::new();
     let object_mappings_url = format!("{}/objects/{}", endpoint, hex::encode(hash));
 
     debug!(?hash, ?object_mappings_url, "Requesting object mapping...");
 
-    let response = client
-        .get(&object_mappings_url)
-        .send()
-        .await?
-        .json::<ObjectMapping>()
-        .await;
+    let response = client.get(&object_mappings_url).send().await?.json().await;
+
     match &response {
         Ok(json) => {
             trace!(?hash, ?json, "Received object mapping");
@@ -82,6 +58,10 @@ where
         return HttpResponse::BadRequest().finish();
     };
 
+    let Some(object_mapping) = object_mapping.objects.objects().first() else {
+        return HttpResponse::BadRequest().finish();
+    };
+
     if object_mapping.hash != hash {
         error!(
             ?object_mapping,
@@ -93,7 +73,7 @@ where
 
     let object_fetcher_result = server_params
         .object_fetcher
-        .fetch_object(object_mapping.piece_index, object_mapping.piece_offset)
+        .fetch_object(object_mapping.piece_index, object_mapping.offset)
         .await;
 
     let object = match object_fetcher_result {
