@@ -16,6 +16,11 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(const_trait_impl, variant_count)]
+// `generic_const_exprs` is an incomplete feature
+#![allow(incomplete_features)]
+// TODO: This feature is not actually used in this crate, but is added as a workaround for
+//  https://github.com/rust-lang/rust/issues/133199
+#![feature(generic_const_exprs)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 // TODO: remove when upstream issue is fixed
@@ -37,7 +42,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
-pub use crate::signed_extensions::{CheckHistorySeeder, DisablePallets};
+pub use crate::signed_extensions::DisablePallets;
 use alloc::borrow::Cow;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
@@ -125,13 +130,13 @@ sp_runtime::impl_opaque_keys! {
 const MAX_PIECES_IN_SECTOR: u16 = 1000;
 
 // To learn more about runtime versioning and what each of the following value means:
-//   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning
+//   https://paritytech.github.io/polkadot-sdk/master/sp_version/struct.RuntimeVersion.html
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: Cow::Borrowed("subspace"),
     impl_name: Cow::Borrowed("subspace"),
     authoring_version: 0,
-    spec_version: 1,
+    spec_version: 2,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -576,10 +581,6 @@ impl pallet_democracy::Config for Runtime {
     type WeightInfo = pallet_democracy::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_history_seeding::Config for Runtime {
-    type WeightInfo = pallet_history_seeding::weights::SubstrateWeight<Runtime>;
-}
-
 parameter_types! {
     pub const SelfChainId: ChainId = ChainId::Consensus;
 }
@@ -836,6 +837,7 @@ impl pallet_domains::Config for Runtime {
     type Randomness = Subspace;
     type PalletId = DomainsPalletId;
     type StorageFee = TransactionFees;
+    type BlockTimestamp = pallet_timestamp::Pallet<Runtime>;
     type BlockSlot = BlockSlot;
     type BundleLongevity = BundleLongevity;
     type DomainsTransfersTracker = Transporter;
@@ -941,8 +943,6 @@ construct_runtime!(
         Democracy: pallet_democracy = 83,
         Preimage: pallet_preimage = 84,
 
-        HistorySeeding: pallet_history_seeding = 91,
-
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,
     }
@@ -966,7 +966,6 @@ pub type SignedExtra = (
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     DisablePallets,
-    CheckHistorySeeder<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
@@ -1038,17 +1037,11 @@ pub struct StorageKeyProvider;
 impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
     fn storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8> {
         match req {
-            FraudProofStorageKeyRequest::BlockRandomness => {
-                pallet_subspace::BlockRandomness::<Runtime>::hashed_key().to_vec()
-            }
-            FraudProofStorageKeyRequest::Timestamp => {
-                pallet_timestamp::Now::<Runtime>::hashed_key().to_vec()
+            FraudProofStorageKeyRequest::InvalidInherentExtrinsicData => {
+                pallet_domains::BlockInvalidInherentExtrinsicData::<Runtime>::hashed_key().to_vec()
             }
             FraudProofStorageKeyRequest::SuccessfulBundles(domain_id) => {
                 pallet_domains::SuccessfulBundles::<Runtime>::hashed_key_for(domain_id)
-            }
-            FraudProofStorageKeyRequest::TransactionByteFee => {
-                TransactionFees::transaction_byte_fee_storage_key()
             }
             FraudProofStorageKeyRequest::DomainAllowlistUpdates(domain_id) => {
                 Messenger::domain_allow_list_update_storage_key(domain_id)
@@ -1056,9 +1049,6 @@ impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
             FraudProofStorageKeyRequest::BlockDigest => sp_domains::system_digest_final_key(),
             FraudProofStorageKeyRequest::RuntimeRegistry(runtime_id) => {
                 pallet_domains::RuntimeRegistry::<Runtime>::hashed_key_for(runtime_id)
-            }
-            FraudProofStorageKeyRequest::DynamicCostOfStorage => {
-                pallet_runtime_configs::EnableDynamicCostOfStorage::<Runtime>::hashed_key().to_vec()
             }
             FraudProofStorageKeyRequest::DomainSudoCall(domain_id) => {
                 pallet_domains::DomainSudoCalls::<Runtime>::hashed_key_for(domain_id)
@@ -1084,7 +1074,6 @@ mod benches {
         [pallet_timestamp, Timestamp]
         [pallet_messenger, Messenger]
         [pallet_transporter, Transporter]
-        [pallet_history_seeding, HistorySeeding]
     );
 }
 

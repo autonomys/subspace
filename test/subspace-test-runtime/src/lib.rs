@@ -16,6 +16,11 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(variant_count)]
+// `generic_const_exprs` is an incomplete feature
+#![allow(incomplete_features)]
+// TODO: This feature is not actually used in this crate, but is added as a workaround for
+//  https://github.com/rust-lang/rust/issues/133199
+#![feature(generic_const_exprs)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 // TODO: remove when upstream issue is fixed
@@ -283,10 +288,6 @@ parameter_types! {
     pub const MinSectorLifetime: HistorySize = HistorySize::new(NonZeroU64::new(4).unwrap());
     pub const BlockSlotCount: u32 = 6;
     pub TransactionWeightFee: Balance = 100_000 * SHANNON;
-}
-
-impl pallet_history_seeding::Config for Runtime {
-    type WeightInfo = pallet_history_seeding::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -766,6 +767,7 @@ impl pallet_domains::Config for Runtime {
     type MinNominatorStake = MinNominatorStake;
     type PalletId = DomainsPalletId;
     type StorageFee = TransactionFees;
+    type BlockTimestamp = pallet_timestamp::Pallet<Runtime>;
     type BlockSlot = BlockSlot;
     type BundleLongevity = BundleLongevity;
     type DomainsTransfersTracker = Transporter;
@@ -865,8 +867,6 @@ construct_runtime!(
         // Note: Indexes should match with indexes on other chains and domains
         Messenger: pallet_messenger exclude_parts { Inherent } = 60,
         Transporter: pallet_transporter = 61,
-
-        HistorySeeding: pallet_history_seeding = 91,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,
@@ -1027,13 +1027,6 @@ fn extract_call_block_object_mapping(
                 offset: base_offset + 1,
             });
         }
-        RuntimeCall::HistorySeeding(pallet_history_seeding::Call::seed_history { remark }) => {
-            objects.push(BlockObject {
-                hash: hashes::blake3_hash(remark),
-                // Add pallet_history_seeding::Call enum variant to the base offset.
-                offset: base_offset + 1,
-            });
-        }
 
         // Recursively extract object mappings for the call.
         RuntimeCall::Utility(call) => {
@@ -1115,17 +1108,11 @@ pub struct StorageKeyProvider;
 impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
     fn storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8> {
         match req {
-            FraudProofStorageKeyRequest::BlockRandomness => {
-                pallet_subspace::BlockRandomness::<Runtime>::hashed_key().to_vec()
-            }
-            FraudProofStorageKeyRequest::Timestamp => {
-                pallet_timestamp::Now::<Runtime>::hashed_key().to_vec()
+            FraudProofStorageKeyRequest::InvalidInherentExtrinsicData => {
+                pallet_domains::BlockInvalidInherentExtrinsicData::<Runtime>::hashed_key().to_vec()
             }
             FraudProofStorageKeyRequest::SuccessfulBundles(domain_id) => {
                 pallet_domains::SuccessfulBundles::<Runtime>::hashed_key_for(domain_id)
-            }
-            FraudProofStorageKeyRequest::TransactionByteFee => {
-                TransactionFees::transaction_byte_fee_storage_key()
             }
             FraudProofStorageKeyRequest::DomainAllowlistUpdates(domain_id) => {
                 Messenger::domain_allow_list_update_storage_key(domain_id)
@@ -1133,9 +1120,6 @@ impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
             FraudProofStorageKeyRequest::BlockDigest => sp_domains::system_digest_final_key(),
             FraudProofStorageKeyRequest::RuntimeRegistry(runtime_id) => {
                 pallet_domains::RuntimeRegistry::<Runtime>::hashed_key_for(runtime_id)
-            }
-            FraudProofStorageKeyRequest::DynamicCostOfStorage => {
-                pallet_runtime_configs::EnableDynamicCostOfStorage::<Runtime>::hashed_key().to_vec()
             }
             FraudProofStorageKeyRequest::DomainSudoCall(domain_id) => {
                 pallet_domains::DomainSudoCalls::<Runtime>::hashed_key_for(domain_id)

@@ -1,7 +1,7 @@
 # This Dockerfile supports both native building and cross-compilation to x86-64, aarch64 and riscv64
 FROM --platform=$BUILDPLATFORM ubuntu:22.04
 
-ARG RUSTC_VERSION=nightly-2024-10-22
+ARG RUSTC_VERSION=nightly-2024-12-24
 ARG PROFILE=production
 ARG RUSTFLAGS
 # Incremental compilation here isn't helpful

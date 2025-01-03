@@ -1,16 +1,27 @@
-# Order matters
-# below ones takes precedence over the upper ones
+# Order matters: entries that are further down override any entries above them
 
-# Global owners
-*                                 @nazar-pc @rg3l3dr
-
-/crates                           @nazar-pc @rg3l3dr
-/crates/pallet-*                  @nazar-pc @rg3l3dr @vedhavyas @NingLin-P
-/crates/sp-*                      @nazar-pc @rg3l3dr @vedhavyas @NingLin-P
-/crates/subspace-archiving        @shamil-gadelshin @nazar-pc @rg3l3dr
-/crates/subspace-farmer           @nazar-pc @shamil-gadelshin @rg3l3dr
-/crates/subspace-networking       @shamil-gadelshin @nazar-pc @rg3l3dr
-/crates/subspace-runtime*         @vedhavyas @nazar-pc @rg3l3dr
-/crates/subspace-node             @NingLin-P @nazar-pc @rg3l3dr @vedhavyas
-/crates/substrate                 @nazar-pc @rg3l3dr
-/domains                          @vedhavyas @NingLin-P @nazar-pc @rg3l3dr
+/.github/workflows                @nazar-pc @teor2345
+/crates/pallet-*                  @NingLin-P @vedhavyas
+/crates/pallet-subspace           @NingLin-P @vedhavyas @nazar-pc
+/crates/sc-consensus-*            @nazar-pc @teor2345
+/crates/sc-proof-of-time          @nazar-pc
+/crates/sp-*                      @NingLin-P @vedhavyas
+/crates/sp-consensus-subspace     @NingLin-P @vedhavyas @nazar-pc
+/crates/subspace-archiving        @nazar-pc @shamil-gadelshin @teor2345
+/crates/subspace-core-primitives  @nazar-pc
+/crates/subspace-erasure-coding   @nazar-pc
+/crates/subspace-farmer*          @nazar-pc @shamil-gadelshin
+/crates/subspace-gateway-*        @shamil-gadelshin @teor2345
+/crates/subspace-networking       @nazar-pc @shamil-gadelshin @teor2345
+/crates/subspace-proof-*          @nazar-pc
+/crates/subspace-rpc-primitives   @nazar-pc @teor2345
+/crates/subspace-runtime*         @vedhavyas @nazar-pc
+/crates/subspace-service          @nazar-pc
+/crates/subspace-node             @NingLin-P @vedhavyas @nazar-pc
+/crates/subspace-verification     @nazar-pc
+/docker                           @nazar-pc
+/domains                          @NingLin-P @vedhavyas
+/shared/subspace-kzg              @nazar-pc
+/shared/subspace-proof-*          @nazar-pc
+/shared/subspace-data-retrieval   @nazar-pc @teor2345
+/Cargo.toml                       @nazar-pc

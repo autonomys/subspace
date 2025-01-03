@@ -112,13 +112,10 @@ impl KnownCaches {
         });
     }
 
-    fn remove_expired(&mut self) -> impl Iterator<Item = Arc<ClusterPieceCache>> + '_ {
-        self.known_caches
-            .extract_if(|known_cache| {
-                known_cache.last_identification.elapsed()
-                    > self.identification_broadcast_interval * 2
-            })
-            .flat_map(|known_cache| known_cache.piece_caches)
+    fn remove_expired(&mut self) -> impl Iterator<Item = KnownCache> + '_ {
+        self.known_caches.extract_if(.., |known_cache| {
+            known_cache.last_identification.elapsed() > self.identification_broadcast_interval * 2
+        })
     }
 }
 
@@ -257,7 +254,7 @@ pub async fn maintain_caches(
                     reinit = true;
 
                     warn!(
-                        cache_id = %removed_cache.id(),
+                        cache_id = %removed_cache.cache_id,
                         "Cache expired and removed, scheduling reinitialization"
                     );
                 }

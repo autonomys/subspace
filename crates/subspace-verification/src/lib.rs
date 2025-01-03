@@ -18,6 +18,11 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![feature(array_chunks, portable_simd)]
+// `generic_const_exprs` is an incomplete feature
+#![allow(incomplete_features)]
+// TODO: This feature is not actually used in this crate, but is added as a workaround for
+//  https://github.com/rust-lang/rust/issues/133199
+#![feature(generic_const_exprs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(not(feature = "std"))]
@@ -25,6 +30,8 @@ extern crate alloc;
 
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(all(feature = "kzg", not(feature = "std")))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 #[cfg(feature = "kzg")]

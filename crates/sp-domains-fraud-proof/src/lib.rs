@@ -16,6 +16,11 @@
 
 //! Subspace fraud proof primitives for consensus chain.
 #![cfg_attr(not(feature = "std"), no_std)]
+// `generic_const_exprs` is an incomplete feature
+#![allow(incomplete_features)]
+// TODO: This feature is not actually used in this crate, but is added as a workaround for
+//  https://github.com/rust-lang/rust/issues/133199
+#![feature(generic_const_exprs)]
 #![feature(associated_type_defaults)]
 
 #[cfg(feature = "std")]
@@ -160,7 +165,7 @@ sp_api::decl_runtime_apis! {
         /// Submit the fraud proof via an unsigned extrinsic.
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash, DomainHeader, H256>);
 
-        /// Reture the storage key used in fraud proof
+        /// Return the storage key used in fraud proof
         fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8>;
     }
 }

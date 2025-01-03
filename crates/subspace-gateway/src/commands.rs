@@ -161,7 +161,7 @@ pub async fn initialize_object_fetcher(
         )),
     );
     let piece_getter = DsnPieceGetter::new(piece_provider);
-    let object_fetcher = ObjectFetcher::new(piece_getter.into(), erasure_coding, Some(max_size));
+    let object_fetcher = ObjectFetcher::new(piece_getter.into(), erasure_coding, max_size);
 
     Ok((object_fetcher, dsn_node_runner))
 }

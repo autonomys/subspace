@@ -246,7 +246,7 @@ where
         who: PeerId,
         request: BlockRequest<Block>,
     ) -> Result<Result<(Vec<u8>, ProtocolName), RequestFailure>, oneshot::Canceled> {
-        let full_download = request.max.map_or(false, |max_blocks| max_blocks > 1);
+        let full_download = request.max.is_some_and(|max_blocks| max_blocks > 1);
         let ret = if full_download {
             self.full_download(who, request.clone()).await
         } else {
