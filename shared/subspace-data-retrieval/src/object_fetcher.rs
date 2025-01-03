@@ -30,8 +30,9 @@ use tracing::{debug, trace, warn};
 
 /// The maximum amount of segment padding.
 ///
-/// This is the difference between the compact encoding of lengths 1 to 63, and the compact
-/// encoding of lengths 2^14 to 2^30 - 1.
+/// This is the difference between the lengths of the compact encodings of the minimum and maximum
+/// block sizes, in any domain. As of January 2025, the minimum block size is (potentially) 63 or
+/// less, and the maximum block size is in the range 2^14 to 2^30 - 1.
 /// <https://docs.substrate.io/reference/scale-codec/#fn-1>
 pub const MAX_SEGMENT_PADDING: usize = 3;
 
