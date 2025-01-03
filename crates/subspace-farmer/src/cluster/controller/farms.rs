@@ -273,7 +273,7 @@ impl KnownFarmers {
 
     fn remove_expired(&mut self) -> impl Iterator<Item = (FarmIndex, KnownFarm)> + '_ {
         self.known_farmers
-            .extract_if(|known_farmer| {
+            .extract_if(.., |known_farmer| {
                 known_farmer.last_identification.elapsed()
                     > self.identification_broadcast_interval * 2
             })
@@ -567,10 +567,10 @@ async fn process_farmer_identify_message<'a, Fut, S>(
     }
 }
 
-async fn remove_farm<'a>(
+async fn remove_farm(
     farm_id: FarmId,
     farm_index: FarmIndex,
-    farms_to_add_remove: &mut VecDeque<AddRemoveFuture<'a>>,
+    farms_to_add_remove: &mut VecDeque<AddRemoveFuture<'_>>,
     plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
 ) {
     farms_to_add_remove.push_back(Box::pin(async move {
