@@ -1678,7 +1678,7 @@ fn check_vote<T: Config>(
                     (reward_address, _signature),
                 ) in current_reward_receivers.iter_mut()
                 {
-                    if public_key != &offender {
+                    if public_key == &offender {
                         // Revoke reward if assigned in current block.
                         reward_address.take();
                     }

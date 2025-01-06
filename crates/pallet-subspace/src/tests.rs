@@ -1122,8 +1122,10 @@ fn vote_equivocation_current_voters_duplicate() {
 
         // Current block author + slot matches that of the vote
         let voter_keypair = Keypair::generate();
+        let other_voter_keypair = Keypair::generate();
         let slot = Subspace::current_slot();
         let reward_address = 0;
+        let other_reward_address = 1;
 
         let signed_vote = create_signed_vote(
             &voter_keypair,
@@ -1153,15 +1155,43 @@ fn vote_equivocation_current_voters_duplicate() {
             map
         });
 
+        // Insert another voter that is not equivocating
+        {
+            let other_signed_vote = create_signed_vote(
+                &other_voter_keypair,
+                2,
+                frame_system::Pallet::<Test>::block_hash(1),
+                slot,
+                Default::default(),
+                Default::default(),
+                archived_segment,
+                other_reward_address,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
+            );
+
+            CurrentBlockVoters::<Test>::mutate(|map| {
+                map.as_mut().unwrap().insert(
+                    (
+                        PublicKey::from(other_voter_keypair.public.to_bytes()),
+                        other_signed_vote.vote.solution().sector_index,
+                        other_signed_vote.vote.solution().piece_offset,
+                        other_signed_vote.vote.solution().chunk,
+                        slot,
+                    ),
+                    (Some(other_reward_address), other_signed_vote.signature),
+                );
+            });
+        }
+
         // Identical vote submitted twice leads to duplicate error
         assert_err!(
             super::check_vote::<Test>(&signed_vote, true),
             CheckVoteError::DuplicateVote
         );
 
-        CurrentBlockVoters::<Test>::put({
-            let mut map = BTreeMap::new();
-            map.insert(
+        CurrentBlockVoters::<Test>::mutate(|map| {
+            map.as_mut().unwrap().insert(
                 (
                     PublicKey::from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
@@ -1171,14 +1201,17 @@ fn vote_equivocation_current_voters_duplicate() {
                 ),
                 (Some(reward_address), RewardSignature::from([0; 64])),
             );
-            map
         });
 
         // Different vote for the same sector index and time slot leads to equivocation
         Subspace::pre_dispatch_vote(&signed_vote).unwrap();
 
-        // Voter doesn't get reward after equivocation
-        assert_eq!(Subspace::find_voting_reward_addresses().len(), 0);
+        // Equivocating voter doesn't get reward, but the other voter does
+        assert_eq!(Subspace::find_voting_reward_addresses().len(), 1);
+        assert_eq!(
+            Subspace::find_voting_reward_addresses().first().unwrap(),
+            &other_reward_address
+        );
     });
 }
 
