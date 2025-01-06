@@ -699,7 +699,7 @@ mod pallet {
     #[pallet::storage]
     pub(super) type AccumulatedTreasuryFunds<T> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
-    /// Storage used to keep track of which consensus block the domain runtime upgrade happen.
+    /// Storage used to keep track of which consensus block each domain runtime upgrade happens in.
     #[pallet::storage]
     pub(super) type DomainRuntimeUpgradeRecords<T: Config> = StorageMap<
         _,
@@ -709,8 +709,8 @@ mod pallet {
         ValueQuery,
     >;
 
-    /// Temporary storage keep track of domain runtime upgrade happen in the current block, cleared
-    /// in the next block initialization.
+    /// Temporary storage to keep track of domain runtime upgrades which happened in the parent
+    /// block. Cleared in the current block's initialization.
     #[pallet::storage]
     pub type DomainRuntimeUpgrades<T> = StorageValue<_, Vec<RuntimeId>, ValueQuery>;
 
@@ -1865,8 +1865,7 @@ mod pallet {
             let parent_number = block_number - One::one();
             let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
 
-            // Record any previous domain runtime upgrade in `DomainRuntimeUpgradeRecords` and then do the
-            // domain runtime upgrade scheduled in the current block
+            // Record any previous domain runtime upgrades in `DomainRuntimeUpgradeRecords`
             for runtime_id in DomainRuntimeUpgrades::<T>::take() {
                 let reference_count = RuntimeRegistry::<T>::get(runtime_id)
                     .expect("Runtime object must be present since domain is insantiated; qed")
@@ -1883,9 +1882,14 @@ mod pallet {
                     });
                 }
             }
+            // Set DomainRuntimeUpgrades to an empty list. (If there are no runtime upgrades
+            // scheduled in the current block, we can generate a proof the list is empty.)
+            DomainRuntimeUpgrades::<T>::set(Vec::new());
+            // Do the domain runtime upgrades scheduled in the current block, and record them in
+            // DomainRuntimeUpgrades
             do_upgrade_runtimes::<T>(block_number);
 
-            // Store the hash of the parent consensus block for domain that have bundles submitted
+            // Store the hash of the parent consensus block for domains that have bundles submitted
             // in that consensus block
             for (domain_id, _) in SuccessfulBundles::<T>::drain() {
                 ConsensusBlockHash::<T>::insert(domain_id, parent_number, parent_hash);
@@ -1896,7 +1900,8 @@ mod pallet {
             }
 
             for (operator_id, slot_set) in OperatorBundleSlot::<T>::drain() {
-                // NOTE: `OperatorBundleSlot` use `BTreeSet` so `last` will return the maximum value in the set
+                // NOTE: `OperatorBundleSlot` uses `BTreeSet` so `last` will return the maximum
+                // value in the set
                 if let Some(highest_slot) = slot_set.last() {
                     OperatorHighestSlot::<T>::insert(operator_id, highest_slot);
                 }
@@ -1908,9 +1913,10 @@ mod pallet {
         }
 
         fn on_finalize(_: BlockNumberFor<T>) {
-            // If this consensus block will derive any domain block, gather the necessary storage for potential fraud proof usage
+            // If this consensus block will derive any domain block, gather the necessary storage
+            // for potential fraud proof usage
             if SuccessfulBundles::<T>::iter_keys().count() > 0
-                || DomainRuntimeUpgrades::<T>::exists()
+                || !DomainRuntimeUpgrades::<T>::get().is_empty()
             {
                 let extrinsics_shuffling_seed = Randomness::from(
                     Into::<H256>::into(Self::extrinsics_shuffling_seed()).to_fixed_bytes(),
@@ -2910,7 +2916,7 @@ impl<T: Config> Pallet<T> {
     }
 
     // Get the domain runtime code that used to derive `receipt`, if the runtime code still present in
-    // the state then get it from the state otherwise from the `maybe_domain_runtime_code_at` prood.
+    // the state then get it from the state otherwise from the `maybe_domain_runtime_code_at` proof.
     pub fn get_domain_runtime_code_for_receipt(
         domain_id: DomainId,
         receipt: &ExecutionReceiptOf<T>,
