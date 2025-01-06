@@ -2513,6 +2513,7 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-core",
+ "sp-externalities",
  "sp-inherents",
  "sp-runtime",
  "sp-state-machine",

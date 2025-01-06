@@ -25,6 +25,7 @@
 //! initialize a block, to push extrinsics and to finalize a block.
 
 #![warn(missing_docs)]
+#![feature(let_chains)]
 
 mod custom_api;
 

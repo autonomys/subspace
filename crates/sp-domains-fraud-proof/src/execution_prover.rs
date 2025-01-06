@@ -6,13 +6,12 @@
 
 use crate::fraud_proof::ExecutionPhase;
 use domain_block_builder::create_delta_backend;
-use hash_db::HashDB;
 use sc_client_api::backend::Backend;
 use sp_api::StorageProof;
 use sp_core::traits::CodeExecutor;
 use sp_runtime::traits::{Block as BlockT, HashingFor};
 use sp_state_machine::backend::AsTrieBackend;
-use sp_trie::DBValue;
+use sp_state_machine::BackendTransaction;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -40,12 +39,12 @@ where
 
     /// Returns a storage proof which can be used to reconstruct a partial state trie to re-run
     /// the execution by someone who does not own the whole state.
-    pub fn prove_execution<DB: HashDB<HashingFor<Block>, DBValue>>(
+    pub fn prove_execution(
         &self,
         at: Block::Hash,
         execution_phase: &ExecutionPhase,
         call_data: &[u8],
-        delta_changes: Option<(DB, Block::Hash)>,
+        delta_changes: Option<(BackendTransaction<HashingFor<Block>>, Block::Hash)>,
     ) -> sp_blockchain::Result<StorageProof> {
         let state = self.backend.state_at(at)?;
 
