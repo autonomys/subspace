@@ -55,11 +55,11 @@ use std::sync::{Arc, Weak};
 use std::time::Duration;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::hashes::Blake3Hash;
-use subspace_core_primitives::objects::GlobalObjectMapping;
+use subspace_core_primitives::objects::{GlobalObjectMapping, ObjectMappingResponse};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
 use subspace_core_primitives::solutions::Solution;
-use subspace_core_primitives::{BlockHash, BlockNumber, PublicKey, SlotNumber};
+use subspace_core_primitives::{BlockHash, PublicKey, SlotNumber};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_kzg::Kzg;
@@ -221,19 +221,6 @@ impl CachedArchivedSegment {
             CachedArchivedSegment::Weak(weak_archived_segment) => weak_archived_segment.upgrade(),
         }
     }
-}
-
-/// Response to object mapping subscription, including a block height.
-/// Large responses are batched, so the block height can be repeated in different responses.
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ObjectMappingResponse {
-    /// The block number that the object mapping is from.
-    pub block_number: BlockNumber,
-
-    /// The object mappings.
-    #[serde(flatten)]
-    pub objects: GlobalObjectMapping,
 }
 
 /// Subspace RPC configuration
