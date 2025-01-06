@@ -26,7 +26,10 @@
 
 #![warn(missing_docs)]
 
+mod custom_api;
+
 use codec::Encode;
+pub use custom_api::{create_delta_backend, DeltaBackend};
 use sc_client_api::backend;
 use sp_api::{
     ApiExt, ApiRef, Core, ProvideRuntimeApi, StorageChanges, StorageProof, TransactionOutcome,

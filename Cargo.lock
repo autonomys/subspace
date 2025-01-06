@@ -2506,6 +2506,7 @@ dependencies = [
 name = "domain-block-builder"
 version = "0.1.0"
 dependencies = [
+ "hash-db",
  "parity-scale-codec",
  "sc-client-api",
  "sp-api",
@@ -11835,7 +11836,6 @@ dependencies = [
  "pallet-ethereum",
  "pallet-evm",
  "parity-scale-codec",
- "parking_lot 0.12.3",
  "rand",
  "rlp",
  "sc-cli",
@@ -11860,7 +11860,6 @@ dependencies = [
  "sp-weights",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "subspace-test-client",
  "subspace-test-service",
  "tempfile",
  "thiserror 2.0.0",

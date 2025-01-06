@@ -5,14 +5,13 @@
 //! (`initialize_block` and `finalize_block`) and any specific extrinsic execution are supported.
 
 use crate::fraud_proof::ExecutionPhase;
-use codec::Codec;
-use hash_db::{HashDB, Hasher, Prefix};
+use domain_block_builder::create_delta_backend;
+use hash_db::HashDB;
 use sc_client_api::backend::Backend;
 use sp_api::StorageProof;
 use sp_core::traits::CodeExecutor;
 use sp_runtime::traits::{Block as BlockT, HashingFor};
 use sp_state_machine::backend::AsTrieBackend;
-use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
 use sp_trie::DBValue;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -84,55 +83,6 @@ where
             )
             .map(|(_ret, proof)| proof)
             .map_err(Into::into)
-        }
-    }
-}
-
-/// Create a new trie backend with memory DB delta changes.
-///
-/// This can be used to verify any extrinsic-specific execution on the combined state of `backend`
-/// and `delta`.
-fn create_delta_backend<'a, S, H, DB>(
-    backend: &'a TrieBackend<S, H>,
-    delta: DB,
-    post_delta_root: H::Out,
-) -> TrieBackend<DeltaBackend<'a, S, H, DB>, H>
-where
-    S: 'a + TrieBackendStorage<H>,
-    H: 'a + Hasher,
-    H::Out: Codec,
-    DB: HashDB<H, DBValue>,
-{
-    let essence = backend.essence();
-    let delta_backend = DeltaBackend {
-        backend: essence.backend_storage(),
-        delta,
-        _phantom: PhantomData::<H>,
-    };
-    TrieBackendBuilder::new(delta_backend, post_delta_root).build()
-}
-
-struct DeltaBackend<'a, S, H, DB>
-where
-    S: 'a + TrieBackendStorage<H>,
-    H: 'a + Hasher,
-    DB: HashDB<H, DBValue>,
-{
-    backend: &'a S,
-    delta: DB,
-    _phantom: PhantomData<H>,
-}
-
-impl<'a, S, H, DB> TrieBackendStorage<H> for DeltaBackend<'a, S, H, DB>
-where
-    S: 'a + TrieBackendStorage<H>,
-    H: 'a + Hasher,
-    DB: HashDB<H, DBValue>,
-{
-    fn get(&self, key: &H::Out, prefix: Prefix) -> Result<Option<DBValue>, String> {
-        match HashDB::get(&self.delta, key, prefix) {
-            Some(v) => Ok(Some(v)),
-            None => Ok(self.backend.get(key, prefix)?),
         }
     }
 }
