@@ -286,14 +286,18 @@ where
     }
 }
 
+/// A proof of a single domain runtime upgrade (or that there wasn't an upgrade).
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct DomainRuntimeUpgradedProof {
+pub struct MaybeDomainRuntimeUpgradedProof {
+    /// A list of domain runtime upgrades for a block.
     pub domain_runtime_upgrades: DomainRuntimeUpgradesProof,
+
+    /// The new domain runtime code, if the domain runtime was upgraded.
     pub new_domain_runtime_code: Option<DomainRuntimeCodeProof>,
 }
 
-impl DomainRuntimeUpgradedProof {
-    /// Generate the `DomainRuntimeUpgradedProof`.
+impl MaybeDomainRuntimeUpgradedProof {
+    /// Generate the `MaybeDomainRuntimeUpgradedProof`.
     /// It is the caller's responsibility to check if the domain runtime is upgraded at
     /// `block_hash`. If it is, the `maybe_runtime_id` should be `Some`.
     #[cfg(feature = "std")]
@@ -324,7 +328,7 @@ impl DomainRuntimeUpgradedProof {
         } else {
             None
         };
-        Ok(DomainRuntimeUpgradedProof {
+        Ok(MaybeDomainRuntimeUpgradedProof {
             domain_runtime_upgrades,
             new_domain_runtime_code,
         })

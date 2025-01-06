@@ -389,7 +389,7 @@ where
             &self.storage_key_provider,
         )?;
 
-        let domain_runtime_upgraded_proof = DomainRuntimeUpgradedProof::generate(
+        let maybe_domain_runtime_upgraded_proof = MaybeDomainRuntimeUpgradedProof::generate(
             &self.storage_key_provider,
             self.consensus_client.as_ref(),
             consensus_block_hash,
@@ -418,7 +418,7 @@ where
             proof: FraudProofVariant::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof {
                 valid_bundle_digests,
                 invalid_inherent_extrinsic_proofs,
-                domain_runtime_upgraded_proof,
+                maybe_domain_runtime_upgraded_proof,
                 domain_chain_allowlist_proof,
                 domain_sudo_call_proof,
             }),
