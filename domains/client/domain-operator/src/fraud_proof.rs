@@ -14,8 +14,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{
-    DomainId, DomainsApi, DomainsDigestItem, ExtrinsicDigest, HeaderHashingFor, InvalidBundleType,
-    RuntimeId,
+    DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, InvalidBundleType, RuntimeId,
 };
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
@@ -432,13 +431,6 @@ where
         domain_id: DomainId,
         at: CBlock::Hash,
     ) -> Result<Option<RuntimeId>, FraudProofError> {
-        let header =
-            self.consensus_client
-                .header(at)?
-                .ok_or(sp_blockchain::Error::MissingHeader(format!(
-                    "No header found for {at:?}"
-                )))?;
-
         let runtime_id = self
             .consensus_client
             .runtime_api()
@@ -446,13 +438,9 @@ where
             .ok_or(sp_blockchain::Error::Application(Box::from(format!(
                 "No RuntimeId found for {domain_id:?}"
             ))))?;
+        let runtime_upgrades = self.consensus_client.runtime_api().runtime_upgrades(at)?;
 
-        let is_runtime_upgraded = header
-            .digest()
-            .logs
-            .iter()
-            .filter_map(|log| log.as_domain_runtime_upgrade())
-            .any(|upgraded_runtime_id| upgraded_runtime_id == runtime_id);
+        let is_runtime_upgraded = runtime_upgrades.contains(&runtime_id);
 
         Ok(is_runtime_upgraded.then_some(runtime_id))
     }
