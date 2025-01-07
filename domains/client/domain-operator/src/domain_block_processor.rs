@@ -3,7 +3,7 @@ use crate::fraud_proof::FraudProofGenerator;
 use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
-use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
+use domain_block_builder::{BlockBuilder, BuiltBlock};
 use domain_block_preprocessor::inherents::get_inherent_data;
 use domain_block_preprocessor::PreprocessResult;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
@@ -426,7 +426,6 @@ where
             &*self.client,
             parent_hash,
             parent_number,
-            RecordProof::No,
             inherent_digests,
             &*self.backend,
             extrinsics,
@@ -436,7 +435,6 @@ where
         let BuiltBlock {
             block,
             storage_changes,
-            proof: _,
         } = block_builder.build()?;
 
         let (header, body) = block.deconstruct();

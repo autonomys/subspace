@@ -32,102 +32,29 @@ mod custom_api;
 use codec::Encode;
 pub use custom_api::{create_delta_backend, DeltaBackend};
 use sc_client_api::backend;
-use sp_api::{
-    ApiExt, ApiRef, Core, ProvideRuntimeApi, StorageChanges, StorageProof, TransactionOutcome,
-};
+use sp_api::{ApiExt, ApiRef, Core, ProvideRuntimeApi, StorageChanges, TransactionOutcome};
 pub use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{ApplyExtrinsicFailed, Error};
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Hash, HashingFor, Header as HeaderT, NumberFor, One};
 use sp_runtime::Digest;
 use std::collections::VecDeque;
 
-/// Used as parameter to [`BlockBuilderProvider`] to express if proof recording should be enabled.
-///
-/// When `RecordProof::Yes` is given, all accessed trie nodes should be saved. These recorded
-/// trie nodes can be used by a third party to proof this proposal without having access to the
-/// full storage.
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum RecordProof {
-    /// `Yes`, record a proof.
-    Yes,
-    /// `No`, don't record any proof.
-    No,
-}
-
-impl RecordProof {
-    /// Returns if `Self` == `Yes`.
-    pub fn yes(&self) -> bool {
-        matches!(self, Self::Yes)
-    }
-}
-
-/// Will return [`RecordProof::No`] as default value.
-impl Default for RecordProof {
-    #[inline]
-    fn default() -> Self {
-        Self::No
-    }
-}
-
-impl From<bool> for RecordProof {
-    #[inline]
-    fn from(val: bool) -> Self {
-        if val {
-            Self::Yes
-        } else {
-            Self::No
-        }
-    }
-}
-
 /// A block that was build by [`BlockBuilder`] plus some additional data.
 ///
 /// This additional data includes the `storage_changes`, these changes can be applied to the
-/// backend to get the state of the block. Furthermore an optional `proof` is included which
-/// can be used to proof that the build block contains the expected data. The `proof` will
-/// only be set when proof recording was activated.
+/// backend to get the state of the block.
 pub struct BuiltBlock<Block: BlockT> {
     /// The actual block that was build.
     pub block: Block,
     /// The changes that need to be applied to the backend to get the state of the build block.
     pub storage_changes: StorageChanges<Block>,
-    /// An optional proof that was recorded while building the block.
-    pub proof: Option<StorageProof>,
 }
 
 impl<Block: BlockT> BuiltBlock<Block> {
     /// Convert into the inner values.
-    pub fn into_inner(self) -> (Block, StorageChanges<Block>, Option<StorageProof>) {
-        (self.block, self.storage_changes, self.proof)
+    pub fn into_inner(self) -> (Block, StorageChanges<Block>) {
+        (self.block, self.storage_changes)
     }
-}
-
-/// Block builder provider
-pub trait BlockBuilderProvider<B, Block, RA>
-where
-    Block: BlockT,
-    B: backend::Backend<Block>,
-    Self: Sized,
-    RA: ProvideRuntimeApi<Block>,
-{
-    /// Create a new block, built on top of `parent`.
-    ///
-    /// When proof recording is enabled, all accessed trie nodes are saved.
-    /// These recorded trie nodes can be used by a third party to proof the
-    /// output of this block builder without having access to the full storage.
-    fn new_block_at<R: Into<RecordProof>>(
-        &self,
-        parent: &BlockId<Block>,
-        inherent_digests: Digest,
-        record_proof: R,
-    ) -> sp_blockchain::Result<BlockBuilder<Block, RA, B>>;
-
-    /// Create a new block, built on the head of the chain.
-    fn new_block(
-        &self,
-        inherent_digests: Digest,
-    ) -> sp_blockchain::Result<BlockBuilder<Block, RA, B>>;
 }
 
 /// Utility for building new (valid) blocks from a stream of extrinsics.
@@ -136,8 +63,6 @@ pub struct BlockBuilder<'a, Block: BlockT, A: ProvideRuntimeApi<Block>, B> {
     api: ApiRef<'a, A::Api>,
     parent_hash: Block::Hash,
     backend: &'a B,
-    /// The estimated size of the block header.
-    estimated_header_size: usize,
 }
 
 impl<'a, Block, A, B> BlockBuilder<'a, Block, A, B>
@@ -157,7 +82,6 @@ where
         api: &'a A,
         parent_hash: Block::Hash,
         parent_number: NumberFor<Block>,
-        record_proof: RecordProof,
         inherent_digests: Digest,
         backend: &'a B,
         mut extrinsics: VecDeque<Block::Extrinsic>,
@@ -171,14 +95,7 @@ where
             inherent_digests,
         );
 
-        let estimated_header_size = header.encoded_size();
-
-        let mut api = api.runtime_api();
-
-        if record_proof.yes() {
-            api.record_proof();
-        }
-
+        let api = api.runtime_api();
         api.initialize_block(parent_hash, &header)?;
 
         if let Some(inherent_data) = maybe_inherent_data {
@@ -195,7 +112,6 @@ where
             extrinsics,
             api,
             backend,
-            estimated_header_size,
         })
     }
 
@@ -273,7 +189,7 @@ where
     /// Returns the build `Block`, the changes to the storage and an optional `StorageProof`
     /// supplied by `self.api`, combined as [`BuiltBlock`].
     /// The storage proof will be `Some(_)` when proof recording was enabled.
-    pub fn build(mut self) -> Result<BuiltBlock<Block>, Error> {
+    pub fn build(self) -> Result<BuiltBlock<Block>, Error> {
         self.execute_extrinsics()?;
 
         let header = self.api.finalize_block(self.parent_hash)?;
@@ -286,14 +202,11 @@ where
             ),
         );
 
-        let proof = self.api.extract_proof();
-
         let storage_changes = self.collect_storage_changes()?;
 
         Ok(BuiltBlock {
             block: Block::new(header, self.extrinsics.into()),
             storage_changes,
-            proof,
         })
     }
 
@@ -313,24 +226,6 @@ where
             })
             .map_err(|e| Error::Application(Box::new(e)))?;
         Ok(VecDeque::from(exts))
-    }
-
-    /// Estimate the size of the block in the current state.
-    ///
-    /// If `include_proof` is `true`, the estimated size of the storage proof will be added
-    /// to the estimation.
-    pub fn estimate_block_size(&self, include_proof: bool) -> usize {
-        let size = self.estimated_header_size + self.extrinsics.encoded_size();
-
-        if include_proof {
-            size + self
-                .api
-                .proof_recorder()
-                .map(|pr| pr.estimate_encoded_size())
-                .unwrap_or(0)
-        } else {
-            size
-        }
     }
 }
 

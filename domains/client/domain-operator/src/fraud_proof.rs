@@ -1,7 +1,7 @@
 use crate::aux_schema::BundleMismatchType;
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
-use domain_block_builder::{BlockBuilder, RecordProof};
+use domain_block_builder::BlockBuilder;
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::CheckExtrinsicsValidityError;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -231,7 +231,6 @@ where
             &*self.client,
             parent_header.hash(),
             *parent_header.number(),
-            RecordProof::No,
             inherent_digests.clone(),
             &*self.backend,
             extrinsics.into(),
