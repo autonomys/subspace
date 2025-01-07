@@ -1496,10 +1496,13 @@ sp_api::decl_runtime_apis! {
         /// Returns the WASM bundle for given `domain_id`.
         fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>>;
 
-        /// Returns the runtime id for given `domain_id`.
+        /// Returns the runtime id for the given `domain_id`.
         fn runtime_id(domain_id: DomainId) -> Option<RuntimeId>;
 
-        /// Returns the domain instance data for given `domain_id`.
+        /// Returns the list of runtime upgrades in the current block.
+        fn runtime_upgrades() -> Vec<RuntimeId>;
+
+        /// Returns the domain instance data for the given `domain_id`.
         fn domain_instance_data(domain_id: DomainId) -> Option<(DomainInstanceData, NumberFor<Block>)>;
 
         /// Returns the current timestamp at given height.

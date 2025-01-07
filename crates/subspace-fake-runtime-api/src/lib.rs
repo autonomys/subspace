@@ -210,6 +210,10 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
+        fn runtime_upgrades() -> Vec<sp_domains::RuntimeId> {
+            unreachable!()
+        }
+
         fn domain_instance_data(_domain_id: DomainId) -> Option<(DomainInstanceData, NumberFor<Block>)> {
             unreachable!()
         }
