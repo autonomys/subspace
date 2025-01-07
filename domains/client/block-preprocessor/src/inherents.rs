@@ -13,12 +13,12 @@
 //! Deriving these extrinsics during fraud proof verification should be possible since
 //! verification environment will have access to consensus chain.
 
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, DomainsApi};
+use sp_domains::{DomainId, DomainsApi, DomainsDigestItem};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use sp_timestamp::InherentType;
 use std::error::Error;
 use std::sync::Arc;
@@ -70,14 +70,39 @@ where
     Block: BlockT,
 {
     let runtime_api = consensus_client.runtime_api();
+
     let runtime_id = runtime_api
         .runtime_id(consensus_block_hash, domain_id)?
         .ok_or(sp_blockchain::Error::Application(Box::from(format!(
             "No RuntimeId found for {domain_id:?}"
         ))))?;
-    let runtime_upgrades = runtime_api.runtime_upgrades(consensus_block_hash)?;
 
-    Ok(runtime_upgrades.contains(&runtime_id))
+    // The runtime_upgrades() API is only present in API versions 2 and later. On earlier versions,
+    // we need to call legacy code.
+    // TODO: remove version check before next network
+    let domains_api_version = runtime_api
+        .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_block_hash)?
+        // It is safe to return a default version of 1, since there will always be version 1.
+        .unwrap_or(1);
+
+    let is_upgraded = if domains_api_version >= 2 {
+        let runtime_upgrades = runtime_api.runtime_upgrades(consensus_block_hash)?;
+        runtime_upgrades.contains(&runtime_id)
+    } else {
+        let header = consensus_client.header(consensus_block_hash)?.ok_or(
+            sp_blockchain::Error::MissingHeader(format!(
+                "No header found for {consensus_block_hash:?}"
+            )),
+        )?;
+        header
+            .digest()
+            .logs
+            .iter()
+            .filter_map(|log| log.as_domain_runtime_upgrade())
+            .any(|upgraded_runtime_id| upgraded_runtime_id == runtime_id)
+    };
+
+    Ok(is_upgraded)
 }
 
 /// Returns new upgraded runtime if upgraded did happen in the provided consensus block.
@@ -92,16 +117,9 @@ where
     CBlock: BlockT,
     Block: BlockT,
 {
-    let runtime_api = consensus_client.runtime_api();
-    let runtime_id = runtime_api
-        .runtime_id(consensus_block_hash, domain_id)?
-        .ok_or(sp_blockchain::Error::Application(Box::from(format!(
-            "No RuntimeId found for {domain_id:?}"
-        ))))?;
-    let runtime_upgrades = runtime_api.runtime_upgrades(consensus_block_hash)?;
-
-    if runtime_upgrades.contains(&runtime_id) {
-        let new_domain_runtime = runtime_api
+    if is_runtime_upgraded::<_, _, Block>(consensus_client, consensus_block_hash, domain_id)? {
+        let new_domain_runtime = consensus_client
+            .runtime_api()
             .domain_runtime_code(consensus_block_hash, domain_id)?
             .ok_or_else(|| {
                 sp_blockchain::Error::Application(Box::from(format!(

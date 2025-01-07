@@ -1476,7 +1476,10 @@ pub enum OperatorRewardSource<Number> {
 }
 
 sp_api::decl_runtime_apis! {
-    /// API necessary for domains pallet.
+    /// APIs used to access the domains pallet.
+    // When updating this version, document new APIs with "Only present in API versions" comments.
+    // TODO: when removing this version, also remove "Only present in API versions" comments.
+    #[api_version(2)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
@@ -1500,6 +1503,7 @@ sp_api::decl_runtime_apis! {
         fn runtime_id(domain_id: DomainId) -> Option<RuntimeId>;
 
         /// Returns the list of runtime upgrades in the current block.
+        /// Only present in API versions 2 and later.
         fn runtime_upgrades() -> Vec<RuntimeId>;
 
         /// Returns the domain instance data for the given `domain_id`.
