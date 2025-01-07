@@ -21,7 +21,7 @@ use std::sync::Arc;
 type TrieBackendStorageFor<State, Block> =
     <State as StateBackend<HashingFor<Block>>>::TrieBackendStorage;
 
-type TrieDeltaBackendFor<'a, State, Block> = TrieBackend<
+pub(crate) type TrieDeltaBackendFor<'a, State, Block> = TrieBackend<
     DeltaBackend<'a, TrieBackendStorageFor<State, Block>, HashingFor<Block>>,
     HashingFor<Block>,
 >;
@@ -31,7 +31,10 @@ type TrieBackendFor<State, Block> =
 
 /// Storage changes are the collected throughout the execution.
 pub struct CollectedStorageChanges<H: Hasher> {
+    /// Storage changes that are captured during the execution.
+    /// Can be used for block import.
     pub storage_changes: StorageChanges<H>,
+    /// Intermediate storage roots in between the execution.
     pub intermediate_roots: Vec<H::Out>,
 }
 
@@ -120,7 +123,7 @@ pub(crate) struct TrieBackendApi<Client, Block: BlockT, Backend: backend::Backen
     parent_number: NumberFor<Block>,
     client: Arc<Client>,
     state: Backend::State,
-    executor: Exec,
+    executor: Arc<Exec>,
     maybe_storage_changes: Option<StorageChanges<HashingFor<Block>>>,
     intermediate_roots: Vec<Block::Hash>,
 }
@@ -137,7 +140,7 @@ where
         parent_number: NumberFor<Block>,
         client: Arc<Client>,
         backend: Arc<Backend>,
-        executor: Exec,
+        executor: Arc<Exec>,
     ) -> Result<Self, sp_blockchain::Error> {
         let state = backend.state_at(parent_hash)?;
         Ok(Self {
@@ -167,7 +170,7 @@ where
         let result = StateMachine::<_, _, _>::new(
             trie_backend,
             overlayed_changes,
-            &self.executor,
+            &*self.executor,
             method,
             call_data.as_slice(),
             &mut extensions,
@@ -303,7 +306,7 @@ where
             &TrieDeltaBackendFor<Backend::State, Block>,
             RuntimeCode,
             &mut OverlayedChanges<HashingFor<Block>>,
-        ) -> TransactionOutcome<R>,
+        ) -> TransactionOutcome<Result<R, sp_blockchain::Error>>,
         R: Decode,
     {
         let trie_backend = self.state.as_trie_backend();
@@ -330,7 +333,7 @@ where
             &mut overlayed_changes,
         );
 
-        let result = match outcome {
+        match outcome {
             TransactionOutcome::Commit(result) => {
                 let state_version = sp_core::storage::StateVersion::V1;
                 let storage_changes = overlayed_changes
@@ -340,8 +343,6 @@ where
                 result
             }
             TransactionOutcome::Rollback(result) => result,
-        };
-
-        Ok(result)
+        }
     }
 }

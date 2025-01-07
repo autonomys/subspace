@@ -3,10 +3,10 @@ use crate::fraud_proof::FraudProofGenerator;
 use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
-use domain_block_builder::{BlockBuilder, BuiltBlock};
+use domain_block_builder::{BlockBuilder, BuiltBlock, CollectedStorageChanges};
 use domain_block_preprocessor::inherents::get_inherent_data;
 use domain_block_preprocessor::PreprocessResult;
-use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
+use sc_client_api::{AuxStore, BlockBackend, ExecutorProvider, Finalizer, ProofProvider};
 use sc_consensus::{
     BlockImportParams, BoxBlockImport, ForkChoiceStrategy, ImportResult, StateAction,
     StorageChanges,
@@ -51,7 +51,7 @@ where
 }
 
 /// An abstracted domain block processor.
-pub(crate) struct DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>
+pub(crate) struct DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, Executor>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -65,10 +65,11 @@ where
     pub(crate) block_import: Arc<BoxBlockImport<Block>>,
     pub(crate) import_notification_sinks: DomainImportNotificationSinks<Block, CBlock>,
     pub(crate) domain_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
+    pub(crate) domain_executor: Arc<Executor>,
 }
 
-impl<Block, CBlock, Client, CClient, Backend> Clone
-    for DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>
+impl<Block, CBlock, Client, CClient, Backend, Executor> Clone
+    for DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, Executor>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -84,6 +85,7 @@ where
             block_import: self.block_import.clone(),
             import_notification_sinks: self.import_notification_sinks.clone(),
             domain_sync_oracle: self.domain_sync_oracle.clone(),
+            domain_executor: self.domain_executor.clone(),
         }
     }
 }
@@ -102,8 +104,8 @@ pub(crate) struct PendingConsensusBlocks<Block: BlockT, CBlock: BlockT> {
     pub consensus_imports: Vec<HashAndNumber<CBlock>>,
 }
 
-impl<Block, CBlock, Client, CClient, Backend>
-    DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>
+impl<Block, CBlock, Client, CClient, Backend, Executor>
+    DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, Executor>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -113,6 +115,7 @@ where
         + AuxStore
         + ProvideRuntimeApi<Block>
         + Finalizer<Block, Backend>
+        + ExecutorProvider<Block>
         + 'static,
     Client::Api:
         DomainCoreApi<Block> + sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
@@ -125,6 +128,7 @@ where
         + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
         + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
+    Executor: CodeExecutor,
 {
     /// Returns a list of consensus blocks waiting to be processed if any.
     ///
@@ -423,11 +427,12 @@ where
         inherent_data: sp_inherents::InherentData,
     ) -> Result<DomainBlockBuildResult<Block>, sp_blockchain::Error> {
         let block_builder = BlockBuilder::new(
-            &*self.client,
+            self.client.clone(),
             parent_hash,
             parent_number,
             inherent_digests,
-            &*self.backend,
+            self.backend.clone(),
+            self.domain_executor.clone(),
             extrinsics,
             Some(inherent_data),
         )?;
@@ -436,6 +441,11 @@ where
             block,
             storage_changes,
         } = block_builder.build()?;
+
+        let CollectedStorageChanges {
+            storage_changes,
+            intermediate_roots: _,
+        } = storage_changes;
 
         let (header, body) = block.deconstruct();
         let state_root = *header.state_root();
@@ -711,6 +721,7 @@ where
         + BlockBackend<Block>
         + ProofProvider<Block>
         + AuxStore
+        + ExecutorProvider<Block>
         + ProvideRuntimeApi<Block>
         + 'static,
     Client::Api: DomainCoreApi<Block>
