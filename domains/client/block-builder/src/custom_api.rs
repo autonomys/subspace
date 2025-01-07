@@ -7,6 +7,7 @@ use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::{backend, ExecutorProvider, StateBackend};
 use sp_core::traits::{CallContext, CodeExecutor, RuntimeCode};
+use sp_inherents::InherentData;
 use sp_runtime::traits::{Block as BlockT, HashingFor, NumberFor};
 use sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode, TransactionOutcome};
 use sp_state_machine::backend::AsTrieBackend;
@@ -27,6 +28,12 @@ type TrieDeltaBackendFor<'a, State, Block> = TrieBackend<
 
 type TrieBackendFor<State, Block> =
     TrieBackend<TrieBackendStorageFor<State, Block>, HashingFor<Block>>;
+
+/// Storage changes are the collected throughout the execution.
+pub struct CollectedStorageChanges<H: Hasher> {
+    pub storage_changes: StorageChanges<H>,
+    pub intermediate_roots: Vec<H::Out>,
+}
 
 /// Create a new trie backend with memory DB delta changes.
 ///
@@ -115,6 +122,7 @@ pub(crate) struct TrieBackendApi<Client, Block: BlockT, Backend: backend::Backen
     state: Backend::State,
     executor: Exec,
     maybe_storage_changes: Option<StorageChanges<HashingFor<Block>>>,
+    intermediate_roots: Vec<Block::Hash>,
 }
 
 impl<Client, Block, Backend, Exec> TrieBackendApi<Client, Block, Backend, Exec>
@@ -139,6 +147,7 @@ where
             state,
             executor,
             maybe_storage_changes: None,
+            intermediate_roots: vec![],
         })
     }
 
@@ -184,6 +193,8 @@ where
                 .offchain_storage_changes
                 .append(&mut changes.offchain_storage_changes);
             current_changes.transaction.consolidate(changes.transaction);
+            self.intermediate_roots
+                .push(current_changes.transaction_storage_root);
             current_changes.transaction_storage_root = changes.transaction_storage_root;
             current_changes
                 .transaction_index_changes
@@ -242,6 +253,44 @@ where
             runtime_code,
             overlayed_changes,
         )
+    }
+
+    pub(crate) fn inherent_extrinsics(
+        &self,
+        inherent: InherentData,
+        backend: &TrieDeltaBackendFor<Backend::State, Block>,
+        runtime_code: RuntimeCode,
+        overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>,
+    ) -> Result<Vec<<Block as BlockT>::Extrinsic>, sp_blockchain::Error> {
+        let call_data = inherent.encode();
+        self.call_function(
+            "BlockBuilder_inherent_extrinsics",
+            call_data,
+            backend,
+            runtime_code,
+            overlayed_changes,
+        )
+    }
+
+    /// Collect storage changes returns the storage changes and intermediate roots collected so far.
+    /// The changes are reset after this call.
+    /// Could return None if there were no execution done.
+    pub(crate) fn collect_storage_changes(
+        &mut self,
+    ) -> Option<CollectedStorageChanges<HashingFor<Block>>> {
+        let mut intermediate_roots = self.intermediate_roots.drain(..).collect::<Vec<_>>();
+        // we did not add the last transaction storage root.
+        // include that and then return
+        let maybe_storage_changes = self.maybe_storage_changes.take();
+        if let Some(storage_changes) = maybe_storage_changes {
+            intermediate_roots.push(storage_changes.transaction_storage_root);
+            Some(CollectedStorageChanges {
+                storage_changes,
+                intermediate_roots,
+            })
+        } else {
+            None
+        }
     }
 
     pub(crate) fn execute_in_transaction<F, R>(
