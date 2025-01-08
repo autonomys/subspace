@@ -1318,6 +1318,10 @@ impl_runtime_apis! {
             Domains::runtime_id(domain_id)
         }
 
+        fn runtime_upgrades() -> Vec<sp_domains::RuntimeId> {
+            Domains::runtime_upgrades()
+        }
+
         fn domain_instance_data(domain_id: DomainId) -> Option<(DomainInstanceData, NumberFor<Block>)> {
             Domains::domain_instance_data(domain_id)
         }

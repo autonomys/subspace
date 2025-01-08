@@ -1448,14 +1448,6 @@ pub fn system_digest_final_key() -> Vec<u8> {
     frame_support::storage::storage_prefix("System".as_ref(), "Digest".as_ref()).to_vec()
 }
 
-// TODO: This is used to keep compatible with gemini-3h, remove before next network
-/// This is a representation of actual Block Fees storage in pallet-block-fees.
-/// Any change in key or value there should be changed here accordingly.
-pub fn operator_block_fees_final_key() -> Vec<u8> {
-    frame_support::storage::storage_prefix("BlockFees".as_ref(), "CollectedBlockFees".as_ref())
-        .to_vec()
-}
-
 /// Hook to handle chain rewards.
 pub trait OnChainRewards<Balance> {
     fn on_chain_rewards(chain_id: ChainId, reward: Balance);
@@ -1476,15 +1468,18 @@ pub enum OperatorRewardSource<Number> {
 }
 
 sp_api::decl_runtime_apis! {
-    /// API necessary for domains pallet.
+    /// APIs used to access the domains pallet.
+    // When updating this version, document new APIs with "Only present in API versions" comments.
+    // TODO: when removing this version, also remove "Only present in API versions" comments.
+    #[api_version(2)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
 
-        // Submit singleton receipt via an unsigned extrinsic.
+        // Submits a singleton receipt via an unsigned extrinsic.
         fn submit_receipt_unsigned(singleton_receipt: SealedSingletonReceipt<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
 
-        /// Extract the bundles stored successfully from the given extrinsics.
+        /// Extracts the bundles successfully stored from the given extrinsics.
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
@@ -1493,22 +1488,26 @@ sp_api::decl_runtime_apis! {
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed() -> Randomness;
 
-        /// Returns the WASM bundle for given `domain_id`.
+        /// Returns the current WASM bundle for the given `domain_id`.
         fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>>;
 
-        /// Returns the runtime id for given `domain_id`.
+        /// Returns the runtime id for the given `domain_id`.
         fn runtime_id(domain_id: DomainId) -> Option<RuntimeId>;
 
-        /// Returns the domain instance data for given `domain_id`.
+        /// Returns the list of runtime upgrades in the current block.
+        /// Only present in API versions 2 and later.
+        fn runtime_upgrades() -> Vec<RuntimeId>;
+
+        /// Returns the domain instance data for the given `domain_id`.
         fn domain_instance_data(domain_id: DomainId) -> Option<(DomainInstanceData, NumberFor<Block>)>;
 
-        /// Returns the current timestamp at given height.
+        /// Returns the current timestamp at the current height.
         fn timestamp() -> Moment;
 
         /// Returns the current Tx range for the given domain Id.
         fn domain_tx_range(domain_id: DomainId) -> U256;
 
-        /// Return the genesis state root if not pruned
+        /// Returns the genesis state root if not pruned.
         fn genesis_state_root(domain_id: DomainId) -> Option<H256>;
 
         /// Returns the best execution chain number.
@@ -1523,38 +1522,38 @@ sp_api::decl_runtime_apis! {
         /// Returns true if there are any ERs in the challenge period with non empty extrinsics.
         fn non_empty_er_exists(domain_id: DomainId) -> bool;
 
-        /// Returns the current best number of the domain.
+        /// Returns the current best block number for the domain.
         fn domain_best_number(domain_id: DomainId) -> Option<HeaderNumberFor<DomainHeader>>;
 
-        /// Returns the execution receipt
+        /// Returns the execution receipt with the given hash.
         fn execution_receipt(receipt_hash: HeaderHashFor<DomainHeader>) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
 
-        /// Returns the current epoch and the next epoch operators of the given domain
+        /// Returns the current epoch and the next epoch operators of the given domain.
         fn domain_operators(domain_id: DomainId) -> Option<(BTreeMap<OperatorId, Balance>, Vec<OperatorId>)>;
 
-        /// Returns the execution receipt hash of the given domain and domain block number
+        /// Returns the execution receipt hash of the given domain and domain block number.
         fn receipt_hash(domain_id: DomainId, domain_number: HeaderNumberFor<DomainHeader>) -> Option<HeaderHashFor<DomainHeader>>;
 
-        /// Return the consensus chain byte fee that will used to charge the domain transaction for consensus
-        /// chain storage fee
+        /// Returns the consensus chain byte fee that will used to charge the domain transaction for consensus
+        /// chain storage fees.
         fn consensus_chain_byte_fee() -> Balance;
 
-        /// Returns the latest confirmed domain block number and hash
+        /// Returns the latest confirmed domain block number and hash.
         fn latest_confirmed_domain_block(domain_id: DomainId) -> Option<(HeaderNumberFor<DomainHeader>, HeaderHashFor<DomainHeader>)>;
 
-        /// Return if the receipt is exist and pending to prune
+        /// Returns if the receipt is exist and pending to prune
         fn is_bad_er_pending_to_prune(domain_id: DomainId, receipt_hash: HeaderHashFor<DomainHeader>) -> bool;
 
-        /// Return the balance of the storage fund account
+        /// Returns the balance of the storage fund account.
         fn storage_fund_account_balance(operator_id: OperatorId) -> Balance;
 
-        /// Return if the domain runtime code is upgraded since `at`
+        /// Returns true if the given domain's runtime code has been upgraded since `at`.
         fn is_domain_runtime_upgraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool>;
 
-        /// Return domain sudo call.
+        /// Returns the domain sudo calls for the given domain, if any.
         fn domain_sudo_call(domain_id: DomainId) -> Option<Vec<u8>>;
 
-        /// Return last confirmed domain block execution receipt.
+        /// Returns the last confirmed domain block execution receipt.
         fn last_confirmed_domain_block_receipt(domain_id: DomainId) ->Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
 }
 

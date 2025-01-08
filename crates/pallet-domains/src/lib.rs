@@ -2102,9 +2102,15 @@ impl<T: Config> Pallet<T> {
         Ok(HeadDomainNumber::<T>::get(domain_id) + missed_upgrade.into())
     }
 
+    /// Returns the runtime ID for the supplied `domain_id`, if that domain exists.
     pub fn runtime_id(domain_id: DomainId) -> Option<RuntimeId> {
         DomainRegistry::<T>::get(domain_id)
             .map(|domain_object| domain_object.domain_config.runtime_id)
+    }
+
+    /// Returns the list of runtime upgrades in the current block.
+    pub fn runtime_upgrades() -> Vec<RuntimeId> {
+        DomainRuntimeUpgrades::<T>::get()
     }
 
     pub fn domain_instance_data(
