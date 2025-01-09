@@ -53,7 +53,7 @@ use frame_support::ensure;
 use frame_support::pallet_prelude::StorageVersion;
 use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_support::traits::tokens::{Fortitude, Preservation};
-use frame_support::traits::{Get, Randomness as RandomnessT};
+use frame_support::traits::{Get, Randomness as RandomnessT, Time};
 use frame_support::weights::Weight;
 use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
@@ -86,6 +86,7 @@ use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrProofVerifier};
 pub use staking::OperatorConfig;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::{BlockHash, SlotNumber, U256};
+use subspace_runtime_primitives::{Balance, Moment, StorageFee};
 
 /// Maximum number of nominators to slash within a give operator at a time.
 pub const MAX_NOMINATORS_TO_SLASH: u32 = 10;
@@ -248,7 +249,7 @@ mod pallet {
     use sp_std::fmt::Debug;
     use sp_subspace_mmr::MmrProofVerifier;
     use subspace_core_primitives::{Randomness, U256};
-    use subspace_runtime_primitives::{Balance, StorageFee};
+    use subspace_runtime_primitives::StorageFee;
 
     #[pallet::config]
     pub trait Config: frame_system::Config<Hash: Into<H256> + From<H256>> {
@@ -1924,18 +1925,10 @@ mod pallet {
 
                 // There are no actual conversions here, but the trait bounds required to prove that
                 // (and debug-print the error in expect()) are very verbose.
-                let timestamp = T::BlockTimestamp::now()
-                    .try_into()
-                    .map_err(|_| ())
-                    .expect("Moment is the same type in both pallets; qed");
-                let transaction_byte_fee: Balance = T::StorageFee::transaction_byte_fee()
-                    .try_into()
-                    .map_err(|_| ())
-                    .expect("Balance is the same type in both pallets; qed");
+                let timestamp = Self::timestamp_value();
 
                 // The value returned by the consensus_chain_byte_fee() runtime API
-                let consensus_transaction_byte_fee =
-                    sp_domains::DOMAIN_STORAGE_FEE_MULTIPLIER * transaction_byte_fee;
+                let consensus_transaction_byte_fee = Self::consensus_transaction_byte_fee_value();
 
                 let invalid_inherent_extrinsic_data = InvalidInherentExtrinsicData {
                     extrinsics_shuffling_seed,
@@ -2785,6 +2778,49 @@ impl<T: Config> Pallet<T> {
         let subject = DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT;
         let (randomness, _) = T::Randomness::random(subject);
         randomness
+    }
+
+    /// The external function used to access the timestamp stored in
+    /// `BlockInvalidInherentExtrinsicData`.
+    pub fn timestamp() -> Moment {
+        // Fall back to recalculating if it hasn't been stored yet.
+        BlockInvalidInherentExtrinsicData::<T>::get()
+            .map(|data| data.timestamp)
+            .unwrap_or_else(|| Self::timestamp_value())
+    }
+
+    /// The internal function used to access the timestamp for storage into
+    /// `BlockInvalidInherentExtrinsicData`.
+    fn timestamp_value() -> Moment {
+        // There are no actual conversions here, but the trait bounds required to prove that
+        // (and debug-print the error in expect()) are very verbose.
+        T::BlockTimestamp::now()
+            .try_into()
+            .map_err(|_| ())
+            .expect("Moment is the same type in both pallets; qed")
+    }
+
+    /// The external function used to access the consensus transaction byte fee stored in
+    /// `BlockInvalidInherentExtrinsicData`.
+    /// This value is returned by the consensus_chain_byte_fee() runtime API
+    pub fn consensus_transaction_byte_fee() -> Balance {
+        // Fall back to recalculating if it hasn't been stored yet.
+        BlockInvalidInherentExtrinsicData::<T>::get()
+            .map(|data| data.consensus_transaction_byte_fee)
+            .unwrap_or_else(|| Self::consensus_transaction_byte_fee_value())
+    }
+
+    /// The internal function used to calculate the consensus transaction byte fee for storage into
+    /// `BlockInvalidInherentExtrinsicData`.
+    fn consensus_transaction_byte_fee_value() -> Balance {
+        // There are no actual conversions here, but the trait bounds required to prove that
+        // (and debug-print the error in expect()) are very verbose.
+        let transaction_byte_fee: Balance = T::StorageFee::transaction_byte_fee()
+            .try_into()
+            .map_err(|_| ())
+            .expect("Balance is the same type in both pallets; qed");
+
+        sp_domains::DOMAIN_STORAGE_FEE_MULTIPLIER * transaction_byte_fee
     }
 
     pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptOf<T>> {

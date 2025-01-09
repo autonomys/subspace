@@ -1326,8 +1326,20 @@ impl_runtime_apis! {
             Domains::domain_instance_data(domain_id)
         }
 
-        fn timestamp() -> Moment{
+        fn domain_timestamp() -> Moment {
+            Domains::timestamp()
+        }
+
+        fn timestamp() -> Moment {
             Timestamp::now()
+        }
+
+        fn consensus_transaction_byte_fee() -> Balance {
+            Domains::consensus_transaction_byte_fee()
+        }
+
+        fn consensus_chain_byte_fee() -> Balance {
+            DOMAIN_STORAGE_FEE_MULTIPLIER * TransactionFees::transaction_byte_fee()
         }
 
         fn domain_tx_range(_: DomainId) -> U256 {
@@ -1371,10 +1383,6 @@ impl_runtime_apis! {
 
         fn receipt_hash(domain_id: DomainId, domain_number: DomainNumber) -> Option<DomainHash> {
             Domains::receipt_hash(domain_id, domain_number)
-        }
-
-        fn consensus_chain_byte_fee() -> Balance {
-            DOMAIN_STORAGE_FEE_MULTIPLIER * TransactionFees::transaction_byte_fee()
         }
 
         fn latest_confirmed_domain_block(domain_id: DomainId) -> Option<(DomainNumber, DomainHash)>{

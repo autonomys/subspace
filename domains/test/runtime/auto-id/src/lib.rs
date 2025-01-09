@@ -982,7 +982,7 @@ impl_runtime_apis! {
             Messenger::get_open_channel_for_chain(dst_chain_id).map(|(c, _)| c)
         }
 
-        fn consensus_chain_byte_fee() -> Balance {
+        fn consensus_transaction_byte_fee() -> Balance {
             BlockFees::consensus_chain_byte_fee()
         }
     }
