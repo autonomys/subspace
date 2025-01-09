@@ -251,7 +251,7 @@ mod pallet {
     use subspace_runtime_primitives::{Balance, StorageFee};
 
     #[pallet::config]
-    pub trait Config: frame_system::Config<Hash: Into<H256>> {
+    pub trait Config: frame_system::Config<Hash: Into<H256> + From<H256>> {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         // TODO: `DomainHash` can be derived from `DomainHeader`, it is still needed just for
@@ -1919,7 +1919,7 @@ mod pallet {
                 || !DomainRuntimeUpgrades::<T>::get().is_empty()
             {
                 let extrinsics_shuffling_seed = Randomness::from(
-                    Into::<H256>::into(Self::extrinsics_shuffling_seed()).to_fixed_bytes(),
+                    Into::<H256>::into(Self::extrinsics_shuffling_seed_value()).to_fixed_bytes(),
                 );
 
                 // There are no actual conversions here, but the trait bounds required to prove that
@@ -2770,7 +2770,18 @@ impl<T: Config> Pallet<T> {
         false
     }
 
+    /// The external function used to access the extrinsics shuffling seed stored in
+    /// `BlockInvalidInherentExtrinsicData`.
     pub fn extrinsics_shuffling_seed() -> T::Hash {
+        // Fall back to recalculating if it hasn't been stored yet.
+        BlockInvalidInherentExtrinsicData::<T>::get()
+            .map(|data| H256::from(*data.extrinsics_shuffling_seed).into())
+            .unwrap_or_else(|| Self::extrinsics_shuffling_seed_value())
+    }
+
+    /// The internal function used to calculate the extrinsics shuffling seed for storage into
+    /// `BlockInvalidInherentExtrinsicData`.
+    fn extrinsics_shuffling_seed_value() -> T::Hash {
         let subject = DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT;
         let (randomness, _) = T::Randomness::random(subject);
         randomness
