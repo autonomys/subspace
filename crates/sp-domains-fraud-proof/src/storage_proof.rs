@@ -369,7 +369,7 @@ impl MaybeDomainRuntimeUpgradedProof {
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidInherentExtrinsicData {
+pub struct InherentExtrinsicData {
     /// Extrinsics shuffling seed, derived from block randomness
     pub extrinsics_shuffling_seed: Randomness,
 
@@ -380,7 +380,7 @@ pub struct InvalidInherentExtrinsicData {
     pub consensus_transaction_byte_fee: Balance,
 }
 
-impl PassBy for InvalidInherentExtrinsicData {
+impl PassBy for InherentExtrinsicData {
     type PassBy = pass_by::Codec<Self>;
 }
 
@@ -389,7 +389,7 @@ pub struct InvalidInherentExtrinsicDataProof(StorageProof);
 
 impl_storage_proof!(InvalidInherentExtrinsicDataProof);
 impl<Block: BlockT> BasicStorageProof<Block> for InvalidInherentExtrinsicDataProof {
-    type StorageValue = InvalidInherentExtrinsicData;
+    type StorageValue = InherentExtrinsicData;
     fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::InvalidInherentExtrinsicData
     }

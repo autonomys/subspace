@@ -195,8 +195,22 @@ where
         let consensus_block_hash = self
             .maybe_consensus_block_hash
             .unwrap_or(self.consensus_client.info().best_hash);
+
         let runtime_api = self.consensus_client.runtime_api();
-        let timestamp = runtime_api.timestamp(consensus_block_hash)?;
+        // Some APIs are only present in API versions 3 and later. On earlier versions, we need to
+        // call legacy code.
+        // TODO: remove version check before next network
+        let domains_api_version = runtime_api
+            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_block_hash)?
+            // It is safe to return a default version of 1, since there will always be version 1.
+            .unwrap_or(1);
+
+        let timestamp = if domains_api_version >= 3 {
+            runtime_api.domain_timestamp(consensus_block_hash)?
+        } else {
+            #[allow(deprecated)]
+            runtime_api.timestamp(consensus_block_hash)?
+        };
         let timestamp_provider =
             sp_timestamp::InherentDataProvider::new(InherentType::new(timestamp));
 
@@ -208,8 +222,12 @@ where
         let runtime_upgrade_provider =
             sp_executive::InherentDataProvider::new(maybe_runtime_upgrade_code);
 
-        let consensus_chain_byte_fee =
-            runtime_api.consensus_chain_byte_fee(consensus_block_hash)?;
+        let consensus_chain_byte_fee = if domains_api_version >= 3 {
+            runtime_api.consensus_transaction_byte_fee(consensus_block_hash)?
+        } else {
+            #[allow(deprecated)]
+            runtime_api.consensus_chain_byte_fee(consensus_block_hash)?
+        };
         let storage_price_provider =
             sp_block_fees::InherentDataProvider::new(consensus_chain_byte_fee);
 

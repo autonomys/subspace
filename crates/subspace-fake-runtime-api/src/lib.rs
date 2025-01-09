@@ -218,7 +218,19 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn timestamp() -> Moment{
+        fn domain_timestamp() -> Moment {
+            unreachable!()
+        }
+
+        fn timestamp() -> Moment {
+            unreachable!()
+        }
+
+        fn consensus_transaction_byte_fee() -> Balance {
+            unreachable!()
+        }
+
+        fn consensus_chain_byte_fee() -> Balance {
             unreachable!()
         }
 
@@ -259,10 +271,6 @@ sp_api::impl_runtime_apis! {
         }
 
         fn receipt_hash(_domain_id: DomainId, _domain_number: DomainNumber) -> Option<DomainHash> {
-            unreachable!()
-        }
-
-        fn consensus_chain_byte_fee() -> Balance {
             unreachable!()
         }
 

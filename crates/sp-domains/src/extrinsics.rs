@@ -1,11 +1,9 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use domain_runtime_primitives::opaque::AccountId;
-use hash_db::Hasher;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -14,15 +12,6 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::vec_deque::VecDeque;
 use sp_std::fmt::Debug;
 use subspace_core_primitives::Randomness;
-
-pub fn extrinsics_shuffling_seed<Hashing>(block_randomness: Randomness) -> Hashing::Out
-where
-    Hashing: Hasher,
-{
-    let mut subject = DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT.to_vec();
-    subject.extend_from_slice(block_randomness.as_ref());
-    Hashing::hash(&subject)
-}
 
 pub fn deduplicate_and_shuffle_extrinsics<Extrinsic>(
     mut extrinsics: Vec<(Option<AccountId>, Extrinsic)>,

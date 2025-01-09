@@ -9,7 +9,7 @@ sp_api::decl_runtime_apis! {
     /// Api that returns the timestamp
     pub trait TimestampApi {
         /// Api to construct inherent timestamp extrinsic from given time
-        fn timestamp() -> Moment;
+        fn domain_timestamp() -> Moment;
     }
 }
 
@@ -27,6 +27,6 @@ sp_api::decl_runtime_apis! {
         fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId>;
 
         /// Api to get the current domain transaction byte fee
-        fn consensus_chain_byte_fee() -> Balance;
+        fn consensus_transaction_byte_fee() -> Balance;
     }
 }

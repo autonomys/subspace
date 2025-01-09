@@ -792,13 +792,13 @@ async fn test_executor_inherent_timestamp_is_set() {
     let consensus_timestamp = ferdie
         .client
         .runtime_api()
-        .timestamp(ferdie.client.info().best_hash)
+        .domain_timestamp(ferdie.client.info().best_hash)
         .unwrap();
 
     let domain_timestamp = bob
         .client
         .runtime_api()
-        .timestamp(bob.client.info().best_hash)
+        .domain_timestamp(bob.client.info().best_hash)
         .unwrap();
 
     assert_eq!(
@@ -4965,12 +4965,12 @@ async fn test_domain_chain_storage_price_should_be_aligned_with_the_consensus_ch
     let consensus_chain_byte_fee = ferdie
         .client
         .runtime_api()
-        .consensus_chain_byte_fee(ferdie.client.info().best_hash)
+        .consensus_transaction_byte_fee(ferdie.client.info().best_hash)
         .unwrap();
     let operator_consensus_chain_byte_fee = alice
         .client
         .runtime_api()
-        .consensus_chain_byte_fee(alice.client.info().best_hash)
+        .consensus_transaction_byte_fee(alice.client.info().best_hash)
         .unwrap();
     assert!(operator_consensus_chain_byte_fee.is_zero());
     assert!(!consensus_chain_byte_fee.is_zero());
@@ -4982,12 +4982,12 @@ async fn test_domain_chain_storage_price_should_be_aligned_with_the_consensus_ch
     let consensus_chain_byte_fee = ferdie
         .client
         .runtime_api()
-        .consensus_chain_byte_fee(ferdie.client.info().best_hash)
+        .consensus_transaction_byte_fee(ferdie.client.info().best_hash)
         .unwrap();
     let operator_consensus_chain_byte_fee = alice
         .client
         .runtime_api()
-        .consensus_chain_byte_fee(alice.client.info().best_hash)
+        .consensus_transaction_byte_fee(alice.client.info().best_hash)
         .unwrap();
     assert_eq!(consensus_chain_byte_fee, operator_consensus_chain_byte_fee);
 }
