@@ -1,8 +1,5 @@
 //! Custom API that is efficient to collect storage roots.
 
-// TODO: remove in later commits
-#![allow(dead_code)]
-
 use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::{backend, ExecutorProvider, StateBackend};
@@ -25,9 +22,6 @@ pub(crate) type TrieDeltaBackendFor<'a, State, Block> = TrieBackend<
     DeltaBackend<'a, TrieBackendStorageFor<State, Block>, HashingFor<Block>>,
     HashingFor<Block>,
 >;
-
-type TrieBackendFor<State, Block> =
-    TrieBackend<TrieBackendStorageFor<State, Block>, HashingFor<Block>>;
 
 /// Storage changes are the collected throughout the execution.
 pub struct CollectedStorageChanges<H: Hasher> {
@@ -99,22 +93,6 @@ where
         } else {
             Ok(self.backend.get(key, prefix)?)
         }
-    }
-}
-
-impl<'a, S, H> DeltaBackend<'a, S, H>
-where
-    S: 'a + TrieBackendStorage<H>,
-    H: 'a + Hasher,
-{
-    fn consolidate_delta(&mut self, db: BackendTransaction<H>) {
-        let delta = if let Some(mut delta) = self.delta.take() {
-            delta.consolidate(db);
-            delta
-        } else {
-            db
-        };
-        self.delta = Some(delta);
     }
 }
 
