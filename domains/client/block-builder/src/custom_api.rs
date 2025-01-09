@@ -3,15 +3,17 @@
 use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::{backend, ExecutorProvider, StateBackend};
+use sp_core::offchain::OffchainOverlayedChange;
 use sp_core::traits::{CallContext, CodeExecutor, RuntimeCode};
 use sp_inherents::InherentData;
 use sp_runtime::traits::{Block as BlockT, HashingFor, NumberFor};
 use sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode, TransactionOutcome};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{
-    BackendTransaction, DBValue, OverlayedChanges, StateMachine, StorageChanges, TrieBackend,
-    TrieBackendBuilder, TrieBackendStorage,
+    BackendTransaction, DBValue, IndexOperation, OverlayedChanges, StateMachine, StorageChanges,
+    StorageKey, StorageValue, TrieBackend, TrieBackendBuilder, TrieBackendStorage,
 };
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -22,6 +24,79 @@ pub(crate) type TrieDeltaBackendFor<'a, State, Block> = TrieBackend<
     DeltaBackend<'a, TrieBackendStorageFor<State, Block>, HashingFor<Block>>,
     HashingFor<Block>,
 >;
+
+struct MappedStorageChanges<H: Hasher> {
+    /// All changes to the main storage.
+    ///
+    /// A value of `None` means that it was deleted.
+    pub main_storage_changes: HashMap<StorageKey, Option<StorageValue>>,
+    /// All changes to the child storages.
+    pub child_storage_changes: HashMap<StorageKey, HashMap<StorageKey, Option<StorageValue>>>,
+    /// Offchain state changes to write to the offchain database.
+    pub offchain_storage_changes: HashMap<(Vec<u8>, Vec<u8>), OffchainOverlayedChange>,
+    /// A transaction for the backend that contains all changes from
+    /// [`main_storage_changes`](StorageChanges::main_storage_changes) and from
+    /// [`child_storage_changes`](StorageChanges::child_storage_changes).
+    /// [`offchain_storage_changes`](StorageChanges::offchain_storage_changes).
+    pub transaction: BackendTransaction<H>,
+    /// The storage root after applying the transaction.
+    pub transaction_storage_root: H::Out,
+    /// Changes to the transaction index,
+    pub transaction_index_changes: Vec<IndexOperation>,
+}
+
+impl<H: Hasher> From<MappedStorageChanges<H>> for StorageChanges<H> {
+    fn from(value: MappedStorageChanges<H>) -> Self {
+        StorageChanges {
+            main_storage_changes: value.main_storage_changes.into_iter().collect(),
+            child_storage_changes: value
+                .child_storage_changes
+                .into_iter()
+                .map(|(k, v)| (k, v.into_iter().collect()))
+                .collect(),
+            offchain_storage_changes: value.offchain_storage_changes.into_iter().collect(),
+            transaction: value.transaction,
+            transaction_storage_root: value.transaction_storage_root,
+            transaction_index_changes: value.transaction_index_changes,
+        }
+    }
+}
+
+impl<H: Hasher> From<StorageChanges<H>> for MappedStorageChanges<H> {
+    fn from(value: StorageChanges<H>) -> Self {
+        MappedStorageChanges {
+            main_storage_changes: value.main_storage_changes.into_iter().collect(),
+            child_storage_changes: value
+                .child_storage_changes
+                .into_iter()
+                .map(|(k, v)| (k, v.into_iter().collect()))
+                .collect(),
+            offchain_storage_changes: value.offchain_storage_changes.into_iter().collect(),
+            transaction: value.transaction,
+            transaction_storage_root: value.transaction_storage_root,
+            transaction_index_changes: value.transaction_index_changes,
+        }
+    }
+}
+
+impl<H: Hasher> MappedStorageChanges<H> {
+    fn consolidate_storage_changes(&mut self, mut changes: StorageChanges<H>) -> H::Out {
+        self.main_storage_changes
+            .extend(changes.main_storage_changes);
+        changes
+            .child_storage_changes
+            .into_iter()
+            .for_each(|(k, v)| self.child_storage_changes.entry(k).or_default().extend(v));
+        self.offchain_storage_changes
+            .extend(changes.offchain_storage_changes);
+        self.transaction.consolidate(changes.transaction);
+        self.transaction_index_changes
+            .append(&mut changes.transaction_index_changes);
+        let previous_storage_root = self.transaction_storage_root;
+        self.transaction_storage_root = changes.transaction_storage_root;
+        previous_storage_root
+    }
+}
 
 /// Storage changes are the collected throughout the execution.
 pub struct CollectedStorageChanges<H: Hasher> {
@@ -102,7 +177,7 @@ pub(crate) struct TrieBackendApi<Client, Block: BlockT, Backend: backend::Backen
     client: Arc<Client>,
     state: Backend::State,
     executor: Arc<Exec>,
-    maybe_storage_changes: Option<StorageChanges<HashingFor<Block>>>,
+    maybe_storage_changes: Option<MappedStorageChanges<HashingFor<Block>>>,
     intermediate_roots: Vec<Block::Hash>,
 }
 
@@ -162,27 +237,13 @@ where
             .map_err(|err| sp_blockchain::Error::CallResultDecode("failed to decode Result", err))
     }
 
-    fn consolidate_storage_changes(&mut self, mut changes: StorageChanges<HashingFor<Block>>) {
-        let changes = if let Some(mut current_changes) = self.maybe_storage_changes.take() {
-            current_changes
-                .main_storage_changes
-                .append(&mut changes.main_storage_changes);
-            current_changes
-                .child_storage_changes
-                .append(&mut changes.child_storage_changes);
-            current_changes
-                .offchain_storage_changes
-                .append(&mut changes.offchain_storage_changes);
-            current_changes.transaction.consolidate(changes.transaction);
-            self.intermediate_roots
-                .push(current_changes.transaction_storage_root);
-            current_changes.transaction_storage_root = changes.transaction_storage_root;
-            current_changes
-                .transaction_index_changes
-                .append(&mut changes.transaction_index_changes);
-            current_changes
+    fn consolidate_storage_changes(&mut self, changes: StorageChanges<HashingFor<Block>>) {
+        let changes = if let Some(mut mapped_changes) = self.maybe_storage_changes.take() {
+            let previous_root = mapped_changes.consolidate_storage_changes(changes);
+            self.intermediate_roots.push(previous_root);
+            mapped_changes
         } else {
-            changes
+            changes.into()
         };
         self.maybe_storage_changes = Some(changes)
     }
@@ -266,7 +327,7 @@ where
         if let Some(storage_changes) = maybe_storage_changes {
             intermediate_roots.push(storage_changes.transaction_storage_root);
             Some(CollectedStorageChanges {
-                storage_changes,
+                storage_changes: storage_changes.into(),
                 intermediate_roots,
             })
         } else {
