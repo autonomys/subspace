@@ -1109,7 +1109,7 @@ impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
     fn storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8> {
         match req {
             FraudProofStorageKeyRequest::InvalidInherentExtrinsicData => {
-                pallet_domains::BlockInvalidInherentExtrinsicData::<Runtime>::hashed_key().to_vec()
+                pallet_domains::BlockInherentExtrinsicData::<Runtime>::hashed_key().to_vec()
             }
             FraudProofStorageKeyRequest::SuccessfulBundles(domain_id) => {
                 pallet_domains::SuccessfulBundles::<Runtime>::hashed_key_for(domain_id)

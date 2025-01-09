@@ -202,7 +202,7 @@ mod pallet {
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_slash_operator;
     use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
-    use crate::storage_proof::InvalidInherentExtrinsicData;
+    use crate::storage_proof::InherentExtrinsicData;
     use crate::weights::WeightInfo;
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::DomainHashingFor;
@@ -1857,7 +1857,7 @@ mod pallet {
 
     /// Combined fraud proof data for the InvalidInherentExtrinsic fraud proof
     #[pallet::storage]
-    pub type BlockInvalidInherentExtrinsicData<T> = StorageValue<_, InvalidInherentExtrinsicData>;
+    pub type BlockInherentExtrinsicData<T> = StorageValue<_, InherentExtrinsicData>;
 
     #[pallet::hooks]
     // TODO: proper benchmark
@@ -1908,7 +1908,7 @@ mod pallet {
                 }
             }
 
-            BlockInvalidInherentExtrinsicData::<T>::kill();
+            BlockInherentExtrinsicData::<T>::kill();
 
             Weight::zero()
         }
@@ -1930,13 +1930,13 @@ mod pallet {
                 // The value returned by the consensus_chain_byte_fee() runtime API
                 let consensus_transaction_byte_fee = Self::consensus_transaction_byte_fee_value();
 
-                let invalid_inherent_extrinsic_data = InvalidInherentExtrinsicData {
+                let inherent_extrinsic_data = InherentExtrinsicData {
                     extrinsics_shuffling_seed,
                     timestamp,
                     consensus_transaction_byte_fee,
                 };
 
-                BlockInvalidInherentExtrinsicData::<T>::set(Some(invalid_inherent_extrinsic_data));
+                BlockInherentExtrinsicData::<T>::set(Some(inherent_extrinsic_data));
             }
 
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
@@ -2764,16 +2764,16 @@ impl<T: Config> Pallet<T> {
     }
 
     /// The external function used to access the extrinsics shuffling seed stored in
-    /// `BlockInvalidInherentExtrinsicData`.
+    /// `BlockInherentExtrinsicData`.
     pub fn extrinsics_shuffling_seed() -> T::Hash {
         // Fall back to recalculating if it hasn't been stored yet.
-        BlockInvalidInherentExtrinsicData::<T>::get()
+        BlockInherentExtrinsicData::<T>::get()
             .map(|data| H256::from(*data.extrinsics_shuffling_seed).into())
             .unwrap_or_else(|| Self::extrinsics_shuffling_seed_value())
     }
 
     /// The internal function used to calculate the extrinsics shuffling seed for storage into
-    /// `BlockInvalidInherentExtrinsicData`.
+    /// `BlockInherentExtrinsicData`.
     fn extrinsics_shuffling_seed_value() -> T::Hash {
         let subject = DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT;
         let (randomness, _) = T::Randomness::random(subject);
@@ -2781,16 +2781,16 @@ impl<T: Config> Pallet<T> {
     }
 
     /// The external function used to access the timestamp stored in
-    /// `BlockInvalidInherentExtrinsicData`.
+    /// `BlockInherentExtrinsicData`.
     pub fn timestamp() -> Moment {
         // Fall back to recalculating if it hasn't been stored yet.
-        BlockInvalidInherentExtrinsicData::<T>::get()
+        BlockInherentExtrinsicData::<T>::get()
             .map(|data| data.timestamp)
             .unwrap_or_else(|| Self::timestamp_value())
     }
 
     /// The internal function used to access the timestamp for storage into
-    /// `BlockInvalidInherentExtrinsicData`.
+    /// `BlockInherentExtrinsicData`.
     fn timestamp_value() -> Moment {
         // There are no actual conversions here, but the trait bounds required to prove that
         // (and debug-print the error in expect()) are very verbose.
@@ -2801,17 +2801,17 @@ impl<T: Config> Pallet<T> {
     }
 
     /// The external function used to access the consensus transaction byte fee stored in
-    /// `BlockInvalidInherentExtrinsicData`.
+    /// `BlockInherentExtrinsicData`.
     /// This value is returned by the consensus_chain_byte_fee() runtime API
     pub fn consensus_transaction_byte_fee() -> Balance {
         // Fall back to recalculating if it hasn't been stored yet.
-        BlockInvalidInherentExtrinsicData::<T>::get()
+        BlockInherentExtrinsicData::<T>::get()
             .map(|data| data.consensus_transaction_byte_fee)
             .unwrap_or_else(|| Self::consensus_transaction_byte_fee_value())
     }
 
     /// The internal function used to calculate the consensus transaction byte fee for storage into
-    /// `BlockInvalidInherentExtrinsicData`.
+    /// `BlockInherentExtrinsicData`.
     fn consensus_transaction_byte_fee_value() -> Balance {
         // There are no actual conversions here, but the trait bounds required to prove that
         // (and debug-print the error in expect()) are very verbose.
