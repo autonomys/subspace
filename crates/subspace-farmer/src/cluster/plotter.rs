@@ -496,6 +496,24 @@ where
                 }
             }
             Err(error) => match error.kind() {
+                RequestErrorKind::TimedOut => {
+                    if let Some(delay) = retry_backoff_policy.next_backoff() {
+                        debug!("Plotter request timed out, retrying");
+
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    } else {
+                        progress_updater
+                            .update_progress_and_events(
+                                progress_sender,
+                                SectorPlottingProgress::Error {
+                                    error: "Plotter request timed out, exiting".to_string(),
+                                },
+                            )
+                            .await;
+                        return None;
+                    }
+                }
                 RequestErrorKind::NoResponders => {
                     if let Some(delay) = retry_backoff_policy.next_backoff() {
                         debug!("No plotters, retrying");
@@ -514,7 +532,7 @@ where
                         return None;
                     }
                 }
-                RequestErrorKind::TimedOut | RequestErrorKind::Other => {
+                RequestErrorKind::Other => {
                     progress_updater
                         .update_progress_and_events(
                             progress_sender,
