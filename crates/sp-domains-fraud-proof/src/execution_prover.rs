@@ -58,7 +58,7 @@ where
         // TODO: avoid using the String API specified by `execution_method()`
         // https://github.com/paritytech/substrate/discussions/11095
         if let Some((delta, post_delta_root)) = delta_changes {
-            let delta_backend = create_delta_backend(trie_backend, delta, post_delta_root);
+            let delta_backend = create_delta_backend(trie_backend, &delta, post_delta_root);
             sp_state_machine::prove_execution_on_trie_backend(
                 &delta_backend,
                 &mut Default::default(),

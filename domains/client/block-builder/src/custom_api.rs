@@ -38,7 +38,7 @@ pub struct CollectedStorageChanges<H: Hasher> {
 /// and `delta`.
 pub fn create_delta_backend<'a, S, H>(
     backend: &'a TrieBackend<S, H>,
-    delta: BackendTransaction<H>,
+    delta: &'a BackendTransaction<H>,
     post_delta_root: H::Out,
 ) -> TrieBackend<DeltaBackend<'a, S, H>, H>
 where
@@ -51,7 +51,7 @@ where
 
 fn create_delta_backend_with_maybe_delta<'a, S, H>(
     backend: &'a TrieBackend<S, H>,
-    maybe_delta: Option<BackendTransaction<H>>,
+    maybe_delta: Option<&'a BackendTransaction<H>>,
     post_delta_root: H::Out,
 ) -> TrieBackend<DeltaBackend<'a, S, H>, H>
 where
@@ -76,7 +76,7 @@ where
     H: 'a + Hasher,
 {
     backend: &'a S,
-    delta: Option<BackendTransaction<H>>,
+    delta: Option<&'a BackendTransaction<H>>,
     _phantom: PhantomData<H>,
 }
 
@@ -87,7 +87,7 @@ where
 {
     fn get(&self, key: &H::Out, prefix: Prefix) -> Result<Option<DBValue>, String> {
         if let Some(db) = &self.delta
-            && let Some(v) = HashDB::get(db, key, prefix)
+            && let Some(v) = HashDB::get(*db, key, prefix)
         {
             Ok(Some(v))
         } else {
@@ -294,10 +294,7 @@ where
             .map_err(sp_blockchain::Error::RuntimeCode)?;
         let mut overlayed_changes = OverlayedChanges::default();
         let (state_root, delta) = if let Some(changes) = &self.maybe_storage_changes {
-            (
-                changes.transaction_storage_root,
-                Some(changes.transaction.clone()),
-            )
+            (changes.transaction_storage_root, Some(&changes.transaction))
         } else {
             (*trie_backend.root(), None)
         };
