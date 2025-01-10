@@ -36,12 +36,13 @@ use sc_client_api::{backend, ExecutorProvider};
 use sp_api::{ProvideRuntimeApi, TransactionOutcome};
 pub use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{ApplyExtrinsicFailed, Error};
-use sp_core::traits::{CodeExecutor, RuntimeCode};
+use sp_core::traits::CodeExecutor;
 use sp_runtime::traits::{Block as BlockT, Hash, HashingFor, Header as HeaderT, NumberFor, One};
 use sp_runtime::Digest;
 use sp_state_machine::OverlayedChanges;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::Instant;
 
 /// A block that was build by [`BlockBuilder`] plus some additional data.
 ///
@@ -103,9 +104,8 @@ where
         api.execute_in_transaction(
             |api: &TrieBackendApi<Client, Block, Backend, Exec>,
              backend: &TrieDeltaBackendFor<Backend::State, Block>,
-             runtime_code: RuntimeCode,
              overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>| {
-                match api.initialize_block(header, backend, runtime_code, overlayed_changes) {
+                match api.initialize_block(header, backend, overlayed_changes) {
                     Ok(_) => TransactionOutcome::Commit(Ok(())),
                     Err(e) => TransactionOutcome::Rollback(Err(e)),
                 }
@@ -127,13 +127,12 @@ where
     /// Execute the block's list of extrinsics.
     fn execute_extrinsics(&mut self) -> Result<(), Error> {
         for (index, xt) in self.extrinsics.iter().enumerate() {
+            let start = Instant::now();
             let res = self.api.execute_in_transaction(
                 |api: &TrieBackendApi<Client, Block, Backend, Exec>,
                  backend: &TrieDeltaBackendFor<Backend::State, Block>,
-                 runtime_code: RuntimeCode,
                  overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>| {
-                    match api.apply_extrinsic(xt.clone(), backend, runtime_code, overlayed_changes)
-                    {
+                    match api.apply_extrinsic(xt.clone(), backend, overlayed_changes) {
                         Ok(Ok(_)) => TransactionOutcome::Commit(Ok(())),
                         Ok(Err(tx_validity)) => TransactionOutcome::Rollback(Err(
                             ApplyExtrinsicFailed::Validity(tx_validity).into(),
@@ -146,6 +145,11 @@ where
             if let Err(e) = res {
                 tracing::debug!("Apply extrinsic at index {index} failed: {e}");
             }
+            tracing::warn!(
+                "Extrinsic {:?} execution took: {:?} nanos",
+                index,
+                start.elapsed().as_nanos()
+            );
         }
 
         Ok(())
@@ -171,10 +175,8 @@ where
             self.api.execute_in_transaction(
                 |api: &TrieBackendApi<Client, Block, Backend, Exec>,
                  backend: &TrieDeltaBackendFor<Backend::State, Block>,
-                 runtime_code: RuntimeCode,
                  overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>| {
-                    match api.apply_extrinsic(xt.clone(), backend, runtime_code, overlayed_changes)
-                    {
+                    match api.apply_extrinsic(xt.clone(), backend, overlayed_changes) {
                         Ok(Ok(_)) => TransactionOutcome::Commit(Ok(())),
                         Ok(Err(tx_validity)) => TransactionOutcome::Rollback(Err(
                             ApplyExtrinsicFailed::Validity(tx_validity).into(),
@@ -207,14 +209,19 @@ where
     /// supplied by `self.api`, combined as [`BuiltBlock`].
     /// The storage proof will be `Some(_)` when proof recording was enabled.
     pub fn build(mut self) -> Result<BuiltBlock<Block>, Error> {
+        let start = Instant::now();
         self.execute_extrinsics()?;
+        tracing::warn!(
+            "Extrinsics execution took: {:?} ms",
+            start.elapsed().as_millis()
+        );
+        let start = Instant::now();
 
         let header = self.api.execute_in_transaction(
             |api: &TrieBackendApi<Client, Block, Backend, Exec>,
              backend: &TrieDeltaBackendFor<Backend::State, Block>,
-             runtime_code: RuntimeCode,
              overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>| {
-                match api.finalize_block(backend, runtime_code, overlayed_changes) {
+                match api.finalize_block(backend, overlayed_changes) {
                     Ok(header) => TransactionOutcome::Commit(Ok(header)),
                     Err(e) => TransactionOutcome::Rollback(Err(e)),
                 }
@@ -233,6 +240,10 @@ where
             .collect_storage_changes()
             .expect("must always have the storage changes due to execution above");
 
+        tracing::warn!(
+            "Winding up storage changes took: {:?} ms",
+            start.elapsed().as_millis()
+        );
         Ok(BuiltBlock {
             block: Block::new(header, self.extrinsics.into()),
             storage_changes,
@@ -249,14 +260,12 @@ where
         let exts = api.execute_in_transaction(
             |api: &TrieBackendApi<Client, Block, Backend, Exec>,
              backend: &TrieDeltaBackendFor<Backend::State, Block>,
-             runtime_code: RuntimeCode,
              overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>| {
                 // `create_inherents` should not change any state, to ensure this we always rollback
                 // the transaction.
                 TransactionOutcome::Rollback(api.inherent_extrinsics(
                     inherent_data,
                     backend,
-                    runtime_code,
                     overlayed_changes,
                 ))
             },

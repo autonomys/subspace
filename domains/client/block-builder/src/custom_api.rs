@@ -4,7 +4,7 @@ use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::{backend, ExecutorProvider, StateBackend};
 use sp_core::offchain::OffchainOverlayedChange;
-use sp_core::traits::{CallContext, CodeExecutor, RuntimeCode};
+use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode};
 use sp_inherents::InherentData;
 use sp_runtime::traits::{Block as BlockT, HashingFor, NumberFor};
 use sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode, TransactionOutcome};
@@ -13,6 +13,7 @@ use sp_state_machine::{
     BackendTransaction, DBValue, IndexOperation, OverlayedChanges, StateMachine, StorageChanges,
     StorageKey, StorageValue, TrieBackend, TrieBackendBuilder, TrieBackendStorage,
 };
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -45,55 +46,82 @@ struct MappedStorageChanges<H: Hasher> {
     pub transaction_index_changes: Vec<IndexOperation>,
 }
 
+#[derive(Clone)]
+struct RuntimeCode {
+    code: Vec<u8>,
+    heap_pages: Option<u64>,
+    hash: Vec<u8>,
+}
+
 impl<H: Hasher> From<MappedStorageChanges<H>> for StorageChanges<H> {
     fn from(value: MappedStorageChanges<H>) -> Self {
+        let MappedStorageChanges {
+            main_storage_changes,
+            child_storage_changes,
+            offchain_storage_changes,
+            transaction,
+            transaction_storage_root,
+            transaction_index_changes,
+        } = value;
         StorageChanges {
-            main_storage_changes: value.main_storage_changes.into_iter().collect(),
-            child_storage_changes: value
-                .child_storage_changes
+            main_storage_changes: main_storage_changes.into_iter().collect(),
+            child_storage_changes: child_storage_changes
                 .into_iter()
                 .map(|(k, v)| (k, v.into_iter().collect()))
                 .collect(),
-            offchain_storage_changes: value.offchain_storage_changes.into_iter().collect(),
-            transaction: value.transaction,
-            transaction_storage_root: value.transaction_storage_root,
-            transaction_index_changes: value.transaction_index_changes,
+            offchain_storage_changes: offchain_storage_changes.into_iter().collect(),
+            transaction,
+            transaction_storage_root,
+            transaction_index_changes,
         }
     }
 }
 
 impl<H: Hasher> From<StorageChanges<H>> for MappedStorageChanges<H> {
     fn from(value: StorageChanges<H>) -> Self {
+        let StorageChanges {
+            main_storage_changes,
+            child_storage_changes,
+            offchain_storage_changes,
+            transaction,
+            transaction_storage_root,
+            transaction_index_changes,
+        } = value;
         MappedStorageChanges {
-            main_storage_changes: value.main_storage_changes.into_iter().collect(),
-            child_storage_changes: value
-                .child_storage_changes
+            main_storage_changes: main_storage_changes.into_iter().collect(),
+            child_storage_changes: child_storage_changes
                 .into_iter()
                 .map(|(k, v)| (k, v.into_iter().collect()))
                 .collect(),
-            offchain_storage_changes: value.offchain_storage_changes.into_iter().collect(),
-            transaction: value.transaction,
-            transaction_storage_root: value.transaction_storage_root,
-            transaction_index_changes: value.transaction_index_changes,
+            offchain_storage_changes: offchain_storage_changes.into_iter().collect(),
+            transaction,
+            transaction_storage_root,
+            transaction_index_changes,
         }
     }
 }
 
 impl<H: Hasher> MappedStorageChanges<H> {
-    fn consolidate_storage_changes(&mut self, mut changes: StorageChanges<H>) -> H::Out {
-        self.main_storage_changes
-            .extend(changes.main_storage_changes);
-        changes
-            .child_storage_changes
+    fn consolidate_storage_changes(&mut self, changes: StorageChanges<H>) -> H::Out {
+        let StorageChanges {
+            main_storage_changes,
+            child_storage_changes,
+            offchain_storage_changes,
+            transaction,
+            transaction_storage_root,
+            mut transaction_index_changes,
+        } = changes;
+        self.main_storage_changes.extend(main_storage_changes);
+        child_storage_changes
             .into_iter()
             .for_each(|(k, v)| self.child_storage_changes.entry(k).or_default().extend(v));
         self.offchain_storage_changes
-            .extend(changes.offchain_storage_changes);
-        self.transaction.consolidate(changes.transaction);
+            .extend(offchain_storage_changes);
+        self.transaction.consolidate(transaction);
         self.transaction_index_changes
-            .append(&mut changes.transaction_index_changes);
+            .append(&mut transaction_index_changes);
         let previous_storage_root = self.transaction_storage_root;
-        self.transaction_storage_root = changes.transaction_storage_root;
+        self.transaction_storage_root = transaction_storage_root;
         previous_storage_root
     }
 }
@@ -179,6 +207,17 @@ pub(crate) struct TrieBackendApi<Client, Block: BlockT, Backend: backend::Backen
     executor: Arc<Exec>,
     maybe_storage_changes: Option<MappedStorageChanges<HashingFor<Block>>>,
     intermediate_roots: Vec<Block::Hash>,
+    runtime_code: RuntimeCode,
+}
+
+impl<Client, Block, Backend, Exec> FetchRuntimeCode for TrieBackendApi<Client, Block, Backend, Exec>
+where
+    Block: BlockT,
+    Backend: backend::Backend<Block>,
+{
+    fn fetch_runtime_code(&self) -> Option<Cow<[u8]>> {
+        Some(Cow::from(&self.runtime_code.code))
+    }
 }
 
 impl<Client, Block, Backend, Exec> TrieBackendApi<Client, Block, Backend, Exec>
@@ -196,6 +235,23 @@ where
         executor: Arc<Exec>,
     ) -> Result<Self, sp_blockchain::Error> {
         let state = backend.state_at(parent_hash)?;
+        let trie_backend = state.as_trie_backend();
+        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
+        let sp_core::traits::RuntimeCode {
+            code_fetcher,
+            heap_pages,
+            hash,
+        } = state_runtime_code
+            .runtime_code()
+            .map_err(sp_blockchain::Error::RuntimeCode)?;
+        let runtime_code = RuntimeCode {
+            code: code_fetcher
+                .fetch_runtime_code()
+                .map(|c| c.to_vec())
+                .ok_or(sp_blockchain::Error::RuntimeCode("missing runtime code"))?,
+            heap_pages,
+            hash,
+        };
         Ok(Self {
             parent_hash,
             parent_number,
@@ -204,7 +260,16 @@ where
             executor,
             maybe_storage_changes: None,
             intermediate_roots: vec![],
+            runtime_code,
         })
+    }
+
+    fn runtime_code(&self) -> sp_core::traits::RuntimeCode {
+        sp_core::traits::RuntimeCode {
+            code_fetcher: self,
+            heap_pages: self.runtime_code.heap_pages,
+            hash: self.runtime_code.hash.clone(),
+        }
     }
 
     fn call_function<R: Decode>(
@@ -212,13 +277,14 @@ where
         method: &str,
         call_data: Vec<u8>,
         trie_backend: &TrieDeltaBackendFor<Backend::State, Block>,
-        runtime_code: RuntimeCode,
         overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>,
     ) -> Result<R, sp_blockchain::Error> {
         let mut extensions = self
             .client
             .execution_extensions()
             .extensions(self.parent_hash, self.parent_number);
+
+        let runtime_code = self.runtime_code();
 
         let result = StateMachine::<_, _, _>::new(
             trie_backend,
@@ -252,7 +318,6 @@ where
         &self,
         header: Block::Header,
         backend: &TrieDeltaBackendFor<Backend::State, Block>,
-        runtime_code: RuntimeCode,
         overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>,
     ) -> Result<ExtrinsicInclusionMode, sp_blockchain::Error> {
         let call_data = header.encode();
@@ -260,7 +325,6 @@ where
             "Core_initialize_block",
             call_data,
             backend,
-            runtime_code,
             overlayed_changes,
         )
     }
@@ -269,7 +333,6 @@ where
         &self,
         extrinsic: <Block as BlockT>::Extrinsic,
         backend: &TrieDeltaBackendFor<Backend::State, Block>,
-        runtime_code: RuntimeCode,
         overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>,
     ) -> Result<ApplyExtrinsicResult, sp_blockchain::Error> {
         let call_data = extrinsic.encode();
@@ -277,7 +340,6 @@ where
             "BlockBuilder_apply_extrinsic",
             call_data,
             backend,
-            runtime_code,
             overlayed_changes,
         )
     }
@@ -285,14 +347,12 @@ where
     pub(crate) fn finalize_block(
         &self,
         backend: &TrieDeltaBackendFor<Backend::State, Block>,
-        runtime_code: RuntimeCode,
         overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>,
     ) -> Result<Block::Header, sp_blockchain::Error> {
         self.call_function(
             "BlockBuilder_finalize_block",
             vec![],
             backend,
-            runtime_code,
             overlayed_changes,
         )
     }
@@ -301,7 +361,6 @@ where
         &self,
         inherent: InherentData,
         backend: &TrieDeltaBackendFor<Backend::State, Block>,
-        runtime_code: RuntimeCode,
         overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>,
     ) -> Result<Vec<<Block as BlockT>::Extrinsic>, sp_blockchain::Error> {
         let call_data = inherent.encode();
@@ -309,7 +368,6 @@ where
             "BlockBuilder_inherent_extrinsics",
             call_data,
             backend,
-            runtime_code,
             overlayed_changes,
         )
     }
@@ -343,16 +401,11 @@ where
         F: FnOnce(
             &Self,
             &TrieDeltaBackendFor<Backend::State, Block>,
-            RuntimeCode,
             &mut OverlayedChanges<HashingFor<Block>>,
         ) -> TransactionOutcome<Result<R, sp_blockchain::Error>>,
         R: Decode,
     {
         let trie_backend = self.state.as_trie_backend();
-        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
-        let runtime_code = state_runtime_code
-            .runtime_code()
-            .map_err(sp_blockchain::Error::RuntimeCode)?;
         let mut overlayed_changes = OverlayedChanges::default();
         let (state_root, delta) = if let Some(changes) = &self.maybe_storage_changes {
             (changes.transaction_storage_root, Some(&changes.transaction))
@@ -362,13 +415,7 @@ where
         let trie_delta_backend =
             create_delta_backend_with_maybe_delta(trie_backend, delta, state_root);
 
-        let outcome = call(
-            self,
-            &trie_delta_backend,
-            runtime_code,
-            &mut overlayed_changes,
-        );
-
+        let outcome = call(self, &trie_delta_backend, &mut overlayed_changes);
         match outcome {
             TransactionOutcome::Commit(result) => {
                 let state_version = sp_core::storage::StateVersion::V1;
