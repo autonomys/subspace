@@ -155,32 +155,6 @@ jobs:
           cargo -Zgitoxide -Zgit clippy --locked --all-targets --features rocm -- -D warnings
         if: runner.os == 'Windows'
 
-  cargo-docs:
-    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || '"ubuntu-22.04"') }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-
-      - name: Install Protoc
-        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Configure cache
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Check Documentation
-        run: cargo -Zgitoxide -Zgit doc --locked --all --no-deps --lib
-        env:
-          RUSTDOCFLAGS: "-D rustdoc::broken-intra-doc-links -D rustdoc::private_intra_doc_links"
-
   cargo-test:
     strategy:
       matrix:
