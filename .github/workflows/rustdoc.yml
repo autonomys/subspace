@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+  workflow_dispatch:
+  merge_group:
 
 concurrency:
   group: rustdoc-${{ github.workflow }}-${{ github.ref }}
@@ -48,9 +51,9 @@ jobs:
 
       # Build the rust crate docs
       - name: Build Documentation
-        run: cargo -Zgitoxide -Zgit doc --all --no-deps --lib --features cuda
+        run: cargo -Zgitoxide -Zgit doc --locked --all --no-deps --lib --features cuda
         env:
-          RUSTDOCFLAGS: "-Z unstable-options --enable-index-page"
+          RUSTDOCFLAGS: "-D rustdoc::broken-intra-doc-links -D rustdoc::private_intra_doc_links -Z unstable-options --enable-index-page"
 
       - name: Deploy Docs
         uses: JamesIves/github-pages-deploy-action@881db5376404c5c8d621010bcbec0310b58d5e29 # v4.6.8
@@ -58,3 +61,4 @@ jobs:
           branch: gh-pages
           single-commit: true
           folder: target/doc
+        if: ${{ github.event_name == 'push' }}
