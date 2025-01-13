@@ -395,8 +395,8 @@ where
             let remaining_piece_indexes = (next_source_piece_index..)
                 .filter(|i| i.is_source())
                 .take(remaining_piece_count)
-                .collect::<Vec<_>>();
-            self.read_pieces(&remaining_piece_indexes, mapping)
+                .collect();
+            self.read_pieces(remaining_piece_indexes, mapping)
                 .await?
                 .into_iter()
                 .for_each(|piece| {
@@ -611,10 +611,10 @@ where
     /// The mapping is only used for error reporting.
     async fn read_pieces(
         &self,
-        piece_indexes: &Vec<PieceIndex>,
+        piece_indexes: Arc<[PieceIndex]>,
         mapping: GlobalObject,
     ) -> Result<Vec<Piece>, Error> {
-        download_pieces(piece_indexes, &self.piece_getter)
+        download_pieces(piece_indexes.clone(), &self.piece_getter)
             .await
             .map_err(|source| {
                 debug!(
@@ -636,7 +636,7 @@ where
         piece_index: PieceIndex,
         mapping: GlobalObject,
     ) -> Result<Piece, Error> {
-        download_pieces(&vec![piece_index], &self.piece_getter)
+        download_pieces(vec![piece_index].into(), &self.piece_getter)
             .await
             .map(|pieces| {
                 pieces
