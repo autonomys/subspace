@@ -42,7 +42,6 @@ use sp_runtime::Digest;
 use sp_state_machine::OverlayedChanges;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::Instant;
 
 /// A block that was build by [`BlockBuilder`] plus some additional data.
 ///
@@ -127,7 +126,6 @@ where
     /// Execute the block's list of extrinsics.
     fn execute_extrinsics(&mut self) -> Result<(), Error> {
         for (index, xt) in self.extrinsics.iter().enumerate() {
-            let start = Instant::now();
             let res = self.api.execute_in_transaction(
                 |api: &TrieBackendApi<Client, Block, Backend, Exec>,
                  backend: &TrieDeltaBackendFor<Backend::State, Block>,
@@ -145,11 +143,6 @@ where
             if let Err(e) = res {
                 tracing::debug!("Apply extrinsic at index {index} failed: {e}");
             }
-            tracing::warn!(
-                "Extrinsic {:?} execution took: {:?} nanos",
-                index,
-                start.elapsed().as_nanos()
-            );
         }
 
         Ok(())
@@ -209,14 +202,7 @@ where
     /// supplied by `self.api`, combined as [`BuiltBlock`].
     /// The storage proof will be `Some(_)` when proof recording was enabled.
     pub fn build(mut self) -> Result<BuiltBlock<Block>, Error> {
-        let start = Instant::now();
         self.execute_extrinsics()?;
-        tracing::warn!(
-            "Extrinsics execution took: {:?} ms",
-            start.elapsed().as_millis()
-        );
-        let start = Instant::now();
-
         let header = self.api.execute_in_transaction(
             |api: &TrieBackendApi<Client, Block, Backend, Exec>,
              backend: &TrieDeltaBackendFor<Backend::State, Block>,
@@ -240,10 +226,6 @@ where
             .collect_storage_changes()
             .expect("must always have the storage changes due to execution above");
 
-        tracing::warn!(
-            "Winding up storage changes took: {:?} ms",
-            start.elapsed().as_millis()
-        );
         Ok(BuiltBlock {
             block: Block::new(header, self.extrinsics.into()),
             storage_changes,

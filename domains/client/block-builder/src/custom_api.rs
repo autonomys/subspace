@@ -37,7 +37,7 @@ struct MappedStorageChanges<H: Hasher> {
     pub offchain_storage_changes: HashMap<(Vec<u8>, Vec<u8>), OffchainOverlayedChange>,
     /// A transaction for the backend that contains all changes from
     /// [`main_storage_changes`](StorageChanges::main_storage_changes) and from
-    /// [`child_storage_changes`](StorageChanges::child_storage_changes).
+    /// [`child_storage_changes`](StorageChanges::child_storage_changes) but excluding
     /// [`offchain_storage_changes`](StorageChanges::offchain_storage_changes).
     pub transaction: BackendTransaction<H>,
     /// The storage root after applying the transaction.
