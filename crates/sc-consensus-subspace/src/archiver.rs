@@ -830,7 +830,7 @@ where
 
 fn finalize_block<Block, Backend, Client>(
     client: &Client,
-    telemetry: Option<TelemetryHandle>,
+    telemetry: Option<&TelemetryHandle>,
     hash: Block::Hash,
     number: NumberFor<Block>,
 ) where
@@ -1055,12 +1055,12 @@ where
                 }
             }
 
+            let max_segment_index_before = segment_headers_store.max_segment_index();
             (best_archived_block_hash, best_archived_block_number) = archive_block(
                 &mut archiver,
                 segment_headers_store.clone(),
                 &*client,
                 &sync_oracle,
-                telemetry.clone(),
                 subspace_link.object_mapping_notification_sender.clone(),
                 subspace_link.archived_segment_notification_sender.clone(),
                 best_archived_block_hash,
@@ -1068,6 +1068,39 @@ where
                 create_object_mappings,
             )
             .await?;
+
+            let max_segment_index = segment_headers_store.max_segment_index();
+            if max_segment_index_before != max_segment_index {
+                let maybe_block_number_to_finalize = max_segment_index
+                    // Skip last `FINALIZATION_DEPTH_IN_SEGMENTS` archived segments
+                    .and_then(|max_segment_index| {
+                        max_segment_index.checked_sub(FINALIZATION_DEPTH_IN_SEGMENTS)
+                    })
+                    .and_then(|segment_index| {
+                        segment_headers_store.get_segment_header(segment_index)
+                    })
+                    .map(|segment_header| segment_header.last_archived_block().number)
+                    // Make sure not to finalize block number that does not yet exist (segment
+                    // headers store may contain future blocks during initial sync)
+                    .map(|block_number| block_number_to_archive.min(block_number.into()))
+                    // Do not finalize blocks twice
+                    .filter(|block_number| *block_number > client.info().finalized_number);
+
+                if let Some(block_number_to_finalize) = maybe_block_number_to_finalize {
+                    // Block is not guaranteed to be present this deep if we have only synced recent
+                    // blocks
+                    if let Some(block_hash_to_finalize) =
+                        client.block_hash(block_number_to_finalize)?
+                    {
+                        finalize_block(
+                            &*client,
+                            telemetry.as_ref(),
+                            block_hash_to_finalize,
+                            block_number_to_finalize,
+                        );
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -1081,7 +1114,6 @@ async fn archive_block<Block, Backend, Client, AS, SO>(
     segment_headers_store: SegmentHeadersStore<AS>,
     client: &Client,
     sync_oracle: &SubspaceSyncOracle<SO>,
-    telemetry: Option<TelemetryHandle>,
     object_mapping_notification_sender: SubspaceNotificationSender<ObjectMappingNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     best_archived_block_hash: Block::Hash,
@@ -1157,7 +1189,6 @@ where
         encoded_block.len() as f32 / 1024.0
     );
 
-    let mut new_segment_headers = Vec::new();
     let block_outcome = archiver.add_block(
         encoded_block,
         block_object_mappings,
@@ -1175,36 +1206,6 @@ where
 
         send_archived_segment_notification(&archived_segment_notification_sender, archived_segment)
             .await;
-
-        new_segment_headers.push(segment_header);
-    }
-
-    if !new_segment_headers.is_empty() {
-        let maybe_block_number_to_finalize = segment_headers_store
-            .max_segment_index()
-            // Skip last `FINALIZATION_DEPTH_IN_SEGMENTS` archived segments
-            .and_then(|max_segment_index| {
-                max_segment_index.checked_sub(FINALIZATION_DEPTH_IN_SEGMENTS)
-            })
-            .and_then(|segment_index| segment_headers_store.get_segment_header(segment_index))
-            .map(|segment_header| segment_header.last_archived_block().number)
-            // Make sure not to finalize block number that does not yet exist (segment
-            // headers store may contain future blocks during initial sync)
-            .map(|block_number| block_number_to_archive.min(block_number.into()))
-            // Do not finalize blocks twice
-            .filter(|block_number| *block_number > client.info().finalized_number);
-
-        if let Some(block_number_to_finalize) = maybe_block_number_to_finalize {
-            // Block is not guaranteed to be present this deep if we have only synced recent blocks
-            if let Some(block_hash_to_finalize) = client.block_hash(block_number_to_finalize)? {
-                finalize_block(
-                    client,
-                    telemetry.clone(),
-                    block_hash_to_finalize,
-                    block_number_to_finalize,
-                );
-            }
-        }
     }
 
     Ok((block_hash_to_archive, block_number_to_archive))
