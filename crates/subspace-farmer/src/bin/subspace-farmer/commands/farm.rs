@@ -487,6 +487,9 @@ where
 
     let farmer_cache_worker_fut = run_future_in_dedicated_thread(
         {
+            // Piece cache worker uses piece getter, while piece getter uses piece cache, which
+            // piece cache worker depends on. Use weak reference to break the cycle and allow worker
+            // to exit when last piece cache instance is dropped.
             let future = farmer_cache_worker.run(piece_getter.downgrade());
 
             move || future
