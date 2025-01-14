@@ -100,6 +100,9 @@ pub fn maximum_domain_block_weight() -> Weight {
 pub const ERR_NONCE_OVERFLOW: u8 = 100;
 /// Custom error when balance overflow occurs.
 pub const ERR_BALANCE_OVERFLOW: u8 = 200;
+/// Custom error when a user tries to create a contract, but their account is not on the allow
+/// list.
+pub const ERR_CONTRACT_CREATION_NOT_ALLOWED: u8 = 210;
 
 /// Maximum block length for all dispatches.
 /// This is set to 3.75 MiB since consensus chain supports on 3.75 MiB for normal

@@ -28,8 +28,9 @@ use sp_core::U256;
 #[frame_support::pallet]
 mod pallet {
     use frame_support::pallet_prelude::*;
-    use frame_system::pallet_prelude::BlockNumberFor;
+    use frame_system::pallet_prelude::*;
     use sp_core::U256;
+    use sp_domains::PermissionedActionAllowedBy;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {}
@@ -41,10 +42,36 @@ mod pallet {
     pub(super) type AccountNonce<T: Config> =
         StorageMap<_, Identity, T::AccountId, U256, OptionQuery>;
 
+    /// Storage to hold EVM contract creation allow list accounts.
+    /// Unlike domain instantiation, no storage value means "anyone can create contracts".
+    ///
+    /// At genesis, this is set via DomainConfigParams, DomainRuntimeInfo::Evm, and
+    /// RawGenesis::set_evm_contract_creation_allowed_by().
+    // When this type name is changed, evm_contract_creation_allowed_by_storage_key() also needs to
+    // be updated.
+    #[pallet::storage]
+    pub(super) type ContractCreationAllowedBy<T: Config> =
+        StorageValue<_, PermissionedActionAllowedBy<T::AccountId>, OptionQuery>;
+
     /// Pallet EVM account nonce tracker.
     #[pallet::pallet]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
+
+    #[pallet::call]
+    impl<T: Config> Pallet<T> {
+        /// Replace ContractCreationAllowedBy setting in storage, as a domain sudo call.
+        #[pallet::call_index(0)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(0, 1))]
+        pub fn set_contract_creation_allowed_by(
+            origin: OriginFor<T>,
+            contract_creation_allowed_by: PermissionedActionAllowedBy<T::AccountId>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            ContractCreationAllowedBy::<T>::put(contract_creation_allowed_by);
+            Ok(())
+        }
+    }
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
@@ -65,5 +92,21 @@ impl<T: Config> Pallet<T> {
     /// Set nonce to the account.
     pub fn set_account_nonce(account: T::AccountId, nonce: U256) {
         AccountNonce::<T>::set(account, Some(nonce))
+    }
+
+    /// Returns true if the account is allowed to create contracts.
+    pub fn is_allowed_to_create_contracts(signer: &T::AccountId) -> bool {
+        // Unlike domain instantiation, no storage value means "anyone can create contracts".
+        ContractCreationAllowedBy::<T>::get()
+            .map(|allowed_by| allowed_by.is_allowed(signer))
+            .unwrap_or(true)
+    }
+
+    /// Returns true if the account is allowed to create contracts.
+    pub fn is_allowed_to_create_unsigned_contracts() -> bool {
+        // Unlike domain instantiation, no storage value means "anyone can create contracts".
+        ContractCreationAllowedBy::<T>::get()
+            .map(|allowed_by| allowed_by.is_anyone_allowed())
+            .unwrap_or(true)
     }
 }
