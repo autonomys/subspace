@@ -7,12 +7,12 @@
 /crates/sc-proof-of-time          @nazar-pc
 /crates/sp-*                      @NingLin-P @vedhavyas
 /crates/sp-consensus-subspace     @NingLin-P @vedhavyas @nazar-pc
-/crates/subspace-archiving        @nazar-pc @shamil-gadelshin @teor2345
+/crates/subspace-archiving        @nazar-pc @teor2345
 /crates/subspace-core-primitives  @nazar-pc
 /crates/subspace-erasure-coding   @nazar-pc
-/crates/subspace-farmer*          @nazar-pc @shamil-gadelshin
-/crates/subspace-gateway-*        @shamil-gadelshin @teor2345
-/crates/subspace-networking       @nazar-pc @shamil-gadelshin @teor2345
+/crates/subspace-farmer*          @nazar-pc
+/crates/subspace-gateway-*        @teor2345
+/crates/subspace-networking       @nazar-pc @teor2345
 /crates/subspace-proof-*          @nazar-pc
 /crates/subspace-rpc-primitives   @nazar-pc @teor2345
 /crates/subspace-runtime*         @vedhavyas @nazar-pc
