@@ -58,7 +58,9 @@ use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
-use sc_client_api::{AuxStore, Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
+use sc_client_api::{
+    AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, LockImportRun,
+};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
@@ -916,6 +918,7 @@ where
         + HeaderBackend<Block>
         + LockImportRun<Block, Backend>
         + Finalizer<Block, Backend>
+        + BlockchainEvents<Block>
         + AuxStore
         + Send
         + Sync
@@ -1087,6 +1090,21 @@ where
                     .filter(|block_number| *block_number > client.info().finalized_number);
 
                 if let Some(block_number_to_finalize) = maybe_block_number_to_finalize {
+                    {
+                        let mut import_notification = client.every_import_notification_stream();
+
+                        // Drop notification to drop acknowledgement and allow block import to
+                        // proceed
+                        drop(block_importing_notification);
+
+                        while let Some(notification) = import_notification.next().await {
+                            // Wait for importing block to finish importing
+                            if notification.header.number() == &importing_block_number {
+                                break;
+                            }
+                        }
+                    }
+
                     // Block is not guaranteed to be present this deep if we have only synced recent
                     // blocks
                     if let Some(block_hash_to_finalize) =
