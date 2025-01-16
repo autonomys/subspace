@@ -3,9 +3,9 @@
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use std::sync::Arc;
 use subspace_core_primitives::hashes::Blake3Hash;
-use subspace_core_primitives::objects::ObjectMappingResponse;
 use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_data_retrieval::piece_getter::PieceGetter;
+use subspace_rpc_primitives::ObjectMappingResponse;
 use tracing::{debug, error, trace};
 
 /// Parameters for the DSN object HTTP server.
