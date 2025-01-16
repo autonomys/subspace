@@ -98,10 +98,10 @@ pub enum Error {
     },
 
     /// Hash doesn't match data
-    #[error("Incorrect data hash {data_hash:?} for {data_size} byte object: {mapping:?}")]
+    #[error("Incorrect data hash {data_hash:?} for {data_length} byte object: {mapping:?}")]
     InvalidDataHash {
         data_hash: Blake3Hash,
-        data_size: usize,
+        data_length: usize,
         mapping: GlobalObject,
     },
 
@@ -240,7 +240,7 @@ where
             if data_hash != hash {
                 debug!(
                     ?data_hash,
-                    data_size = %data.len(),
+                    data_length = %data.len(),
                     ?mapping,
                     "Retrieved data doesn't match requested mapping hash"
                 );
@@ -248,7 +248,7 @@ where
 
                 return Err(Error::InvalidDataHash {
                     data_hash,
-                    data_size: data.len(),
+                    data_length: data.len(),
                     mapping,
                 });
             }
