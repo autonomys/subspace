@@ -1,6 +1,4 @@
-// Copyright Supranational LLC
-// Licensed under the Apache License, Version 2.0, see LICENSE for details.
-// SPDX-License-Identifier: Apache-2.0
+// Originally written by Supranational LLC
 
 template<int K, int PARAM_EXT>
 __global__ __launch_bounds__(1024)

@@ -14,5 +14,3 @@ Pallet maintains crucial state required for Subspace Proof-of-Archival-Storage c
     validity of piece from solution can be checked later
 
 Pallet also provides handy API for finding block author, block reward address, randomness and some others.
-
-License: Apache-2.0
