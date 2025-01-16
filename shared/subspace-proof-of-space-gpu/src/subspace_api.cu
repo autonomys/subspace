@@ -1,6 +1,4 @@
-// Copyright Supranational LLC
-// Licensed under the Apache License, Version 2.0, see LICENSE for details.
-// SPDX-License-Identifier: Apache-2.0
+// Originally written by Supranational LLC
 
 #include <iostream>
 #include <fstream>
@@ -187,7 +185,7 @@ RustError::by_value generate_and_encode_pospace(const uint8_t* key,
         kern_endianness_swap<fr_t><<<gpu.sm_count(), 1024, 0, gpu>>>(&d_record[record_size],
                                                                      &d_record[record_size],
                                                                      record_size);
-        
+
         CUDA_OK(cudaGetLastError());
 
         // Converts and duplicates data on the GPU.
@@ -208,12 +206,12 @@ RustError::by_value generate_and_encode_pospace(const uint8_t* key,
         NTT::Base_dev_ptr(gpu, d_record, lg_record_size + 1,
                           NTT::InputOutputOrder::RN, NTT::Direction::forward,
                           NTT::Type::standard);
-        
+
         // Convert the inputs (and outputs) back to big-endian
         kern_endianness_swap<fr_t><<<gpu.sm_count(), 1024, 0, gpu>>>(&d_record[0],
                                                                      &d_record[0],
                                                                      2 * record_size);
-        
+
         CUDA_OK(cudaGetLastError());
 
         // Record a list of pending operations submitted to the stream
