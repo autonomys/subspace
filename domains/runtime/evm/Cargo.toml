@@ -21,6 +21,7 @@ codec = { package = "parity-scale-codec", version = "3.6.12", default-features =
 domain-check-weight = { version = "0.1.0", path = "../../pallets/domain-check-weight", default-features = false }
 domain-pallet-executive = { version = "0.1.0", path = "../../pallets/executive", default-features = false }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime", default-features = false }
+# just here to activate the serde feature
 fp-account = { version = "1.0.0-dev", default-features = false, features = ["serde"], git = "https://github.com/autonomys/frontier", rev = "f80f9e2bad338f3bf3854b256b3c4edea23e5968" }
 fp-rpc = { version = "3.0.0-dev", default-features = false, git = "https://github.com/autonomys/frontier", rev = "f80f9e2bad338f3bf3854b256b3c4edea23e5968" }
 fp-self-contained = { version = "1.0.0-dev", default-features = false, features = ["serde"], git = "https://github.com/autonomys/frontier", rev = "f80f9e2bad338f3bf3854b256b3c4edea23e5968" }
