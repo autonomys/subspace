@@ -118,6 +118,7 @@ impl<H: Hasher> MappedStorageChanges<H> {
         self.offchain_storage_changes
             .extend(offchain_storage_changes);
         self.transaction.consolidate(transaction);
+        self.transaction.purge();
         self.transaction_index_changes
             .append(&mut transaction_index_changes);
         let previous_storage_root = self.transaction_storage_root;
