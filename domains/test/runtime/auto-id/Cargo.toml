@@ -33,6 +33,7 @@ pallet-block-fees = { version = "0.1.0", path = "../../../pallets/block-fees", d
 pallet-domain-id = { version = "0.1.0", path = "../../../pallets/domain-id", default-features = false }
 pallet-domain-sudo = { version = "0.1.0", path = "../../../pallets/domain-sudo", default-features = false }
 pallet-messenger = { version = "0.1.0", path = "../../../pallets/messenger", default-features = false }
+pallet-storage-overlay-checks = { version = "0.1.0", path = "../../pallets/storage_overlay_checks", default-features = false }
 pallet-timestamp = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
 pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
 pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
@@ -85,6 +86,7 @@ std = [
     "pallet-domain-id/std",
     "pallet-domain-sudo/std",
     "pallet-messenger/std",
+    "pallet-storage-overlay-checks/std",
     "pallet-timestamp/std",
     "pallet-transaction-payment/std",
     "pallet-transaction-payment-rpc-runtime-api/std",
