@@ -86,6 +86,7 @@ use sp_subspace_mmr::domain_mmr_runtime_interface::{
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
+use subspace_runtime_primitives::utility::{nested_utility_call_iter, MaybeIntoUtilityCall};
 use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment,
     SlowAdjustingFeeUpdate, SHANNON, SSC,
@@ -153,8 +154,9 @@ pub type Executive = domain_pallet_executive::Executive<
 /// Returns false if the call is a contract call, and the account is *not* allowed to call it.
 /// Otherwise, returns true.
 pub fn is_create_contract_allowed(call: &RuntimeCall, signer: &AccountId) -> bool {
-    if is_create_contract(call)
-        && !pallet_evm_nonce_tracker::Pallet::<Runtime>::is_allowed_to_create_contracts(signer)
+    // Only enter allocating code if this account can't create contracts
+    if !pallet_evm_nonce_tracker::Pallet::<Runtime>::is_allowed_to_create_contracts(signer)
+        && is_create_contract(call)
     {
         return false;
     }
@@ -180,33 +182,40 @@ pub fn is_create_unsigned_contract_allowed(call: &RuntimeCall) -> bool {
 
 /// Returns true if the call is a contract creation call.
 pub fn is_create_contract(call: &RuntimeCall) -> bool {
-    match call {
-        RuntimeCall::EVM(pallet_evm::Call::create { .. })
-        | RuntimeCall::EVM(pallet_evm::Call::create2 { .. }) => true,
-        RuntimeCall::Ethereum(pallet_ethereum::Call::transact {
-            transaction: EthereumTransaction::Legacy(transaction),
-            ..
-        }) => transaction.action == TransactionAction::Create,
-        RuntimeCall::Ethereum(pallet_ethereum::Call::transact {
-            transaction: EthereumTransaction::EIP2930(transaction),
-            ..
-        }) => transaction.action == TransactionAction::Create,
-        RuntimeCall::Ethereum(pallet_ethereum::Call::transact {
-            transaction: EthereumTransaction::EIP1559(transaction),
-            ..
-        }) => transaction.action == TransactionAction::Create,
-        // TODO: does this need a recursion limit?
-        RuntimeCall::Utility(utility_call) => match utility_call {
-            pallet_utility::Call::batch { calls }
-            | pallet_utility::Call::batch_all { calls }
-            | pallet_utility::Call::force_batch { calls } => calls.iter().any(is_create_contract),
-            pallet_utility::Call::as_derivative { call, .. }
-            | pallet_utility::Call::dispatch_as { call, .. }
-            | pallet_utility::Call::with_weight { call, .. } => is_create_contract(call),
-            pallet_utility::Call::__Ignore(..) => false,
-        },
-        _ => false,
+    for call in nested_utility_call_iter::<Runtime>(call) {
+        match call {
+            RuntimeCall::EVM(pallet_evm::Call::create { .. })
+            | RuntimeCall::EVM(pallet_evm::Call::create2 { .. }) => return true,
+            RuntimeCall::Ethereum(pallet_ethereum::Call::transact {
+                transaction: EthereumTransaction::Legacy(transaction),
+                ..
+            }) => {
+                if transaction.action == TransactionAction::Create {
+                    return true;
+                }
+            }
+            RuntimeCall::Ethereum(pallet_ethereum::Call::transact {
+                transaction: EthereumTransaction::EIP2930(transaction),
+                ..
+            }) => {
+                if transaction.action == TransactionAction::Create {
+                    return true;
+                }
+            }
+            RuntimeCall::Ethereum(pallet_ethereum::Call::transact {
+                transaction: EthereumTransaction::EIP1559(transaction),
+                ..
+            }) => {
+                if transaction.action == TransactionAction::Create {
+                    return true;
+                }
+            }
+            // Inconclusive, might contain nested calls
+            _ => {}
+        }
     }
+
+    false
 }
 
 /// Reject contract creation, unless the account is in the current evm contract allow list.
@@ -896,6 +905,16 @@ impl pallet_utility::Config for Runtime {
     type RuntimeCall = RuntimeCall;
     type PalletsOrigin = OriginCaller;
     type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
+}
+
+impl MaybeIntoUtilityCall<Runtime> for RuntimeCall {
+    /// If this call is a `pallet_utility::Call<Runtime>` call, returns the inner call.
+    fn maybe_into_utility_call(&self) -> Option<&pallet_utility::Call<Runtime>> {
+        match self {
+            RuntimeCall::Utility(call) => Some(call),
+            _ => None,
+        }
+    }
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
