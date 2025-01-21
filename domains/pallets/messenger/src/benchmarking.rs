@@ -203,6 +203,9 @@ mod benchmarks {
             last_delivered_message_response_nonce: None,
         };
         Outbox::<T>::insert((dst_chain_id, channel_id, next_outbox_nonce), req_msg);
+        OutboxMessageCount::<T>::mutate((dst_chain_id, channel_id), |count| {
+            *count = count.saturating_add(1u32);
+        });
         // Insert a dummy response message which will be handled during the `relay_message_response` call
         let resp_msg: Message<BalanceOf<T>> = Message {
             src_chain_id: dst_chain_id,

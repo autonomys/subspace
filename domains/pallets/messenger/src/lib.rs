@@ -243,25 +243,21 @@ mod pallet {
     /// Used by the dst_chains to verify the message response.
     #[pallet::storage]
     #[pallet::getter(fn inbox_responses)]
-    pub(super) type InboxResponses<T: Config> = CountedStorageMap<
-        _,
-        Identity,
-        (ChainId, ChannelId, Nonce),
-        Message<BalanceOf<T>>,
-        OptionQuery,
-    >;
+    pub(super) type InboxResponses<T: Config> =
+        StorageMap<_, Identity, (ChainId, ChannelId, Nonce), Message<BalanceOf<T>>, OptionQuery>;
 
     /// Stores the outgoing messages that are awaiting message responses from the dst_chain.
     /// Messages are processed in the outbox nonce order of chain's channel.
     #[pallet::storage]
     #[pallet::getter(fn outbox)]
-    pub(super) type Outbox<T: Config> = CountedStorageMap<
-        _,
-        Identity,
-        (ChainId, ChannelId, Nonce),
-        Message<BalanceOf<T>>,
-        OptionQuery,
-    >;
+    pub(super) type Outbox<T: Config> =
+        StorageMap<_, Identity, (ChainId, ChannelId, Nonce), Message<BalanceOf<T>>, OptionQuery>;
+
+    /// Stores the outgoing messages count that are awaiting message responses from the dst_chain.
+    #[pallet::storage]
+    #[pallet::getter(fn outbox_message_count)]
+    pub(super) type OutboxMessageCount<T: Config> =
+        StorageMap<_, Identity, (ChainId, ChannelId), u32, ValueQuery>;
 
     /// A temporary storage for storing decoded outbox response message between `pre_dispatch_relay_message_response`
     /// and `relay_message_response`.
@@ -545,6 +541,15 @@ mod pallet {
 
         /// Invalid channel reserve fee
         InvalidChannelReserveFee,
+
+        /// Invalid max outgoing messages
+        InvalidMaxOutgoingMessages,
+
+        /// Message count overflow
+        MessageCountOverflow,
+
+        /// Message count underflow
+        MessageCountUnderflow,
     }
 
     #[pallet::call]
@@ -907,8 +912,11 @@ mod pallet {
             // loop through channels in descending order until open channel is found.
             // we always prefer latest opened channel.
             while let Some(channel_id) = next_channel_id.checked_sub(ChannelId::one()) {
+                let message_count = OutboxMessageCount::<T>::get((dst_chain_id, channel_id));
                 if let Some(channel) = Channels::<T>::get(dst_chain_id, channel_id) {
-                    if channel.state == ChannelState::Open {
+                    if channel.state == ChannelState::Open
+                        && message_count < channel.max_outgoing_messages
+                    {
                         return Some((channel_id, channel.fee));
                     }
                 }
@@ -1004,6 +1012,12 @@ mod pallet {
             ensure!(
                 T::SelfChainId::get() != dst_chain_id,
                 Error::<T>::InvalidChain,
+            );
+
+            // ensure max outgoing messages is atleast 1
+            ensure!(
+                init_params.max_outgoing_messages >= 1u32,
+                Error::<T>::InvalidMaxOutgoingMessages
             );
 
             // If the channel owner is in this chain then the channel reserve fee
