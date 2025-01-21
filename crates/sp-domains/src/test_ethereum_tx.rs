@@ -1,17 +1,63 @@
-/// Code in this file is copied from frontier repository. Full path is:
-/// https://github.com/subspace/frontier/blob/1c667eb43c3d087ac66dc9ed0aa44128373f5b0a/frame/ethereum/src/mock.rs
-/// If monorepo points to new commit, this file need to be in sync.
+//! Code in this file is copied from the frontier repository. Full path is:
+//! https://github.com/subspace/frontier/blob/1c667eb43c3d087ac66dc9ed0aa44128373f5b0a/frame/ethereum/src/mock.rs
+//! If monorepo points to new commit, this file need to be in sync.
+//!
+//! Minor changes were made to comments, derives, visibility, and the address_build() seed size.
+
 pub use ethereum::{
     AccessListItem, BlockV2 as Block, LegacyTransactionMessage, Log, ReceiptV3 as Receipt,
     TransactionAction, TransactionSignature, TransactionV2 as Transaction,
 };
 use frame_support::parameter_types;
 use rlp::RlpStream;
-use sp_core::{keccak_256, H256, U256};
+use sp_core::crypto::AccountId32;
+use sp_core::{keccak_256, H160, H256, U256};
 
 parameter_types! {
     // `490000` is the genesis evm domain chain id
     pub const ChainId: u64 = 490000;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountInfo {
+    pub address: H160,
+    pub account_id: AccountId32,
+    pub private_key: H256,
+}
+
+/// Returns an AccountInfo struct with a deterministic address and private key.
+/// Seed zero produces an invalid private key, so we add one to the supplied seed.
+pub fn address_build(mut seed: u128) -> AccountInfo {
+    seed += 1;
+
+    let mut seed_bytes = [0u8; 32];
+    seed_bytes[0..16].copy_from_slice(&seed.to_be_bytes());
+    let private_key = H256::from_slice(&seed_bytes);
+    // The above lines were modified from this original code:
+    //let private_key = H256::from_slice(&[(seed as u8 + 1); 32]); //H256::from_low_u64_be((i + 1) as u64);
+
+    let secret_key = libsecp256k1::SecretKey::parse_slice(&private_key[..]).unwrap();
+    let public_key = &libsecp256k1::PublicKey::from_secret_key(&secret_key).serialize()[1..65];
+    let address = H160::from(H256::from(keccak_256(public_key)));
+
+    let mut data = [0u8; 32];
+    data[0..20].copy_from_slice(&address[..]);
+
+    AccountInfo {
+        private_key,
+        account_id: AccountId32::from(Into::<[u8; 32]>::into(data)),
+        address,
+    }
+}
+
+/// Returns the contract address for the given sender and nonce.
+/// Use `U256::as_u64()` to convert the nonce to `u64`.
+pub fn contract_address(sender: H160, nonce: u64) -> H160 {
+    let mut rlp = RlpStream::new_list(2);
+    rlp.append(&sender);
+    rlp.append(&nonce);
+
+    H160::from_slice(&keccak_256(&rlp.out())[12..])
 }
 
 pub struct LegacyUnsignedTransaction {

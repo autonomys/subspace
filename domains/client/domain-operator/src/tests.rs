@@ -8,13 +8,23 @@ use codec::{Decode, Encode};
 use cross_domain_message_gossip::get_channel_state;
 use domain_block_builder::BlockBuilderApi;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_runtime_primitives::{AccountId20Converter, AccountIdConverter, Hash};
+use domain_runtime_primitives::{
+    AccountId20Converter, AccountIdConverter, EthereumAccountId, Hash,
+};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
-use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
+use domain_test_service::evm_domain_test_runtime::{
+    Header, Runtime as TestRuntime, RuntimeCall, UncheckedExtrinsic as EvmUncheckedExtrinsic,
+};
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Dave, Eve};
 use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
-use domain_test_service::{construct_extrinsic_generic, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID};
+use domain_test_service::{
+    construct_extrinsic_generic, DomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID,
+};
+use ethereum::TransactionV2 as EthereumTransaction;
+use evm_domain_test_runtime::{Runtime as EvmRuntime, RuntimeApi as EvmRuntimeApi};
+use fp_rpc::EthereumRuntimeRPCApi;
 use futures::StreamExt;
+use hex_literal::hex;
 use pallet_domains::OperatorConfig;
 use pallet_messenger::ChainAllowlistUpdate;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
@@ -29,13 +39,15 @@ use sp_blockchain::ApplyExtrinsicFailed;
 use sp_consensus::SyncOracle;
 use sp_core::storage::StateVersion;
 use sp_core::traits::{FetchRuntimeCode, SpawnEssentialNamed};
-use sp_core::{Pair, H256};
+use sp_core::{Pair, H256, U256};
 use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
+use sp_domains::test_ethereum::{generate_legacy_tx, max_extrinsic_gas};
+use sp_domains::test_ethereum_tx::{address_build, contract_address, AccountInfo};
 use sp_domains::{
     Bundle, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor, InboxedBundle,
-    InvalidBundleType, Transfers,
+    InvalidBundleType, PermissionedActionAllowedBy, Transfers,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProofVariant,
@@ -48,7 +60,7 @@ use sp_messenger::MessengerApi;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Convert, Hash as HashT, Header as HeaderT, Zero,
+    BlakeTwo256, Block as BlockT, Convert, Extrinsic, Hash as HashT, Header as HeaderT, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidityError,
@@ -58,6 +70,7 @@ use sp_state_machine::backend::AsTrieBackend;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
+use std::assert_matches::assert_matches;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
@@ -78,6 +91,957 @@ fn number_of(consensus_node: &MockConsensusNode, block_hash: Hash) -> u32 {
         .number(block_hash)
         .unwrap_or_else(|err| panic!("Failed to fetch number for {block_hash}: {err}"))
         .unwrap_or_else(|| panic!("header {block_hash} not in the chain"))
+}
+
+// These functions depend on the macro-constructed `TestRuntime::RuntimeCall` enum, so they can't
+// be shared via `sp_domains::test_ethereum`.
+
+/// Generate a self-contained EVM domain extrinsic from a transaction.
+/// The returned extrinsic can be passed to `runtime_api().check_extrinsics_and_do_pre_dispatch()`.
+pub fn generate_eth_domain_extrinsic(
+    account_info: AccountInfo,
+    use_create: ethereum::TransactionAction,
+    nonce: U256,
+    gas_price: U256,
+) -> EvmUncheckedExtrinsic {
+    // TODO:
+    // - randomly choose from the 3 different transaction types
+    let tx =
+        generate_legacy_tx::<TestRuntime>(account_info, nonce, use_create, vec![0; 100], gas_price);
+
+    generate_eth_domain_sc_extrinsic(tx)
+}
+
+/// Generate a self-contained EVM domain extrinsic from a transaction.
+/// The returned extrinsic can be passed to `runtime_api().check_extrinsics_and_do_pre_dispatch()`.
+pub fn generate_eth_domain_sc_extrinsic(tx: EthereumTransaction) -> EvmUncheckedExtrinsic {
+    let call = pallet_ethereum::Call::<TestRuntime>::transact { transaction: tx };
+    fp_self_contained::UncheckedExtrinsic::new(RuntimeCall::Ethereum(call), None).unwrap()
+}
+
+/// Generate a pallet-evm call, which can be passed to `construct_and_send_extrinsic()`.
+/// `use_create` determines whether to use `create`, `create2`, or a non-create call.
+/// `recursion_depth` determines the number of `pallet_utility::Call` wrappers to use.
+pub fn generate_evm_domain_call(
+    account_info: AccountInfo,
+    use_create: ethereum::TransactionAction,
+    recursion_depth: u8,
+    nonce: U256,
+    gas_price: U256,
+) -> <TestRuntime as frame_system::Config>::RuntimeCall {
+    if recursion_depth > 0 {
+        let inner_call = generate_evm_domain_call(
+            account_info,
+            use_create,
+            recursion_depth - 1,
+            nonce,
+            gas_price,
+        );
+
+        // TODO:
+        // - randomly choose from the 6 different utility wrapper calls
+        // - test this call as the second call in a batch
+        // - test __Ignore calls are ignored
+        return RuntimeCall::Utility(pallet_utility::Call::<TestRuntime>::batch {
+            calls: vec![inner_call],
+        });
+    }
+
+    let call = match use_create {
+        // TODO:
+        // - randomly choose from Create or Create2 calls
+        ethereum::TransactionAction::Create => pallet_evm::Call::<TestRuntime>::create {
+            source: account_info.address,
+            init: vec![0; 100],
+            value: U256::zero(),
+            gas_limit: max_extrinsic_gas::<TestRuntime>(1000),
+            max_fee_per_gas: gas_price,
+            access_list: vec![],
+            max_priority_fee_per_gas: Some(U256::from(1)),
+            nonce: Some(nonce),
+        },
+        ethereum::TransactionAction::Call(contract) => pallet_evm::Call::<TestRuntime>::call {
+            source: account_info.address,
+            target: contract,
+            input: vec![0; 100],
+            value: U256::zero(),
+            gas_limit: max_extrinsic_gas::<TestRuntime>(1000),
+            max_fee_per_gas: gas_price,
+            max_priority_fee_per_gas: Some(U256::from(1)),
+            nonce: Some(nonce),
+            access_list: vec![],
+        },
+    };
+
+    RuntimeCall::EVM(call)
+}
+
+/// The kind of account list to generate.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum EvmAccountList {
+    Anyone,
+    NoOne,
+    One,
+    Multiple,
+}
+
+/// Generate the supplied kind of account list.
+pub fn generate_evm_account_list(
+    account_infos: &[AccountInfo],
+    account_list_type: EvmAccountList,
+) -> PermissionedActionAllowedBy<EthereumAccountId> {
+    // The signer of pallet-evm transactions is the EVM domain in these tests, so we also add it to
+    // the account lists.
+    let evm_domain_account = hex!("e04cc55ebee1cbce552f250e85c57b70b2e2625b");
+
+    match account_list_type {
+        EvmAccountList::Anyone => PermissionedActionAllowedBy::Anyone,
+        EvmAccountList::NoOne => PermissionedActionAllowedBy::Accounts(Vec::new()),
+        EvmAccountList::One => PermissionedActionAllowedBy::Accounts(vec![
+            EthereumAccountId::from(evm_domain_account),
+            EthereumAccountId::from(account_infos[0].address),
+        ]),
+        EvmAccountList::Multiple => PermissionedActionAllowedBy::Accounts(vec![
+            EthereumAccountId::from(evm_domain_account),
+            EthereumAccountId::from(account_infos[0].address),
+            EthereumAccountId::from(account_infos[1].address),
+            EthereumAccountId::from(account_infos[2].address),
+        ]),
+    }
+}
+
+async fn setup_evm_test_nodes(
+    ferdie_key: Sr25519Keyring,
+) -> (
+    TempDir,
+    MockConsensusNode,
+    DomainNode<EvmRuntime, EvmRuntimeApi>,
+) {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie with Alice Key since that is the sudo key
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        ferdie_key,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (an evm domain)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    (directory, ferdie, alice)
+}
+
+async fn setup_evm_test_accounts(
+    ferdie_key: Sr25519Keyring,
+) -> (
+    TempDir,
+    MockConsensusNode,
+    DomainNode<EvmRuntime, EvmRuntimeApi>,
+    Vec<AccountInfo>,
+) {
+    let (directory, mut ferdie, mut alice) = setup_evm_test_nodes(ferdie_key).await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Create more accounts and fund those accounts
+    let tx_to_create = 5;
+    let account_infos = (0..tx_to_create)
+        .map(|i| address_build(i as u128))
+        .collect::<Vec<AccountInfo>>();
+    let alice_balance = alice.free_balance(Alice.to_account_id());
+    for (i, account_info) in account_infos.iter().enumerate() {
+        let alice_balance_transfer_extrinsic = alice.construct_extrinsic(
+            alice.account_nonce() + i as u32,
+            pallet_balances::Call::transfer_allow_death {
+                dest: account_info.address.0.into(),
+                value: alice_balance / (tx_to_create as u128 + 2),
+            },
+        );
+        alice
+            .send_extrinsic(alice_balance_transfer_extrinsic)
+            .await
+            .expect("Failed to send extrinsic");
+    }
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    (directory, ferdie, alice, account_infos)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_evm_domain_create_contracts_with_allow_list_default() {
+    let (_directory, mut ferdie, mut alice, account_infos) =
+        setup_evm_test_accounts(Sr25519Alice).await;
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // Any account should be able to create contracts by default
+    let mut eth_nonce = U256::zero();
+    let eth_tx = generate_eth_domain_extrinsic(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Create,
+        eth_nonce,
+        gas_price,
+    );
+    eth_nonce += U256::one();
+
+    let result = alice.send_extrinsic(eth_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send self-contained extrinsic"
+    );
+
+    let mut evm_nonce = U256::zero();
+    let mut evm_tx = generate_evm_domain_call(
+        account_infos[1].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send signed extrinsic"
+    );
+
+    // Produce a bundle that contains just the sent extrinsics
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 2);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // Nested should behave exactly the same
+    evm_tx = generate_evm_domain_call(
+        account_infos[1].clone(),
+        ethereum::TransactionAction::Create,
+        1,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send nested signed extrinsic"
+    );
+
+    evm_tx = generate_evm_domain_call(
+        account_infos[2].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    let evm_ex = alice.construct_unsigned_extrinsic(evm_tx);
+    let result = alice.send_extrinsic(evm_ex).await;
+    // TODO: fix NoUnsignedValidator error
+    assert_matches!(
+        result,
+        Err(_),
+        "Test should fail until the test runtime is given an unsigned validator"
+    );
+
+    // Produce a bundle that contains just the sent extrinsics
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
+    let (_directory, mut ferdie, mut alice, account_infos) =
+        setup_evm_test_accounts(Sr25519Alice).await;
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // Create contracts used for testing contract calls
+    let mut eth_nonce = U256::zero();
+    let mut eth_tx = generate_eth_domain_extrinsic(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Create,
+        eth_nonce,
+        gas_price,
+    );
+    let eth_contract_address = contract_address(account_infos[0].address, eth_nonce.as_u64());
+    eth_nonce += U256::one();
+
+    alice.send_extrinsic(eth_tx).await.unwrap();
+
+    let mut evm_nonce = U256::zero();
+    let mut evm_tx = generate_evm_domain_call(
+        account_infos[1].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    let evm_contract_address = contract_address(account_infos[1].address, evm_nonce.as_u64());
+    evm_nonce += U256::one();
+
+    alice.construct_and_send_extrinsic(evm_tx).await.unwrap();
+
+    // Produce a bundle that contains just the sent extrinsics
+    let (slot, _bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // set EVM contract allow list on Domain using domain sudo.
+    // Sudo on consensus chain will send a sudo call to domain
+    // once the call is executed in the domain, list will be updated.
+    let allow_list = generate_evm_account_list(&account_infos, EvmAccountList::NoOne);
+    let sudo_unsigned_extrinsic = alice
+        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
+            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
+                contract_creation_allowed_by: allow_list.clone(),
+            },
+        ))
+        .encode();
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
+                pallet_domains::Call::send_domain_sudo_call {
+                    domain_id: EVM_DOMAIN_ID,
+                    call: sudo_unsigned_extrinsic,
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+
+    // Wait until list is updated
+    produce_blocks_until!(ferdie, alice, {
+        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+    })
+    .await
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // No account should be able to create contracts
+    eth_tx = generate_eth_domain_extrinsic(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Create,
+        gas_price,
+        eth_nonce,
+    );
+    eth_nonce += U256::one();
+
+    let result = alice.send_extrinsic(eth_tx).await;
+    assert_matches!(
+        result,
+        Err(_),
+        "Create contract self-contained extrinsic should have been rejected"
+    );
+
+    evm_tx = generate_evm_domain_call(
+        account_infos[2].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Err(_),
+        "Create contract signed extrinsic should have been rejected"
+    );
+
+    evm_tx = generate_evm_domain_call(
+        account_infos[2].clone(),
+        ethereum::TransactionAction::Create,
+        2,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Err(_),
+        "Create contract nested signed extrinsic should have been rejected"
+    );
+
+    evm_tx = generate_evm_domain_call(
+        account_infos[2].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    let evm_ex = alice.construct_unsigned_extrinsic(evm_tx);
+    let result = alice.send_extrinsic(evm_ex).await;
+    assert_matches!(
+        result,
+        Err(_),
+        "Create contract unsigned extrinsic should have been rejected"
+    );
+
+    // But they should be able to call existing contracts
+    eth_tx = generate_eth_domain_extrinsic(
+        account_infos[1].clone(),
+        ethereum::TransactionAction::Call(eth_contract_address),
+        eth_nonce,
+        gas_price,
+    );
+    eth_nonce += U256::one();
+
+    let result = alice.send_extrinsic(eth_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Contract call self-contained extrinsic should have been allowed"
+    );
+
+    evm_tx = generate_evm_domain_call(
+        account_infos[3].clone(),
+        ethereum::TransactionAction::Call(evm_contract_address),
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Contract call signed extrinsic should have been allowed"
+    );
+
+    // Produce a bundle that contains just the sent extrinsics
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // Nested should be able to call existing contracts
+    evm_tx = generate_evm_domain_call(
+        account_infos[3].clone(),
+        ethereum::TransactionAction::Call(evm_contract_address),
+        3,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Contract call nested signed extrinsic should have been allowed"
+    );
+
+    // Produce a bundle that only contain the successful extrinsic
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_evm_domain_create_contracts_with_allow_list_single() {
+    let (_directory, mut ferdie, mut alice, account_infos) =
+        setup_evm_test_accounts(Sr25519Alice).await;
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // Create contracts used for testing contract calls
+    let mut eth_nonce = U256::zero();
+    let mut eth_tx = generate_eth_domain_extrinsic(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Create,
+        eth_nonce,
+        gas_price,
+    );
+    eth_nonce += U256::one();
+
+    alice.send_extrinsic(eth_tx).await.unwrap();
+
+    let mut evm_nonce = U256::zero();
+    let mut evm_tx = generate_evm_domain_call(
+        account_infos[1].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    alice.construct_and_send_extrinsic(evm_tx).await.unwrap();
+
+    // Produce a bundle that contains just the sent extrinsics
+    let (slot, _bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // 1 account in the allow list
+    let allow_list = generate_evm_account_list(&account_infos, EvmAccountList::One);
+    let sudo_unsigned_extrinsic = alice
+        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
+            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
+                contract_creation_allowed_by: allow_list.clone(),
+            },
+        ))
+        .encode();
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
+                pallet_domains::Call::send_domain_sudo_call {
+                    domain_id: EVM_DOMAIN_ID,
+                    call: sudo_unsigned_extrinsic,
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+
+    // Wait until list is updated
+    produce_blocks_until!(ferdie, alice, {
+        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+    })
+    .await
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // Only account 0 should be able to create contracts
+    eth_tx = generate_eth_domain_extrinsic(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Create,
+        eth_nonce,
+        gas_price,
+    );
+    eth_nonce += U256::one();
+
+    let result = alice.send_extrinsic(eth_tx.clone()).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send self-contained extrinsic:\n\
+        allow list: {allow_list:?},\n\
+        tx: {eth_tx:?},\n]
+        signer: {:?}, nonce: {:?}, price: {gas_price:?}",
+        account_infos[0],
+        eth_nonce - U256::one(),
+    );
+
+    evm_tx = generate_evm_domain_call(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    // This is actually checking alice's account ID, which does the signing in construct_and_send_extrinsic()
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send signed extrinsic:\n\
+        allow list: {allow_list:?},\n\
+        tx: {eth_tx:?},\n]
+        signer: {:?}, nonce: {:?}, price: {gas_price:?}",
+        account_infos[0],
+        evm_nonce - U256::one(),
+    );
+
+    // Produce a bundle that contains just the sent extrinsics
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 2);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // Nested should also work
+    evm_tx = generate_evm_domain_call(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Create,
+        4,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    // This is actually checking alice's account ID, which does the signing in construct_and_send_extrinsic()
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send nested signed extrinsic:\n\
+        allow list: {allow_list:?},\n\
+        tx: {eth_tx:?},\n]
+        signer: {:?}, nonce: {:?}, price: {gas_price:?}",
+        account_infos[0],
+        evm_nonce - U256::one(),
+    );
+
+    // All other accounts shouldn't be allowed
+    eth_tx = generate_eth_domain_extrinsic(
+        account_infos[1].clone(),
+        ethereum::TransactionAction::Create,
+        gas_price,
+        eth_nonce,
+    );
+    eth_nonce += U256::one();
+
+    let result = alice.send_extrinsic(eth_tx).await;
+    assert_matches!(
+        result,
+        Err(_),
+        "Create contract self-contained extrinsic should have been rejected"
+    );
+
+    evm_tx = generate_evm_domain_call(
+        account_infos[2].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    // TODO: also check evm signed with other accounts
+    let evm_ex = alice.construct_unsigned_extrinsic(evm_tx);
+    let result = alice.send_extrinsic(evm_ex).await;
+    assert_matches!(
+        result,
+        Err(_),
+        "Create contract unsigned extrinsic should have been rejected"
+    );
+
+    evm_tx = generate_evm_domain_call(
+        account_infos[2].clone(),
+        ethereum::TransactionAction::Create,
+        5,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    // TODO: also check evm signed with other accounts
+    let evm_ex = alice.construct_unsigned_extrinsic(evm_tx);
+    let result = alice.send_extrinsic(evm_ex).await;
+    assert_matches!(
+        result,
+        Err(_),
+        "Create contract nested unsigned extrinsic should have been rejected"
+    );
+
+    // Produce a bundle that only contain the successful extrinsic
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
+    let (_directory, mut ferdie, mut alice, account_infos) =
+        setup_evm_test_accounts(Sr25519Alice).await;
+
+    // Multiple accounts in the allow list
+    let allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Multiple);
+    let sudo_unsigned_extrinsic = alice
+        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
+            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
+                contract_creation_allowed_by: allow_list.clone(),
+            },
+        ))
+        .encode();
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
+                pallet_domains::Call::send_domain_sudo_call {
+                    domain_id: EVM_DOMAIN_ID,
+                    call: sudo_unsigned_extrinsic,
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+
+    // Wait until list is updated
+    produce_blocks_until!(ferdie, alice, {
+        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+    })
+    .await
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // Accounts 0-2 should be able to create contracts
+    let mut eth_nonce = U256::zero();
+    let mut eth_tx = generate_eth_domain_extrinsic(
+        account_infos[1].clone(),
+        ethereum::TransactionAction::Create,
+        eth_nonce,
+        gas_price,
+    );
+    eth_nonce += U256::one();
+
+    let result = alice.send_extrinsic(eth_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send self-contained extrinsic"
+    );
+
+    let mut evm_nonce = U256::zero();
+    let mut evm_tx = generate_evm_domain_call(
+        account_infos[2].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    // This is actually checking alice's account ID, which does the signing in construct_and_send_extrinsic()
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send signed extrinsic"
+    );
+
+    // Produce a bundle that contains just the sent extrinsics
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 2);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // Nested should also work
+    evm_tx = generate_evm_domain_call(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Create,
+        6,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    // This is actually checking alice's account ID, which does the signing in construct_and_send_extrinsic()
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send signed extrinsic"
+    );
+
+    // All other accounts shouldn't be allowed
+    eth_tx = generate_eth_domain_extrinsic(
+        account_infos[3].clone(),
+        ethereum::TransactionAction::Create,
+        gas_price,
+        eth_nonce,
+    );
+    eth_nonce += U256::one();
+
+    let result = alice.send_extrinsic(eth_tx).await;
+    assert_matches!(
+        result,
+        Err(_),
+        "Create contract self-contained extrinsic should have been rejected"
+    );
+
+    evm_tx = generate_evm_domain_call(
+        account_infos[4].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    // TODO: also check evm signed with other accounts
+    let evm_ex = alice.construct_unsigned_extrinsic(evm_tx);
+    let result = alice.send_extrinsic(evm_ex).await;
+    assert_matches!(
+        result,
+        Err(_),
+        "Create contract unsigned extrinsic should have been rejected"
+    );
+
+    evm_tx = generate_evm_domain_call(
+        account_infos[4].clone(),
+        ethereum::TransactionAction::Create,
+        7,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    // TODO: also check evm signed with other accounts
+    let evm_ex = alice.construct_unsigned_extrinsic(evm_tx);
+    let result = alice.send_extrinsic(evm_ex).await;
+    assert_matches!(
+        result,
+        Err(_),
+        "Create contract nested unsigned extrinsic should have been rejected"
+    );
+
+    // Produce a bundle that only contain the successful extrinsic
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -3397,7 +4361,7 @@ async fn set_new_code_should_work() {
             .unwrap()
             .into_iter()
             .map(|encoded_extrinsic| {
-                UncheckedExtrinsic::decode(&mut encoded_extrinsic.encode().as_slice()).unwrap()
+                EvmUncheckedExtrinsic::decode(&mut encoded_extrinsic.encode().as_slice()).unwrap()
             })
             .collect::<Vec<_>>();
         panic!("`set_code` not executed, extrinsics in the block: {extrinsics:?}")
@@ -3793,7 +4757,7 @@ async fn test_domain_sudo_calls() {
         .await
         .expect("Failed to construct and send extrinsic");
 
-    // Wait until channel open
+    // Wait until channel opens
     produce_blocks_until!(ferdie, alice, {
         alice
             .get_open_channel_for_chain(ChainId::Consensus)
@@ -3802,7 +4766,141 @@ async fn test_domain_sudo_calls() {
     .await
     .unwrap();
 
-    produce_blocks!(ferdie, alice, 20).await.unwrap();
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // check initial contract allow list
+    assert!(
+        alice.evm_contract_creation_allowed_by() == Some(PermissionedActionAllowedBy::Anyone),
+        "initial contract allow list should be anyone"
+    );
+
+    // set EVM contract allow list on Domain using domain sudo.
+    // Sudo on consensus chain will send a sudo call to domain
+    // once the call is executed in the domain, list will be updated.
+    let accounts_to_create = 4;
+    let account_infos = (0..accounts_to_create)
+        .map(|i| address_build(i as u128))
+        .collect::<Vec<AccountInfo>>();
+
+    // Start with a redundant set to make sure the test framework works.
+    let mut allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Anyone);
+    let sudo_unsigned_extrinsic = alice
+        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
+            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
+                contract_creation_allowed_by: allow_list.clone(),
+            },
+        ))
+        .encode();
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
+                pallet_domains::Call::send_domain_sudo_call {
+                    domain_id: EVM_DOMAIN_ID,
+                    call: sudo_unsigned_extrinsic,
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+
+    // Wait until list is updated
+    produce_blocks_until!(ferdie, alice, {
+        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+    })
+    .await
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Then use actual settings
+    allow_list = generate_evm_account_list(&account_infos, EvmAccountList::NoOne);
+    let sudo_unsigned_extrinsic = alice
+        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
+            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
+                contract_creation_allowed_by: allow_list.clone(),
+            },
+        ))
+        .encode();
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
+                pallet_domains::Call::send_domain_sudo_call {
+                    domain_id: EVM_DOMAIN_ID,
+                    call: sudo_unsigned_extrinsic,
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+
+    // Wait until list is updated
+    produce_blocks_until!(ferdie, alice, {
+        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+    })
+    .await
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // 1 account in the allow list
+    allow_list = generate_evm_account_list(&account_infos, EvmAccountList::One);
+    let sudo_unsigned_extrinsic = alice
+        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
+            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
+                contract_creation_allowed_by: allow_list.clone(),
+            },
+        ))
+        .encode();
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
+                pallet_domains::Call::send_domain_sudo_call {
+                    domain_id: EVM_DOMAIN_ID,
+                    call: sudo_unsigned_extrinsic,
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+
+    // Wait until list is updated
+    produce_blocks_until!(ferdie, alice, {
+        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+    })
+    .await
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Multiple accounts in the allow list
+    allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Multiple);
+    let sudo_unsigned_extrinsic = alice
+        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
+            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
+                contract_creation_allowed_by: allow_list.clone(),
+            },
+        ))
+        .encode();
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
+                pallet_domains::Call::send_domain_sudo_call {
+                    domain_id: EVM_DOMAIN_ID,
+                    call: sudo_unsigned_extrinsic,
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+
+    // Wait until list is updated
+    produce_blocks_until!(ferdie, alice, {
+        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+    })
+    .await
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     // close channel on Domain using domain sudo.
     // Sudo on consensus chain will send a sudo call to domain
@@ -3832,7 +4930,7 @@ async fn test_domain_sudo_calls() {
         .await
         .expect("Failed to construct and send consensus chain to close channel");
 
-    // Wait until channel close
+    // Wait until channel closes
     produce_blocks_until!(ferdie, alice, {
         alice
             .get_open_channel_for_chain(ChainId::Consensus)
