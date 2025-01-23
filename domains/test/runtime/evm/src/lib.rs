@@ -1524,6 +1524,13 @@ impl_runtime_apis! {
         fn consensus_chain_byte_fee() -> Balance {
             BlockFees::consensus_chain_byte_fee()
         }
+
+        fn storage_root() -> [u8; 32] {
+            let version = <Runtime as frame_system::Config>::Version::get().state_version();
+            let root = sp_io::storage::root(version);
+            TryInto::<[u8; 32]>::try_into(root)
+                .expect("root is a SCALE encoded hash which uses H256; qed")
+        }
     }
 
     impl sp_domain_sudo::DomainSudoApi<Block> for Runtime {
