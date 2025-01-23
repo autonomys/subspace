@@ -9,8 +9,8 @@ use crate::mock::{
 use crate::pallet::OutboxMessageCount;
 use crate::{
     ChainAllowlist, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, Channels,
-    CloseChannelBy, Error, FeeModel, Inbox, InboxResponses, InitiateChannelParams, Nonce, Outbox,
-    OutboxMessageResult, OutboxResponses, Pallet, U256,
+    CloseChannelBy, Error, FeeModel, Inbox, InboxResponses, Nonce, Outbox, OutboxMessageResult,
+    OutboxResponses, Pallet, U256,
 };
 use frame_support::traits::fungible::Inspect;
 use frame_support::traits::tokens::{Fortitude, Preservation};
@@ -32,16 +32,11 @@ use sp_trie::StorageProof;
 use std::collections::BTreeSet;
 
 fn create_channel(chain_id: ChainId, channel_id: ChannelId) {
-    let params = InitiateChannelParams {
-        max_outgoing_messages: 100,
-    };
-
     let list = BTreeSet::from([chain_id]);
     ChainAllowlist::<chain_a::Runtime>::put(list);
     assert_ok!(Messenger::initiate_channel(
         RuntimeOrigin::signed(USER_ACCOUNT),
         chain_id,
-        params,
     ));
 
     System::assert_has_event(RuntimeEvent::Messenger(
@@ -71,7 +66,7 @@ fn create_channel(chain_id: ChainId, channel_id: ChannelId) {
         msg.payload,
         VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
             ProtocolMessageRequest::ChannelOpen(ChannelOpenParams {
-                max_outgoing_messages: params.max_outgoing_messages,
+                max_outgoing_messages: 25,
                 fee_model: <chain_a::Runtime as crate::Config>::ChannelFeeModel::get()
             })
         )))

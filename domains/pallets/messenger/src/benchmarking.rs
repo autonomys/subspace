@@ -33,9 +33,6 @@ mod benchmarks {
     fn initiate_channel() {
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
-        let channel_params = InitiateChannelParams {
-            max_outgoing_messages: 100,
-        };
         let channel_id = NextChannelId::<T>::get(dst_chain_id);
         let account = account("account", 0, 0);
         T::Currency::set_balance(
@@ -47,11 +44,7 @@ mod benchmarks {
         ChainAllowlist::<T>::put(list);
 
         #[extrinsic_call]
-        _(
-            RawOrigin::Signed(account.clone()),
-            dst_chain_id,
-            channel_params,
-        );
+        _(RawOrigin::Signed(account.clone()), dst_chain_id);
 
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);

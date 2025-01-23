@@ -3784,9 +3784,6 @@ async fn test_domain_sudo_calls() {
         .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
             pallet_messenger::Call::initiate_channel {
                 dst_chain_id: ChainId::Consensus,
-                params: pallet_messenger::InitiateChannelParams {
-                    max_outgoing_messages: 100,
-                },
             },
         ))
         .await
@@ -3927,9 +3924,6 @@ async fn test_xdm_between_consensus_and_domain_should_work() {
         .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
             pallet_messenger::Call::initiate_channel {
                 dst_chain_id: ChainId::Consensus,
-                params: pallet_messenger::InitiateChannelParams {
-                    max_outgoing_messages: 100,
-                },
             },
         ))
         .await
@@ -4140,9 +4134,6 @@ async fn test_xdm_between_domains_should_work() {
     bob.construct_and_send_extrinsic(auto_id_domain_test_runtime::RuntimeCall::Messenger(
         pallet_messenger::Call::initiate_channel {
             dst_chain_id: ChainId::Domain(EVM_DOMAIN_ID),
-            params: pallet_messenger::InitiateChannelParams {
-                max_outgoing_messages: 100,
-            },
         },
     ))
     .await
@@ -4294,9 +4285,6 @@ async fn test_unordered_cross_domains_message_should_work() {
         .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
             pallet_messenger::Call::initiate_channel {
                 dst_chain_id: ChainId::Consensus,
-                params: pallet_messenger::InitiateChannelParams {
-                    max_outgoing_messages: 100,
-                },
             },
         ))
         .await
@@ -5430,9 +5418,6 @@ async fn test_xdm_false_invalid_fraud_proof() {
         .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
             pallet_messenger::Call::initiate_channel {
                 dst_chain_id: ChainId::Consensus,
-                params: pallet_messenger::InitiateChannelParams {
-                    max_outgoing_messages: 100,
-                },
             },
         ))
         .await
@@ -5628,9 +5613,6 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
         .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
             pallet_messenger::Call::initiate_channel {
                 dst_chain_id: ChainId::Consensus,
-                params: pallet_messenger::InitiateChannelParams {
-                    max_outgoing_messages: 100,
-                },
             },
         ))
         .await

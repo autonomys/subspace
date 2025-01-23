@@ -98,12 +98,6 @@ pub(crate) enum CloseChannelBy<AccountId> {
     Sudo,
 }
 
-/// Parameters for a new channel between two chains.
-#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
-pub struct InitiateChannelParams {
-    pub max_outgoing_messages: u32,
-}
-
 /// Hold identifier trait for messenger specific balance holds
 pub trait HoldIdentifier<T: Config> {
     fn messenger_channel() -> FungibleHoldId<T>;
@@ -114,8 +108,8 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
-        FeeModel, HoldIdentifier, InitiateChannelParams, Nonce, OutboxMessageResult, StateRootOf,
-        ValidatedRelayMessage, U256,
+        FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage,
+        U256,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -191,6 +185,8 @@ mod pallet {
         type DomainRegistration: DomainRegistration;
         /// Channels fee model
         type ChannelFeeModel: Get<FeeModel<BalanceOf<Self>>>;
+        /// Maximum outgoing messages from a given channel
+        type MaxOutgoingMessages: Get<u32>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -559,11 +555,7 @@ mod pallet {
         /// Channel is set to initiated and do not accept or receive any messages.
         #[pallet::call_index(0)]
         #[pallet::weight(T::WeightInfo::initiate_channel())]
-        pub fn initiate_channel(
-            origin: OriginFor<T>,
-            dst_chain_id: ChainId,
-            params: InitiateChannelParams,
-        ) -> DispatchResult {
+        pub fn initiate_channel(origin: OriginFor<T>, dst_chain_id: ChainId) -> DispatchResult {
             let owner = ensure_signed(origin)?;
 
             // reserve channel open fees
@@ -580,7 +572,7 @@ mod pallet {
 
             // initiate the channel config
             let channel_open_params = ChannelOpenParams {
-                max_outgoing_messages: params.max_outgoing_messages,
+                max_outgoing_messages: T::MaxOutgoingMessages::get(),
                 fee_model: T::ChannelFeeModel::get(),
             };
             let channel_id = Self::do_init_channel(
@@ -1014,7 +1006,7 @@ mod pallet {
                 Error::<T>::InvalidChain,
             );
 
-            // ensure max outgoing messages is atleast 1
+            // ensure max outgoing messages is at least 1
             ensure!(
                 init_params.max_outgoing_messages >= 1u32,
                 Error::<T>::InvalidMaxOutgoingMessages

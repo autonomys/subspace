@@ -84,6 +84,7 @@ use sp_subspace_mmr::domain_mmr_runtime_interface::{
 };
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
+use static_assertions::const_assert;
 use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment, SHANNON, SSC,
 };
@@ -498,7 +499,11 @@ parameter_types! {
     pub const ChannelReserveFee: Balance = SSC;
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
+    pub const MaxOutgoingMessages: u32 = 25;
 }
+
+// ensure the max outgoing messages is not 0.
+const_assert!(MaxOutgoingMessages::get() >= 1);
 
 pub struct StorageKeys;
 
@@ -547,6 +552,7 @@ impl pallet_messenger::Config for Runtime {
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = ();
     type ChannelFeeModel = ChannelFeeModel;
+    type MaxOutgoingMessages = MaxOutgoingMessages;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

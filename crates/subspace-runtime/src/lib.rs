@@ -650,7 +650,11 @@ parameter_types! {
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     // TODO update the fee model
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
+    pub const MaxOutgoingMessages: u32 = 25;
 }
+
+// ensure the max outgoing messages is not 0.
+const_assert!(MaxOutgoingMessages::get() >= 1);
 
 pub struct DomainRegistration;
 impl sp_messenger::DomainRegistration for DomainRegistration {
@@ -684,6 +688,7 @@ impl pallet_messenger::Config for Runtime {
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = DomainRegistration;
     type ChannelFeeModel = ChannelFeeModel;
+    type MaxOutgoingMessages = MaxOutgoingMessages;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
