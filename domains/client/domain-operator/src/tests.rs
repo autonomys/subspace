@@ -6,10 +6,12 @@ use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
 use crate::OperatorSlotInfo;
 use codec::{Decode, Encode};
 use cross_domain_message_gossip::get_channel_state;
+use domain_block_builder::BlockBuilderApi;
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::{AccountId20Converter, AccountIdConverter, Hash};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
-use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Eve};
+use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Dave, Eve};
 use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
 use domain_test_service::{construct_extrinsic_generic, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID};
 use futures::StreamExt;
@@ -22,7 +24,8 @@ use sc_transaction_pool::error::Error as PoolError;
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionPool;
 use sc_utils::mpsc::tracing_unbounded;
-use sp_api::{ProvideRuntimeApi, StorageProof};
+use sp_api::{ApiExt, Core, ProvideRuntimeApi, StorageProof};
+use sp_blockchain::ApplyExtrinsicFailed;
 use sp_consensus::SyncOracle;
 use sp_core::storage::StateVersion;
 use sp_core::traits::{FetchRuntimeCode, SpawnEssentialNamed};
@@ -50,7 +53,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidityError,
 };
-use sp_runtime::OpaqueExtrinsic;
+use sp_runtime::{Digest, OpaqueExtrinsic, TransactionOutcome};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -337,6 +340,7 @@ async fn test_processing_empty_consensus_block() {
         block_import: Arc::new(Box::new(alice.client.clone())),
         import_notification_sinks: Default::default(),
         domain_sync_oracle: ferdie.sync_service.clone(),
+        domain_executor: alice.code_executor.clone(),
     };
 
     let domain_genesis_hash = alice.client.info().best_hash;
@@ -5803,4 +5807,139 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
     // We check for timeouts last, because they are the least useful test failure message.
     assert!(!timed_out);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_custom_api_storage_root_match_upstream_root() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let domain_parent_number = alice.client.info().best_number;
+    let domain_parent_hash = alice.client.info().best_hash;
+    let alice_account_nonce = alice.account_nonce();
+    let alice_total_balance = alice.free_balance(Alice.to_account_id());
+    // Success tx
+    let tx1 = alice.construct_extrinsic(
+        alice_account_nonce,
+        pallet_balances::Call::transfer_allow_death {
+            dest: Bob.to_account_id(),
+            value: 1234567890987654321,
+        },
+    );
+    // Tx fail during execution due to insufficient fund
+    let tx2 = alice.construct_extrinsic(
+        alice_account_nonce + 1,
+        pallet_balances::Call::transfer_allow_death {
+            dest: Charlie.to_account_id(),
+            value: alice_total_balance + 1,
+        },
+    );
+    // Tx transfer all of Alice's fund
+    let tx3 = alice.construct_extrinsic(
+        alice_account_nonce + 2,
+        pallet_balances::Call::transfer_all {
+            dest: Dave.to_account_id(),
+            keep_alive: false,
+        },
+    );
+    // Tx fail during pre-dispatch due to unable to pay tx fee
+    let tx4 = alice.construct_extrinsic(
+        alice_account_nonce + 3,
+        pallet_balances::Call::transfer_allow_death {
+            dest: Charlie.to_account_id(),
+            value: 1,
+        },
+    );
+    for tx in [tx1, tx2, tx3, tx4] {
+        alice
+            .send_extrinsic(tx)
+            .await
+            .expect("Failed to send extrinsic");
+    }
+
+    // Produce a domain block that contains the previously sent extrinsic
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Get the receipt of that block, its execution trace is generated by the custom API instance
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.execution_trace.len(), 8);
+
+    let mut roots = vec![];
+    let runtime_api_instance = alice.client.runtime_api();
+
+    let init_header = <<DomainBlock as BlockT>::Header as HeaderT>::new(
+        domain_parent_number + 1u32,
+        Default::default(),
+        Default::default(),
+        domain_parent_hash,
+        Digest {
+            logs: vec![DigestItem::consensus_block_info(
+                receipt.consensus_block_hash,
+            )],
+        },
+    );
+    runtime_api_instance
+        .initialize_block(domain_parent_hash, &init_header)
+        .unwrap();
+    roots.push(
+        runtime_api_instance
+            .storage_root(domain_parent_hash)
+            .unwrap(),
+    );
+
+    let domain_block_body = {
+        let best_hash = alice.client.info().best_hash;
+        alice.client.block_body(best_hash).unwrap().unwrap()
+    };
+    for xt in domain_block_body {
+        let _ = runtime_api_instance.execute_in_transaction(|api| {
+            match api.apply_extrinsic(domain_parent_hash, xt) {
+                Ok(Ok(_)) => TransactionOutcome::Commit(Ok(())),
+                Ok(Err(tx_validity)) => TransactionOutcome::Rollback(Err(
+                    ApplyExtrinsicFailed::Validity(tx_validity).into(),
+                )),
+                Err(e) => TransactionOutcome::Rollback(Err(sp_blockchain::Error::from(e))),
+            }
+        });
+        roots.push(
+            runtime_api_instance
+                .storage_root(domain_parent_hash)
+                .unwrap(),
+        );
+    }
+
+    let finalized_header = runtime_api_instance
+        .finalize_block(domain_parent_hash)
+        .unwrap();
+    roots.push((*finalized_header.state_root()).into());
+
+    let roots: Vec<<DomainBlock as BlockT>::Hash> = roots
+        .into_iter()
+        .map(|r| <DomainBlock as BlockT>::Hash::decode(&mut r.as_slice()).unwrap())
+        .collect();
+
+    assert_eq!(receipt.execution_trace, roots);
 }

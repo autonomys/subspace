@@ -457,6 +457,8 @@ impl pallet_domain_sudo::Config for Runtime {
     type IntoRuntimeCall = IntoRuntimeCall;
 }
 
+impl pallet_storage_overlay_checks::Config for Runtime {}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 //
 // NOTE: Currently domain runtime does not naturally support the pallets with inherent extrinsics.
@@ -488,6 +490,9 @@ construct_runtime!(
 
         // Sudo account
         Sudo: pallet_domain_sudo = 100,
+
+        // checks
+        StorageOverlayChecks: pallet_storage_overlay_checks = 200,
     }
 );
 
@@ -749,10 +754,6 @@ impl_runtime_apis! {
             }
         }
 
-        fn intermediate_roots() -> Vec<[u8; 32]> {
-            ExecutivePallet::intermediate_roots()
-        }
-
         fn initialize_block_with_post_state_root(header: &<Block as BlockT>::Header) -> Vec<u8> {
             Executive::initialize_block(header);
             Executive::storage_root()
@@ -984,6 +985,13 @@ impl_runtime_apis! {
 
         fn consensus_transaction_byte_fee() -> Balance {
             BlockFees::consensus_chain_byte_fee()
+        }
+
+        fn storage_root() -> [u8; 32] {
+            let version = <Runtime as frame_system::Config>::Version::get().state_version();
+            let root = sp_io::storage::root(version);
+            TryInto::<[u8; 32]>::try_into(root)
+                .expect("root is a SCALE encoded hash which uses H256; qed")
         }
     }
 
