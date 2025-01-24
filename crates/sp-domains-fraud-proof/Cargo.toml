@@ -1,7 +1,7 @@
 [package]
 name = "sp-domains-fraud-proof"
 description = "Domains fraud proof primitves for Consensus chain"
-license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
+license = "0BSD"
 version = "0.1.0"
 authors = ["Subspace Labs <https://subspace.network>"]
 edition = "2021"

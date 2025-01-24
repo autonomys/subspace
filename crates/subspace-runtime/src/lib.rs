@@ -1,19 +1,3 @@
-// Copyright (C) 2021 Subspace Labs, Inc.
-// SPDX-License-Identifier: GPL-3.0-or-later
-
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
-
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(const_trait_impl, variant_count)]
 // `generic_const_exprs` is an incomplete feature
@@ -1038,7 +1022,7 @@ impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
     fn storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8> {
         match req {
             FraudProofStorageKeyRequest::InvalidInherentExtrinsicData => {
-                pallet_domains::BlockInvalidInherentExtrinsicData::<Runtime>::hashed_key().to_vec()
+                pallet_domains::BlockInherentExtrinsicData::<Runtime>::hashed_key().to_vec()
             }
             FraudProofStorageKeyRequest::SuccessfulBundles(domain_id) => {
                 pallet_domains::SuccessfulBundles::<Runtime>::hashed_key_for(domain_id)
@@ -1278,8 +1262,20 @@ impl_runtime_apis! {
             Domains::domain_instance_data(domain_id)
         }
 
-        fn timestamp() -> Moment{
+        fn domain_timestamp() -> Moment {
+            Domains::timestamp()
+        }
+
+        fn timestamp() -> Moment {
             Timestamp::now()
+        }
+
+        fn consensus_transaction_byte_fee() -> Balance {
+            Domains::consensus_transaction_byte_fee()
+        }
+
+        fn consensus_chain_byte_fee() -> Balance {
+            DOMAIN_STORAGE_FEE_MULTIPLIER * TransactionFees::transaction_byte_fee()
         }
 
         fn domain_tx_range(domain_id: DomainId) -> U256 {
@@ -1323,10 +1319,6 @@ impl_runtime_apis! {
 
         fn receipt_hash(domain_id: DomainId, domain_number: DomainNumber) -> Option<DomainHash> {
             Domains::receipt_hash(domain_id, domain_number)
-        }
-
-        fn consensus_chain_byte_fee() -> Balance {
-            DOMAIN_STORAGE_FEE_MULTIPLIER * TransactionFees::transaction_byte_fee()
         }
 
         fn latest_confirmed_domain_block(domain_id: DomainId) -> Option<(DomainNumber, DomainHash)>{

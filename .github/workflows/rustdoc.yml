@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+  workflow_dispatch:
+  merge_group:
 
 concurrency:
   group: rustdoc-${{ github.workflow }}-${{ github.ref }}
@@ -30,7 +33,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure cache
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: |
             ~/.cargo/registry
@@ -40,7 +43,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@9b295696791d75d658d8de64c4a85097ad8abeaf # v0.2.16
+        uses: Jimver/cuda-toolkit@4bd727d5619dc6fa323b1e76c3aa5dca94f5ec6d # v0.2.19
         with:
           cuda: '12.4.1'
           method: network
@@ -48,9 +51,9 @@ jobs:
 
       # Build the rust crate docs
       - name: Build Documentation
-        run: cargo -Zgitoxide -Zgit doc --all --no-deps --lib --features cuda
+        run: cargo -Zgitoxide -Zgit doc --locked --all --no-deps --lib --features cuda
         env:
-          RUSTDOCFLAGS: "-Z unstable-options --enable-index-page"
+          RUSTDOCFLAGS: "-D rustdoc::broken-intra-doc-links -D rustdoc::private_intra_doc_links -Z unstable-options --enable-index-page"
 
       - name: Deploy Docs
         uses: JamesIves/github-pages-deploy-action@881db5376404c5c8d621010bcbec0310b58d5e29 # v4.6.8
@@ -58,3 +61,4 @@ jobs:
           branch: gh-pages
           single-commit: true
           folder: target/doc
+        if: ${{ github.event_name == 'push' }}

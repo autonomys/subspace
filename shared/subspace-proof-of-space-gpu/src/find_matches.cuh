@@ -1,6 +1,4 @@
-// Copyright Supranational LLC
-// Licensed under the Apache License, Version 2.0, see LICENSE for details.
-// SPDX-License-Identifier: Apache-2.0
+// Originally written by Supranational LLC
 
 __device__ __forceinline__
 uint32_t calculate_destination(uint32_t parity, uint32_t r, uint32_t m)

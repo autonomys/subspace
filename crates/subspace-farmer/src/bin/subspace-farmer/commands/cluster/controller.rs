@@ -205,7 +205,7 @@ pub(super) async fn controller(
             );
 
             let fut = farmer_cache_worker
-                .run(piece_getter.downgrade())
+                .run(piece_getter)
                 .instrument(info_span!("", %cache_group));
 
             async move {

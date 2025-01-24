@@ -1,18 +1,3 @@
-// Copyright (C) 2021 Subspace Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
-
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// 	http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 //! Primitives for domains pallet.
 
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -1470,8 +1455,9 @@ pub enum OperatorRewardSource<Number> {
 sp_api::decl_runtime_apis! {
     /// APIs used to access the domains pallet.
     // When updating this version, document new APIs with "Only present in API versions" comments.
-    // TODO: when removing this version, also remove "Only present in API versions" comments.
-    #[api_version(2)]
+    // TODO: when removing this version, also remove "Only present in API versions" comments and
+    // deprecated attributes.
+    #[api_version(3)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
@@ -1502,7 +1488,22 @@ sp_api::decl_runtime_apis! {
         fn domain_instance_data(domain_id: DomainId) -> Option<(DomainInstanceData, NumberFor<Block>)>;
 
         /// Returns the current timestamp at the current height.
+        fn domain_timestamp() -> Moment;
+
+        /// Returns the current timestamp at the current height.
+        #[allow(clippy::deprecated_semver)]
+        #[deprecated(since = "3", note = "Use `domain_timestamp()` instead")]
         fn timestamp() -> Moment;
+
+        /// Returns the consensus transaction byte fee that will used to charge the domain
+        /// transaction for consensus chain storage fees.
+        fn consensus_transaction_byte_fee() -> Balance;
+
+        /// Returns the consensus chain byte fee that will used to charge the domain transaction
+        /// for consensus chain storage fees.
+        #[allow(clippy::deprecated_semver)]
+        #[deprecated(since = "3", note = "Use `consensus_transaction_byte_fee()` instead")]
+        fn consensus_chain_byte_fee() -> Balance;
 
         /// Returns the current Tx range for the given domain Id.
         fn domain_tx_range(domain_id: DomainId) -> U256;
@@ -1533,10 +1534,6 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the execution receipt hash of the given domain and domain block number.
         fn receipt_hash(domain_id: DomainId, domain_number: HeaderNumberFor<DomainHeader>) -> Option<HeaderHashFor<DomainHeader>>;
-
-        /// Returns the consensus chain byte fee that will used to charge the domain transaction for consensus
-        /// chain storage fees.
-        fn consensus_chain_byte_fee() -> Balance;
 
         /// Returns the latest confirmed domain block number and hash.
         fn latest_confirmed_domain_block(domain_id: DomainId) -> Option<(HeaderNumberFor<DomainHeader>, HeaderHashFor<DomainHeader>)>;

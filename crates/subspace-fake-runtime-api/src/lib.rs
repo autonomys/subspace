@@ -1,19 +1,3 @@
-// Copyright (C) 2021 Subspace Labs, Inc.
-// SPDX-License-Identifier: GPL-3.0-or-later
-
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
-
 //! Provides "fake" runtime API implementation as a workaround for compile-time checks.
 
 use domain_runtime_primitives::opaque::Header as DomainHeader;
@@ -218,7 +202,19 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn timestamp() -> Moment{
+        fn domain_timestamp() -> Moment {
+            unreachable!()
+        }
+
+        fn timestamp() -> Moment {
+            unreachable!()
+        }
+
+        fn consensus_transaction_byte_fee() -> Balance {
+            unreachable!()
+        }
+
+        fn consensus_chain_byte_fee() -> Balance {
             unreachable!()
         }
 
@@ -259,10 +255,6 @@ sp_api::impl_runtime_apis! {
         }
 
         fn receipt_hash(_domain_id: DomainId, _domain_number: DomainNumber) -> Option<DomainHash> {
-            unreachable!()
-        }
-
-        fn consensus_chain_byte_fee() -> Balance {
             unreachable!()
         }
 
