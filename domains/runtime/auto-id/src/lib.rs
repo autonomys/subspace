@@ -17,7 +17,7 @@ use core::mem;
 use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{
     block_weights, maximum_block_length, opaque, Balance, BlockNumber, Hash, Nonce,
-    EXISTENTIAL_DEPOSIT,
+    EXISTENTIAL_DEPOSIT, MAX_OUTGOING_MESSAGES,
 };
 use domain_runtime_primitives::{
     AccountId, Address, CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier,
@@ -390,7 +390,7 @@ parameter_types! {
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     // TODO update the fee model
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
-    pub const MaxOutgoingMessages: u32 = 25;
+    pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
 }
 
 // ensure the max outgoing messages is not 0.

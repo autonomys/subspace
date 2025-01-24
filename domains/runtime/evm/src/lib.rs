@@ -23,7 +23,7 @@ pub use domain_runtime_primitives::{
 };
 use domain_runtime_primitives::{
     CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier, ERR_BALANCE_OVERFLOW,
-    ERR_NONCE_OVERFLOW, SLOT_DURATION,
+    ERR_NONCE_OVERFLOW, MAX_OUTGOING_MESSAGES, SLOT_DURATION,
 };
 use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
@@ -535,7 +535,7 @@ parameter_types! {
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     // TODO update the fee model
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
-    pub const MaxOutgoingMessages: u32 = 25;
+    pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
 }
 
 // ensure the max outgoing messages is not 0.

@@ -34,7 +34,7 @@ use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
     maximum_domain_block_weight, AccountIdConverter, BlockNumber as DomainNumber,
-    Hash as DomainHash,
+    Hash as DomainHash, MAX_OUTGOING_MESSAGES,
 };
 use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::inherent::ProvideInherent;
@@ -650,7 +650,7 @@ parameter_types! {
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     // TODO update the fee model
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
-    pub const MaxOutgoingMessages: u32 = 25;
+    pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
 }
 
 // ensure the max outgoing messages is not 0.
