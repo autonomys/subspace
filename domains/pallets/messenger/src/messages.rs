@@ -1,7 +1,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::pallet::{ChainAllowlist, UpdatedChannels};
+use crate::pallet::{ChainAllowlist, OutboxMessageCount, UpdatedChannels};
 use crate::{
     BalanceOf, ChannelId, ChannelState, Channels, CloseChannelBy, Config, Error, Event,
     InboxResponses, MessageWeightTags as MessageWeightTagStore, Nonce, Outbox, OutboxMessageResult,
@@ -52,7 +52,7 @@ impl<T: Config> Pallet<T> {
             |maybe_channel| -> Result<Nonce, DispatchError> {
                 let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
                 // check if the outbox is full
-                let count = Outbox::<T>::count();
+                let count = OutboxMessageCount::<T>::get((dst_chain_id, channel_id));
                 ensure!(
                     count < channel.max_outgoing_messages,
                     Error::<T>::OutboxFull
@@ -72,6 +72,15 @@ impl<T: Config> Pallet<T> {
                         .latest_response_received_message_nonce,
                 };
                 Outbox::<T>::insert((dst_chain_id, channel_id, next_outbox_nonce), msg);
+                OutboxMessageCount::<T>::try_mutate(
+                    (dst_chain_id, channel_id),
+                    |count| -> Result<(), DispatchError> {
+                        *count = count
+                            .checked_add(1u32)
+                            .ok_or(Error::<T>::MessageCountOverflow)?;
+                        Ok(())
+                    },
+                )?;
 
                 // update channel state
                 channel.next_outbox_nonce = next_outbox_nonce
@@ -339,6 +348,16 @@ impl<T: Config> Pallet<T> {
         // fetch original request
         let req_msg = Outbox::<T>::take((dst_chain_id, channel_id, nonce))
             .ok_or(Error::<T>::MissingMessage)?;
+
+        OutboxMessageCount::<T>::try_mutate(
+            (dst_chain_id, channel_id),
+            |count| -> Result<(), DispatchError> {
+                *count = count
+                    .checked_sub(1u32)
+                    .ok_or(Error::<T>::MessageCountUnderflow)?;
+                Ok(())
+            },
+        )?;
 
         // clear out box message weight tag
         MessageWeightTagStore::<T>::mutate(|maybe_messages| {

@@ -58,6 +58,7 @@ sp-storage = { default-features = false, git = "https://github.com/subspace/polk
 sp-subspace-mmr = { version = "0.1.0", default-features = false, path = "../../../../crates/sp-subspace-mmr" }
 sp-transaction-pool = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
 sp-version = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+static_assertions = "1.1.0"
 subspace-core-primitives = { version = "0.1.0", path = "../../../../crates/subspace-core-primitives", default-features = false }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../../crates/subspace-runtime-primitives", default-features = false }
 

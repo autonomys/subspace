@@ -17,7 +17,7 @@ use core::mem;
 use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{
     block_weights, maximum_block_length, opaque, AccountId, Address, Balance, BlockNumber, Hash,
-    Nonce, Signature, EXISTENTIAL_DEPOSIT,
+    Nonce, Signature, EXISTENTIAL_DEPOSIT, MAX_OUTGOING_MESSAGES,
 };
 use domain_runtime_primitives::{
     CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier, ERR_BALANCE_OVERFLOW,
@@ -66,6 +66,7 @@ use sp_subspace_mmr::domain_mmr_runtime_interface::{
 };
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
+use static_assertions::const_assert;
 use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment,
     SlowAdjustingFeeUpdate, SSC,
@@ -388,7 +389,11 @@ parameter_types! {
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     // TODO update the fee model
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
+    pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
 }
+
+// ensure the max outgoing messages is not 0.
+const_assert!(MaxOutgoingMessages::get() >= 1);
 
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -415,6 +420,7 @@ impl pallet_messenger::Config for Runtime {
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = ();
     type ChannelFeeModel = ChannelFeeModel;
+    type MaxOutgoingMessages = MaxOutgoingMessages;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

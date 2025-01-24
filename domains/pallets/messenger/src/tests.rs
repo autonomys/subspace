@@ -6,10 +6,11 @@ use crate::mock::{
     chain_a, chain_b, consensus_chain, storage_proof_of_inbox_message_responses,
     storage_proof_of_outbox_messages, AccountId, Balance, TestExternalities,
 };
+use crate::pallet::OutboxMessageCount;
 use crate::{
     ChainAllowlist, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, Channels,
-    CloseChannelBy, Error, FeeModel, Inbox, InboxResponses, InitiateChannelParams, Nonce, Outbox,
-    OutboxMessageResult, OutboxResponses, Pallet, U256,
+    CloseChannelBy, Error, FeeModel, Inbox, InboxResponses, Nonce, Outbox, OutboxMessageResult,
+    OutboxResponses, Pallet, U256,
 };
 use frame_support::traits::fungible::Inspect;
 use frame_support::traits::tokens::{Fortitude, Preservation};
@@ -31,16 +32,11 @@ use sp_trie::StorageProof;
 use std::collections::BTreeSet;
 
 fn create_channel(chain_id: ChainId, channel_id: ChannelId) {
-    let params = InitiateChannelParams {
-        max_outgoing_messages: 100,
-    };
-
     let list = BTreeSet::from([chain_id]);
     ChainAllowlist::<chain_a::Runtime>::put(list);
     assert_ok!(Messenger::initiate_channel(
         RuntimeOrigin::signed(USER_ACCOUNT),
         chain_id,
-        params,
     ));
 
     System::assert_has_event(RuntimeEvent::Messenger(
@@ -59,7 +55,10 @@ fn create_channel(chain_id: ChainId, channel_id: ChannelId) {
     assert_eq!(channel.next_inbox_nonce, Nonce::zero());
     assert_eq!(channel.next_outbox_nonce, Nonce::one());
     assert_eq!(channel.latest_response_received_message_nonce, None);
-    assert_eq!(Outbox::<Runtime>::count(), 1);
+    assert_eq!(
+        OutboxMessageCount::<Runtime>::get((chain_id, channel_id)),
+        1
+    );
     let msg = Outbox::<Runtime>::get((chain_id, channel_id, Nonce::zero())).unwrap();
     assert_eq!(msg.dst_chain_id, chain_id);
     assert_eq!(msg.channel_id, channel_id);
@@ -67,7 +66,7 @@ fn create_channel(chain_id: ChainId, channel_id: ChannelId) {
         msg.payload,
         VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
             ProtocolMessageRequest::ChannelOpen(ChannelOpenParams {
-                max_outgoing_messages: params.max_outgoing_messages,
+                max_outgoing_messages: 25,
                 fee_model: <chain_a::Runtime as crate::Config>::ChannelFeeModel::get()
             })
         )))
@@ -338,6 +337,7 @@ fn send_message_between_chains(
     msg: EndpointPayload,
     channel_id: ChannelId,
 ) {
+    let chain_a_id = chain_a::SelfChainId::get();
     let chain_b_id = chain_b::SelfChainId::get();
 
     // send message form outbox
@@ -368,21 +368,35 @@ fn send_message_between_chains(
     // check state on chain_b
     chain_b_test_ext.execute_with(|| {
         // Outbox, Outbox responses, Inbox, InboxResponses must be empty
-        assert_eq!(Outbox::<chain_b::Runtime>::count(), 0);
+        assert_eq!(
+            OutboxMessageCount::<chain_b::Runtime>::get((chain_a_id, channel_id)),
+            0
+        );
         assert!(OutboxResponses::<chain_b::Runtime>::get().is_none());
         assert!(Inbox::<chain_b::Runtime>::get().is_none());
 
         // latest inbox message response is cleared on next message
-        assert_eq!(InboxResponses::<chain_b::Runtime>::count(), 1);
+        assert!(InboxResponses::<chain_b::Runtime>::contains_key((
+            chain_a_id,
+            channel_id,
+            Nonce::one()
+        )),);
     });
 
     // check state on chain_a
     chain_a_test_ext.execute_with(|| {
         // Outbox, Outbox responses, Inbox, InboxResponses must be empty
-        assert_eq!(Outbox::<chain_a::Runtime>::count(), 0);
+        assert_eq!(
+            OutboxMessageCount::<chain_a::Runtime>::get((chain_b_id, channel_id)),
+            0
+        );
         assert!(OutboxResponses::<chain_a::Runtime>::get().is_none());
         assert!(Inbox::<chain_a::Runtime>::get().is_none());
-        assert_eq!(InboxResponses::<chain_a::Runtime>::count(), 0);
+        assert!(!InboxResponses::<chain_a::Runtime>::contains_key((
+            chain_b_id,
+            channel_id,
+            Nonce::one()
+        )));
 
         let channel = chain_a::Messenger::channels(chain_b_id, channel_id).unwrap();
         assert_eq!(
@@ -435,12 +449,19 @@ fn close_channel_between_chains(
         assert_eq!(channel.next_outbox_nonce, Nonce::zero());
 
         // Outbox, Outbox responses, Inbox, InboxResponses must be empty
-        assert_eq!(Outbox::<chain_b::Runtime>::count(), 0);
+        assert_eq!(
+            OutboxMessageCount::<chain_b::Runtime>::get((chain_a_id, channel_id)),
+            0
+        );
         assert!(OutboxResponses::<chain_b::Runtime>::get().is_none());
         assert!(Inbox::<chain_b::Runtime>::get().is_none());
 
         // latest inbox message response is cleared on next message
-        assert_eq!(InboxResponses::<chain_b::Runtime>::count(), 1);
+        assert!(InboxResponses::<chain_b::Runtime>::contains_key((
+            chain_a_id,
+            channel_id,
+            Nonce::one()
+        )));
     });
 
     // check channel state be closed on chain_a
@@ -464,10 +485,17 @@ fn close_channel_between_chains(
         }));
 
         // Outbox, Outbox responses, Inbox, InboxResponses must be empty
-        assert_eq!(Outbox::<chain_a::Runtime>::count(), 0);
+        assert_eq!(
+            OutboxMessageCount::<chain_a::Runtime>::get((chain_b_id, channel_id)),
+            0
+        );
         assert!(OutboxResponses::<chain_a::Runtime>::get().is_none());
         assert!(Inbox::<chain_a::Runtime>::get().is_none());
-        assert_eq!(InboxResponses::<chain_a::Runtime>::count(), 0);
+        assert!(!InboxResponses::<chain_a::Runtime>::contains_key((
+            chain_b_id,
+            channel_id,
+            Nonce::one()
+        )));
     })
 }
 
