@@ -28,5 +28,8 @@ sp_api::decl_runtime_apis! {
 
         /// Api to get the current domain transaction byte fee
         fn consensus_chain_byte_fee() -> Balance;
+
+        /// Get the storage root
+        fn storage_root() -> [u8; 32];
     }
 }
