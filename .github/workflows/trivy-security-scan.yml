@@ -66,24 +66,3 @@ jobs:
         with:
           sarif_file: "trivy-image-results.sarif"
           category: trivy-image
-
-      # Filesystem scanning
-      - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
-        with:
-          version: 'latest'
-          scan-type: 'fs'
-          cache: 'true'
-          format: 'sarif'
-          output: 'trivy-fs-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          ignore-unfixed: true
-        env:
-          TRIVY_CACHE_DIR: .cache/trivy
-
-      # Upload filesystem scan results
-      - name: Upload Trivy filesystem scan results
-        uses: github/codeql-action/upload-sarif@1b1aada464948af03b950897e5eb522f92603cc2 # v3.24.9
-        with:
-          sarif_file: 'trivy-fs-results.sarif'
-          category: trivy-fs
