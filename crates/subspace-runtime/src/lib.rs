@@ -1,19 +1,3 @@
-// Copyright (C) 2021 Subspace Labs, Inc.
-// SPDX-License-Identifier: GPL-3.0-or-later
-
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
-
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(const_trait_impl, variant_count)]
 // `generic_const_exprs` is an incomplete feature
@@ -50,7 +34,7 @@ use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
     maximum_domain_block_weight, AccountIdConverter, BlockNumber as DomainNumber,
-    Hash as DomainHash,
+    Hash as DomainHash, MAX_OUTGOING_MESSAGES,
 };
 use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::inherent::ProvideInherent;
@@ -666,7 +650,11 @@ parameter_types! {
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     // TODO update the fee model
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
+    pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
 }
+
+// ensure the max outgoing messages is not 0.
+const_assert!(MaxOutgoingMessages::get() >= 1);
 
 pub struct DomainRegistration;
 impl sp_messenger::DomainRegistration for DomainRegistration {
@@ -700,6 +688,7 @@ impl pallet_messenger::Config for Runtime {
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = DomainRegistration;
     type ChannelFeeModel = ChannelFeeModel;
+    type MaxOutgoingMessages = MaxOutgoingMessages;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

@@ -7,7 +7,7 @@ authors = [
 ]
 description = "A Subspace Network data gateway."
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "0BSD"
 homepage = "https://subspace.network"
 repository = "https://github.com/autonomys/subspace"
 include = [

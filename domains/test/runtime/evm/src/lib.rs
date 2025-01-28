@@ -19,7 +19,7 @@ use core::mem;
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
     block_weights, maximum_block_length, maximum_domain_block_weight, ERR_BALANCE_OVERFLOW,
-    ERR_NONCE_OVERFLOW, EXISTENTIAL_DEPOSIT, SLOT_DURATION,
+    ERR_NONCE_OVERFLOW, EXISTENTIAL_DEPOSIT, MAX_OUTGOING_MESSAGES, SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError,
@@ -83,6 +83,7 @@ use sp_subspace_mmr::domain_mmr_runtime_interface::{
 };
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
+use static_assertions::const_assert;
 use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment, SHANNON, SSC,
 };
@@ -490,7 +491,11 @@ parameter_types! {
     pub const ChannelReserveFee: Balance = SSC;
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
+    pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
 }
+
+// ensure the max outgoing messages is not 0.
+const_assert!(MaxOutgoingMessages::get() >= 1);
 
 pub struct StorageKeys;
 
@@ -539,6 +544,7 @@ impl pallet_messenger::Config for Runtime {
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = ();
     type ChannelFeeModel = ChannelFeeModel;
+    type MaxOutgoingMessages = MaxOutgoingMessages;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -724,6 +730,8 @@ impl pallet_domain_sudo::Config for Runtime {
     type IntoRuntimeCall = IntoRuntimeCall;
 }
 
+impl pallet_storage_overlay_checks::Config for Runtime {}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 //
 // NOTE: Currently domain runtime does not naturally support the pallets with inherent extrinsics.
@@ -756,6 +764,9 @@ construct_runtime!(
 
         // Sudo account
         Sudo: pallet_domain_sudo = 100,
+
+        // checks
+        StorageOverlayChecks: pallet_storage_overlay_checks = 200,
     }
 );
 
@@ -1114,10 +1125,6 @@ impl_runtime_apis! {
             } else {
                 true
             }
-        }
-
-        fn intermediate_roots() -> Vec<[u8; 32]> {
-            ExecutivePallet::intermediate_roots()
         }
 
         fn initialize_block_with_post_state_root(header: &<Block as BlockT>::Header) -> Vec<u8> {
@@ -1514,6 +1521,13 @@ impl_runtime_apis! {
 
         fn consensus_transaction_byte_fee() -> Balance {
             BlockFees::consensus_chain_byte_fee()
+        }
+
+        fn storage_root() -> [u8; 32] {
+            let version = <Runtime as frame_system::Config>::Version::get().state_version();
+            let root = sp_io::storage::root(version);
+            TryInto::<[u8; 32]>::try_into(root)
+                .expect("root is a SCALE encoded hash which uses H256; qed")
         }
     }
 

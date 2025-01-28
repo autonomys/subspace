@@ -7,7 +7,7 @@ authors = [
 ]
 description = "Networking functionality of Subspace Network, primarily used for DSN (Distributed Storage Network)"
 edition = "2021"
-license = "Apache-2.0"
+license = "0BSD"
 homepage = "https://subspace.network"
 repository = "https://github.com/autonomys/subspace"
 include = [

@@ -1013,6 +1013,7 @@ dependencies = [
  "sp-subspace-mmr",
  "sp-transaction-pool",
  "sp-version",
+ "static_assertions",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "substrate-wasm-builder",
@@ -1037,6 +1038,7 @@ dependencies = [
  "pallet-domain-id",
  "pallet-domain-sudo",
  "pallet-messenger",
+ "pallet-storage-overlay-checks",
  "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
@@ -1050,6 +1052,7 @@ dependencies = [
  "sp-domains",
  "sp-genesis-builder",
  "sp-inherents",
+ "sp-io",
  "sp-messenger",
  "sp-messenger-host-functions",
  "sp-mmr-primitives",
@@ -1061,6 +1064,7 @@ dependencies = [
  "sp-subspace-mmr",
  "sp-transaction-pool",
  "sp-version",
+ "static_assertions",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "substrate-wasm-builder",
@@ -2506,12 +2510,14 @@ dependencies = [
 name = "domain-block-builder"
 version = "0.1.0"
 dependencies = [
+ "hash-db",
  "parity-scale-codec",
  "sc-client-api",
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",
  "sp-core",
+ "sp-externalities",
  "sp-inherents",
  "sp-runtime",
  "sp-state-machine",
@@ -3285,6 +3291,7 @@ dependencies = [
  "sp-subspace-mmr",
  "sp-transaction-pool",
  "sp-version",
+ "static_assertions",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "substrate-wasm-builder",
@@ -3317,6 +3324,7 @@ dependencies = [
  "pallet-evm-precompile-sha3fips",
  "pallet-evm-precompile-simple",
  "pallet-messenger",
+ "pallet-storage-overlay-checks",
  "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
@@ -3330,6 +3338,7 @@ dependencies = [
  "sp-domains",
  "sp-genesis-builder",
  "sp-inherents",
+ "sp-io",
  "sp-messenger",
  "sp-messenger-host-functions",
  "sp-mmr-primitives",
@@ -3340,6 +3349,7 @@ dependencies = [
  "sp-subspace-mmr",
  "sp-transaction-pool",
  "sp-version",
+ "static_assertions",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "substrate-wasm-builder",
@@ -7915,6 +7925,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-storage-overlay-checks"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-runtime",
+]
+
+[[package]]
 name = "pallet-subspace"
 version = "0.1.0"
 dependencies = [
@@ -11840,7 +11863,6 @@ dependencies = [
  "pallet-balances",
  "pallet-ethereum",
  "parity-scale-codec",
- "parking_lot 0.12.3",
  "rand",
  "rlp",
  "sc-cli",
@@ -11865,7 +11887,6 @@ dependencies = [
  "sp-weights",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "subspace-test-client",
  "subspace-test-service",
  "tempfile",
  "thiserror 2.0.0",

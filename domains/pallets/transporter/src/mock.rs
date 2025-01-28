@@ -54,6 +54,7 @@ parameter_types! {
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: 1};
     pub TransactionWeightFee: Balance = 100_000;
+    pub const MaxOutgoingMessages: u32 = 25;
 }
 
 #[derive(
@@ -97,6 +98,7 @@ impl pallet_messenger::Config for MockRuntime {
     type HoldIdentifier = MockHoldIdentifer;
     type DomainRegistration = DomainRegistration;
     type ChannelFeeModel = ChannelFeeModel;
+    type MaxOutgoingMessages = MaxOutgoingMessages;
     /// function to fetch endpoint response handler by Endpoint.
     fn get_endpoint_handler(_endpoint: &Endpoint) -> Option<Box<dyn EndpointHandler<MessageId>>> {
         #[cfg(feature = "runtime-benchmarks")]

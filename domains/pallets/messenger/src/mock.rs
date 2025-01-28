@@ -60,6 +60,7 @@ macro_rules! impl_runtime {
             pub const ChannelReserveFee: Balance = 10;
             pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
             pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: 1};
+            pub const MaxOutgoingMessages: u32 = 25;
         }
 
         #[derive(
@@ -102,6 +103,7 @@ macro_rules! impl_runtime {
             type HoldIdentifier = MockHoldIdentifer;
             type DomainRegistration = DomainRegistration;
             type ChannelFeeModel = ChannelFeeModel;
+            type MaxOutgoingMessages = MaxOutgoingMessages;
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 #[allow(unused_variables)] endpoint: &Endpoint,

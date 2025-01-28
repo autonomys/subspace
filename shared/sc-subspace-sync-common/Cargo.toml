@@ -6,7 +6,7 @@ authors = [
     "Shamil Gadelshin <shamilgadelshin@gmail.com>"
 ]
 description = "Synchronization algorithms for Autonomys Network"
-license = "Apache-2.0"
+license = "0BSD"
 repository = "https://github.com/autonomys/subspace"
 include = [
     "/src",

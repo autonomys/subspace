@@ -1,7 +1,7 @@
 [package]
 name = "subspace-proof-of-time"
 description = "Subspace proof of time implementation"
-license = "Apache-2.0"
+license = "0BSD"
 version = "0.1.0"
 authors = ["Rahul Subramaniyam <rahulksnv@gmail.com>"]
 edition = "2021"

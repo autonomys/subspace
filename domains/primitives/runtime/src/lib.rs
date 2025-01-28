@@ -78,6 +78,9 @@ pub type EthereumAccountId = <<EthereumSignature as Verify>::Signer as IdentifyA
 /// Dispatch ratio for domains
 pub const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(65);
 
+// Max outgoing messages for XDM
+pub const MAX_OUTGOING_MESSAGES: u32 = 10_000;
+
 /// The maximum domain block weight with 3.25 MiB as proof size
 /// Consensus allows 3.75 MiB but Fraud proof can carry extra size along with proof size
 /// So we set the proof size to 3.25 MiB
