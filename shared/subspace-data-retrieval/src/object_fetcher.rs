@@ -42,7 +42,10 @@ pub enum Error {
     PieceOffsetTooLarge { mapping: GlobalObject },
 
     /// No item in segment at offset
-    #[error("Offset {offset_in_segment} in segment {segment_index} is not an item, current progress: {progress}, object: {mapping:?}")]
+    #[error(
+        "Offset {offset_in_segment} in segment {segment_index} is not an item, \
+         current progress: {progress}, object: {mapping:?}"
+    )]
     NoSegmentItem {
         progress: usize,
         offset_in_segment: usize,
@@ -51,7 +54,10 @@ pub enum Error {
     },
 
     /// Unexpected item in first segment at offset
-    #[error("Offset {offset_in_segment} in first segment {segment_index} has unexpected item, current progress: {segment_progress}, object: {mapping:?}, item: {segment_item:?}")]
+    #[error(
+        "Offset {offset_in_segment} in first segment {segment_index} has unexpected item, \
+         current progress: {segment_progress}, object: {mapping:?}, item: {segment_item:?}"
+    )]
     UnexpectedFirstSegmentItem {
         segment_progress: usize,
         offset_in_segment: usize,
@@ -61,7 +67,10 @@ pub enum Error {
     },
 
     /// Unexpected item in continuing segment at offset
-    #[error("Continuing segment {segment_index} has unexpected item, collected data: {collected_data}, object: {mapping:?}, item: {segment_item:?}")]
+    #[error(
+        "Continuing segment {segment_index} has unexpected item, \
+         collected data: {collected_data}, object: {mapping:?}, item: {segment_item:?}"
+    )]
     UnexpectedContinuingSegmentItem {
         collected_data: usize,
         segment_index: SegmentIndex,
@@ -70,7 +79,10 @@ pub enum Error {
     },
 
     /// Object not found after downloading expected number of segments
-    #[error("Object segment range {first_segment_index}..={last_segment_index} did not contain full object, object: {mapping:?}")]
+    #[error(
+        "Object segment range {first_segment_index}..={last_segment_index} did not contain \
+         full object, object: {mapping:?}"
+    )]
     TooManySegments {
         first_segment_index: SegmentIndex,
         last_segment_index: SegmentIndex,
@@ -79,7 +91,8 @@ pub enum Error {
 
     /// Object is too large error
     #[error(
-        "Data length {data_length} exceeds maximum object size {max_object_len} for object: {mapping:?}"
+        "Data length {data_length} exceeds maximum object size {max_object_len} \
+         for object: {mapping:?}"
     )]
     ObjectTooLarge {
         data_length: usize,
@@ -89,7 +102,8 @@ pub enum Error {
 
     /// Length prefix is too large error
     #[error(
-        "Length prefix length {length_prefix_len} exceeds maximum object size {max_object_len} for object: {mapping:?}"
+        "Length prefix length {length_prefix_len} exceeds maximum object size {max_object_len} \
+         for object: {mapping:?}"
     )]
     LengthPrefixTooLarge {
         length_prefix_len: usize,
