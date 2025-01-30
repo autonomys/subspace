@@ -13,7 +13,6 @@ use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_core_primitives::objects::{GlobalObject, GlobalObjectMapping};
 use subspace_core_primitives::pieces::{Piece, PieceIndex, RawRecord};
 use subspace_core_primitives::segments::{RecordedHistorySegment, SegmentIndex};
-use subspace_erasure_coding::ErasureCoding;
 use tracing::{debug, trace, warn};
 
 mod partial_object;
@@ -196,9 +195,6 @@ where
     /// The piece getter used to fetch pieces.
     piece_getter: Arc<PG>,
 
-    /// The erasure coding configuration of those pieces.
-    _erasure_coding: ErasureCoding,
-
     /// The maximum number of data bytes we'll read for a single object.
     max_object_len: usize,
 }
@@ -213,11 +209,7 @@ where
     /// up and returning an error. In this implementation, it is limited to
     /// [`max_supported_object_length()`], which is much larger than the maximum consensus block
     /// size.
-    pub fn new(
-        piece_getter: Arc<PG>,
-        erasure_coding: ErasureCoding,
-        mut max_object_len: usize,
-    ) -> Self {
+    pub fn new(piece_getter: Arc<PG>, mut max_object_len: usize) -> Self {
         if max_object_len > max_supported_object_length() {
             warn!(
                 max_object_len,
@@ -231,7 +223,6 @@ where
 
         Self {
             piece_getter,
-            _erasure_coding: erasure_coding,
             max_object_len,
         }
     }

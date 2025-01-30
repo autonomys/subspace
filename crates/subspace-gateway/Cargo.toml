@@ -34,7 +34,6 @@ reqwest = { workspace = true, features = ["json", "rustls-tls"] }
 serde = { workspace = true, features = ["derive"] }
 subspace-core-primitives.workspace = true
 subspace-data-retrieval.workspace = true
-subspace-erasure-coding.workspace = true
 subspace-gateway-rpc.workspace = true
 subspace-kzg.workspace = true
 subspace-logging.workspace = true
@@ -43,3 +42,4 @@ subspace-rpc-primitives.workspace = true
 subspace-verification.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "macros"] }
 tracing.workspace = true
+

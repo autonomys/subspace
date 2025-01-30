@@ -13865,7 +13865,6 @@ dependencies = [
  "serde",
  "subspace-core-primitives",
  "subspace-data-retrieval",
- "subspace-erasure-coding",
  "subspace-gateway-rpc",
  "subspace-kzg",
  "subspace-logging",
