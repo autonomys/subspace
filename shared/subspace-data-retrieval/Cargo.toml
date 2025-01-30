@@ -15,16 +15,15 @@ include = [
 anyhow.workspace = true
 async-trait.workspace = true
 futures.workspace = true
-hex.workspace = true
+hex = { workspace = true, features = ["std"] }
 parity-scale-codec = { workspace = true, features = ["derive"] }
 subspace-archiving.workspace = true
-subspace-core-primitives.workspace = true
+subspace-core-primitives = { workspace = true, features = ["std"] }
 subspace-erasure-coding.workspace = true
+subspace-runtime-primitives = { workspace = true, features = ["std"] }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["sync", "rt"] }
-tracing.workspace = true
-
-[dev-dependencies]
+tracing = { workspace = true, features = ["std"] }
 
 [features]
 parallel = [
