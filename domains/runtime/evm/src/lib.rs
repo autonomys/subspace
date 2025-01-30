@@ -19,13 +19,13 @@ use core::mem;
 use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{
     block_weights, maximum_block_length, maximum_domain_block_weight, opaque, Balance, BlockNumber,
-    Hash, Nonce, EXISTENTIAL_DEPOSIT,
+    EthereumAccountId as AccountId, EthereumSignature as Signature, Hash, Nonce,
+    EXISTENTIAL_DEPOSIT,
 };
 use domain_runtime_primitives::{
     CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier, ERR_BALANCE_OVERFLOW,
     ERR_NONCE_OVERFLOW, MAX_OUTGOING_MESSAGES, SLOT_DURATION,
 };
-use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::genesis_builder_helper::{build_state, get_preset};
@@ -41,9 +41,8 @@ use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_block_fees::fees::OnChargeDomainTransaction;
-use pallet_ethereum::Call::transact;
 use pallet_ethereum::{
-    Call, PostLogContent, Transaction as EthereumTransaction, TransactionData, TransactionStatus,
+    PostLogContent, Transaction as EthereumTransaction, TransactionData, TransactionStatus,
 };
 use pallet_evm::{
     Account as EVMAccount, EnsureAddressNever, EnsureAddressRoot, FeeCalculator,
@@ -63,9 +62,9 @@ use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::generic::Era;
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Checkable, DispatchInfoOf, Dispatchable, IdentifyAccount,
-    IdentityLookup, Keccak256, NumberFor, One, PostDispatchInfoOf, SignedExtension,
-    UniqueSaturatedInto, ValidateUnsigned, Verify, Zero,
+    BlakeTwo256, Block as BlockT, Checkable, DispatchInfoOf, Dispatchable, IdentityLookup,
+    Keccak256, NumberFor, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
+    ValidateUnsigned, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -89,13 +88,6 @@ use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment,
     SlowAdjustingFeeUpdate, SHANNON, SSC,
 };
-
-/// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
-pub type Signature = EthereumSignature;
-
-/// Some way of identifying an account on the chain. We intentionally make it equivalent
-/// to the public key of our transaction signing scheme.
-pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 /// The address format for describing accounts.
 pub type Address = AccountId;
@@ -952,7 +944,7 @@ fn pre_dispatch_evm_transaction(
             {
                 let _ = transaction_validity?;
 
-                let Call::transact { transaction } = call;
+                let pallet_ethereum::Call::transact { transaction } = call;
                 domain_check_weight::CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
 
                 let transaction_data: TransactionData = (&transaction).into();
@@ -1528,7 +1520,7 @@ impl_runtime_apis! {
             xts: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<EthereumTransaction> {
             xts.into_iter().filter_map(|xt| match xt.0.function {
-                RuntimeCall::Ethereum(transact { transaction }) => Some(transaction),
+                RuntimeCall::Ethereum(pallet_ethereum::Call::transact {  transaction }) => Some(transaction),
                 _ => None
             }).collect::<Vec<EthereumTransaction>>()
         }
@@ -1562,7 +1554,7 @@ impl_runtime_apis! {
     impl fp_rpc::ConvertTransactionRuntimeApi<Block> for Runtime {
         fn convert_transaction(transaction: EthereumTransaction) -> <Block as BlockT>::Extrinsic {
             UncheckedExtrinsic::new_unsigned(
-                pallet_ethereum::Call::<Runtime>::transact { transaction }.into(),
+                pallet_ethereum::Call::transact { transaction }.into(),
             )
         }
     }

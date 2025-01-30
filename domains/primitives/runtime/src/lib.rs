@@ -24,7 +24,7 @@ extern crate alloc;
 use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-pub use fp_account::AccountId20;
+pub use fp_account::{AccountId20, EthereumSignature as EVMSignature};
 use frame_support::dispatch::DispatchClass;
 use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight};
 use frame_system::limits::{BlockLength, BlockWeights};
@@ -68,6 +68,13 @@ pub const SLOT_DURATION: u64 = 1000;
 /// The EVM chain Id type
 pub type EVMChainId = u64;
 
+/// Alias to 512-bit hash when used in the context of a transaction signature on the EVM chain.
+pub type EthereumSignature = EVMSignature;
+
+/// Some way of identifying an account on the EVM chain. We intentionally make it equivalent
+/// to the public key of the EVM transaction signing scheme.
+pub type EthereumAccountId = <<EthereumSignature as Verify>::Signer as IdentifyAccount>::AccountId;
+
 /// Dispatch ratio for domains
 pub const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(65);
 
@@ -84,6 +91,10 @@ pub fn maximum_domain_block_weight() -> Weight {
         NORMAL_DISPATCH_RATIO * Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), 0);
     weight.set_proof_size(consensus_maximum_normal_block_length)
 }
+
+// When updating these error codes, check for clashes between:
+// <https://github.com/autonomys/subspace/blob/main/crates/sp-domains-fraud-proof/src/lib.rs#L49-L64>
+// <https://github.com/autonomys/subspace/blob/main/domains/pallets/messenger/src/lib.rs#L49-L53>
 
 /// Custom error when nonce overflow occurs.
 pub const ERR_NONCE_OVERFLOW: u8 = 100;

@@ -8,6 +8,10 @@ pub mod extrinsics;
 pub mod merkle_tree;
 pub mod proof_provider_and_verifier;
 pub mod storage;
+#[cfg(any(test, feature = "test-ethereum"))]
+pub mod test_ethereum;
+#[cfg(any(test, feature = "test-ethereum"))]
+pub mod test_ethereum_tx;
 #[cfg(test)]
 mod tests;
 pub mod valued_trie;
@@ -968,17 +972,17 @@ impl DomainsDigestItem for DigestItem {
 
 /// EVM chain Id storage key.
 ///
-/// This and next function should ideally use Host function to fetch the storage key
+/// This function should ideally use a Host function to fetch the storage key
 /// from the domain runtime. But since the Host function is not available at Genesis, we have to
 /// assume the storage keys.
 /// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.
 pub(crate) fn evm_chain_id_storage_key() -> StorageKey {
     StorageKey(
         storage_prefix(
-            // This is the name used for the `pallet_evm_chain_id` in the `construct_runtime` macro
+            // This is the name used for `pallet_evm_chain_id` in the `construct_runtime` macro
             // i.e. `EVMChainId: pallet_evm_chain_id = 82,`
             "EVMChainId".as_bytes(),
-            // This is the storage item name used inside the `pallet_evm_chain_id`
+            // This is the storage item name used inside `pallet_evm_chain_id`
             "ChainId".as_bytes(),
         )
         .to_vec(),
@@ -994,9 +998,9 @@ pub(crate) fn evm_chain_id_storage_key() -> StorageKey {
 pub fn domain_total_issuance_storage_key() -> StorageKey {
     StorageKey(
         storage_prefix(
-            // This is the name used for the `pallet_balances` in the `construct_runtime` macro
+            // This is the name used for `pallet_balances` in the `construct_runtime` macro
             "Balances".as_bytes(),
-            // This is the storage item name used inside the `pallet_balances`
+            // This is the storage item name used inside `pallet_balances`
             "TotalIssuance".as_bytes(),
         )
         .to_vec(),
@@ -1005,7 +1009,7 @@ pub fn domain_total_issuance_storage_key() -> StorageKey {
 
 /// Account info on frame_system on Domains
 ///
-/// This function should ideally use Host function to fetch the storage key
+/// This function should ideally use a Host function to fetch the storage key
 /// from the domain runtime. But since the Host function is not available at Genesis, we have to
 /// assume the storage keys.
 /// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.
@@ -1021,17 +1025,17 @@ pub fn domain_account_storage_key<AccountId: Encode>(who: AccountId) -> StorageK
     StorageKey(final_key)
 }
 
-/// The storage key of the `SelfDomainId` storage item in the `pallet-domain-id`
+/// The storage key of the `SelfDomainId` storage item in `pallet-domain-id`
 ///
-/// Any change to the storage item name or the `pallet-domain-id` name used in the `construct_runtime`
+/// Any change to the storage item name or `pallet-domain-id` name used in the `construct_runtime`
 /// macro must be reflected here.
 pub fn self_domain_id_storage_key() -> StorageKey {
     StorageKey(
         frame_support::storage::storage_prefix(
-            // This is the name used for the `pallet-domain-id` in the `construct_runtime` macro
+            // This is the name used for `pallet-domain-id` in the `construct_runtime` macro
             // i.e. `SelfDomainId: pallet_domain_id = 90`
             "SelfDomainId".as_bytes(),
-            // This is the storage item name used inside the `pallet-domain-id`
+            // This is the storage item name used inside `pallet-domain-id`
             "SelfDomainId".as_bytes(),
         )
         .to_vec(),
@@ -1552,7 +1556,7 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the last confirmed domain block execution receipt.
         fn last_confirmed_domain_block_receipt(domain_id: DomainId) ->Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
-}
+    }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
         fn bundle_producer_election_params(domain_id: DomainId) -> Option<BundleProducerElectionParams<Balance>>;
