@@ -1,31 +1,55 @@
 //! Fetching objects stored in the archived history of Subspace Network.
 
+use crate::object_fetcher::partial_object::{PartialObject, RawPieceData};
+use crate::object_fetcher::segment_header::{
+    max_segment_header_encoded_size, min_segment_header_encoded_size, MAX_SEGMENT_PADDING,
+};
 use crate::piece_fetcher::download_pieces;
 use crate::piece_getter::PieceGetter;
-use crate::segment_downloading::{download_segment, SegmentDownloadingError};
-use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
+use parity_scale_codec::{Compact, CompactLen, Decode};
 use std::sync::Arc;
-use subspace_archiving::archiver::{Segment, SegmentItem};
-use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
+use subspace_archiving::archiver::SegmentItem;
+use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_core_primitives::objects::{GlobalObject, GlobalObjectMapping};
 use subspace_core_primitives::pieces::{Piece, PieceIndex, RawRecord};
 use subspace_core_primitives::segments::{RecordedHistorySegment, SegmentIndex};
 use subspace_erasure_coding::ErasureCoding;
 use tracing::{debug, trace, warn};
 
-/// The maximum amount of segment padding.
-///
-/// This is the difference between the lengths of the compact encodings of the minimum and maximum
-/// block sizes in the consensus chain. As of January 2025, the minimum block size is (potentially)
-/// 63 or less, and the maximum block size is in the range 2^14 to 2^30 - 1.
-/// <https://docs.substrate.io/reference/scale-codec/#fn-1>
-pub const MAX_SEGMENT_PADDING: usize = 3;
+mod partial_object;
+mod segment_header;
 
-/// The maximum object length this module can handle.
+/// The maximum object length the implementation in this module can reliably handle.
 ///
-/// Currently objects are limited by the largest block size on the consensus chain, which is 5 MB.
-/// But this implementation supports the maximum length of the 4 byte scale encoding.
-pub const MAX_SUPPORTED_OBJECT_LENGTH: usize = 1024 * 1024 * 1024 - 1;
+/// Currently objects are limited by the largest block size in the consensus chain, which is 5 MB.
+/// But this implementation can retrieve all objects smaller than a segment (up to 124 MB). Some
+/// objects between 124 MB and 248 MB are supported, if they span 2 segments (but not 3 segments).
+/// But objects that large don't currently exist, so we use the lower limit to avoid potential
+/// security and reliability issues.
+///
+/// The maximum object length excludes segment padding, and the parent segment header at the start
+/// of the next segment.
+//
+// TODO: if the consensus chain supports larger block sizes, implement support for:
+// - objects larger than 124 MB: reconstruct objects that span 3 or more segments, by
+//   reconstructing each full segment
+// - blocks larger than 1 GB: handle padding for blocks with encoded length prefixes that are
+//   longer than 4 bytes, by increasing MAX_SEGMENT_PADDING
+#[inline]
+pub fn max_supported_object_length() -> usize {
+    // segment - variable end padding - segment version variant - segment header item variant
+    // - parent segment header - segment (block) item variant - block size - object size
+    RecordedHistorySegment::SIZE
+        - MAX_SEGMENT_PADDING
+        - 1
+        - 1
+        - max_segment_header_encoded_size()
+        - 1
+        - MAX_ENCODED_LENGTH_SIZE * 2
+}
+
+/// The length of the compact encoding of `max_supported_object_length()`.
+const MAX_ENCODED_LENGTH_SIZE: usize = 4;
 
 /// Object fetching errors.
 #[derive(Debug, thiserror::Error)]
@@ -40,54 +64,6 @@ pub enum Error {
         RawRecord::SIZE
     )]
     PieceOffsetTooLarge { mapping: GlobalObject },
-
-    /// No item in segment at offset
-    #[error(
-        "Offset {offset_in_segment} in segment {segment_index} is not an item, \
-         current progress: {progress}, object: {mapping:?}"
-    )]
-    NoSegmentItem {
-        progress: usize,
-        offset_in_segment: usize,
-        segment_index: SegmentIndex,
-        mapping: GlobalObject,
-    },
-
-    /// Unexpected item in first segment at offset
-    #[error(
-        "Offset {offset_in_segment} in first segment {segment_index} has unexpected item, \
-         current progress: {segment_progress}, object: {mapping:?}, item: {segment_item:?}"
-    )]
-    UnexpectedFirstSegmentItem {
-        segment_progress: usize,
-        offset_in_segment: usize,
-        segment_index: SegmentIndex,
-        segment_item: Box<SegmentItem>,
-        mapping: GlobalObject,
-    },
-
-    /// Unexpected item in continuing segment at offset
-    #[error(
-        "Continuing segment {segment_index} has unexpected item, \
-         collected data: {collected_data}, object: {mapping:?}, item: {segment_item:?}"
-    )]
-    UnexpectedContinuingSegmentItem {
-        collected_data: usize,
-        segment_index: SegmentIndex,
-        segment_item: Box<SegmentItem>,
-        mapping: GlobalObject,
-    },
-
-    /// Object not found after downloading expected number of segments
-    #[error(
-        "Object segment range {first_segment_index}..={last_segment_index} did not contain \
-         full object, object: {mapping:?}"
-    )]
-    TooManySegments {
-        first_segment_index: SegmentIndex,
-        last_segment_index: SegmentIndex,
-        mapping: GlobalObject,
-    },
 
     /// Object is too large error
     #[error(
@@ -119,20 +95,6 @@ pub enum Error {
         mapping: GlobalObject,
     },
 
-    /// Object decoding error
-    #[error("Object data decoding error: {source:?}, object: {mapping:?}")]
-    ObjectDecoding {
-        source: parity_scale_codec::Error,
-        mapping: GlobalObject,
-    },
-
-    /// Segment getter error
-    #[error("Getting segment failed: {source:?}, object: {mapping:?}")]
-    SegmentGetter {
-        source: SegmentDownloadingError,
-        mapping: GlobalObject,
-    },
-
     /// Piece getter error
     #[error("Getting piece caused an error: {source:?}, object: {mapping:?}")]
     PieceGetterError {
@@ -143,6 +105,87 @@ pub enum Error {
     /// Piece getter couldn't find the piece
     #[error("Piece {piece_index:?} was not found by piece getter")]
     PieceNotFound { piece_index: PieceIndex },
+
+    /// Supplied piece offset is inside the minimum segment header size
+    #[error(
+            "Piece offset is inside the segment header, min size of segment header: {}, object: {mapping:?}",
+            min_segment_header_encoded_size(),
+        )]
+    PieceOffsetInSegmentHeader { mapping: GlobalObject },
+
+    /// Segment decoding error
+    #[error("Segment {segment_index:?} data decoding error: {source:?}, object: {mapping:?}")]
+    SegmentDecoding {
+        source: parity_scale_codec::Error,
+        segment_index: SegmentIndex,
+        mapping: GlobalObject,
+    },
+
+    /// Unknown segment variant error
+    #[error(
+        "Decoding segment {segment_index:?} failed: unknown variant: {segment_variant}, \
+         object: {mapping:?}"
+    )]
+    UnknownSegmentVariant {
+        segment_variant: u8,
+        segment_index: SegmentIndex,
+        mapping: GlobalObject,
+    },
+
+    /// Unexpected segment item error
+    #[error(
+        "Segment {segment_index:?} has unexpected item, current progress: {segment_progress}, \
+         object: {mapping:?}, item: {segment_item:?}"
+    )]
+    UnexpectedSegmentItem {
+        segment_progress: usize,
+        segment_index: SegmentIndex,
+        segment_item: Box<SegmentItem>,
+        mapping: GlobalObject,
+    },
+
+    /// Unexpected segment item variant error
+    #[error(
+        "Segment {segment_index:?} has unexpected item, current progress: {segment_progress}, \
+         object: {mapping:?}, item: {segment_item_variant:?}, item size and data lengths: \
+         {segment_item_lengths:?}"
+    )]
+    UnexpectedSegmentItemVariant {
+        segment_progress: usize,
+        segment_index: SegmentIndex,
+        segment_item_variant: u8,
+        segment_item_lengths: Option<(usize, usize)>,
+        mapping: GlobalObject,
+    },
+
+    /// Object length couldn't be decoded after downloading two pieces
+    #[error(
+        "Invalid object: next source piece: {next_source_piece_index:?}, segment data length: \
+         {segment_data_length:?}, object: {mapping:?}"
+    )]
+    InvalidObject {
+        /// The next source piece index after the first two pieces
+        next_source_piece_index: PieceIndex,
+        /// The available object data in the current segment
+        segment_data_length: Option<usize>,
+        mapping: GlobalObject,
+    },
+
+    /// Object extends beyond block continuation, or the mapping is otherwise invalid
+    #[error(
+        "Invalid mapping: data length: {object_data_length:?}, next source piece: \
+         {next_source_piece_index:?}, remaining_piece_count: {remaining_piece_count}, object: \
+         {mapping:?}"
+    )]
+    InvalidMapping {
+        /// The next source piece index, before we attempted concurrent downloads
+        next_source_piece_index: PieceIndex,
+        /// The number of pieces we concurrently downloaded
+        remaining_piece_count: usize,
+        /// The object data length, after the concurrent downloads
+        object_data_length: usize,
+        mapping: GlobalObject,
+    },
 }
 
 /// Object fetcher for the Subspace DSN.
@@ -154,7 +197,7 @@ where
     piece_getter: Arc<PG>,
 
     /// The erasure coding configuration of those pieces.
-    erasure_coding: ErasureCoding,
+    _erasure_coding: ErasureCoding,
 
     /// The maximum number of data bytes we'll read for a single object.
     max_object_len: usize,
@@ -168,27 +211,27 @@ where
     ///
     /// `max_object_len` is the amount of data bytes we'll read for a single object before giving
     /// up and returning an error. In this implementation, it is limited to
-    /// [`MAX_SUPPORTED_OBJECT_LENGTH`], which is much larger than the largest block on any domain
-    /// (as of December 2024).
+    /// [`max_supported_object_length()`], which is much larger than the maximum consensus block
+    /// size.
     pub fn new(
         piece_getter: Arc<PG>,
         erasure_coding: ErasureCoding,
         mut max_object_len: usize,
     ) -> Self {
-        if max_object_len > MAX_SUPPORTED_OBJECT_LENGTH {
+        if max_object_len > max_supported_object_length() {
             warn!(
                 max_object_len,
-                MAX_SUPPORTED_OBJECT_LENGTH,
+                max_supported_object_length = ?max_supported_object_length(),
                 "Object fetcher size limit exceeds maximum supported object size, \
                 limiting to implementation-supported size"
             );
 
-            max_object_len = MAX_SUPPORTED_OBJECT_LENGTH;
+            max_object_len = max_supported_object_length();
         }
 
         Self {
             piece_getter,
-            erasure_coding,
+            _erasure_coding: erasure_coding,
             max_object_len,
         }
     }
@@ -203,12 +246,14 @@ where
     ) -> Result<Vec<Vec<u8>>, Error> {
         let mut objects = Vec::with_capacity(mappings.objects().len());
 
-        // TODO: sort mappings in piece index order, and keep pieces until they're no longer needed
+        // TODO:
+        // - keep the last downloaded piece until it's no longer needed
+        // - document sorting mappings in piece index order
         for &mapping in mappings.objects() {
             let GlobalObject {
-                hash,
                 piece_index,
                 offset,
+                ..
             } = mapping;
 
             // Validate parameters
@@ -218,8 +263,23 @@ where
                     "Invalid piece index for object: must be a source piece",
                 );
 
-                // Parity pieces contain effectively random data, and can't be used to fetch objects
+                // Parity pieces contain effectively random data, and can't be used to fetch
+                // objects
                 return Err(Error::NotSourcePiece { mapping });
+            }
+
+            // We could parse each segment header to do this check perfectly, but it's an edge
+            // case, so we just do a best-effort check
+            if piece_index.source_position() == 0
+                && offset < min_segment_header_encoded_size() as u32
+            {
+                debug!(
+                    ?mapping,
+                    min_segment_header_encoded_size = ?min_segment_header_encoded_size(),
+                    "Invalid offset for object: must not be inside the segment header",
+                );
+
+                return Err(Error::PieceOffsetInSegmentHeader { mapping });
             }
 
             if offset >= RawRecord::SIZE as u32 {
@@ -232,40 +292,9 @@ where
                 return Err(Error::PieceOffsetTooLarge { mapping });
             }
 
-            // Try fast object assembling from individual pieces,
-            // then regular object assembling from segments
-            let data = match self.fetch_object_fast(mapping).await? {
-                Some(data) => data,
-                None => {
-                    let data = self.fetch_object_regular(mapping).await?;
-
-                    debug!(
-                        ?mapping,
-                        len = %data.len(),
-                        "Fetched object using regular object assembling",
-
-                    );
-
-                    data
-                }
-            };
-
-            let data_hash = blake3_hash(&data);
-            if data_hash != hash {
-                debug!(
-                    ?data_hash,
-                    data_length = %data.len(),
-                    ?mapping,
-                    "Retrieved data doesn't match requested mapping hash"
-                );
-                trace!(data = %hex::encode(&data), "Retrieved data");
-
-                return Err(Error::InvalidDataHash {
-                    data_hash,
-                    data_length: data.len(),
-                    mapping,
-                });
-            }
+            // All objects can be assembled from individual pieces, we handle segments by checking
+            // all possible padding, and parsing and discarding segment headers.
+            let data = self.fetch_object(mapping).await?;
 
             objects.push(data);
         }
@@ -273,347 +302,156 @@ where
         Ok(objects)
     }
 
-    /// Fast object fetching and assembling where the object doesn't cross piece (super fast) or
-    /// segment (just fast) boundaries, returns `Ok(None)` if fast retrieval is not guaranteed.
-    // TODO: return already downloaded pieces from fetch_object_fast() and pass them to fetch_object_regular()
-    async fn fetch_object_fast(&self, mapping: GlobalObject) -> Result<Option<Vec<u8>>, Error> {
+    /// Single object fetching and assembling.
+    // TODO: return last downloaded piece from fetch_object() and pass them to the next fetch_object()
+    async fn fetch_object(&self, mapping: GlobalObject) -> Result<Vec<u8>, Error> {
         let GlobalObject {
             piece_index,
             offset,
             ..
         } = mapping;
 
-        // If the offset is before the last few bytes of a segment, we might be able to do very
-        // fast object retrieval without assembling and processing the whole segment.
-        //
-        // The last few bytes might contain padding if a piece is the last piece in the segment.
-        let before_max_padding = offset as usize <= RawRecord::SIZE - 1 - MAX_SEGMENT_PADDING;
-        let piece_position_in_segment = piece_index.source_position();
-        let data_shards = RecordedHistorySegment::NUM_RAW_RECORDS as u32;
-        let last_data_piece_in_segment = piece_position_in_segment >= data_shards - 1;
-
-        if last_data_piece_in_segment && !before_max_padding {
-            trace!(
-                piece_position_in_segment,
-                ?mapping,
-                "Fast object retrieval not possible: last source piece in segment, \
-                and start of object length bytes is in potential segment padding",
-            );
-
-            // Fast retrieval possibility is not guaranteed
-            return Ok(None);
-        }
-
-        // How much bytes are definitely available starting at `piece_index` and `offset` without
-        // crossing a segment boundary.
-        //
-        // The last few bytes might contain padding if a piece is the last piece in the segment.
-        let bytes_available_in_segment =
-            (data_shards - piece_position_in_segment) * RawRecord::SIZE as u32 - offset;
-        let Some(bytes_available_in_segment) =
-            bytes_available_in_segment.checked_sub(MAX_SEGMENT_PADDING as u32)
-        else {
-            // We need to reconstruct the full segment and discard padding before reading the length.
-            return Ok(None);
-        };
-
-        // Data from pieces that were already read, starting with piece at index `piece_index`
-        let mut read_records_data = Vec::<u8>::with_capacity(RawRecord::SIZE * 2);
+        // The next piece we want to download, starting with piece at index `piece_index`
         let mut next_source_piece_index = piece_index;
 
+        // The raw data we've read so far
+        let mut raw_data = RawPieceData::new_for_first_piece(mapping);
+
+        // Get pieces until we have enough data to calculate the object's length(s).
+        // Objects with their length bytes at the end of a piece are a rare edge case.
         let piece = self.read_piece(next_source_piece_index, mapping).await?;
+
+        // Discard piece data before the offset.
+        // If this is the first piece in a segment, this automatically skips the segment header.
+        let piece_data = piece
+            .record()
+            .to_raw_record_chunks()
+            .flatten()
+            .skip(offset as usize)
+            .copied()
+            .collect::<Vec<u8>>();
+
+        raw_data.add_piece_data(next_source_piece_index, piece_data, mapping)?;
         next_source_piece_index = next_source_piece_index.next_source_index();
-        // Discard piece data before the offset
-        read_records_data.extend(
-            piece
+
+        // Try to create a new partial object, this only works if we have enough data to find its length
+        let mut partial_object = if let Some(partial_object) =
+            PartialObject::new_with_padding(&raw_data, self.max_object_len, mapping)?
+        {
+            // We've used up this data, so just drop it
+            std::mem::drop(raw_data);
+
+            trace!(
+                %next_source_piece_index,
+                ?mapping,
+                ?partial_object,
+                "Successfully decoded partial object length from first piece",
+            );
+
+            partial_object
+        } else {
+            // Need the next piece to read the length of the object data
+            trace!(
+                %next_source_piece_index,
+                ?mapping,
+                ?raw_data,
+                "Part of object length bytes are in next piece, fetching",
+            );
+
+            // Get the second piece for the object
+            let piece = self.read_piece(next_source_piece_index, mapping).await?;
+            // We want all the piece data
+            let piece_data = piece
                 .record()
                 .to_raw_record_chunks()
                 .flatten()
-                .skip(offset as usize)
-                .copied(),
-        );
+                .copied()
+                .collect::<Vec<u8>>();
 
-        if last_data_piece_in_segment {
-            // The last few bytes might contain segment padding, so we can't use them for object
-            // length or object data.
-            read_records_data.truncate(read_records_data.len() - MAX_SEGMENT_PADDING);
-        }
-
-        let data_lengths = decode_data_length(&read_records_data, self.max_object_len, mapping)?;
-
-        let data_length = if let Some((length_prefix_len, data_length)) = data_lengths {
-            length_prefix_len + data_length
-        } else if !last_data_piece_in_segment {
-            // Need the next piece to read the length of data, but we can only use it if there was
-            // no segment padding
-            trace!(
-                %next_source_piece_index,
-                piece_position_in_segment,
-                bytes_available_in_segment,
-                ?mapping,
-                "Part of object length bytes is in next piece, fetching",
-            );
-
-            let piece = self.read_piece(next_source_piece_index, mapping).await?;
+            raw_data.add_piece_data(next_source_piece_index, piece_data, mapping)?;
             next_source_piece_index = next_source_piece_index.next_source_index();
-            read_records_data.extend(piece.record().to_raw_record_chunks().flatten().copied());
 
-            let (length_prefix_len, data_length) =
-                decode_data_length(&read_records_data, self.max_object_len, mapping)?
-                    .expect("Extra RawRecord is larger than the length encoding; qed");
+            // We should have enough data to create a partial object now
+            if let Some(partial_object) =
+                PartialObject::new_with_padding(&raw_data, self.max_object_len, mapping)?
+            {
+                // We've used up this data, so just drop it
+                std::mem::drop(raw_data);
 
-            length_prefix_len + data_length
-        } else {
-            trace!(
-                piece_position_in_segment,
-                bytes_available_in_segment,
-                ?mapping,
-                "Fast object retrieval not possible: last source piece in segment, \
-                and part of object length bytes is in potential segment padding",
-            );
-
-            // Super fast read is not possible, because we removed potential segment padding, so
-            // the piece bytes are not guaranteed to be continuous
-            return Ok(None);
+                partial_object
+            } else {
+                // There's something wrong with the mapping, because we can't decode the object's
+                // length after two pieces
+                return Err(Error::InvalidObject {
+                    next_source_piece_index,
+                    segment_data_length: raw_data.segment_data_length(),
+                    mapping,
+                });
+            }
         };
 
-        if data_length > bytes_available_in_segment as usize {
-            trace!(
-                data_length,
-                bytes_available_in_segment,
-                piece_position_in_segment,
-                ?mapping,
-                "Fast object retrieval not possible: part of object data bytes is in \
-                potential segment padding",
-            );
-
-            // Not enough data without crossing segment boundary
-            return Ok(None);
+        // We might already have the whole object, let's check before downloading more pieces
+        if let Some(data) = partial_object.try_reconstruct_object(mapping)? {
+            return Ok(data);
         }
 
-        // Read more pieces until we have enough data
-        if data_length as usize > read_records_data.len() {
-            let remaining_piece_count =
-                (data_length as usize - read_records_data.len()).div_ceil(RawRecord::SIZE);
+        // Read more pieces until we have enough data for all possible object lengths.
+        //
+        // Adding padding can change the size of the object up to 256x. But the maximum object size
+        // is 6 pieces, so we get better latency by downloading any pieces that could be needed at
+        // the same time. (Larger objects have already been rejected during length decoding.)
+        let remaining_piece_count = partial_object
+            .max_remaining_download_length()
+            .div_ceil(RawRecord::SIZE);
+
+        if remaining_piece_count > 0 {
             let remaining_piece_indexes = (next_source_piece_index..)
                 .filter(|i| i.is_source())
                 .take(remaining_piece_count)
-                .collect();
-            self.read_pieces(remaining_piece_indexes, mapping)
+                .collect::<Arc<[PieceIndex]>>();
+            // TODO: turn this into a concurrent stream, which cancels piece downloads if they aren't
+            // needed
+            let pieces = self
+                .read_pieces(remaining_piece_indexes.clone(), mapping)
                 .await?
                 .into_iter()
-                .for_each(|piece| {
-                    read_records_data
-                        .extend(piece.record().to_raw_record_chunks().flatten().copied())
+                .zip(remaining_piece_indexes.iter().copied())
+                .map(|(piece, piece_index)| {
+                    (
+                        piece_index,
+                        piece
+                            .record()
+                            .to_raw_record_chunks()
+                            .flatten()
+                            .copied()
+                            .collect::<Vec<u8>>(),
+                    )
                 });
-        }
 
-        // Decode the data, and return it if it's valid
-        let read_records_data = Vec::<u8>::decode(&mut read_records_data.as_slice())
-            .map_err(|source| Error::ObjectDecoding { source, mapping })?;
+            for (piece_index, piece_data) in pieces {
+                let mut new_data = RawPieceData::new_for_next_piece(
+                    partial_object.max_remaining_download_length(),
+                    piece_index,
+                );
+                new_data.add_piece_data(piece_index, piece_data, mapping)?;
+                partial_object.add_piece_data_with_padding(new_data);
 
-        debug!(
-            ?mapping,
-            len = %read_records_data.len(),
-            "Fetched object using fast object assembling",
-        );
-
-        Ok(Some(read_records_data))
-    }
-
-    /// Fetch and assemble an object that can cross segment boundaries, which requires assembling
-    /// and iterating over full segments.
-    async fn fetch_object_regular(&self, mapping: GlobalObject) -> Result<Vec<u8>, Error> {
-        let GlobalObject {
-            piece_index,
-            offset,
-            ..
-        } = mapping;
-
-        let mut segment_index = piece_index.segment_index();
-        let piece_position_in_segment = piece_index.source_position();
-        // Used to access the data after it is converted to raw bytes
-        let offset_in_segment =
-            piece_position_in_segment as usize * RawRecord::SIZE + offset as usize;
-
-        trace!(
-            %segment_index,
-            offset_in_segment,
-            piece_position_in_segment,
-            ?mapping,
-            "Fetching object from segment(s)",
-        );
-
-        let mut data = {
-            let items = self
-                .read_segment(segment_index, mapping)
-                .await?
-                .into_items();
-            // Go through the segment until we reach the offset.
-            // Unconditional progress is enum variant, always 1 byte in SCALE encoding.
-            // (Segments do not have an item count, to make incremental writing easier.)
-            let mut progress = 1;
-            let segment_item = items
-                .into_iter()
-                .find(|item| {
-                    // Add number of bytes in encoded version of segment item
-                    progress += item.encoded_size();
-
-                    // Our data is within another segment item, which will have wrapping data
-                    // structure, hence strictly `>` here
-                    progress > offset_in_segment
-                })
-                .ok_or_else(|| {
-                    debug!(
-                        progress,
-                        offset_in_segment,
-                        ?segment_index,
-                        ?mapping,
-                        "Failed to find item at offset in segment"
-                    );
-
-                    Error::NoSegmentItem {
-                        progress,
-                        offset_in_segment,
-                        segment_index,
-                        mapping,
-                    }
-                })?;
-
-            trace!(
-                progress,
-                %segment_index,
-                offset_in_segment,
-                piece_position_in_segment,
-                ?mapping,
-                segment_item = format!("{segment_item:?}").chars().take(50).collect::<String>(),
-                "Found item at offset in first segment",
-            );
-
-            // Look at the item after the offset, collecting block bytes
-            match segment_item {
-                SegmentItem::Block { bytes, .. }
-                | SegmentItem::BlockStart { bytes, .. }
-                | SegmentItem::BlockContinuation { bytes, .. } => {
-                    // Rewind back progress to the beginning of this item
-                    progress -= bytes.len();
-                    // Get a chunk of the bytes starting at the offset in this item
-                    Vec::from(&bytes[offset_in_segment - progress..])
-                }
-                segment_item @ SegmentItem::Padding
-                | segment_item @ SegmentItem::ParentSegmentHeader(_) => {
-                    // TODO: create a Display impl for SegmentItem that is shorter than the entire
-                    // data contained in it
-                    debug!(
-                        segment_progress = progress,
-                        offset_in_segment,
-                        %segment_index,
-                        ?mapping,
-                        segment_item = format!("{segment_item:?}").chars().take(50).collect::<String>(),
-                        "Unexpected segment item in first segment",
-                    );
-
-                    return Err(Error::UnexpectedFirstSegmentItem {
-                        segment_progress: progress,
-                        offset_in_segment,
-                        segment_index,
-                        mapping,
-                        segment_item: Box::new(segment_item),
-                    });
-                }
-            }
-        };
-
-        trace!(
-            %segment_index,
-            offset_in_segment,
-            piece_position_in_segment,
-            ?mapping,
-            data_len = data.len(),
-            "Got data at offset in first segment",
-        );
-
-        // Return an error if the length is unreasonably large, before we get the next segment
-        if let Some((length_prefix_len, data_length)) =
-            decode_data_length(data.as_slice(), self.max_object_len, mapping)?
-        {
-            let data_length = length_prefix_len + data_length;
-
-            // If we have the whole object, decode and return it.
-            // TODO: use tokio Bytes type to re-use the same allocation by stripping the length at the start
-            if data.len() >= data_length {
-                return Vec::<u8>::decode(&mut data.as_slice())
-                    .map_err(|source| Error::ObjectDecoding { source, mapping });
-            }
-        }
-
-        // We need to read extra segments to get the object length, or the full object.
-        // We don't attempt to calculate the number of segments needed, because it involves
-        // headers and optional padding.
-        loop {
-            segment_index += SegmentIndex::ONE;
-            let items = self
-                .read_segment(segment_index, mapping)
-                .await?
-                .into_items();
-            for segment_item in items {
-                match segment_item {
-                    SegmentItem::BlockContinuation { bytes, .. } => {
-                        data.extend_from_slice(&bytes);
-
-                        if let Some((length_prefix_len, data_length)) =
-                            decode_data_length(data.as_slice(), self.max_object_len, mapping)?
-                        {
-                            let data_length = length_prefix_len + data_length;
-
-                            if data.len() >= data_length {
-                                return Vec::<u8>::decode(&mut data.as_slice())
-                                    .map_err(|source| Error::ObjectDecoding { source, mapping });
-                            }
-                        }
-                    }
-
-                    // Padding at the end of segments, and segment headers can be skipped,
-                    // they're not part of the object data
-                    SegmentItem::Padding | SegmentItem::ParentSegmentHeader(_) => {}
-
-                    // We should not see these items while collecting data for a single object
-                    SegmentItem::Block { .. } | SegmentItem::BlockStart { .. } => {
-                        debug!(
-                            collected_data = ?data.len(),
-                            %segment_index,
-                            ?mapping,
-                            segment_item = format!("{segment_item:?}").chars().take(50).collect::<String>(),
-                            "Unexpected segment item in continuing segment",
-                        );
-
-                        return Err(Error::UnexpectedContinuingSegmentItem {
-                            collected_data: data.len(),
-                            segment_index,
-                            mapping,
-                            segment_item: Box::new(segment_item),
-                        });
-                    }
+                // We might already have the whole object, let's check before decoding more pieces
+                if let Some(data) = partial_object.try_reconstruct_object(mapping)? {
+                    return Ok(data);
                 }
             }
         }
-    }
 
-    /// Read the whole segment by its index (just records, skipping witnesses).
-    ///
-    /// The mapping is only used for error reporting.
-    async fn read_segment(
-        &self,
-        segment_index: SegmentIndex,
-        mapping: GlobalObject,
-    ) -> Result<Segment, Error> {
-        download_segment(
-            segment_index,
-            &self.piece_getter,
-            self.erasure_coding.clone(),
-        )
-        .await
-        .map_err(|source| Error::SegmentGetter { source, mapping })
+        // If the mapping is invalid, we can try to read beyond the downloaded pieces.
+        // Specifically, if a cross-segment object's offset is wrong, we can try to read beyond the
+        // block continuation at the start of the second segment.
+        Err(Error::InvalidMapping {
+            next_source_piece_index,
+            remaining_piece_count,
+            object_data_length: partial_object.fetched_data_length(),
+            mapping,
+        })
     }
 
     /// Concurrently read multiple pieces, and return them in the supplied order.
@@ -679,7 +517,7 @@ fn decode_data_length(
     max_object_len: usize,
     mapping: GlobalObject,
 ) -> Result<Option<(usize, usize)>, Error> {
-    let data_length = match Compact::<u64>::decode(&mut data) {
+    let data_length = match Compact::<u32>::decode(&mut data) {
         Ok(Compact(data_length)) => {
             let data_length = data_length as usize;
             if data_length > max_object_len {
@@ -703,7 +541,7 @@ fn decode_data_length(
             // Parity doesn't have an easily matched error enum, and all bit sequences are
             // valid compact encodings. So we assume we don't have enough bytes to decode the
             // length, unless we already have enough bytes to decode the maximum length.
-            if data.len() >= Compact::<u64>::compact_len(&(max_object_len as u64)) {
+            if data.len() >= Compact::<u32>::compact_len(&(max_object_len as u32)) {
                 debug!(
                     length_prefix_len = data.len(),
                     max_object_len,
@@ -728,7 +566,7 @@ fn decode_data_length(
         }
     };
 
-    let data_length_encoded_length = Compact::<u64>::compact_len(&(data_length as u64));
+    let data_length_encoded_length = Compact::<u32>::compact_len(&(data_length as u32));
 
     trace!(
         data_length,
@@ -738,4 +576,18 @@ fn decode_data_length(
     );
 
     Ok(Some((data_length_encoded_length, data_length)))
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use parity_scale_codec::{Compact, CompactLen};
+
+    #[test]
+    fn max_object_length_constant() {
+        assert_eq!(
+            Compact::<u32>::compact_len(&(max_supported_object_length() as u32)),
+            MAX_ENCODED_LENGTH_SIZE,
+        );
+    }
 }
