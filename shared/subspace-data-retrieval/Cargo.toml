@@ -25,6 +25,10 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["sync", "rt"] }
 tracing = { workspace = true, features = ["std"] }
 
+[dev-dependencies]
+rand = "0.8.5"
+tokio = { version = "1.40.0", features = ["rt-multi-thread", "macros"] }
+
 [features]
 parallel = [
     "subspace-archiving/parallel",

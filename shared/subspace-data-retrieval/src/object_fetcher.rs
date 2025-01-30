@@ -540,7 +540,65 @@ fn decode_data_length(
 #[cfg(test)]
 mod test {
     use super::*;
-    use parity_scale_codec::{Compact, CompactLen};
+    use parity_scale_codec::{Compact, CompactLen, Encode};
+    use rand::{thread_rng, RngCore};
+    use subspace_core_primitives::hashes::blake3_hash;
+
+    /// Returns a piece filled with random data.
+    fn random_piece() -> Piece {
+        let mut piece_data = vec![0u8; Piece::SIZE];
+        thread_rng().fill_bytes(piece_data.as_mut_slice());
+        Piece::try_from(piece_data).unwrap()
+    }
+
+    /// Encodes an object length at the supplied offset in the piece.
+    fn write_object_length(piece: &mut Piece, offset: usize, object_len: usize) {
+        let object_len_encoded = Compact(object_len as u32).encode();
+        let raw_data = piece.record_mut().to_mut_raw_record_chunks().flatten();
+        raw_data
+            .skip(offset)
+            .zip(object_len_encoded.iter())
+            .for_each(|(raw_data_byte, len_byte)| {
+                *raw_data_byte = *len_byte;
+            });
+    }
+
+    /// Creates a mapping from a piece, piece index, offset, and object length.
+    /// Returns the mapping and object data.
+    fn create_mapping(
+        piece: &Piece,
+        piece_index: u64,
+        offset: usize,
+        object_len: usize,
+    ) -> (GlobalObject, Vec<u8>) {
+        let object_len_encoded = Compact(object_len as u32).encode();
+        let object_data = piece
+            .record()
+            .to_raw_record_chunks()
+            .flatten()
+            .skip(offset + object_len_encoded.len())
+            .take(object_len)
+            .copied()
+            .collect::<Vec<u8>>();
+
+        (
+            GlobalObject {
+                piece_index: PieceIndex::from(piece_index),
+                offset: offset as u32,
+                hash: blake3_hash(&object_data),
+            },
+            object_data,
+        )
+    }
+
+    /// Creates an object fetcher from a piece and piece index.
+    fn create_object_fetcher(
+        piece: Piece,
+        piece_index: u64,
+    ) -> ObjectFetcher<Vec<(PieceIndex, Piece)>> {
+        let piece_getter = vec![(PieceIndex::from(piece_index), piece)];
+        ObjectFetcher::new(Arc::new(piece_getter), max_supported_object_length())
+    }
 
     #[test]
     fn max_object_length_constant() {
@@ -548,5 +606,42 @@ mod test {
             Compact::<u64>::compact_len(&(max_supported_object_length() as u64)),
             MAX_ENCODED_LENGTH_SIZE,
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn get_single_piece_object() {
+        // TODO:
+        // We need to cover 6 known good cases:
+        // - start of segment, offset already excludes segment header
+        // - middle of segment
+        // - end of segment, no padding
+        // - end of segment, end of object goes into padding (but not into the next segment)
+        // - end of segment, end of object length overlaps start of padding (but object does not cross into the next segment)
+        // - end of segment, start of object length is in padding (but object does not cross into the next segment)
+        //
+        // For multiple pieces, we need to cover 5 known good cases:
+        // - end of segment, end of object goes into padding (but not into the next segment)
+        // - end of segment, end of object goes into padding, and one piece into the next segment
+        // - end of segment, end of object goes into padding, and multiple pieces into the next segment
+        // - end of segment, end of object length overlaps start of padding, and one piece into the next segment
+        // - end of segment, end of object length overlaps start of padding, and multiple pieces into the next segment
+
+        // Set up the test case
+        // - start of segment, offset already excludes segment header
+        let offset = max_segment_header_encoded_size() + 1;
+        let object_len = 100;
+        let piece_index = 0;
+
+        // Generate random piece data
+        let mut piece = random_piece();
+
+        // Set up the object, mapping, and object fetcher
+        write_object_length(&mut piece, offset, object_len);
+        let (mapping, object_data) = create_mapping(&piece, piece_index, offset, object_len);
+        let object_fetcher = create_object_fetcher(piece, piece_index);
+
+        // Now get the object back
+        let fetched_data = object_fetcher.fetch_object(mapping).await.unwrap();
+        assert_eq!(fetched_data, object_data);
     }
 }
