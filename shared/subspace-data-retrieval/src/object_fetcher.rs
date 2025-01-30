@@ -17,6 +17,8 @@ use tracing::{debug, trace, warn};
 
 mod partial_object;
 mod segment_header;
+#[cfg(test)]
+mod tests;
 
 /// The maximum object length the implementation in this module can reliably handle.
 ///
@@ -51,7 +53,7 @@ pub fn max_supported_object_length() -> usize {
 const MAX_ENCODED_LENGTH_SIZE: usize = 4;
 
 /// Object fetching errors.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
     /// Supplied piece index is not a source piece
     #[error("Piece index is not a source piece, object: {mapping:?}")]
@@ -92,12 +94,17 @@ pub enum Error {
         data_hash: Blake3Hash,
         data_length: usize,
         mapping: GlobalObject,
+        // The hex-encoded object data, only used in tests
+        #[cfg(test)]
+        data: String,
     },
 
     /// Piece getter error
-    #[error("Getting piece caused an error: {source:?}, object: {mapping:?}")]
+    #[error("Getting piece caused an error: {error}, object: {mapping:?}")]
     PieceGetterError {
-        source: anyhow::Error,
+        /// The original `anyhow::Error`, debug-printed as a string.
+        /// This allows us to check errors for equality in tests.
+        error: String,
         mapping: GlobalObject,
     },
 
@@ -379,6 +386,13 @@ where
                 // We've used up this data, so just drop it
                 std::mem::drop(raw_data);
 
+                trace!(
+                    %next_source_piece_index,
+                    ?mapping,
+                    ?partial_object,
+                    "Successfully decoded partial object length from first two pieces",
+                );
+
                 partial_object
             } else {
                 // There's something wrong with the mapping, because we can't decode the object's
@@ -473,7 +487,10 @@ where
                     "Error fetching pieces during object assembling"
                 );
 
-                Error::PieceGetterError { source, mapping }
+                Error::PieceGetterError {
+                    error: format!("{source:?}"),
+                    mapping,
+                }
             })
     }
 
@@ -501,7 +518,10 @@ where
                     "Error fetching piece during object assembling"
                 );
 
-                Error::PieceGetterError { source, mapping }
+                Error::PieceGetterError {
+                    error: format!("{source:?}"),
+                    mapping,
+                }
             })
     }
 }
@@ -577,18 +597,4 @@ fn decode_data_length(
     );
 
     Ok(Some((data_length_encoded_length, data_length)))
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use parity_scale_codec::{Compact, CompactLen};
-
-    #[test]
-    fn max_object_length_constant() {
-        assert_eq!(
-            Compact::<u32>::compact_len(&(max_supported_object_length() as u32)),
-            MAX_ENCODED_LENGTH_SIZE,
-        );
-    }
 }

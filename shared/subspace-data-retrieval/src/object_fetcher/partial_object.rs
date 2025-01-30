@@ -20,17 +20,19 @@ use crate::object_fetcher::{decode_data_length, Error, MAX_ENCODED_LENGTH_SIZE};
 use parity_scale_codec::{Decode, Input};
 use std::cmp::min;
 use std::collections::BTreeSet;
+use std::fmt;
+use std::fmt::Formatter;
 use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
 use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::pieces::{PieceIndex, RawRecord};
 use subspace_core_primitives::segments::RecordedHistorySegment;
-use tracing::debug;
+use tracing::{debug, trace};
 
 /// The fixed value of every padding byte.
-const PADDING_BYTE_VALUE: u8 = 0;
+pub(crate) const PADDING_BYTE_VALUE: u8 = 0;
 
 /// The data before an object's length is known.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct RawPieceData {
     /// The available data for the object in the current segment.
     segment_data_length: Option<usize>,
@@ -48,6 +50,17 @@ pub struct RawPieceData {
     ///
     /// The encoded object length might overlap with the start of the suffix data.
     suffix_data: Vec<u8>,
+}
+
+impl fmt::Debug for RawPieceData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RawPieceData")
+            .field("segment_data_length", &self.segment_data_length)
+            .field("prefix_data", &hex::encode(&self.prefix_data))
+            .field("maybe_padding_data", &hex::encode(&self.maybe_padding_data))
+            .field("suffix_data", &hex::encode(&self.suffix_data))
+            .finish()
+    }
 }
 
 impl RawPieceData {
@@ -112,6 +125,14 @@ impl RawPieceData {
         mut piece_data: Vec<u8>,
         mapping: GlobalObject,
     ) -> Result<(), Error> {
+        trace!(
+            ?self,
+            ?piece_index,
+            ?mapping,
+            piece_data_len = %piece_data.len(),
+            "about to add piece data",
+        );
+
         let data_shards = RecordedHistorySegment::NUM_RAW_RECORDS;
         let source_position_in_segment = piece_index.source_position() as usize;
 
@@ -163,6 +184,8 @@ impl RawPieceData {
             self.add_piece_data_without_padding(piece_data);
         }
 
+        trace!(?self, ?piece_index, ?mapping, "added piece data");
+
         Ok(())
     }
 
@@ -181,6 +204,12 @@ impl RawPieceData {
             return;
         }
 
+        trace!(
+            new_prefix_data = ?hex::encode(new_prefix_data),
+            maybe_padding_data = ?hex::encode(new_maybe_padding_data),
+            "adding piece data with padding",
+        );
+
         assert!(
             !self.has_padding(),
             "add_piece_data_with_padding() can only be called once: {self:?}, \
@@ -195,6 +224,11 @@ impl RawPieceData {
 
     /// Add padding-less `piece_data` to the end of this partial object.
     fn add_piece_data_without_padding(&mut self, mut piece_data: Vec<u8>) {
+        trace!(
+            piece_data = ?hex::encode(&piece_data),
+            "adding piece data without padding",
+        );
+
         if self.has_padding() {
             // If there might be padding, or there is suffix data, new data must be added at the end
             // of the suffix data.
@@ -240,7 +274,7 @@ struct ObjectLength {
 ///
 /// Objects also need to ignore the parent segment header and `BlockContinuation` header at the
 /// start of a segment.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct PartialObject {
     /// The object data, starting with the encoded object length, and maybe ending with segment
     /// padding.
@@ -261,6 +295,16 @@ pub struct PartialObject {
     lengths: BTreeSet<ObjectLength>,
 }
 
+impl fmt::Debug for PartialObject {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PartialObject")
+            .field("prefix_data", &hex::encode(&self.prefix_data))
+            .field("suffix_data", &hex::encode(&self.suffix_data))
+            .field("lengths", &self.lengths)
+            .finish()
+    }
+}
+
 impl PartialObject {
     /// Given prefix data, potential padding data, and suffix data, returns a new `PartialObject`.
     /// Returns `Ok(None)` if more data is needed, or an error if object retrieval failed.
@@ -274,7 +318,7 @@ impl PartialObject {
         mapping: GlobalObject,
     ) -> Result<Option<Self>, Error> {
         let RawPieceData {
-            segment_data_length: _,
+            segment_data_length,
             prefix_data,
             maybe_padding_data,
             suffix_data,
@@ -289,8 +333,20 @@ impl PartialObject {
             return Self::new_without_padding(prefix_data, max_object_len, mapping);
         }
 
+        trace!(
+            ?max_object_len,
+            ?mapping,
+            ?segment_data_length,
+            prefix_data = ?hex::encode(prefix_data),
+            maybe_padding_data = ?hex::encode(maybe_padding_data),
+            suffix_data = ?hex::encode(suffix_data),
+            "trying to create new partial object with padding",
+        );
+
         // Count the padding bytes
         let object_max_segment_padding_length = Self::count_padding_bytes(maybe_padding_data);
+
+        trace!(?object_max_segment_padding_length, "analysed padding");
 
         // Keep the remaining non-padding and potential padding bytes
         let mut prefix_data = prefix_data.to_vec();
@@ -350,6 +406,8 @@ impl PartialObject {
             }
         }
 
+        trace!(?lengths, ?last_error, "analysed possible lengths");
+
         if lengths.is_empty() {
             // All lengths were invalid
             Err(last_error.expect("last_error is set if lengths is empty; qed"))
@@ -384,6 +442,13 @@ impl PartialObject {
         max_object_len: usize,
         mapping: GlobalObject,
     ) -> Result<Option<Self>, Error> {
+        trace!(
+            ?max_object_len,
+            ?mapping,
+            data = ?hex::encode(data),
+            "trying to create new partial object without padding",
+        );
+
         let Some((length_prefix_len, data_length)) =
             decode_data_length(data, max_object_len, mapping)?
         else {
@@ -491,9 +556,20 @@ impl PartialObject {
         &mut self,
         mapping: GlobalObject,
     ) -> Result<Option<Vec<u8>>, Error> {
+        trace!(?mapping, ?self, "checking available objects");
+
         // Try to decode the shortest object(s), until we don't have enough data.
         loop {
-            let Ok(data) = Vec::<u8>::decode(&mut self.shortest_object_data()) else {
+            let outcome = Vec::<u8>::decode(&mut self.shortest_object_data());
+
+            trace!(
+                checked_length = ?self.lengths.first(),
+                data = ?hex::encode(self.shortest_object_data().remaining_data()),
+                outcome = ?outcome.as_ref().map(hex::encode),
+                "checking object with length",
+            );
+
+            let Ok(data) = outcome else {
                 // Tell the caller we need more data, because the remaining lengths are longer.
                 return Ok(None);
             };
@@ -505,7 +581,7 @@ impl PartialObject {
             } else {
                 // If we've run out of lengths to try, return a hash mismatch error.
                 // Otherwise, move on to the next longest object or next largest ignored padding.
-                self.mark_shortest_object_hash_invalid(data_hash, mapping)?;
+                self.mark_shortest_object_hash_invalid(data_hash, mapping, data)?;
             }
         }
     }
@@ -561,20 +637,25 @@ impl PartialObject {
     /// Remove the shortest data, because it has an invalid hash.
     /// Call this method if the shortest data has an incorrect hash.
     ///
-    /// The mapping is only used for error reporting.
+    /// The mapping and data are only used for error reporting.
     ///
     /// Returns an error if there are no object lengths left to try.
     fn mark_shortest_object_hash_invalid(
         &mut self,
         data_hash: Blake3Hash,
         mapping: GlobalObject,
+        data: Vec<u8>,
     ) -> Result<(), Error> {
+        trace!(data = %hex::encode(&data), "Invalid object data");
+
         if self.lengths.len() > 1 {
             // We still have more lengths to try.
             let ignored_err = Error::InvalidDataHash {
                 data_hash,
                 data_length: self.shortest_object_length(),
                 mapping,
+                #[cfg(test)]
+                data: hex::encode(&data),
             };
             debug!(
                 ?ignored_err,
@@ -589,6 +670,8 @@ impl PartialObject {
                 data_hash,
                 data_length: self.shortest_object_length(),
                 mapping,
+                #[cfg(test)]
+                data: hex::encode(&data),
             })
         }
     }

@@ -22,6 +22,12 @@ use subspace_runtime_primitives::MAX_BLOCK_LENGTH;
 /// <https://docs.substrate.io/reference/scale-codec/#fn-1>
 pub const MAX_SEGMENT_PADDING: usize = 3;
 
+/// The segment version this code knows how to parse.
+const SEGMENT_VERSION_VARIANT: u8 = 0;
+
+/// The variant for block continuations.
+const BLOCK_CONTINUATION_VARIANT: u8 = 3;
+
 /// The minimum size of a segment header.
 #[inline]
 pub fn min_segment_header_encoded_size() -> usize {
@@ -82,7 +88,7 @@ pub fn strip_segment_header(
             mapping,
         })?;
     // We only know how to decode variant 0.
-    if segment_variant != 0 {
+    if segment_variant != SEGMENT_VERSION_VARIANT {
         return Err(Error::UnknownSegmentVariant {
             segment_variant,
             segment_index,
@@ -125,7 +131,7 @@ pub fn strip_segment_header(
     let segment_item_lengths = decode_data_length(&piece_data, MAX_BLOCK_LENGTH as usize, mapping)?;
 
     // Block continuations are variant 3
-    if segment_item_variant != 3 || segment_item_lengths.is_none() {
+    if segment_item_variant != BLOCK_CONTINUATION_VARIANT || segment_item_lengths.is_none() {
         return Err(Error::UnexpectedSegmentItemVariant {
             segment_progress: header_bytes,
             segment_index,
@@ -148,6 +154,8 @@ pub fn strip_segment_header(
 mod test {
     use super::*;
     use parity_scale_codec::{Compact, CompactLen};
+    use subspace_archiving::archiver::Segment;
+    use subspace_core_primitives::objects::BlockObjectMapping;
     use subspace_runtime_primitives::MAX_BLOCK_LENGTH;
 
     #[test]
@@ -166,5 +174,24 @@ mod test {
             min_segment_header_encoded_size(),
             max_segment_header_encoded_size()
         );
+    }
+
+    #[test]
+    fn segment_version_variant_constant() {
+        let segment = Segment::V0 { items: Vec::new() };
+        let segment = segment.encode();
+
+        assert_eq!(segment[0], SEGMENT_VERSION_VARIANT);
+    }
+
+    #[test]
+    fn block_continuation_variant_constant() {
+        let block_continuation = SegmentItem::BlockContinuation {
+            bytes: Vec::new(),
+            object_mapping: BlockObjectMapping::default(),
+        };
+        let block_continuation = block_continuation.encode();
+
+        assert_eq!(block_continuation[0], BLOCK_CONTINUATION_VARIANT);
     }
 }
