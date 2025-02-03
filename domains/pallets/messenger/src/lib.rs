@@ -24,6 +24,7 @@
 mod benchmarking;
 mod fees;
 mod messages;
+pub mod migrations;
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
@@ -34,6 +35,7 @@ pub mod weights;
 extern crate alloc;
 
 use codec::{Decode, Encode};
+use frame_support::pallet_prelude::StorageVersion;
 use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_system::pallet_prelude::BlockNumberFor;
 pub use pallet::*;
@@ -107,13 +109,16 @@ pub trait HoldIdentifier<T: Config> {
     fn messenger_channel() -> FungibleHoldId<T>;
 }
 
+/// The current storage version.
+const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
+
 #[frame_support::pallet]
 mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
         FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage,
-        U256,
+        STORAGE_VERSION, U256,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -196,6 +201,7 @@ mod pallet {
     /// Pallet messenger used to communicate between chains and other blockchains.
     #[pallet::pallet]
     #[pallet::without_storage_info]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     /// Stores the next channel id for a foreign chain.
