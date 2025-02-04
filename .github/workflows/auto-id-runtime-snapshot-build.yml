@@ -1,0 +1,55 @@
+# This action enabling building WASM runtime used for forkless runtime upgrades, can be triggered manually or by
+# release creation.
+#
+# WASM bundles are built both for releases and for manually triggered runs, uploaded to artifacts and assets.
+name: Auto ID Runtime snapshot build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "auto-id-runtime-snapshot-*"
+      - "auto-id-runtime-taurus-*"
+      - "auto-id-runtime-mainnet-*"
+
+jobs:
+  runtime:
+    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || 'ubuntu-22.04') }}
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Build runtime
+        id: build
+        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
+        with:
+          file: docker/auto-id-runtime.Dockerfile
+          pull: true
+          push: false
+
+      - name: Extract runtime
+        run: |
+          SPEC_VERSION=$(sed -nr 's/.*spec_version: ([0-9]+),/\1/p' domains/runtime/auto-id/src/lib.rs)
+          docker run --rm -u root ${{ steps.build.outputs.imageid }} > auto_id_domain_runtime-$SPEC_VERSION.compact.compressed.wasm
+          echo "SPEC_VERSION=$SPEC_VERSION" >> $GITHUB_ENV
+
+      - name: Upload runtime to artifacts
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.1.3
+        with:
+          name: auto_id_domain_runtime
+          path: |
+            auto_id_domain_runtime-${{ env.SPEC_VERSION }}.compact.compressed.wasm
+          if-no-files-found: error
+
+      - name: Upload runtime to assets
+        uses: alexellis/upload-assets@13926a61cdb2cb35f5fdef1c06b8b591523236d3 # 0.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          asset_paths: '["auto_id_domain_runtime-${{ env.SPEC_VERSION }}.compact.compressed.wasm"]'
+        # Only run for releases
+        if: github.event_name == 'push' && github.ref_type == 'tag'
