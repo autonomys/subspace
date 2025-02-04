@@ -2613,17 +2613,25 @@ dependencies = [
  "domain-runtime-primitives",
  "domain-test-primitives",
  "domain-test-service",
+ "ethereum",
  "evm-domain-test-runtime",
+ "fp-rpc",
+ "fp-self-contained",
  "frame-system",
  "futures",
  "futures-timer",
+ "hex-literal",
  "pallet-balances",
  "pallet-domain-sudo",
  "pallet-domains",
+ "pallet-ethereum",
+ "pallet-evm",
+ "pallet-evm-tracker",
  "pallet-messenger",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transporter",
+ "pallet-utility",
  "parity-scale-codec",
  "parking_lot 0.12.3",
  "rand",
@@ -2812,8 +2820,10 @@ dependencies = [
 name = "domain-test-primitives"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "parity-scale-codec",
  "sp-api",
+ "sp-domains",
  "sp-messenger",
  "subspace-runtime-primitives",
 ]
@@ -3260,10 +3270,10 @@ dependencies = [
  "pallet-ethereum",
  "pallet-evm",
  "pallet-evm-chain-id",
- "pallet-evm-nonce-tracker",
  "pallet-evm-precompile-modexp",
  "pallet-evm-precompile-sha3fips",
  "pallet-evm-precompile-simple",
+ "pallet-evm-tracker",
  "pallet-messenger",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -3317,16 +3327,17 @@ dependencies = [
  "pallet-ethereum",
  "pallet-evm",
  "pallet-evm-chain-id",
- "pallet-evm-nonce-tracker",
  "pallet-evm-precompile-modexp",
  "pallet-evm-precompile-sha3fips",
  "pallet-evm-precompile-simple",
+ "pallet-evm-tracker",
  "pallet-messenger",
  "pallet-storage-overlay-checks",
  "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",
+ "pallet-utility",
  "parity-scale-codec",
  "scale-info",
  "sp-api",
@@ -7777,18 +7788,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-evm-nonce-tracker"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-runtime",
-]
-
-[[package]]
 name = "pallet-evm-precompile-modexp"
 version = "2.0.0-dev"
 source = "git+https://github.com/autonomys/frontier?rev=f80f9e2bad338f3bf3854b256b3c4edea23e5968#f80f9e2bad338f3bf3854b256b3c4edea23e5968"
@@ -7814,6 +7813,24 @@ dependencies = [
  "fp-evm",
  "ripemd",
  "sp-io",
+]
+
+[[package]]
+name = "pallet-evm-tracker"
+version = "0.1.0"
+dependencies = [
+ "domain-runtime-primitives",
+ "frame-support",
+ "frame-system",
+ "pallet-ethereum",
+ "pallet-evm",
+ "pallet-utility",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-domains",
+ "sp-runtime",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -11850,6 +11867,7 @@ dependencies = [
  "domain-runtime-primitives",
  "domain-test-service",
  "ethereum",
+ "evm-domain-test-runtime",
  "fp-rpc",
  "fp-self-contained",
  "frame-support",
@@ -13124,6 +13142,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "pallet-transaction-payment",
+ "pallet-utility",
  "parity-scale-codec",
  "scale-info",
  "serde",
