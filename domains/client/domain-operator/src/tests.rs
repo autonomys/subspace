@@ -465,7 +465,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
-        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+        alice.evm_contract_creation_allowed_by() == allow_list
     })
     .await
     .unwrap();
@@ -693,7 +693,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
-        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+        alice.evm_contract_creation_allowed_by() == allow_list
     })
     .await
     .unwrap();
@@ -889,7 +889,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
-        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+        alice.evm_contract_creation_allowed_by() == allow_list
     })
     .await
     .unwrap();
@@ -4769,8 +4769,9 @@ async fn test_domain_sudo_calls() {
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     // check initial contract allow list
-    assert!(
-        alice.evm_contract_creation_allowed_by() == Some(PermissionedActionAllowedBy::Anyone),
+    assert_eq!(
+        alice.evm_contract_creation_allowed_by(),
+        PermissionedActionAllowedBy::Anyone,
         "initial contract allow list should be anyone"
     );
 
@@ -4805,7 +4806,7 @@ async fn test_domain_sudo_calls() {
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
-        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+        alice.evm_contract_creation_allowed_by() == allow_list
     })
     .await
     .unwrap();
@@ -4835,7 +4836,7 @@ async fn test_domain_sudo_calls() {
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
-        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+        alice.evm_contract_creation_allowed_by() == allow_list
     })
     .await
     .unwrap();
@@ -4865,7 +4866,7 @@ async fn test_domain_sudo_calls() {
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
-        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+        alice.evm_contract_creation_allowed_by() == allow_list
     })
     .await
     .unwrap();
@@ -4895,7 +4896,7 @@ async fn test_domain_sudo_calls() {
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
-        alice.evm_contract_creation_allowed_by().as_ref() == Some(&allow_list)
+        alice.evm_contract_creation_allowed_by() == allow_list
     })
     .await
     .unwrap();

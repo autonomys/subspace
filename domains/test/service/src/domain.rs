@@ -432,11 +432,12 @@ where
     /// Returns `None` if this is not an EVM domain, or if the allow list isn't set (allow all).
     pub fn evm_contract_creation_allowed_by(
         &self,
-    ) -> Option<PermissionedActionAllowedBy<EthereumAccountId>> {
+    ) -> PermissionedActionAllowedBy<EthereumAccountId> {
         self.client
             .runtime_api()
             .evm_contract_creation_allowed_by(self.client.info().best_hash)
             .expect("Failed to get EVM contact creation allow list")
+            .expect("Should be an EVM domain")
     }
 }
 

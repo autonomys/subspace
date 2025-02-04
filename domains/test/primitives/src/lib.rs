@@ -42,7 +42,7 @@ sp_api::decl_runtime_apis! {
     pub trait EvmOnchainStateApi
     {
         /// Returns the current EVM contract creation allow list.
-        /// Returns `None` if this is not an EVM domain, or if the allow list isn't set (allow all).
+        /// Returns `None` if this is not an EVM domain.
         fn evm_contract_creation_allowed_by() -> Option<PermissionedActionAllowedBy<EthereumAccountId>>;
     }
 }

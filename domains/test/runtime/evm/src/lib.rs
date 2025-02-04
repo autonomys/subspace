@@ -1651,7 +1651,7 @@ impl_runtime_apis! {
 
     impl domain_test_primitives::EvmOnchainStateApi<Block> for Runtime {
         fn evm_contract_creation_allowed_by() -> Option<PermissionedActionAllowedBy<EthereumAccountId>> {
-            EVMNoncetracker::contract_creation_allowed_by()
+            Some(EVMNoncetracker::contract_creation_allowed_by())
         }
     }
 

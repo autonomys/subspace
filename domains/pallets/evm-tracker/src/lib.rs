@@ -31,6 +31,7 @@ use sp_domains::PermissionedActionAllowedBy;
 
 #[frame_support::pallet]
 mod pallet {
+    use codec::Codec;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_core::U256;
@@ -55,7 +56,16 @@ mod pallet {
     // be updated.
     #[pallet::storage]
     pub(super) type ContractCreationAllowedBy<T: Config> =
-        StorageValue<_, PermissionedActionAllowedBy<T::AccountId>, OptionQuery>;
+        StorageValue<_, PermissionedActionAllowedBy<T::AccountId>, ValueQuery, DefaultToAnyone>;
+
+    /// Default value for ContractCreationAllowedBy if it is not set.
+    pub struct DefaultToAnyone;
+
+    impl<AccountId: Codec + Clone> Get<PermissionedActionAllowedBy<AccountId>> for DefaultToAnyone {
+        fn get() -> PermissionedActionAllowedBy<AccountId> {
+            PermissionedActionAllowedBy::Anyone
+        }
+    }
 
     /// Pallet EVM account nonce tracker.
     #[pallet::pallet]
@@ -100,23 +110,17 @@ impl<T: Config> Pallet<T> {
 
     /// Returns true if the account is allowed to create contracts.
     pub fn is_allowed_to_create_contracts(signer: &T::AccountId) -> bool {
-        // Unlike domain instantiation, no storage value means "anyone can create contracts".
-        ContractCreationAllowedBy::<T>::get()
-            .map(|allowed_by| allowed_by.is_allowed(signer))
-            .unwrap_or(true)
+        ContractCreationAllowedBy::<T>::get().is_allowed(signer)
     }
 
     /// Returns true if the account is allowed to create contracts.
     pub fn is_allowed_to_create_unsigned_contracts() -> bool {
-        // Unlike domain instantiation, no storage value means "anyone can create contracts".
-        ContractCreationAllowedBy::<T>::get()
-            .map(|allowed_by| allowed_by.is_anyone_allowed())
-            .unwrap_or(true)
+        ContractCreationAllowedBy::<T>::get().is_anyone_allowed()
     }
 
     /// Returns the current contract creation allow list.
     /// Mainly used in tests.
-    pub fn contract_creation_allowed_by() -> Option<PermissionedActionAllowedBy<T::AccountId>> {
+    pub fn contract_creation_allowed_by() -> PermissionedActionAllowedBy<T::AccountId> {
         ContractCreationAllowedBy::<T>::get()
     }
 }
