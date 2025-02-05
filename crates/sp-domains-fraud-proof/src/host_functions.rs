@@ -23,7 +23,7 @@ use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi, ExtrinsicDigest};
 use sp_externalities::Extensions;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, HashingFor, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::{LayoutV1, OverlayedChanges, StateMachine, TrieBackend, TrieBackendBuilder};
 use sp_trie::{MemoryDB, StorageProof};
@@ -179,14 +179,12 @@ where
             .map(|(signer, tx)| {
                 (
                     signer,
-                    ExtrinsicDigest::new::<LayoutV1<<DomainBlock::Header as HeaderT>::Hashing>>(
-                        tx.encode(),
-                    ),
+                    ExtrinsicDigest::new::<LayoutV1<HashingFor<DomainBlock>>>(tx.encode()),
                 )
             })
             .collect();
 
-        Some(<DomainBlock::Header as HeaderT>::Hashing::hash_of(&ext_signers).into())
+        Some(HashingFor::<DomainBlock>::hash_of(&ext_signers).into())
     }
 
     fn execution_proof_check(
@@ -215,7 +213,7 @@ where
         )
         .extensions_for(domain_block_hash.into(), domain_block_number.into());
 
-        execution_proof_check::<<DomainBlock::Header as HeaderT>::Hashing, _>(
+        execution_proof_check::<HashingFor<DomainBlock>, _>(
             pre_state_root.into(),
             proof,
             &mut Default::default(),

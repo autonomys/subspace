@@ -28,7 +28,7 @@ use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One};
+use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor, One};
 use sp_runtime::{Digest, DigestItem};
 use sp_trie::LayoutV1;
 use std::marker::PhantomData;
@@ -921,7 +921,7 @@ where
                 }
 
                 let proof_of_inclusion = StorageProofProvider::<
-                    LayoutV1<<Block::Header as HeaderT>::Hashing>,
+                    LayoutV1<HashingFor<Block>>,
                 >::generate_enumerated_proof_of_inclusion(
                     encoded_extrinsics.as_slice(),
                     extrinsic_index as u32,
