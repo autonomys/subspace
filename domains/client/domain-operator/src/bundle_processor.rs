@@ -16,11 +16,12 @@ use sp_domains::{DomainId, DomainsApi, ReceiptValidity};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
-use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
+use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor, Zero};
 use sp_runtime::{Digest, DigestItem};
 use sp_weights::constants::WEIGHT_REF_TIME_PER_MILLIS;
 use std::sync::Arc;
 use std::time::Instant;
+use tracing::info;
 
 // The slow log threshold for consensus block preprocessing
 const SLOW_PREPROCESS_MILLIS: u64 = 500;
@@ -51,6 +52,7 @@ where
     domain_block_preprocessor:
         DomainBlockPreprocessor<Block, CBlock, Client, CClient, ReceiptValidator<Client>>,
     domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, E>,
+    confirmation_depth_k: NumberFor<CBlock>,
 }
 
 impl<Block, CBlock, Client, CClient, Backend, E> Clone
@@ -68,6 +70,7 @@ where
             domain_receipts_checker: self.domain_receipts_checker.clone(),
             domain_block_preprocessor: self.domain_block_preprocessor.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
+            confirmation_depth_k: self.confirmation_depth_k,
         }
     }
 }
@@ -162,6 +165,7 @@ where
         backend: Arc<Backend>,
         domain_receipts_checker: DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E>,
         domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, E>,
+        confirmation_depth_k: NumberFor<CBlock>,
     ) -> Self {
         let domain_block_preprocessor = DomainBlockPreprocessor::new(
             domain_id,
@@ -177,6 +181,7 @@ where
             domain_receipts_checker,
             domain_block_preprocessor,
             domain_block_processor,
+            confirmation_depth_k,
         }
     }
 
@@ -256,6 +261,9 @@ where
                     .import_domain_block(block_import_params)
                     .await?;
                 assert_eq!(domain_tip, self.client.info().best_hash);
+
+                // finalize the latest confirmed domain block in the finalized Consensus block
+                self.finalize_domain_block((consensus_block_hash, consensus_block_number))?;
             }
 
             // Check the ER submitted to consensus chain and submit fraud proof if there is bad ER
@@ -264,6 +272,37 @@ where
                 .maybe_submit_fraud_proof(consensus_block_hash)?;
         }
 
+        Ok(())
+    }
+
+    // finalize the domain block which is confirmed in the finalized consensus block.
+    fn finalize_domain_block(
+        &self,
+        consensus_block_info: (CBlock::Hash, NumberFor<CBlock>),
+    ) -> sp_blockchain::Result<()> {
+        if let Some(confirmed_consensus_block) = consensus_block_info
+            .1
+            .checked_sub(&self.confirmation_depth_k)
+        {
+            let runtime_api = self.consensus_client.runtime_api();
+            let confirmed_consensus_block_hash = self
+                .consensus_client
+                .hash(confirmed_consensus_block)?
+                .ok_or(sp_blockchain::Error::MissingHeader(format!(
+                    "Block Number: {}",
+                    confirmed_consensus_block
+                )))?;
+
+            let finalized_domain_block_number = self.client.info().finalized_number;
+            if let Some(confirmed_domain_block) = runtime_api
+                .latest_confirmed_domain_block(confirmed_consensus_block_hash, self.domain_id)?
+                && confirmed_domain_block.0 > finalized_domain_block_number
+            {
+                self.client
+                    .finalize_block(confirmed_domain_block.1, None, true)?;
+                info!("🔒 Finalized block: {:?}", confirmed_domain_block);
+            }
+        }
         Ok(())
     }
 

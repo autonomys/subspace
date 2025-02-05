@@ -502,14 +502,6 @@ where
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, _bundle_receiver) = tracing_unbounded("domain_bundle_stream", 100);
 
-    // let domain_confirmation_depth = consensus_client
-    // .runtime_api()
-    // .receipts_pruning_depth(consensus_client.info().best_hash)
-    // .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
-    // .into();
-    // TODO: Implement when block tree is ready.
-    let domain_confirmation_depth = 256u32;
-
     let execution_receipt_provider = LastDomainBlockInfoReceiver::new(
         domain_id,
         fork_id.clone(),
@@ -534,7 +526,7 @@ where
             keystore: params.keystore_container.keystore(),
             bundle_sender: Arc::new(bundle_sender),
             operator_streams,
-            domain_confirmation_depth,
+            consensus_confirmation_depth_k: confirmation_depth_k,
             block_import: Arc::new(block_import),
             skip_empty_bundle_production,
             skip_out_of_order_slot,

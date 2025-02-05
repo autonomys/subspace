@@ -185,7 +185,6 @@ where
             client: params.client.clone(),
             consensus_client: params.consensus_client.clone(),
             backend: params.backend.clone(),
-            domain_confirmation_depth: params.domain_confirmation_depth,
             block_import: params.block_import,
             import_notification_sinks: Default::default(),
             domain_sync_oracle: params.domain_sync_oracle.clone(),
@@ -208,6 +207,7 @@ where
             params.backend.clone(),
             receipts_checker,
             domain_block_processor.clone(),
+            params.consensus_confirmation_depth_k,
         );
 
         let snap_sync_orchestrator = params

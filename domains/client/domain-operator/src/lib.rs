@@ -58,11 +58,14 @@
 //! [`BlockBuilder`]: ../domain_block_builder/struct.BlockBuilder.html
 //! [`FraudProof`]: ../sp_domains/struct.FraudProof.html
 
-#![feature(array_windows)]
-#![feature(box_into_inner)]
-#![feature(duration_constructors)]
-#![feature(extract_if)]
-#![feature(assert_matches)]
+#![feature(
+    array_windows,
+    box_into_inner,
+    duration_constructors,
+    extract_if,
+    assert_matches,
+    let_chains
+)]
 
 mod aux_schema;
 mod bundle_processor;
@@ -226,7 +229,7 @@ pub struct OperatorParams<
     pub keystore: KeystorePtr,
     pub bundle_sender: Arc<BundleSender<Block, CBlock>>,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
-    pub domain_confirmation_depth: NumberFor<Block>,
+    pub consensus_confirmation_depth_k: NumberFor<CBlock>,
     pub block_import: Arc<BoxBlockImport<Block>>,
     pub skip_empty_bundle_production: bool,
     pub skip_out_of_order_slot: bool,
