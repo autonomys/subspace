@@ -1778,28 +1778,7 @@ async fn test_executor_inherent_timestamp_is_set() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, Alice, &mut ferdie)
-    .await;
+    let (_directory, mut ferdie, mut alice) = setup_evm_test_nodes(Ferdie).await;
 
     let fraud_proof_generator = FraudProofGenerator::new(
         alice.client.clone(),
@@ -2023,28 +2002,7 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_fraud_proof_is_rejected() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, Alice, &mut ferdie)
-    .await;
+    let (_directory, mut ferdie, mut alice) = setup_evm_test_nodes(Ferdie).await;
 
     let fraud_proof_generator = FraudProofGenerator::new(
         alice.client.clone(),
