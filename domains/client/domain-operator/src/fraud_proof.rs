@@ -520,9 +520,13 @@ where
         bundle_index: u32,
         bad_receipt_hash: Block::Hash,
         // Whether allow generating an invalid proof against a valid ER,
-        // only used in tests
-        allow_invalid_proof: bool,
+        // only used in tests, ignored in production
+        mut allow_invalid_proof: bool,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+        if cfg!(not(test)) {
+            allow_invalid_proof = false;
+        }
+
         let consensus_block_hash = local_receipt.consensus_block_hash;
         let consensus_block_number = local_receipt.consensus_block_number;
 
