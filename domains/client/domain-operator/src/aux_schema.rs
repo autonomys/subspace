@@ -3,10 +3,14 @@
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
-use sp_blockchain::{Error as ClientError, Result as ClientResult};
+use sp_blockchain::{Error as ClientError, HeaderBackend, Result as ClientResult};
 use sp_domains::InvalidBundleType;
-use sp_runtime::traits::{Block as BlockT, NumberFor, One, SaturatedConversion, Zero};
+use sp_runtime::traits::{
+    Block as BlockT, CheckedMul, CheckedSub, NumberFor, One, SaturatedConversion, Zero,
+};
 use sp_runtime::Saturating;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
 
 const EXECUTION_RECEIPT: &[u8] = b"execution_receipt";
@@ -35,12 +39,11 @@ const LATEST_CONSENSUS_HASH: &[u8] = b"latest_consensus_hash";
 /// - Hash(ConsensusBlock12) => Hash(DomainBlock5)
 const BEST_DOMAIN_HASH: &[u8] = b"best_domain_hash";
 
-/// Prune the execution receipts when they reach this number.
-///
-/// NOTE: `PRUNING_DEPTH` must larger than the consensus chain `ConfirmationDepthK` to avoid
-/// accidentally delete non-confirmed ER from consensus forks that can potentially become the
-/// best fork in the future
-const PRUNING_DEPTH: BlockNumber = 1000;
+/// Tracks a list of tracked domain block hash keys at a given height.
+const BEST_DOMAIN_HASH_KEYS: &[u8] = b"best_domain_hash_keys";
+
+/// Pruning depth multiplier to prune receipts at and below the confirmation_depth_k * multiplier.
+const PRUNING_DEPTH_MULTIPLIER: u32 = 2;
 
 fn execution_receipt_key(block_hash: impl Encode) -> Vec<u8> {
     (EXECUTION_RECEIPT, block_hash).encode()
@@ -66,6 +69,7 @@ pub(super) fn write_execution_receipt<Backend, Block, CBlock>(
     backend: &Backend,
     oldest_unconfirmed_receipt_number: Option<NumberFor<Block>>,
     execution_receipt: &ExecutionReceiptFor<Block, CBlock>,
+    confirmation_depth_k: NumberFor<CBlock>,
 ) -> Result<(), sp_blockchain::Error>
 where
     Backend: AuxStore,
@@ -89,31 +93,37 @@ where
 
     let mut keys_to_delete = vec![];
 
-    // Delete ER that have comfirned long time ago, also see the comment of `PRUNING_DEPTH`
-    if let Some(delete_receipts_to) = oldest_unconfirmed_receipt_number
-        .map(|oldest_unconfirmed_receipt_number| {
-            oldest_unconfirmed_receipt_number.saturating_sub(One::one())
-        })
-        .and_then(|latest_confirmed_receipt_number| {
-            latest_confirmed_receipt_number
-                .saturated_into::<BlockNumber>()
-                .checked_sub(PRUNING_DEPTH)
-        })
+    if let Some(pruning_block_number) =
+        confirmation_depth_k.checked_mul(&PRUNING_DEPTH_MULTIPLIER.saturated_into())
     {
-        new_first_saved_receipt = Into::<NumberFor<CBlock>>::into(delete_receipts_to) + One::one();
-        for receipt_to_delete in first_saved_receipt.saturated_into()..=delete_receipts_to {
-            let delete_block_number_key =
-                (EXECUTION_RECEIPT_BLOCK_NUMBER, receipt_to_delete).encode();
+        // Delete ER that have confirmed long time ago
+        if let Some(delete_receipts_to) = oldest_unconfirmed_receipt_number
+            .map(|oldest_unconfirmed_receipt_number| {
+                oldest_unconfirmed_receipt_number.saturating_sub(One::one())
+            })
+            .and_then(|latest_confirmed_receipt_number| {
+                latest_confirmed_receipt_number
+                    .saturated_into::<BlockNumber>()
+                    .checked_sub(pruning_block_number.saturated_into())
+            })
+        {
+            new_first_saved_receipt =
+                Into::<NumberFor<CBlock>>::into(delete_receipts_to) + One::one();
+            for receipt_to_delete in first_saved_receipt.saturated_into()..=delete_receipts_to {
+                let delete_block_number_key =
+                    (EXECUTION_RECEIPT_BLOCK_NUMBER, receipt_to_delete).encode();
 
-            if let Some(hashes_to_delete) =
-                load_decode::<_, Vec<CBlock::Hash>>(backend, delete_block_number_key.as_slice())?
-            {
-                keys_to_delete.extend(
-                    hashes_to_delete
-                        .into_iter()
-                        .map(|h| (EXECUTION_RECEIPT, h).encode()),
-                );
-                keys_to_delete.push(delete_block_number_key);
+                if let Some(hashes_to_delete) = load_decode::<_, Vec<CBlock::Hash>>(
+                    backend,
+                    delete_block_number_key.as_slice(),
+                )? {
+                    keys_to_delete.extend(
+                        hashes_to_delete
+                            .into_iter()
+                            .map(|h| (EXECUTION_RECEIPT, h).encode()),
+                    );
+                    keys_to_delete.push(delete_block_number_key);
+                }
             }
         }
     }
@@ -156,22 +166,50 @@ where
     )
 }
 
-pub(super) fn track_domain_hash_and_consensus_hash<Backend, Hash, CHash>(
+type TrackedDomainHashKeysFor<Block, CBlock> =
+    BTreeMap<NumberFor<Block>, BTreeSet<(<Block as BlockT>::Hash, <CBlock as BlockT>::Hash)>>;
+
+fn get_tracked_domain_hash_keys<Backend, Block, CBlock>(
     backend: &Backend,
-    best_domain_hash: Hash,
-    latest_consensus_hash: CHash,
-) -> ClientResult<()>
+) -> ClientResult<TrackedDomainHashKeysFor<Block, CBlock>>
 where
     Backend: AuxStore,
-    Hash: Clone + Encode,
-    CHash: Encode,
+    Block: BlockT,
+    CBlock: BlockT,
 {
-    // TODO: prune the stale mappings.
+    load_decode(backend, BEST_DOMAIN_HASH_KEYS).map(|res| res.unwrap_or_default())
+}
 
-    backend.insert_aux(
+pub(super) fn track_domain_hash_and_consensus_hash<Client, Block, CBlock>(
+    domain_client: &Arc<Client>,
+    best_domain_hash: Block::Hash,
+    latest_consensus_hash: CBlock::Hash,
+) -> ClientResult<()>
+where
+    Client: HeaderBackend<Block> + AuxStore,
+    CBlock: BlockT,
+    Block: BlockT,
+{
+    let mut domain_hash_keys = get_tracked_domain_hash_keys::<_, Block, CBlock>(&**domain_client)?;
+    let best_domain_number =
+        domain_client
+            .number(best_domain_hash)?
+            .ok_or(sp_blockchain::Error::MissingHeader(format!(
+                "Block hash: {:?}",
+                best_domain_hash
+            )))?;
+
+    domain_hash_keys
+        .entry(best_domain_number)
+        .and_modify(|keys| {
+            keys.insert((best_domain_hash, latest_consensus_hash));
+        })
+        .or_insert(BTreeSet::from([(best_domain_hash, latest_consensus_hash)]));
+
+    domain_client.insert_aux(
         &[
             (
-                (LATEST_CONSENSUS_HASH, best_domain_hash.clone())
+                (LATEST_CONSENSUS_HASH, best_domain_hash)
                     .encode()
                     .as_slice(),
                 latest_consensus_hash.encode().as_slice(),
@@ -182,8 +220,48 @@ where
                     .as_slice(),
                 best_domain_hash.encode().as_slice(),
             ),
+            (BEST_DOMAIN_HASH_KEYS, domain_hash_keys.encode().as_slice()),
         ],
         vec![],
+    )?;
+
+    cleanup_domain_hash_and_consensus_hash::<_, Block, CBlock>(domain_client)
+}
+
+fn cleanup_domain_hash_and_consensus_hash<Client, Block, CBlock>(
+    domain_client: &Arc<Client>,
+) -> ClientResult<()>
+where
+    CBlock: BlockT,
+    Block: BlockT,
+    Client: HeaderBackend<Block> + AuxStore,
+{
+    let mut domain_hash_keys = get_tracked_domain_hash_keys::<_, Block, CBlock>(&**domain_client)?;
+
+    let mut finalized_domain_number = domain_client.info().finalized_number;
+
+    let mut deletions = vec![];
+    while finalized_domain_number > Zero::zero() {
+        match domain_hash_keys.remove(&finalized_domain_number) {
+            None => break,
+            Some(keys) => keys.into_iter().for_each(|(domain_hash, consensus_hash)| {
+                deletions.push((LATEST_CONSENSUS_HASH, domain_hash).encode());
+                deletions.push((BEST_DOMAIN_HASH, consensus_hash).encode())
+            }),
+        }
+
+        finalized_domain_number = match finalized_domain_number.checked_sub(&One::one()) {
+            None => break,
+            Some(number) => number,
+        }
+    }
+
+    domain_client.insert_aux(
+        [],
+        &deletions
+            .iter()
+            .map(|key| key.as_slice())
+            .collect::<Vec<_>>(),
     )
 }
 
@@ -238,6 +316,8 @@ mod tests {
     use subspace_runtime_primitives::{Balance, Hash};
     use subspace_test_runtime::Block as CBlock;
 
+    const PRUNING_DEPTH: BlockNumber = 1000;
+
     type ExecutionReceipt =
         sp_domains::ExecutionReceipt<BlockNumber, Hash, BlockNumber, Hash, Balance>;
 
@@ -291,6 +371,7 @@ mod tests {
     #[test]
     fn normal_prune_execution_receipt_works() {
         let block_tree_pruning_depth = 256;
+        let confirmation_depth_k = 500;
         let client = TestClient::default();
 
         let receipt_start = || {
@@ -318,6 +399,7 @@ mod tests {
                 &client,
                 oldest_unconfirmed_receipt_number,
                 receipt,
+                confirmation_depth_k,
             )
             .unwrap()
         };
@@ -391,6 +473,7 @@ mod tests {
     #[test]
     fn execution_receipts_should_be_kept_against_oldest_unconfirmed_receipt_number() {
         let block_tree_pruning_depth = 256;
+        let confirmation_depth_k = 500;
         let client = TestClient::default();
 
         let receipt_start = || {
@@ -416,6 +499,7 @@ mod tests {
                 &client,
                 oldest_unconfirmed_receipt_number,
                 receipt,
+                confirmation_depth_k,
             )
             .unwrap()
         };

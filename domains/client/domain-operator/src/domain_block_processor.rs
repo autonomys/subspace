@@ -66,6 +66,7 @@ where
     pub(crate) import_notification_sinks: DomainImportNotificationSinks<Block, CBlock>,
     pub(crate) domain_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub(crate) domain_executor: Arc<Executor>,
+    pub(crate) confirmation_depth_k: NumberFor<CBlock>,
 }
 
 impl<Block, CBlock, Client, CClient, Backend, Executor> Clone
@@ -85,6 +86,7 @@ where
             import_notification_sinks: self.import_notification_sinks.clone(),
             domain_sync_oracle: self.domain_sync_oracle.clone(),
             domain_executor: self.domain_executor.clone(),
+            confirmation_depth_k: self.confirmation_depth_k,
         }
     }
 }
@@ -513,6 +515,7 @@ where
                     &*self.client,
                     oldest_unconfirmed_receipt_number,
                     &execution_receipt,
+                    self.confirmation_depth_k,
                 )?;
 
                 // Notify the imported domain block when the receipt processing is done.
@@ -553,8 +556,8 @@ where
             }
         };
 
-        crate::aux_schema::track_domain_hash_and_consensus_hash(
-            &*self.client,
+        crate::aux_schema::track_domain_hash_and_consensus_hash::<_, Block, CBlock>(
+            &self.client,
             domain_hash,
             consensus_block_hash,
         )?;
