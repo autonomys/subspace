@@ -12986,6 +12986,7 @@ dependencies = [
  "sc-network-sync",
  "sc-proof-of-time",
  "sc-service",
+ "sc-state-db",
  "sc-storage-monitor",
  "sc-subspace-chain-specs",
  "sc-telemetry",
