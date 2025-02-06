@@ -66,13 +66,14 @@ pub enum FraudProofError {
         decoding_error: codec::Error,
     },
     #[error(
-    "Invalid extrinsic index for creating illegal tx fraud proof, \
+        "Invalid extrinsic index for creating illegal tx fraud proof, \
         expected extrinsic index: {index},\
-        is_true_invalid: {is_true_invalid} and validity response is: {extrinsics_validity_response:?}"
+        is_good_invalid_fraud_proof: {is_good_invalid_fraud_proof} \
+        and validity response is: {extrinsics_validity_response:?}"
     )]
     InvalidIllegalTxFraudProofExtrinsicIndex {
         index: usize,
-        is_true_invalid: bool,
+        is_good_invalid_fraud_proof: bool,
         extrinsics_validity_response: Result<(), CheckExtrinsicsValidityError>,
     },
     #[error("Fail to generate the storage proof")]
@@ -518,8 +519,8 @@ where
         mismatch_type: BundleMismatchType,
         bundle_index: u32,
         bad_receipt_hash: Block::Hash,
-        // Whether allow generate invalid proof against valid ER,
-        // only used in test
+        // Whether allow generating an invalid proof against a valid ER,
+        // only used in tests
         allow_invalid_proof: bool,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let consensus_block_hash = local_receipt.consensus_block_hash;
@@ -548,10 +549,10 @@ where
             bundles.swap_remove(bundle_index as usize)
         };
 
-        let (invalid_type, is_true_invalid) = match mismatch_type {
-            BundleMismatchType::TrueInvalid(invalid_type) => (invalid_type, true),
-            BundleMismatchType::FalseInvalid(invalid_type) => (invalid_type, false),
-            BundleMismatchType::Valid => {
+        let (invalid_type, is_good_invalid_fraud_proof) = match mismatch_type {
+            BundleMismatchType::GoodInvalid(invalid_type) => (invalid_type, true),
+            BundleMismatchType::BadInvalid(invalid_type) => (invalid_type, false),
+            BundleMismatchType::ValidBundleContents => {
                 return Err(sp_blockchain::Error::Application(
                     "Unexpected bundle mismatch type, this should not happen"
                         .to_string()
@@ -640,20 +641,20 @@ where
                             domain_block_parent_hash,
                         )?;
 
-                    // If the proof is true invalid then validation response should not be Ok.
-                    // If the proof is false invalid then validation response should not be Err.
-                    // OR
-                    // If it is true invalid and expected extrinsic index does not match
+                    // Check the validation response and extrinsic indexes:
+                    // If are proving the bundle is actually invalid, the expected validation response is Err.
+                    // If we are proving the invalid bundle proof is wrong, the expected validation response is Ok.
+                    // If we are proving the bundle is actually invalid, the extrinsic indexes also must match.
                     if !allow_invalid_proof
-                        && ((is_true_invalid == validation_response.is_ok())
-                            || (is_true_invalid
+                        && ((is_good_invalid_fraud_proof == validation_response.is_ok())
+                            || (is_good_invalid_fraud_proof
                                 && validation_response
                                     .as_ref()
                                     .is_err_and(|e| e.extrinsic_index != expected_extrinsic_index)))
                     {
                         return Err(FraudProofError::InvalidIllegalTxFraudProofExtrinsicIndex {
                             index: expected_extrinsic_index as usize,
-                            is_true_invalid,
+                            is_good_invalid_fraud_proof,
                             extrinsics_validity_response: validation_response,
                         });
                     }
@@ -784,7 +785,7 @@ where
             proof: FraudProofVariant::InvalidBundles(InvalidBundlesProof {
                 bundle_index,
                 invalid_bundle_type: invalid_type,
-                is_true_invalid_fraud_proof: is_true_invalid,
+                is_good_invalid_fraud_proof,
                 proof_data,
             }),
         };

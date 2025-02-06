@@ -527,12 +527,16 @@ pub enum InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     },
 }
 
+/// A proof about a bundle that was marked invalid (but might or might not actually be invalid).
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     pub bundle_index: u32,
+    /// The invalid bundle type that the bundle was marked with.
     pub invalid_bundle_type: InvalidBundleType,
-    pub is_true_invalid_fraud_proof: bool,
-    /// Proof data of the invalid bundle
+    /// If `true`, the fraud proof must prove the bundle was correctly marked invalid.
+    /// If `false`, it must prove the bundle was marked invalid, but is actually valid.
+    pub is_good_invalid_fraud_proof: bool,
+    /// Proof data of the bundle which was marked invalid.
     pub proof_data: InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader>,
 }
 

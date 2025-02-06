@@ -473,7 +473,7 @@ fn check_expected_bundle_entry<CBlock, DomainHeader, Balance>(
     >,
     bundle_index: u32,
     invalid_bundle_type: InvalidBundleType,
-    is_true_invalid_fraud_proof: bool,
+    is_good_invalid_fraud_proof: bool,
 ) -> Result<InboxedBundle<HeaderHashFor<DomainHeader>>, VerificationError<DomainHeader::Hash>>
 where
     CBlock: BlockT,
@@ -484,19 +484,19 @@ where
         .get(bundle_index as usize)
         .ok_or(VerificationError::BundleNotFound)?;
 
-    let is_expected = if !is_true_invalid_fraud_proof {
-        // `FalseInvalid`
+    let is_expected = if !is_good_invalid_fraud_proof {
+        // `BadInvalid`
         // The proof trying to prove `bad_receipt_bundle`'s `invalid_bundle_type` is wrong,
-        // so the proof should contains the same `invalid_bundle_type`
+        // so the proof should contain the same `invalid_bundle_type`
         targeted_invalid_bundle_entry.bundle == BundleValidity::Invalid(invalid_bundle_type.clone())
     } else {
-        // `TrueInvalid`
+        // `GoodInvalid`
         match &targeted_invalid_bundle_entry.bundle {
             // The proof trying to prove the bundle is invalid due to `invalid_type_of_proof` while `bad_receipt_bundle`
-            // think it is valid
+            // thinks it is valid
             BundleValidity::Valid(_) => true,
             BundleValidity::Invalid(invalid_type) => {
-                // The proof trying to prove there is a check failed while the `bad_receipt` think is pass,
+                // The proof trying to prove there is a check failed while the `bad_receipt` thinks it passed,
                 // so the proof should point to a check that is performed before the `bad_receipt`'s
                 invalid_bundle_type.checking_order() < invalid_type.checking_order()
             }
@@ -572,17 +572,17 @@ where
     let InvalidBundlesProof {
         bundle_index,
         invalid_bundle_type,
-        is_true_invalid_fraud_proof,
+        is_good_invalid_fraud_proof,
         proof_data,
         ..
     } = invalid_bundles_fraud_proof;
-    let (bundle_index, is_true_invalid_fraud_proof) = (*bundle_index, *is_true_invalid_fraud_proof);
+    let (bundle_index, is_good_invalid_fraud_proof) = (*bundle_index, *is_good_invalid_fraud_proof);
 
     let targeted_invalid_bundle_entry = check_expected_bundle_entry::<CBlock, DomainHeader, Balance>(
         &bad_receipt,
         bundle_index,
         invalid_bundle_type.clone(),
-        is_true_invalid_fraud_proof,
+        is_good_invalid_fraud_proof,
     )?;
     let bundle_extrinsic_root = targeted_invalid_bundle_entry.extrinsics_root;
 
@@ -640,10 +640,10 @@ where
             )
             .ok_or(VerificationError::FailedToGetDomainRuntimeCallResponse)?;
 
-            // If it is true invalid fraud proof then tx must not be in range and
-            // if it is false invalid fraud proof then tx must be in range for fraud
-            // proof to be considered valid.
-            if is_tx_in_range == is_true_invalid_fraud_proof {
+            // Proof to be considered valid only if:
+            // if we are proving the bundle is actually invalid, then tx must not be in range, but
+            // if we are proving the invalid bundle is wrong, then tx must be in range.
+            if is_tx_in_range == is_good_invalid_fraud_proof {
                 return Err(VerificationError::InvalidProof);
             }
             Ok(())
@@ -666,10 +666,10 @@ where
             )
             .ok_or(VerificationError::FailedToGetDomainRuntimeCallResponse)?;
 
-            // Proof to be considered valid only,
-            // If it is true invalid fraud proof then extrinsic must be an inherent and
-            // If it is false invalid fraud proof then extrinsic must not be an inherent
-            if is_inherent == is_true_invalid_fraud_proof {
+            // Proof to be considered valid only if:
+            // if we are proving the bundle is actually invalid, then extrinsic must be an inherent, but
+            // if we are proving the invalid bundle is wrong, then the extrinsic must not be an inherent.
+            if is_inherent == is_good_invalid_fraud_proof {
                 Ok(())
             } else {
                 Err(VerificationError::InvalidProof)
@@ -706,10 +706,10 @@ where
 
             let is_extrinsic_invalid = check_extrinsic_result == Some(*extrinsic_index);
 
-            // Proof to be considered valid only,
-            // If it is true invalid fraud proof then extrinsic must be an invalid extrinsic and
-            // If it is false invalid fraud proof then extrinsic must not be an invalid extrinsic
-            if is_extrinsic_invalid == is_true_invalid_fraud_proof {
+            // Proof to be considered valid only if:
+            // if we are proving the bundle is actually invalid, then the extrinsic must be an invalid extrinsic, but
+            // if we are proving the invalid bundle is wrong, then the extrinsic must not be an invalid extrinsic.
+            if is_extrinsic_invalid == is_good_invalid_fraud_proof {
                 Ok(())
             } else {
                 Err(VerificationError::InvalidProof)
@@ -733,7 +733,7 @@ where
             )
             .ok_or(VerificationError::FailedToGetDomainRuntimeCallResponse)?;
 
-            if is_decodable == is_true_invalid_fraud_proof {
+            if is_decodable == is_good_invalid_fraud_proof {
                 return Err(VerificationError::InvalidProof);
             }
             Ok(())
@@ -754,7 +754,7 @@ where
 
             let is_bundle_weight_correct = estimated_bundle_weight == bundle_header_weight;
 
-            if is_bundle_weight_correct == is_true_invalid_fraud_proof {
+            if is_bundle_weight_correct == is_good_invalid_fraud_proof {
                 return Err(VerificationError::InvalidProof);
             }
             Ok(())
@@ -793,9 +793,10 @@ where
                     (mmr_root_proof, consensus_chain_mmr_leaf_proof)
                 }
                 None => {
-                    // `None` means this is not an XDM so this fraud proof has to be a fasle invalid fraud proof
-                    // to be valid, also in this case the `maybe_mmr_root_proof` should `None` else it is also invalid
-                    return if is_true_invalid_fraud_proof || maybe_mmr_root_proof.is_some() {
+                    // `None` means this is not an XDM, so for this fraud proof to be valid:
+                    // it has to prove that the invalid bundle is wrong, and
+                    // the `maybe_mmr_root_proof` must be `None`
+                    return if is_good_invalid_fraud_proof || maybe_mmr_root_proof.is_some() {
                         Err(VerificationError::InvalidProof)
                     } else {
                         Ok(())
@@ -819,11 +820,11 @@ where
                 )?
             };
 
-            // Verify the original XDM mmr proof stateless to get the original result
+            // Verify the original XDM mmr proof statelessly to get the original result
             let is_valid_mmr_proof =
                 MPV::verify_proof_stateless(mmr_root, consensus_chain_mmr_leaf_proof).is_some();
 
-            if is_valid_mmr_proof == is_true_invalid_fraud_proof {
+            if is_valid_mmr_proof == is_good_invalid_fraud_proof {
                 return Err(VerificationError::InvalidProof);
             }
             Ok(())

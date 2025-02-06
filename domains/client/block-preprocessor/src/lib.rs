@@ -41,8 +41,11 @@ use subspace_runtime_primitives::Balance;
 
 type DomainBlockElements<CBlock> = (Vec<<CBlock as BlockT>::Extrinsic>, Randomness);
 
+/// A wrapper indicating a valid bundle contents, or an invalid bundle reason.
 enum BundleValidity<Extrinsic> {
+    /// A valid bundle contents.
     Valid(Vec<Extrinsic>),
+    /// An invalid bundle reason.
     Invalid(InvalidBundleType),
 }
 
