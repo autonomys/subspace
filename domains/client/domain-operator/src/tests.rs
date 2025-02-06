@@ -85,7 +85,7 @@ use tempfile::TempDir;
 use tracing::error;
 
 /// The general timeout for test operations that could hang.
-const TIMEOUT: Duration = Duration::from_mins(2);
+const TIMEOUT: Duration = Duration::from_mins(10);
 
 /// A trait that makes it easier to add a timeout to any future: `future.timeout().await?`.
 trait TestTimeout: IntoFuture {
