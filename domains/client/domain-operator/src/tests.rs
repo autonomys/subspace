@@ -18,10 +18,9 @@ use domain_test_service::evm_domain_test_runtime::{
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Dave, Eve};
 use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
 use domain_test_service::{
-    construct_extrinsic_generic, DomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID,
+    construct_extrinsic_generic, EvmDomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID,
 };
 use ethereum::TransactionV2 as EthereumTransaction;
-use evm_domain_test_runtime::{Runtime as EvmRuntime, RuntimeApi as EvmRuntimeApi};
 use fp_rpc::EthereumRuntimeRPCApi;
 use futures::StreamExt;
 use hex_literal::hex;
@@ -228,11 +227,7 @@ pub fn generate_evm_account_list(
 
 async fn setup_evm_test_nodes(
     ferdie_key: Sr25519Keyring,
-) -> (
-    TempDir,
-    MockConsensusNode,
-    DomainNode<EvmRuntime, EvmRuntimeApi>,
-) {
+) -> (TempDir, MockConsensusNode, EvmDomainNode) {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -261,12 +256,7 @@ async fn setup_evm_test_nodes(
 
 async fn setup_evm_test_accounts(
     ferdie_key: Sr25519Keyring,
-) -> (
-    TempDir,
-    MockConsensusNode,
-    DomainNode<EvmRuntime, EvmRuntimeApi>,
-    Vec<AccountInfo>,
-) {
+) -> (TempDir, MockConsensusNode, EvmDomainNode, Vec<AccountInfo>) {
     let (directory, mut ferdie, mut alice) = setup_evm_test_nodes(ferdie_key).await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
