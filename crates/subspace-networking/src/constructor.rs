@@ -110,35 +110,9 @@ impl KademliaMode {
     }
 }
 
-/// Trait to be implemented on providers of local records
-pub trait LocalRecordProvider {
-    /// Gets a provider record for key that is stored locally
-    fn record(&self, key: &RecordKey) -> Option<ProviderRecord>;
-}
+pub(crate) struct DummyRecordStore;
 
-impl LocalRecordProvider for () {
-    fn record(&self, _key: &RecordKey) -> Option<ProviderRecord> {
-        None
-    }
-}
-
-/// Record store that can't be created, only
-pub(crate) struct LocalOnlyRecordStore<LocalRecordProvider> {
-    local_records_provider: LocalRecordProvider,
-}
-
-impl<LocalRecordProvider> LocalOnlyRecordStore<LocalRecordProvider> {
-    fn new(local_records_provider: LocalRecordProvider) -> Self {
-        Self {
-            local_records_provider,
-        }
-    }
-}
-
-impl<LocalRecordProvider> RecordStore for LocalOnlyRecordStore<LocalRecordProvider>
-where
-    LocalRecordProvider: self::LocalRecordProvider,
-{
+impl RecordStore for DummyRecordStore {
     type RecordsIter<'a>
         = Empty<Cow<'a, Record>>
     where
@@ -163,7 +137,7 @@ where
     }
 
     fn records(&self) -> Self::RecordsIter<'_> {
-        // We don't use Kademlia's periodic replication
+        // Not supported
         iter::empty()
     }
 
@@ -172,15 +146,13 @@ where
         Ok(())
     }
 
-    fn providers(&self, key: &RecordKey) -> Vec<ProviderRecord> {
-        self.local_records_provider
-            .record(key)
-            .into_iter()
-            .collect()
+    fn providers(&self, _key: &RecordKey) -> Vec<ProviderRecord> {
+        // Not supported
+        Vec::new()
     }
 
     fn provided(&self) -> Self::ProvidedIter<'_> {
-        // We don't use Kademlia's periodic replication
+        // Not supported
         iter::empty()
     }
 
@@ -190,7 +162,7 @@ where
 }
 
 /// [`Node`] configuration.
-pub struct Config<LocalRecordProvider> {
+pub struct Config {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
@@ -206,8 +178,6 @@ pub struct Config<LocalRecordProvider> {
     pub kademlia: KademliaConfig,
     /// The configuration for the Gossip behaviour.
     pub gossipsub: Option<GossipsubConfig>,
-    /// Externally provided implementation of the local records provider
-    pub local_records_provider: LocalRecordProvider,
     /// Yamux multiplexing configuration.
     pub yamux_config: YamuxConfig,
     /// Should non-global addresses be added to the DHT?
@@ -249,7 +219,7 @@ pub struct Config<LocalRecordProvider> {
     pub external_addresses: Vec<Multiaddr>,
 }
 
-impl<LocalRecordProvider> fmt::Debug for Config<LocalRecordProvider> {
+impl fmt::Debug for Config {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Config").finish()
@@ -258,31 +228,22 @@ impl<LocalRecordProvider> fmt::Debug for Config<LocalRecordProvider> {
 
 /// This default can only be used for `dev` networks.
 /// Other networks should use `Config::new()` to apply the correct prefix to the protocol version.
-impl Default for Config<()> {
+impl Default for Config {
     #[inline]
     fn default() -> Self {
         let ed25519_keypair = identity::ed25519::Keypair::generate();
         let keypair = identity::Keypair::from(ed25519_keypair);
 
-        Self::new(
-            DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(),
-            keypair,
-            (),
-            None,
-        )
+        Self::new(DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(), keypair, None)
     }
 }
 
-impl<LocalRecordProvider> Config<LocalRecordProvider>
-where
-    LocalRecordProvider: self::LocalRecordProvider,
-{
+impl Config {
     /// Creates a new [`Config`].
     /// Applies a subspace-specific version prefix to the `protocol_version`.
     pub fn new(
         protocol_version: String,
         keypair: identity::Keypair,
-        local_records_provider: LocalRecordProvider,
         prometheus_registry: Option<&mut Registry>,
     ) -> Self {
         let (libp2p_metrics, metrics) = prometheus_registry
@@ -349,7 +310,6 @@ where
             identify,
             kademlia,
             gossipsub,
-            local_records_provider,
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             known_peers_registry: StubNetworkingParametersManager.boxed(),
@@ -398,12 +358,7 @@ pub fn peer_id(keypair: &identity::Keypair) -> PeerId {
 }
 
 /// Create a new network node and node runner instances.
-pub fn construct<LocalRecordProvider>(
-    config: Config<LocalRecordProvider>,
-) -> Result<(Node, NodeRunner<LocalRecordProvider>), CreationError>
-where
-    LocalRecordProvider: self::LocalRecordProvider + Send + Sync + 'static,
-{
+pub fn construct(config: Config) -> Result<(Node, NodeRunner), CreationError> {
     let Config {
         keypair,
         listen_on,
@@ -412,7 +367,6 @@ where
         identify,
         kademlia,
         gossipsub,
-        local_records_provider,
         yamux_config,
         allow_non_global_addresses_in_dht,
         initial_random_query_interval,
@@ -468,7 +422,6 @@ where
         identify,
         kademlia,
         gossipsub,
-        record_store: LocalOnlyRecordStore::new(local_records_provider),
         request_response_protocols,
         request_response_max_concurrent_streams: {
             let max_num_connections = max_established_incoming_connections as usize

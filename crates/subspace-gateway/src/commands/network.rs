@@ -64,7 +64,7 @@ pub async fn configure_network(
         pending_out_connections,
         listen_on,
     }: NetworkArgs,
-) -> anyhow::Result<(Node, NodeRunner<()>, RpcNodeClient)> {
+) -> anyhow::Result<(Node, NodeRunner, RpcNodeClient)> {
     info!(url = %node_rpc_url, "Connecting to node RPC");
     let node_client = RpcNodeClient::new(&node_rpc_url)
         .await
@@ -89,12 +89,12 @@ pub async fn configure_network(
     debug!(?dsn_protocol_version, "Setting DSN protocol version...");
 
     // TODO:
-    // - use a fixed identity kepair
+    // - use a fixed identity keypair
     // - cache known peers on disk
     // - prometheus telemetry
     let keypair = identity::ed25519::Keypair::generate();
     let keypair = identity::Keypair::from(keypair);
-    let default_config = Config::new(dsn_protocol_version, keypair, (), None);
+    let default_config = Config::new(dsn_protocol_version, keypair, None);
 
     let config = Config {
         bootstrap_addresses: bootstrap_nodes,
