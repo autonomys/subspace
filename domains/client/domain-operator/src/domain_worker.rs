@@ -200,6 +200,7 @@ pub(super) async fn start_worker<
                         );
                     }
                 }
+                else => { break }
             }
         }
     } else {
