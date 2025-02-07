@@ -9,7 +9,7 @@ use sp_runtime::traits::{
     Block as BlockT, CheckedMul, CheckedSub, NumberFor, One, SaturatedConversion, Zero,
 };
 use sp_runtime::Saturating;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
 
@@ -166,18 +166,22 @@ where
     )
 }
 
-type TrackedDomainHashKeysFor<Block, CBlock> =
-    BTreeMap<NumberFor<Block>, BTreeSet<(<Block as BlockT>::Hash, <CBlock as BlockT>::Hash)>>;
-
 fn get_tracked_domain_hash_keys<Backend, Block, CBlock>(
     backend: &Backend,
-) -> ClientResult<TrackedDomainHashKeysFor<Block, CBlock>>
+    domain_block_number: NumberFor<Block>,
+) -> ClientResult<BTreeSet<(Block::Hash, CBlock::Hash)>>
 where
     Backend: AuxStore,
     Block: BlockT,
     CBlock: BlockT,
 {
-    load_decode(backend, BEST_DOMAIN_HASH_KEYS).map(|res| res.unwrap_or_default())
+    load_decode(
+        backend,
+        (BEST_DOMAIN_HASH_KEYS, domain_block_number)
+            .encode()
+            .as_slice(),
+    )
+    .map(|res| res.unwrap_or_default())
 }
 
 pub(super) fn track_domain_hash_and_consensus_hash<Client, Block, CBlock>(
@@ -190,7 +194,6 @@ where
     CBlock: BlockT,
     Block: BlockT,
 {
-    let mut domain_hash_keys = get_tracked_domain_hash_keys::<_, Block, CBlock>(&**domain_client)?;
     let best_domain_number =
         domain_client
             .number(best_domain_hash)?
@@ -198,13 +201,10 @@ where
                 "Block hash: {:?}",
                 best_domain_hash
             )))?;
+    let mut domain_hash_keys =
+        get_tracked_domain_hash_keys::<_, Block, CBlock>(&**domain_client, best_domain_number)?;
 
-    domain_hash_keys
-        .entry(best_domain_number)
-        .and_modify(|keys| {
-            keys.insert((best_domain_hash, latest_consensus_hash));
-        })
-        .or_insert(BTreeSet::from([(best_domain_hash, latest_consensus_hash)]));
+    domain_hash_keys.insert((best_domain_hash, latest_consensus_hash));
 
     domain_client.insert_aux(
         &[
@@ -220,7 +220,12 @@ where
                     .as_slice(),
                 best_domain_hash.encode().as_slice(),
             ),
-            (BEST_DOMAIN_HASH_KEYS, domain_hash_keys.encode().as_slice()),
+            (
+                (BEST_DOMAIN_HASH_KEYS, best_domain_number)
+                    .encode()
+                    .as_slice(),
+                domain_hash_keys.encode().as_slice(),
+            ),
         ],
         vec![],
     )?;
@@ -236,19 +241,22 @@ where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
-    let mut domain_hash_keys = get_tracked_domain_hash_keys::<_, Block, CBlock>(&**domain_client)?;
-
     let mut finalized_domain_number = domain_client.info().finalized_number;
 
     let mut deletions = vec![];
     while finalized_domain_number > Zero::zero() {
-        match domain_hash_keys.remove(&finalized_domain_number) {
-            None => break,
-            Some(keys) => keys.into_iter().for_each(|(domain_hash, consensus_hash)| {
+        let domain_hash_keys = get_tracked_domain_hash_keys::<_, Block, CBlock>(
+            &**domain_client,
+            finalized_domain_number,
+        )?;
+        domain_hash_keys
+            .into_iter()
+            .for_each(|(domain_hash, consensus_hash)| {
                 deletions.push((LATEST_CONSENSUS_HASH, domain_hash).encode());
                 deletions.push((BEST_DOMAIN_HASH, consensus_hash).encode())
-            }),
-        }
+            });
+
+        deletions.push((BEST_DOMAIN_HASH_KEYS, finalized_domain_number).encode());
 
         finalized_domain_number = match finalized_domain_number.checked_sub(&One::one()) {
             None => break,
