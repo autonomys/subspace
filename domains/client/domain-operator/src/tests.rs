@@ -1629,7 +1629,12 @@ async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
 
     async {
         while alice.sync_service.is_major_syncing() || bob.sync_service.is_major_syncing() {
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            // TODO: Unfortunately, this test contains a race condition where Alice sometimes bans
+            // Bob for making multiple requests for the same block. And in response to that ban's
+            // reject message, Bob bans Alice.
+            alice.unban_peer(bob.addr.clone());
+            bob.unban_peer(alice.addr.clone());
         }
     }
     .timeout()
