@@ -1,0 +1,8 @@
+runners:
+  self-hosted-linux:
+    cpu: [8, 16]
+    ram: [16, 32, 64]
+    disk: default
+    family: ["c7a", "c7i", "m7a", "m7i"]
+    spot: capacity-optimized
+    image: ubuntu22-full-x64

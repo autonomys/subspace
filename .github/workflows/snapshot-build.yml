@@ -21,7 +21,7 @@ jobs:
   # This will build container images and then extract executables out of them
   ubuntu:
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
-      '"runs-on=${{ github.run_id }}/cpu=8+16/ram=32+64/family=m7a+m7i-flex/image=ubuntu22-full-x64"' ||
+      '"runs-on=${{ github.run_id }}/runner=self-hosted-linux"' ||
       '"ubuntu-22.04"') }}
     permissions:
       contents: write
