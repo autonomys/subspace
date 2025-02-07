@@ -122,40 +122,48 @@ impl RecordStore for DummyRecordStore {
     where
         Self: 'a;
 
+    #[inline]
     fn get(&self, _key: &RecordKey) -> Option<Cow<'_, Record>> {
         // Not supported
         None
     }
 
+    #[inline]
     fn put(&mut self, _record: Record) -> store::Result<()> {
         // Not supported
         Ok(())
     }
 
+    #[inline]
     fn remove(&mut self, _key: &RecordKey) {
         // Not supported
     }
 
+    #[inline]
     fn records(&self) -> Self::RecordsIter<'_> {
         // Not supported
         iter::empty()
     }
 
+    #[inline]
     fn add_provider(&mut self, _record: ProviderRecord) -> store::Result<()> {
         // Not supported
         Ok(())
     }
 
+    #[inline]
     fn providers(&self, _key: &RecordKey) -> Vec<ProviderRecord> {
         // Not supported
         Vec::new()
     }
 
+    #[inline]
     fn provided(&self) -> Self::ProvidedIter<'_> {
         // Not supported
         iter::empty()
     }
 
+    #[inline]
     fn remove_provider(&mut self, _key: &RecordKey, _provider: &PeerId) {
         // Not supported
     }
