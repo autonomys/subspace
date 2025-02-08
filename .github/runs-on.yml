@@ -1,5 +1,5 @@
 runners:
-  self-hosted-ubuntu22-full-x64:
+  self-hosted-ubuntu-22.04-x86-64:
     cpu: [16, 32, 64]
     ram: [32, 64, 128]
     disk: default

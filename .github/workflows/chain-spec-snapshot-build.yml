@@ -14,7 +14,7 @@ on:
 jobs:
   chains-spec:
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
-      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu22-full-x64"' || '"ubuntu-22.04"') }}
+      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64"' || '"ubuntu-22.04"') }}
     permissions:
       contents: write
       packages: write
