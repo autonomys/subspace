@@ -12,6 +12,7 @@ use sp_runtime::Saturating;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
+use subspace_runtime_primitives::DOMAINS_PRUNING_DEPTH_MULTIPLIER;
 
 const EXECUTION_RECEIPT: &[u8] = b"execution_receipt";
 const EXECUTION_RECEIPT_START: &[u8] = b"execution_receipt_start";
@@ -42,9 +43,6 @@ const BEST_DOMAIN_HASH: &[u8] = b"best_domain_hash";
 /// Tracks a list of tracked domain block hash keys at a given height.
 const BEST_DOMAIN_HASH_KEYS: &[u8] = b"best_domain_hash_keys";
 
-/// Pruning depth multiplier to prune receipts at and below the confirmation_depth_k * multiplier.
-const PRUNING_DEPTH_MULTIPLIER: u32 = 2;
-
 fn execution_receipt_key(block_hash: impl Encode) -> Vec<u8> {
     (EXECUTION_RECEIPT, block_hash).encode()
 }
@@ -69,7 +67,7 @@ pub(super) fn write_execution_receipt<Backend, Block, CBlock>(
     backend: &Backend,
     oldest_unconfirmed_receipt_number: Option<NumberFor<Block>>,
     execution_receipt: &ExecutionReceiptFor<Block, CBlock>,
-    confirmation_depth_k: NumberFor<CBlock>,
+    challenge_period: NumberFor<CBlock>,
 ) -> Result<(), sp_blockchain::Error>
 where
     Backend: AuxStore,
@@ -94,7 +92,7 @@ where
     let mut keys_to_delete = vec![];
 
     if let Some(pruning_block_number) =
-        confirmation_depth_k.checked_mul(&PRUNING_DEPTH_MULTIPLIER.saturated_into())
+        challenge_period.checked_mul(&DOMAINS_PRUNING_DEPTH_MULTIPLIER.saturated_into())
     {
         // Delete ER that have confirmed long time ago
         if let Some(delete_receipts_to) = oldest_unconfirmed_receipt_number
@@ -379,7 +377,7 @@ mod tests {
     #[test]
     fn normal_prune_execution_receipt_works() {
         let block_tree_pruning_depth = 256;
-        let confirmation_depth_k = 500;
+        let challenge_period = 500;
         let client = TestClient::default();
 
         let receipt_start = || {
@@ -407,7 +405,7 @@ mod tests {
                 &client,
                 oldest_unconfirmed_receipt_number,
                 receipt,
-                confirmation_depth_k,
+                challenge_period,
             )
             .unwrap()
         };
@@ -481,7 +479,7 @@ mod tests {
     #[test]
     fn execution_receipts_should_be_kept_against_oldest_unconfirmed_receipt_number() {
         let block_tree_pruning_depth = 256;
-        let confirmation_depth_k = 500;
+        let challenge_period = 500;
         let client = TestClient::default();
 
         let receipt_start = || {
@@ -507,7 +505,7 @@ mod tests {
                 &client,
                 oldest_unconfirmed_receipt_number,
                 receipt,
-                confirmation_depth_k,
+                challenge_period,
             )
             .unwrap()
         };

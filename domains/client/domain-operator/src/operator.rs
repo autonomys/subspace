@@ -189,7 +189,7 @@ where
             import_notification_sinks: Default::default(),
             domain_sync_oracle: params.domain_sync_oracle.clone(),
             domain_executor: params.code_executor.clone(),
-            confirmation_depth_k: params.consensus_confirmation_depth_k,
+            challenge_period: params.challenge_period,
         };
 
         let receipts_checker = ReceiptsChecker {
@@ -226,7 +226,7 @@ where
                 consensus_chain_sync_params: consensus_sync_params,
                 domain_fork_id: params.domain_fork_id,
                 receipt_provider: params.domain_execution_receipt_provider,
-                confirmation_depth_k: params.consensus_confirmation_depth_k,
+                challenge_period: params.challenge_period,
             });
 
         if let Some(sync_params) = sync_params {

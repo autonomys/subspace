@@ -24,8 +24,7 @@ use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, Tr
 use sc_network::{NetworkPeers, NetworkRequest};
 use sc_proof_of_time::source::PotSlotInfo;
 use sc_service::config::KeystoreConfig;
-use sc_service::{BlocksPruning, Configuration, PruningMode};
-use sc_state_db::Constraints;
+use sc_service::Configuration;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
@@ -38,14 +37,12 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
+use subspace_runtime_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 use subspace_service::FullClient as CFullClient;
 use tokio::sync::broadcast::Receiver;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tracing::log::info;
 use tracing::warn;
-
-/// Pruning depth multiplier
-const PRUNING_DEPTH_MULTIPLIER: u32 = 2;
 
 /// Options for Substrate networking
 #[derive(Debug, Parser)]
@@ -487,36 +484,6 @@ where
             .map(|params| params.snap_sync_orchestrator.domain_snap_sync_finished()),
     ));
 
-    // domain blocks that we want to prune below finalized domain blocks are
-    // (confirmation_depth * multiplier) + user provided blocks
-    let blocks_to_prune = chain_constants
-        .confirmation_depth_k()
-        .saturating_mul(PRUNING_DEPTH_MULTIPLIER);
-
-    if let BlocksPruning::Some(blocks) = domain_config.blocks_pruning {
-        domain_config.blocks_pruning = BlocksPruning::Some(blocks_to_prune + blocks)
-    }
-
-    match &domain_config.state_pruning {
-        None => {
-            domain_config.state_pruning = Some(PruningMode::Constrained(Constraints {
-                max_blocks: Some(blocks_to_prune),
-            }))
-        }
-        Some(pruning_mode) => {
-            if let PruningMode::Constrained(constraints) = pruning_mode {
-                let blocks_to_prune = match constraints.max_blocks {
-                    None => blocks_to_prune,
-                    Some(blocks) => blocks_to_prune + blocks,
-                };
-
-                domain_config.state_pruning = Some(PruningMode::Constrained(Constraints {
-                    max_blocks: Some(blocks_to_prune),
-                }))
-            }
-        }
-    }
-
     match runtime_type {
         RuntimeType::Evm => {
             let eth_provider = EthProvider::<
@@ -547,6 +514,7 @@ where
                 maybe_operator_id: operator_id,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 consensus_chain_sync_params,
+                challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
             };
 
             let mut domain_node = domain_service::new_full::<
@@ -587,6 +555,7 @@ where
                 maybe_operator_id: operator_id,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 consensus_chain_sync_params,
+                challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
             };
 
             let mut domain_node = domain_service::new_full::<

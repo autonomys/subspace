@@ -282,6 +282,7 @@ where
     pub skip_empty_bundle_production: bool,
     pub skip_out_of_order_slot: bool,
     pub confirmation_depth_k: NumberFor<CBlock>,
+    pub challenge_period: NumberFor<CBlock>,
     pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, CNR>>,
 }
 
@@ -384,6 +385,7 @@ where
         skip_out_of_order_slot,
         confirmation_depth_k,
         consensus_chain_sync_params,
+        challenge_period,
     } = domain_params;
 
     // TODO: Do we even need block announcement on domain node?
@@ -537,6 +539,7 @@ where
             domain_fork_id: fork_id,
             domain_network_service_handle: network_service_handle,
             domain_execution_receipt_provider: Arc::new(execution_receipt_provider),
+            challenge_period,
         },
     )
     .await?;

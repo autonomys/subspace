@@ -20,6 +20,8 @@ use futures::stream::StreamExt;
 use futures::FutureExt;
 use sc_cli::Signals;
 use sc_consensus_slots::SlotProportion;
+use sc_service::{BlocksPruning, Configuration, PruningMode};
+use sc_state_db::Constraints;
 use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
@@ -30,6 +32,7 @@ use std::sync::Arc;
 use subspace_logging::init_logger;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_runtime::{Block, RuntimeApi};
+use subspace_runtime_primitives::{DOMAINS_BLOCK_PRUNING_DEPTH, DOMAINS_PRUNING_DEPTH_MULTIPLIER};
 use subspace_service::config::ChainSyncMode;
 use tracing::{debug, error, info, info_span, warn};
 
@@ -88,7 +91,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
     let ConsensusChainConfiguration {
         maybe_tmp_dir: _maybe_tmp_dir,
-        subspace_configuration,
+        mut subspace_configuration,
         dev,
         pot_external_entropy,
         storage_monitor,
@@ -127,6 +130,10 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     } else {
         None
     };
+
+    if maybe_domain_configuration.is_some() {
+        ensure_block_and_state_pruning_params(&mut subspace_configuration.base)
+    }
 
     let mut task_manager = {
         let subspace_link;
@@ -182,7 +189,8 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         })?;
 
         // Run a domain
-        if let Some(domain_configuration) = maybe_domain_configuration {
+        if let Some(mut domain_configuration) = maybe_domain_configuration {
+            ensure_block_and_state_pruning_params(&mut domain_configuration.domain_config);
             let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
             let gossip_message_sink = xdm_gossip_worker_builder.gossip_msg_sink();
             let (domain_message_sink, domain_message_receiver) =
@@ -371,4 +379,51 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         .run_until_signal(task_manager.future().fuse())
         .await
         .map_err(Into::into)
+}
+
+pub fn ensure_block_and_state_pruning_params(config: &mut Configuration) {
+    let blocks_to_prune =
+        DOMAINS_BLOCK_PRUNING_DEPTH.saturating_mul(DOMAINS_PRUNING_DEPTH_MULTIPLIER);
+
+    if let BlocksPruning::Some(blocks) = config.blocks_pruning {
+        config.blocks_pruning = BlocksPruning::Some(if blocks >= blocks_to_prune {
+            blocks
+        } else {
+            warn!(
+                "Blocks pruning constraints needs to be atleast {:?}",
+                blocks_to_prune
+            );
+            blocks_to_prune
+        });
+    }
+
+    match &config.state_pruning {
+        None => {
+            config.state_pruning = Some(PruningMode::Constrained(Constraints {
+                max_blocks: Some(blocks_to_prune),
+            }))
+        }
+        Some(pruning_mode) => {
+            if let PruningMode::Constrained(constraints) = pruning_mode {
+                let blocks_to_prune = match constraints.max_blocks {
+                    None => blocks_to_prune,
+                    Some(blocks) => {
+                        if blocks >= blocks_to_prune {
+                            blocks
+                        } else {
+                            warn!(
+                                "State pruning constraints needs to be atleast {:?}",
+                                blocks_to_prune
+                            );
+                            blocks_to_prune
+                        }
+                    }
+                };
+
+                config.state_pruning = Some(PruningMode::Constrained(Constraints {
+                    max_blocks: Some(blocks_to_prune),
+                }))
+            }
+        }
+    }
 }

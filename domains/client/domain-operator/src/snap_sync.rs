@@ -144,7 +144,7 @@ where
     pub domain_block_downloader: Arc<dyn BlockDownloader<Block>>,
     pub receipt_provider: Arc<dyn LastDomainBlockReceiptProvider<Block, CBlock>>,
     pub consensus_chain_sync_params: ConsensusChainSyncParams<CBlock, CNR>,
-    pub confirmation_depth_k: NumberFor<CBlock>,
+    pub challenge_period: NumberFor<CBlock>,
 }
 
 async fn get_last_confirmed_block<Block: BlockT>(
@@ -416,7 +416,7 @@ where
         sync_params.domain_client.as_ref(),
         None,
         &last_confirmed_block_receipt,
-        sync_params.confirmation_depth_k,
+        sync_params.challenge_period,
     )?;
 
     sync_params

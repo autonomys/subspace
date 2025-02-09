@@ -107,6 +107,7 @@ use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce,
     Signature, MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
+use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 
 sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
@@ -682,7 +683,7 @@ parameter_types! {
     pub MaxDomainBlockWeight: Weight = NORMAL_DISPATCH_RATIO * BLOCK_WEIGHT_FOR_2_SEC;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
-    pub const BlockTreePruningDepth: u32 = 10;
+    pub const BlockTreePruningDepth: u32 = DOMAINS_BLOCK_PRUNING_DEPTH;
     pub const StakeWithdrawalLockingPeriod: BlockNumber = 20;
     pub const StakeEpochDuration: DomainNumber = 5;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
