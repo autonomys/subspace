@@ -44,7 +44,7 @@ impl pallet_balances::Config for MockRuntime {
     type Balance = Balance;
     type DustRemoval = ();
     type ExistentialDeposit = ExistentialDeposit;
-    type RuntimeHoldReason = MockHoldIdentifer;
+    type RuntimeHoldReason = MockHoldIdentifier;
 }
 
 parameter_types! {
@@ -60,11 +60,11 @@ parameter_types! {
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum MockHoldIdentifer {
+pub enum MockHoldIdentifier {
     Messenger(HoldIdentifier),
 }
 
-impl VariantCount for MockHoldIdentifer {
+impl VariantCount for MockHoldIdentifier {
     const VARIANT_COUNT: u32 = 1u32;
 }
 
@@ -76,9 +76,9 @@ impl sp_messenger::DomainRegistration for DomainRegistration {
     }
 }
 
-impl pallet_messenger::HoldIdentifier<MockRuntime> for MockHoldIdentifer {
+impl pallet_messenger::HoldIdentifier<MockRuntime> for MockHoldIdentifier {
     fn messenger_channel() -> Self {
-        MockHoldIdentifer::Messenger(HoldIdentifier::MessengerChannel)
+        MockHoldIdentifier::Messenger(HoldIdentifier::MessengerChannel)
     }
 }
 
@@ -95,7 +95,7 @@ impl pallet_messenger::Config for MockRuntime {
     type DomainOwner = ();
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
-    type HoldIdentifier = MockHoldIdentifer;
+    type HoldIdentifier = MockHoldIdentifier;
     type DomainRegistration = DomainRegistration;
     type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
