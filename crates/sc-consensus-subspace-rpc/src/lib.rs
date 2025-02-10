@@ -38,7 +38,7 @@ use std::sync::{Arc, Weak};
 use std::time::Duration;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::hashes::Blake3Hash;
-use subspace_core_primitives::objects::{GlobalObjectMapping, ObjectMappingResponse};
+use subspace_core_primitives::objects::GlobalObjectMapping;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
 use subspace_core_primitives::solutions::Solution;
@@ -48,8 +48,8 @@ use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_kzg::Kzg;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
-    FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
-    MAX_SEGMENT_HEADERS_PER_REQUEST,
+    FarmerAppInfo, ObjectMappingResponse, RewardSignatureResponse, RewardSigningInfo, SlotInfo,
+    SolutionResponse, MAX_SEGMENT_HEADERS_PER_REQUEST,
 };
 use tracing::{debug, error, warn};
 

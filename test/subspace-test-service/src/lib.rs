@@ -37,7 +37,9 @@ use sc_consensus::{BasicQueue, BlockImport, StateAction, Verifier as VerifierT};
 use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::service::traits::NetworkService;
-use sc_network::{multiaddr, NetworkWorker, NotificationMetrics, NotificationService};
+use sc_network::{
+    multiaddr, NetworkWorker, NotificationMetrics, NotificationService, ReputationChange,
+};
 use sc_service::config::{
     DatabaseSource, ExecutorConfiguration, KeystoreConfig, MultiaddrWithPeerId,
     OffchainWorkerConfig, RpcBatchRequestConfig, RpcConfiguration, WasmExecutionMethod,
@@ -847,6 +849,35 @@ impl MockConsensusNode {
             .runtime_api()
             .free_balance(self.client.info().best_hash, account_id)
             .expect("Fail to get account free balance")
+    }
+
+    /// Give the peer at `addr` the minimum reputation, which will ban it.
+    // TODO: also ban/unban in the DSN
+    pub fn ban_peer(&self, addr: MultiaddrWithPeerId) {
+        // If unban_peer() has been called on the peer, we need to bump it twice
+        // to give it the minimal reputation.
+        self.network_service.report_peer(
+            addr.peer_id,
+            ReputationChange::new_fatal("Peer banned by test (1)"),
+        );
+        self.network_service.report_peer(
+            addr.peer_id,
+            ReputationChange::new_fatal("Peer banned by test (2)"),
+        );
+    }
+
+    /// Give the peer at `addr` a high reputation, which guarantees it is un-banned it.
+    pub fn unban_peer(&self, addr: MultiaddrWithPeerId) {
+        // If ReputationChange::new_fatal() has been called on the peer, we need to bump it twice
+        // to give it a positive reputation.
+        self.network_service.report_peer(
+            addr.peer_id,
+            ReputationChange::new(i32::MAX, "Peer unbanned by test (1)"),
+        );
+        self.network_service.report_peer(
+            addr.peer_id,
+            ReputationChange::new(i32::MAX, "Peer unbanned by test (2)"),
+        );
     }
 }
 

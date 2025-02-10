@@ -9,7 +9,6 @@ extern crate alloc;
 
 use crate::hashes::Blake3Hash;
 use crate::pieces::PieceIndex;
-use crate::BlockNumber;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::default::Default;
@@ -157,18 +156,4 @@ impl GlobalObjectMapping {
             Self::V0 { objects, .. } => objects,
         }
     }
-}
-
-/// Response to object mapping subscription, including a block height.
-/// Large responses are batched, so the block height can be repeated in different responses.
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct ObjectMappingResponse {
-    /// The block number that the object mapping is from.
-    pub block_number: BlockNumber,
-
-    /// The object mappings.
-    #[cfg_attr(feature = "serde", serde(flatten))]
-    pub objects: GlobalObjectMapping,
 }

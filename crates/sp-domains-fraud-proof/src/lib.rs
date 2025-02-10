@@ -4,8 +4,7 @@
 #![allow(incomplete_features)]
 // TODO: This feature is not actually used in this crate, but is added as a workaround for
 //  https://github.com/rust-lang/rust/issues/133199
-#![feature(generic_const_exprs)]
-#![feature(associated_type_defaults)]
+#![feature(generic_const_exprs, associated_type_defaults)]
 
 #[cfg(feature = "std")]
 pub mod execution_prover;
