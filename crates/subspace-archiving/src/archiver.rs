@@ -202,18 +202,33 @@ pub struct ArchiveBlockOutcome {
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, thiserror::Error)]
 pub enum ArchiverInstantiationError {
     /// Invalid last archived block, its size is the same as encoded block
-    #[error("Invalid last archived block, its size {0} bytes is the same as encoded block")]
-    InvalidLastArchivedBlock(BlockNumber),
+    #[error(
+        "Invalid last archived block, its size {block_bytes} bytes is the same as encoded \
+        block, archived in segment: {prev_segment_index:?} {prev_segment_header_hash:?}"
+    )]
+    InvalidLastArchivedBlock {
+        /// Already archived block size, which is equal to the full block size
+        block_bytes: u32,
+        /// The segment index for the segment that already archived the block
+        prev_segment_index: SegmentIndex,
+        /// The segment header hash for the segment that already archived the block
+        prev_segment_header_hash: Blake3Hash,
+    },
     /// Invalid block, its size is smaller than already archived number of bytes
     #[error(
         "Invalid block, its size {block_bytes} bytes is smaller than already archived \
-        {archived_block_bytes} bytes"
+        {archived_block_bytes} bytes, archived in segment: {prev_segment_index:?} \
+        {prev_segment_header_hash:?}"
     )]
     InvalidBlockSmallSize {
         /// Full block size
         block_bytes: u32,
         /// Already archived portion of the block
         archived_block_bytes: u32,
+        /// The segment index for the segment that already archived the block
+        prev_segment_index: SegmentIndex,
+        /// The segment header hash for the segment that already archived the block
+        prev_segment_header_hash: Blake3Hash,
     },
 }
 
@@ -308,12 +323,16 @@ impl Archiver {
                     return Err(ArchiverInstantiationError::InvalidBlockSmallSize {
                         block_bytes: encoded_block_bytes,
                         archived_block_bytes,
+                        prev_segment_index: segment_header.segment_index(),
+                        prev_segment_header_hash: segment_header.hash(),
                     });
                 }
                 Ordering::Equal => {
-                    return Err(ArchiverInstantiationError::InvalidLastArchivedBlock(
-                        encoded_block_bytes,
-                    ));
+                    return Err(ArchiverInstantiationError::InvalidLastArchivedBlock {
+                        block_bytes: encoded_block_bytes,
+                        prev_segment_index: segment_header.segment_index(),
+                        prev_segment_header_hash: segment_header.hash(),
+                    });
                 }
                 Ordering::Greater => {
                     // Take part of the encoded block that wasn't archived yet and push to the

@@ -2,7 +2,6 @@ use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use rand::{thread_rng, Rng};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use std::assert_matches::assert_matches;
 use std::io::Write;
 use std::iter;
 use std::num::NonZeroUsize;
@@ -437,14 +436,14 @@ fn invalid_usage() {
             BlockObjectMapping::default(),
         );
 
-        assert_matches!(
+        assert_eq!(
             result,
-            Err(ArchiverInstantiationError::InvalidLastArchivedBlock(_)),
+            Err(ArchiverInstantiationError::InvalidLastArchivedBlock {
+                block_bytes: 10,
+                prev_segment_index: SegmentIndex::ZERO,
+                prev_segment_header_hash: Blake3Hash::default()
+            }),
         );
-
-        if let Err(ArchiverInstantiationError::InvalidLastArchivedBlock(size)) = result {
-            assert_eq!(size, 10);
-        }
     }
 
     {
@@ -464,19 +463,15 @@ fn invalid_usage() {
             BlockObjectMapping::default(),
         );
 
-        assert_matches!(
+        assert_eq!(
             result,
-            Err(ArchiverInstantiationError::InvalidBlockSmallSize { .. }),
+            Err(ArchiverInstantiationError::InvalidBlockSmallSize {
+                block_bytes: 6,
+                archived_block_bytes: 10,
+                prev_segment_index: SegmentIndex::ZERO,
+                prev_segment_header_hash: Blake3Hash::default()
+            }),
         );
-
-        if let Err(ArchiverInstantiationError::InvalidBlockSmallSize {
-            block_bytes,
-            archived_block_bytes,
-        }) = result
-        {
-            assert_eq!(block_bytes, 6);
-            assert_eq!(archived_block_bytes, 10);
-        }
     }
 }
 
