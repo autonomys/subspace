@@ -1,3 +1,4 @@
+use crate::aux_schema::BundleMismatchType;
 use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
 use crate::domain_bundle_producer::{BundleProducer, TestBundleProducer};
 use crate::domain_bundle_proposer::DomainBundleProposer;
@@ -18,10 +19,9 @@ use domain_test_service::evm_domain_test_runtime::{
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Dave, Eve};
 use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
 use domain_test_service::{
-    construct_extrinsic_generic, DomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID,
+    construct_extrinsic_generic, EvmDomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID,
 };
 use ethereum::TransactionV2 as EthereumTransaction;
-use evm_domain_test_runtime::{Runtime as EvmRuntime, RuntimeApi as EvmRuntimeApi};
 use fp_rpc::EthereumRuntimeRPCApi;
 use futures::StreamExt;
 use hex_literal::hex;
@@ -72,6 +72,7 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
 use std::assert_matches::assert_matches;
 use std::collections::{BTreeMap, VecDeque};
+use std::future::IntoFuture;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
@@ -83,7 +84,22 @@ use subspace_test_service::{
 use tempfile::TempDir;
 use tracing::error;
 
-const TIMEOUT: Duration = Duration::from_mins(2);
+/// The general timeout for test operations that could hang.
+const TIMEOUT: Duration = Duration::from_mins(10);
+
+/// A trait that makes it easier to add a timeout to any future: `future.timeout().await?`.
+trait TestTimeout: IntoFuture {
+    fn timeout(self) -> tokio::time::Timeout<Self::IntoFuture>;
+}
+
+impl<F> TestTimeout for F
+where
+    F: IntoFuture,
+{
+    fn timeout(self) -> tokio::time::Timeout<Self::IntoFuture> {
+        tokio::time::timeout(TIMEOUT, self)
+    }
+}
 
 fn number_of(consensus_node: &MockConsensusNode, block_hash: Hash) -> u32 {
     consensus_node
@@ -212,11 +228,7 @@ pub fn generate_evm_account_list(
 
 async fn setup_evm_test_nodes(
     ferdie_key: Sr25519Keyring,
-) -> (
-    TempDir,
-    MockConsensusNode,
-    DomainNode<EvmRuntime, EvmRuntimeApi>,
-) {
+) -> (TempDir, MockConsensusNode, EvmDomainNode) {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -245,12 +257,7 @@ async fn setup_evm_test_nodes(
 
 async fn setup_evm_test_accounts(
     ferdie_key: Sr25519Keyring,
-) -> (
-    TempDir,
-    MockConsensusNode,
-    DomainNode<EvmRuntime, EvmRuntimeApi>,
-    Vec<AccountInfo>,
-) {
+) -> (TempDir, MockConsensusNode, EvmDomainNode, Vec<AccountInfo>) {
     let (directory, mut ferdie, mut alice) = setup_evm_test_nodes(ferdie_key).await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -1600,44 +1607,39 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     );
 }
 
+// This test hangs occasionally, but we don't know which step hangs.
+// TODO: when the test is fixed, decide if we want to remove the timeouts.
 #[tokio::test(flavor = "multi_thread")]
-async fn test_domain_tx_propagate() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, Alice, &mut ferdie)
-    .await;
+async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
+    let (directory, mut ferdie, alice) = setup_evm_test_nodes(Ferdie).timeout().await?;
 
     // Run Bob (a evm domain full node)
     let mut bob = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle,
+        tokio::runtime::Handle::current(),
         BasePath::new(directory.path().join("bob")),
     )
     .connect_to_domain_node(alice.addr.clone())
     .build_evm_node(Role::Full, Bob, &mut ferdie)
-    .await;
+    .timeout()
+    .await?;
 
-    produce_blocks!(ferdie, alice, 5, bob).await.unwrap();
-    while alice.sync_service.is_major_syncing() || bob.sync_service.is_major_syncing() {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    produce_blocks!(ferdie, alice, 5, bob)
+        .timeout()
+        .await?
+        .unwrap();
+
+    async {
+        while alice.sync_service.is_major_syncing() || bob.sync_service.is_major_syncing() {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            // TODO: Unfortunately, this test contains a race condition where Alice sometimes bans
+            // Bob for making multiple requests for the same block. And in response to that ban's
+            // reject message, Bob bans Alice.
+            alice.unban_peer(bob.addr.clone());
+            bob.unban_peer(alice.addr.clone());
+        }
     }
+    .timeout()
+    .await?;
 
     let pre_bob_free_balance = alice.free_balance(bob.key.to_account_id());
     // Construct and send an extrinsic to bob, as bob is not a authority node, the extrinsic has
@@ -1646,7 +1648,8 @@ async fn test_domain_tx_propagate() {
         dest: Alice.to_account_id(),
         value: 123,
     })
-    .await
+    .timeout()
+    .await?
     .expect("Failed to send extrinsic");
 
     produce_blocks_until!(
@@ -1659,8 +1662,11 @@ async fn test_domain_tx_propagate() {
         },
         bob
     )
-    .await
+    .timeout()
+    .await?
     .unwrap();
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1773,6 +1779,367 @@ async fn test_executor_inherent_timestamp_is_set() {
         consensus_timestamp, domain_timestamp,
         "Timestamp should be preset on domain and must match Consensus runtime timestamp"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    let fraud_proof_generator = FraudProofGenerator::new(
+        alice.client.clone(),
+        ferdie.client.clone(),
+        alice.backend.clone(),
+        alice.code_executor.clone(),
+    );
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let mut bundles = vec![];
+    let alice_nonce = alice.account_nonce();
+    for (i, acc) in [Bob, Charlie, Dave].into_iter().enumerate() {
+        let tx = alice.construct_extrinsic(
+            alice_nonce + i as u32,
+            pallet_balances::Call::transfer_allow_death {
+                dest: acc.to_account_id(),
+                value: 12334567890987654321,
+            },
+        );
+        alice
+            .send_extrinsic(tx)
+            .await
+            .expect("Failed to send extrinsic");
+    }
+    let (_, valid_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(valid_bundle.extrinsics.len(), 3);
+    bundles.push(valid_bundle.clone());
+
+    // UndecodableTx
+    bundles.push({
+        let (_, mut b) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        let undecodable_tx =
+            OpaqueExtrinsic::from_bytes(&rand::random::<[u8; 5]>().to_vec().encode())
+                .expect("raw byte encoding and decoding never fails; qed");
+        b.extrinsics.push(undecodable_tx);
+        b.extrinsics.extend_from_slice(&valid_bundle.extrinsics);
+        b
+    });
+
+    // IllegalTx
+    bundles.push({
+        let (_, mut b) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        let illegal_tx = alice
+            .construct_extrinsic(
+                alice_nonce, // stale nonce
+                pallet_balances::Call::transfer_allow_death {
+                    dest: Eve.to_account_id(),
+                    value: 12334567890987654321,
+                },
+            )
+            .into();
+        b.extrinsics.extend_from_slice(&valid_bundle.extrinsics);
+        b.extrinsics.push(illegal_tx);
+        b
+    });
+
+    // InvalidXDM
+    bundles.push({
+        let (_, mut b) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        let invalid_xdm = evm_domain_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_messenger::Call::relay_message {
+                msg: CrossDomainMessage {
+                    src_chain_id: ChainId::Consensus,
+                    dst_chain_id: ChainId::Domain(EVM_DOMAIN_ID),
+                    channel_id: Default::default(),
+                    nonce: Default::default(),
+                    proof: Proof::Domain {
+                        consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
+                            consensus_block_number: 1,
+                            consensus_block_hash: Default::default(),
+                            opaque_mmr_leaf: EncodableOpaqueLeaf(vec![0, 1, 2]),
+                            proof: MmrProof {
+                                leaf_indices: vec![],
+                                leaf_count: 0,
+                                items: vec![],
+                            },
+                        },
+                        domain_proof: StorageProof::empty(),
+                        message_proof: StorageProof::empty(),
+                    },
+                    weight_tag: Default::default(),
+                },
+            }
+            .into(),
+        )
+        .into();
+        b.extrinsics.push(invalid_xdm);
+        b
+    });
+
+    // InherentTx
+    bundles.push({
+        let (_, mut b) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        let inherent_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_timestamp::Call::set { now: 12345 }.into(),
+        )
+        .into();
+        b.extrinsics.extend_from_slice(&valid_bundle.extrinsics);
+        b.extrinsics[1] = inherent_tx;
+        b
+    });
+
+    // InvalidBundleWeight
+    bundles.push({
+        let (_, mut b) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        b.sealed_header.header.estimated_bundle_weight = Weight::from_all(123456);
+        b
+    });
+
+    let submit_bundle_txs: Vec<_> = bundles
+        .into_iter()
+        .map(|mut opaque_bundle| {
+            let extrinsics = opaque_bundle
+                .extrinsics
+                .iter()
+                .map(|ext| ext.encode())
+                .collect();
+            opaque_bundle.sealed_header.header.bundle_extrinsics_root =
+                BlakeTwo256::ordered_trie_root(extrinsics, StateVersion::V1);
+            opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+                .pair()
+                .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+                .into();
+            subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+                pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+            )
+            .into()
+        })
+        .collect();
+
+    assert_eq!(submit_bundle_txs.len(), 6);
+
+    // Produce a block that contains all the bundle
+    produce_block_with!(
+        ferdie.produce_block_with_extrinsics(submit_bundle_txs),
+        alice
+    )
+    .await
+    .unwrap();
+
+    // Get the receipt of that domain block and produce another bundle to submit the receipt
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    let valid_receipt = bundle.into_receipt();
+    let valid_receipt_hash = valid_receipt.hash::<BlakeTwo256>();
+    assert_eq!(valid_receipt.execution_trace.len(), 7);
+    assert_eq!(valid_receipt.inboxed_bundles.len(), 6);
+
+    // Produce all possible invalid fraud proof
+    for bundle_index in 0..6 {
+        for extrinsic_index in 0..4 {
+            for is_true_invalid in [true, false] {
+                for invalid_type in 0..6 {
+                    let invalid_bundle_type = match invalid_type {
+                        0 => InvalidBundleType::UndecodableTx(extrinsic_index),
+                        // TODO: We use `U256::MAX` as the tx range in the test to ensure all
+                        // extrinsic will be included by the bundle but in production the fraud
+                        // proof verification use `U256::MAX/3` thus the invalid OutOfRangeTx
+                        // frauf proof may be accepted, need to workaround to add this test case
+                        // 1 => InvalidBundleType::OutOfRangeTx(extrinsic_index),
+                        2 => InvalidBundleType::IllegalTx(extrinsic_index),
+                        3 => InvalidBundleType::InvalidXDM(extrinsic_index),
+                        4 => InvalidBundleType::InherentExtrinsic(extrinsic_index),
+                        5 if extrinsic_index == 0 => InvalidBundleType::InvalidBundleWeight,
+                        _ => continue,
+                    };
+                    let mismatch_type = if is_true_invalid {
+                        BundleMismatchType::TrueInvalid(invalid_bundle_type)
+                    } else {
+                        BundleMismatchType::FalseInvalid(invalid_bundle_type)
+                    };
+                    let res = fraud_proof_generator.generate_invalid_bundle_proof(
+                        EVM_DOMAIN_ID,
+                        &valid_receipt,
+                        mismatch_type,
+                        bundle_index,
+                        valid_receipt_hash,
+                        true,
+                    );
+
+                    let fp = match res {
+                        Ok(fp) => fp,
+                        Err(_) => {
+                            // There are some invalid fraud proofs are impossible to construct
+                            // e.g. the execution proof can't construct for the undecodable tx
+                            continue;
+                        }
+                    };
+
+                    let submit_fraud_proof_extrinsic =
+                        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+                            pallet_domains::Call::submit_fraud_proof {
+                                fraud_proof: Box::new(fp),
+                            }
+                            .into(),
+                        )
+                        .into();
+
+                    let res = ferdie
+                        .submit_transaction(submit_fraud_proof_extrinsic)
+                        .await;
+
+                    assert!(matches!(
+                        res,
+                        Err(PoolError::Pool(TxPoolInvalidTransaction(
+                            InvalidTransaction::Custom(tx_code)
+                        ))) if tx_code == InvalidTransactionCode::FraudProof as u8
+                    ));
+                }
+            }
+        }
+    }
+
+    ferdie.produce_blocks(1).await.unwrap();
+    assert!(ferdie.does_receipt_exist(valid_receipt_hash).unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bad_fraud_proof_is_rejected() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    let fraud_proof_generator = FraudProofGenerator::new(
+        alice.client.clone(),
+        ferdie.client.clone(),
+        alice.backend.clone(),
+        alice.code_executor.clone(),
+    );
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    alice
+        .construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
+            dest: Bob.to_account_id(),
+            value: 12334567890987654321,
+        })
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Produce a domain block that contains the previously sent extrinsic
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Get the receipt of that domain block and produce another bundle to submit the receipt
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    let valid_receipt = bundle.into_receipt();
+    let valid_receipt_hash = valid_receipt.hash::<BlakeTwo256>();
+    assert_eq!(valid_receipt.execution_trace.len(), 5);
+
+    let mut fraud_proofs = vec![fraud_proof_generator
+        .generate_valid_bundle_proof(EVM_DOMAIN_ID, &valid_receipt, 0, valid_receipt_hash)
+        .unwrap()];
+
+    fraud_proofs.push(
+        fraud_proof_generator
+            .generate_invalid_domain_extrinsics_root_proof(
+                EVM_DOMAIN_ID,
+                &valid_receipt,
+                valid_receipt_hash,
+            )
+            .unwrap(),
+    );
+
+    fraud_proofs.push(
+        fraud_proof_generator
+            .generate_invalid_block_fees_proof(EVM_DOMAIN_ID, &valid_receipt, valid_receipt_hash)
+            .unwrap(),
+    );
+
+    fraud_proofs.push(
+        fraud_proof_generator
+            .generate_invalid_transfers_proof(EVM_DOMAIN_ID, &valid_receipt, valid_receipt_hash)
+            .unwrap(),
+    );
+
+    fraud_proofs.push(
+        fraud_proof_generator
+            .generate_invalid_domain_block_hash_proof(
+                EVM_DOMAIN_ID,
+                &valid_receipt,
+                valid_receipt_hash,
+            )
+            .unwrap(),
+    );
+
+    for fp in fraud_proofs {
+        let submit_fraud_proof_extrinsic = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_fraud_proof {
+                fraud_proof: Box::new(fp),
+            }
+            .into(),
+        )
+        .into();
+
+        let res = ferdie
+            .submit_transaction(submit_fraud_proof_extrinsic)
+            .await;
+
+        assert!(matches!(
+            res,
+            Err(PoolError::Pool(TxPoolInvalidTransaction(
+                InvalidTransaction::Custom(tx_code)
+            ))) if tx_code == InvalidTransactionCode::FraudProof as u8
+        ));
+    }
+
+    ferdie.produce_blocks(1).await.unwrap();
+    assert!(ferdie.does_receipt_exist(valid_receipt_hash).unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread")]

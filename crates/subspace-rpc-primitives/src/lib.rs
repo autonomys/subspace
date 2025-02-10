@@ -4,8 +4,9 @@ use parity_scale_codec::{Decode, Encode, EncodeLike, Input, Output};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use subspace_core_primitives::hashes::Blake3Hash;
+use subspace_core_primitives::objects::GlobalObjectMapping;
 use subspace_core_primitives::solutions::{RewardSignature, Solution, SolutionRange};
-use subspace_core_primitives::{PublicKey, SlotNumber};
+use subspace_core_primitives::{BlockNumber, PublicKey, SlotNumber};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 
@@ -138,4 +139,17 @@ pub struct RewardSignatureResponse {
     pub hash: [u8; 32],
     /// Pre-header or vote hash signature.
     pub signature: Option<RewardSignature>,
+}
+
+/// Response to object mapping subscription, including a block height.
+/// Large responses are batched, so the block height can be repeated in different responses.
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectMappingResponse {
+    /// The block number that the object mapping is from.
+    pub block_number: BlockNumber,
+
+    /// The object mappings.
+    #[serde(flatten)]
+    pub objects: GlobalObjectMapping,
 }

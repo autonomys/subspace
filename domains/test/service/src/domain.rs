@@ -20,7 +20,7 @@ use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::HeaderBackend;
 use sc_domains::RuntimeExecutor;
 use sc_network::service::traits::NetworkService;
-use sc_network::{NetworkRequest, NetworkStateInfo};
+use sc_network::{NetworkRequest, NetworkStateInfo, ReputationChange};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
@@ -407,6 +407,35 @@ where
     {
         let function = function.into();
         UncheckedExtrinsicFor::<Runtime>::new_unsigned(function)
+    }
+
+    /// Give the peer at `addr` the minimum reputation, which will ban it.
+    // TODO: also ban/unban in the DSN
+    pub fn ban_peer(&self, addr: MultiaddrWithPeerId) {
+        // If unban_peer() has been called on the peer, we need to bump it twice
+        // to give it the minimal reputation.
+        self.network_service.report_peer(
+            addr.peer_id,
+            ReputationChange::new_fatal("Peer banned by test (1)"),
+        );
+        self.network_service.report_peer(
+            addr.peer_id,
+            ReputationChange::new_fatal("Peer banned by test (2)"),
+        );
+    }
+
+    /// Give the peer at `addr` a high reputation, which guarantees it is un-banned it.
+    pub fn unban_peer(&self, addr: MultiaddrWithPeerId) {
+        // If ReputationChange::new_fatal() has been called on the peer, we need to bump it twice
+        // to give it a positive reputation.
+        self.network_service.report_peer(
+            addr.peer_id,
+            ReputationChange::new(i32::MAX, "Peer unbanned by test (1)"),
+        );
+        self.network_service.report_peer(
+            addr.peer_id,
+            ReputationChange::new(i32::MAX, "Peer unbanned by test (2)"),
+        );
     }
 }
 

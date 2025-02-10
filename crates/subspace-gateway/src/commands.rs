@@ -128,7 +128,7 @@ pub async fn initialize_object_fetcher(
     options: GatewayOptions,
 ) -> anyhow::Result<(
     ObjectFetcher<DsnPieceGetter<SegmentCommitmentPieceValidator<RpcNodeClient>>>,
-    NodeRunner<()>,
+    NodeRunner,
 )> {
     let GatewayOptions {
         dev,

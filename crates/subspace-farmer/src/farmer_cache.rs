@@ -34,13 +34,12 @@ use std::{fmt, mem};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_data_retrieval::piece_getter::PieceGetter;
-use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
+use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::{KeyWithDistance, LocalRecordProvider};
-use tokio::runtime::Handle;
+use subspace_networking::KeyWithDistance;
 use tokio::sync::Semaphore;
-use tokio::task::{block_in_place, yield_now};
+use tokio::task::yield_now;
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
 const WORKER_CHANNEL_CAPACITY: usize = 100;
@@ -50,9 +49,6 @@ const SYNC_CONCURRENT_BATCHES: usize = 4;
 /// this number defines an interval in pieces after which cache is updated
 const INTERMEDIATE_CACHE_UPDATE_INTERVAL: usize = 100;
 const INITIAL_SYNC_FARM_INFO_CHECK_INTERVAL: Duration = Duration::from_secs(1);
-/// How long to wait for `is_piece_maybe_stored` response from plot cache before timing out in order
-/// to prevent blocking of executor for too long
-const IS_PIECE_MAYBE_STORED_TIMEOUT: Duration = Duration::from_millis(100);
 
 type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
@@ -1603,65 +1599,6 @@ impl FarmerCache {
     }
 }
 
-impl LocalRecordProvider for FarmerCache {
-    fn record(&self, key: &RecordKey) -> Option<ProviderRecord> {
-        let distance_key = KeyWithDistance::new(self.peer_id, key.clone());
-        if self
-            .piece_caches
-            .try_read()?
-            .contains_stored_piece(&distance_key)
-        {
-            // Note: We store our own provider records locally without local addresses
-            // to avoid redundant storage and outdated addresses. Instead, these are
-            // acquired on demand when returning a `ProviderRecord` for the local node.
-            return Some(ProviderRecord {
-                key: key.clone(),
-                provider: self.peer_id,
-                expires: None,
-                addresses: Vec::new(),
-            });
-        };
-
-        let found_fut = self
-            .plot_caches
-            .caches
-            .try_read()?
-            .iter()
-            .map(|plot_cache| {
-                let plot_cache = Arc::clone(plot_cache);
-
-                async move {
-                    matches!(
-                        plot_cache.is_piece_maybe_stored(key).await,
-                        Ok(MaybePieceStoredResult::Yes)
-                    )
-                }
-            })
-            .collect::<FuturesOrdered<_>>()
-            .any(|found| async move { found });
-
-        // TODO: Ideally libp2p would have an async API record store API,
-        let found = block_in_place(|| {
-            Handle::current()
-                .block_on(tokio::time::timeout(
-                    IS_PIECE_MAYBE_STORED_TIMEOUT,
-                    found_fut,
-                ))
-                .unwrap_or_default()
-        });
-
-        // Note: We store our own provider records locally without local addresses
-        // to avoid redundant storage and outdated addresses. Instead, these are
-        // acquired on demand when returning a `ProviderRecord` for the local node.
-        found.then_some(ProviderRecord {
-            key: key.clone(),
-            provider: self.peer_id,
-            expires: None,
-            addresses: Vec::new(),
-        })
-    }
-}
-
 /// Collection of [`FarmerCache`] instances for load balancing
 #[derive(Debug, Clone)]
 pub struct FarmerCaches {
@@ -1730,12 +1667,6 @@ impl FarmerCaches {
             .collect::<FuturesUnordered<_>>()
             .for_each(|()| async {})
             .await;
-    }
-}
-
-impl LocalRecordProvider for FarmerCaches {
-    fn record(&self, key: &RecordKey) -> Option<ProviderRecord> {
-        self.caches.choose(&mut thread_rng())?.record(key)
     }
 }
 

@@ -1,5 +1,6 @@
 //! Provides methods to retrieve pieces from DSN.
 
+use crate::constructor::DummyRecordStore;
 use crate::protocols::request_response::handlers::cached_piece_by_index::{
     CachedPieceByIndexRequest, CachedPieceByIndexResponse, PieceResult,
 };
@@ -15,19 +16,16 @@ use futures::future::FusedFuture;
 use futures::stream::FuturesUnordered;
 use futures::task::noop_waker_ref;
 use futures::{stream, FutureExt, Stream, StreamExt};
-use libp2p::kad::store::RecordStore;
-use libp2p::kad::{store, Behaviour as Kademlia, KBucketKey, ProviderRecord, Record, RecordKey};
+use libp2p::kad::{Behaviour as Kademlia, KBucketKey, RecordKey};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{Multiaddr, PeerId};
 use rand::prelude::*;
 use std::any::type_name;
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::iter::Empty;
+use std::fmt;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::{fmt, iter};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tokio_stream::StreamMap;
 use tracing::{debug, trace, warn, Instrument};
@@ -404,57 +402,6 @@ where
         }
 
         None
-    }
-}
-
-struct DummyRecordStore;
-
-impl RecordStore for DummyRecordStore {
-    type RecordsIter<'a>
-        = Empty<Cow<'a, Record>>
-    where
-        Self: 'a;
-    type ProvidedIter<'a>
-        = Empty<Cow<'a, ProviderRecord>>
-    where
-        Self: 'a;
-
-    fn get(&self, _key: &RecordKey) -> Option<Cow<'_, Record>> {
-        // Not supported
-        None
-    }
-
-    fn put(&mut self, _record: Record) -> store::Result<()> {
-        // Not supported
-        Ok(())
-    }
-
-    fn remove(&mut self, _key: &RecordKey) {
-        // Not supported
-    }
-
-    fn records(&self) -> Self::RecordsIter<'_> {
-        // Not supported
-        iter::empty()
-    }
-
-    fn add_provider(&mut self, _record: ProviderRecord) -> store::Result<()> {
-        // Not supported
-        Ok(())
-    }
-
-    fn providers(&self, _key: &RecordKey) -> Vec<ProviderRecord> {
-        // Not supported
-        Vec::new()
-    }
-
-    fn provided(&self) -> Self::ProvidedIter<'_> {
-        // Not supported
-        iter::empty()
-    }
-
-    fn remove_provider(&mut self, _key: &RecordKey, _provider: &PeerId) {
-        // Not supported
     }
 }
 

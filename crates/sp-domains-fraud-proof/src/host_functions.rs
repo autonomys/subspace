@@ -20,12 +20,12 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::H256;
-use sp_domains::{BundleProducerElectionApi, DomainsApi};
+use sp_domains::{BundleProducerElectionApi, DomainsApi, ExtrinsicDigest};
 use sp_externalities::Extensions;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
-use sp_state_machine::{OverlayedChanges, StateMachine, TrieBackend, TrieBackendBuilder};
+use sp_state_machine::{LayoutV1, OverlayedChanges, StateMachine, TrieBackend, TrieBackendBuilder};
 use sp_trie::{MemoryDB, StorageProof};
 use sp_weights::Weight;
 use std::borrow::Cow;
@@ -179,7 +179,9 @@ where
             .map(|(signer, tx)| {
                 (
                     signer,
-                    <DomainBlock::Header as HeaderT>::Hashing::hash_of(&tx),
+                    ExtrinsicDigest::new::<LayoutV1<<DomainBlock::Header as HeaderT>::Hashing>>(
+                        tx.encode(),
+                    ),
                 )
             })
             .collect();
