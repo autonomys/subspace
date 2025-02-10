@@ -1975,7 +1975,7 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
                     } else {
                         BundleMismatchType::BadInvalid(invalid_bundle_type)
                     };
-                    let res = fraud_proof_generator.generate_invalid_bundle_proof(
+                    let res = fraud_proof_generator.generate_invalid_bundle_proof_for_test(
                         EVM_DOMAIN_ID,
                         &valid_receipt,
                         mismatch_type,

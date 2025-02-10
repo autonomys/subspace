@@ -879,7 +879,6 @@ where
                         mismatch_type,
                         bundle_index,
                         bad_receipt_hash,
-                        false,
                     )
                     .map_err(|err| {
                         sp_blockchain::Error::Application(Box::from(format!(

@@ -512,6 +512,7 @@ where
         Ok(valid_bundle_digests)
     }
 
+    /// Generates and returns an invalid bundle proof.
     pub(crate) fn generate_invalid_bundle_proof(
         &self,
         domain_id: DomainId,
@@ -519,12 +520,52 @@ where
         mismatch_type: BundleMismatchType,
         bundle_index: u32,
         bad_receipt_hash: Block::Hash,
-        // Whether allow generating an invalid proof against a valid ER,
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+        self.generate_invalid_bundle_proof_inner(
+            domain_id,
+            local_receipt,
+            mismatch_type,
+            bundle_index,
+            bad_receipt_hash,
+            false,
+        )
+    }
+
+    /// Test-only function for generating an invalid bundle proof.
+    #[cfg(test)]
+    pub(crate) fn generate_invalid_bundle_proof_for_test(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        mismatch_type: BundleMismatchType,
+        bundle_index: u32,
+        bad_receipt_hash: Block::Hash,
+        allow_invalid_proof_in_tests: bool,
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+        self.generate_invalid_bundle_proof_inner(
+            domain_id,
+            local_receipt,
+            mismatch_type,
+            bundle_index,
+            bad_receipt_hash,
+            allow_invalid_proof_in_tests,
+        )
+    }
+
+    /// Inner function for generating invalid bundle proofs, with test support code.
+    fn generate_invalid_bundle_proof_inner(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        mismatch_type: BundleMismatchType,
+        bundle_index: u32,
+        bad_receipt_hash: Block::Hash,
+        // Whether to generate an invalid proof against a valid ER,
         // only used in tests, ignored in production
-        mut allow_invalid_proof: bool,
+        mut allow_invalid_proof_in_tests: bool,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         if cfg!(not(test)) {
-            allow_invalid_proof = false;
+            allow_invalid_proof_in_tests = false;
         }
 
         let consensus_block_hash = local_receipt.consensus_block_hash;
@@ -649,7 +690,7 @@ where
                     // If are proving the bundle is actually invalid, the expected validation response is Err.
                     // If we are proving the invalid bundle proof is wrong, the expected validation response is Ok.
                     // If we are proving the bundle is actually invalid, the extrinsic indexes also must match.
-                    if !allow_invalid_proof
+                    if !allow_invalid_proof_in_tests
                         && ((is_good_invalid_fraud_proof == validation_response.is_ok())
                             || (is_good_invalid_fraud_proof
                                 && validation_response
