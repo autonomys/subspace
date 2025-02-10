@@ -62,11 +62,11 @@ where
     pub(crate) client: Arc<Client>,
     pub(crate) consensus_client: Arc<CClient>,
     pub(crate) backend: Arc<Backend>,
-    pub(crate) domain_confirmation_depth: NumberFor<Block>,
     pub(crate) block_import: Arc<BoxBlockImport<Block>>,
     pub(crate) import_notification_sinks: DomainImportNotificationSinks<Block, CBlock>,
     pub(crate) domain_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub(crate) domain_executor: Arc<Executor>,
+    pub(crate) challenge_period: NumberFor<CBlock>,
 }
 
 impl<Block, CBlock, Client, CClient, Backend, Executor> Clone
@@ -82,11 +82,11 @@ where
             client: self.client.clone(),
             consensus_client: self.consensus_client.clone(),
             backend: self.backend.clone(),
-            domain_confirmation_depth: self.domain_confirmation_depth,
             block_import: self.block_import.clone(),
             import_notification_sinks: self.import_notification_sinks.clone(),
             domain_sync_oracle: self.domain_sync_oracle.clone(),
             domain_executor: self.domain_executor.clone(),
+            challenge_period: self.challenge_period,
         }
     }
 }
@@ -327,22 +327,6 @@ where
             on top of parent domain block #{parent_number},{parent_hash}"
         );
 
-        // if let Some(to_finalize_block_number) =
-        //     header_number.checked_sub(&self.domain_confirmation_depth)
-        // {
-        //     if to_finalize_block_number > self.client.info().finalized_number {
-        //         let to_finalize_block_hash =
-        //             self.client.hash(to_finalize_block_number)?.ok_or_else(|| {
-        //                 sp_blockchain::Error::Backend(format!(
-        //                     "Header for #{to_finalize_block_number} not found"
-        //                 ))
-        //             })?;
-        //         self.client
-        //             .finalize_block(to_finalize_block_hash, None, true)?;
-        //         tracing::debug!("Successfully finalized block: #{to_finalize_block_number},{to_finalize_block_hash}");
-        //     }
-        // }
-
         let roots: Vec<[u8; 32]> = intermediate_roots
             .iter()
             .map(|v| {
@@ -531,6 +515,7 @@ where
                     &*self.client,
                     oldest_unconfirmed_receipt_number,
                     &execution_receipt,
+                    self.challenge_period,
                 )?;
 
                 // Notify the imported domain block when the receipt processing is done.
@@ -571,8 +556,8 @@ where
             }
         };
 
-        crate::aux_schema::track_domain_hash_and_consensus_hash(
-            &*self.client,
+        crate::aux_schema::track_domain_hash_and_consensus_hash::<_, Block, CBlock>(
+            &self.client,
             domain_hash,
             consensus_block_hash,
         )?;

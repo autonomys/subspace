@@ -185,11 +185,11 @@ where
             client: params.client.clone(),
             consensus_client: params.consensus_client.clone(),
             backend: params.backend.clone(),
-            domain_confirmation_depth: params.domain_confirmation_depth,
             block_import: params.block_import,
             import_notification_sinks: Default::default(),
             domain_sync_oracle: params.domain_sync_oracle.clone(),
             domain_executor: params.code_executor.clone(),
+            challenge_period: params.challenge_period,
         };
 
         let receipts_checker = ReceiptsChecker {
@@ -208,6 +208,7 @@ where
             params.backend.clone(),
             receipts_checker,
             domain_block_processor.clone(),
+            params.consensus_confirmation_depth_k,
         );
 
         let snap_sync_orchestrator = params
@@ -225,6 +226,7 @@ where
                 consensus_chain_sync_params: consensus_sync_params,
                 domain_fork_id: params.domain_fork_id,
                 receipt_provider: params.domain_execution_receipt_provider,
+                challenge_period: params.challenge_period,
             });
 
         if let Some(sync_params) = sync_params {

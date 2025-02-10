@@ -1307,11 +1307,11 @@ async fn test_processing_empty_consensus_block() {
         client: alice.client.clone(),
         consensus_client: ferdie.client.clone(),
         backend: alice.backend.clone(),
-        domain_confirmation_depth: 256u32,
         block_import: Arc::new(Box::new(alice.client.clone())),
         import_notification_sinks: Default::default(),
         domain_sync_oracle: ferdie.sync_service.clone(),
         domain_executor: alice.code_executor.clone(),
+        challenge_period: 100u32,
     };
 
     let domain_genesis_hash = alice.client.info().best_hash;

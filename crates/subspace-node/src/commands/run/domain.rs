@@ -37,6 +37,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
+use subspace_runtime_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 use subspace_service::FullClient as CFullClient;
 use tokio::sync::broadcast::Receiver;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
@@ -513,6 +514,7 @@ where
                 maybe_operator_id: operator_id,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 consensus_chain_sync_params,
+                challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
             };
 
             let mut domain_node = domain_service::new_full::<
@@ -553,6 +555,7 @@ where
                 maybe_operator_id: operator_id,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 consensus_chain_sync_params,
+                challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
             };
 
             let mut domain_node = domain_service::new_full::<

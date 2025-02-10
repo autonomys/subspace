@@ -28,7 +28,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::AccountId;
+use subspace_runtime_primitives::{AccountId, DOMAINS_BLOCK_PRUNING_DEPTH};
 use subspace_service::FullClient as CFullClient;
 
 /// `DomainInstanceStarter` used to start a domain instance node based on the given
@@ -166,6 +166,7 @@ impl DomainInstanceStarter {
                     consensus_chain_sync_params: None::<
                         ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
                     >,
+                    challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
                 };
 
                 let mut domain_node = domain_service::new_full::<
@@ -228,6 +229,7 @@ impl DomainInstanceStarter {
                     consensus_chain_sync_params: None::<
                         ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
                     >,
+                    challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
                 };
 
                 let mut domain_node = domain_service::new_full::<

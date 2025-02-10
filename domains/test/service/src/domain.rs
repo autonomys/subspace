@@ -43,6 +43,7 @@ use std::future::Future;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::Nonce;
+use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 use subspace_test_service::MockConsensusNode;
 use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{
@@ -216,6 +217,7 @@ where
             skip_out_of_order_slot: true,
             maybe_operator_id,
             confirmation_depth_k: chain_constants.confirmation_depth_k(),
+            challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
             consensus_chain_sync_params: None::<
                 ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
             >,

@@ -63,7 +63,8 @@
     box_into_inner,
     duration_constructors,
     extract_if,
-    assert_matches
+    assert_matches,
+    let_chains
 )]
 
 mod aux_schema;
@@ -228,7 +229,8 @@ pub struct OperatorParams<
     pub keystore: KeystorePtr,
     pub bundle_sender: Arc<BundleSender<Block, CBlock>>,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
-    pub domain_confirmation_depth: NumberFor<Block>,
+    pub consensus_confirmation_depth_k: NumberFor<CBlock>,
+    pub challenge_period: NumberFor<CBlock>,
     pub block_import: Arc<BoxBlockImport<Block>>,
     pub skip_empty_bundle_production: bool,
     pub skip_out_of_order_slot: bool,

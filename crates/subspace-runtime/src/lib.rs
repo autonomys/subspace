@@ -102,8 +102,8 @@ use subspace_runtime_primitives::utility::MaybeIntoUtilityCall;
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
     HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC,
-    MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY,
-    SSC,
+    DOMAINS_BLOCK_PRUNING_DEPTH, MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO,
+    SHANNON, SLOT_PROBABILITY, SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -742,7 +742,7 @@ parameter_types! {
     pub MaxDomainBlockWeight: Weight = maximum_domain_block_weight();
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
-    pub const BlockTreePruningDepth: u32 = 14_400;
+    pub const BlockTreePruningDepth: u32 = DOMAINS_BLOCK_PRUNING_DEPTH;
     pub const StakeWithdrawalLockingPeriod: DomainNumber = 14_400;
     // TODO: revisit these. For now epoch every 10 mins for a 6 second block and only 100 number of staking
     // operations allowed within each epoch.

@@ -53,6 +53,7 @@ subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subsp
 subspace-service = { version = "0.1.0", path = "../../../crates/subspace-service" }
 subspace-test-client = { version = "0.1.0", path = "../../../test/subspace-test-client" }
 subspace-test-service = { version = "0.1.0", path = "../../../test/subspace-test-service" }
+subspace-test-primitives = { version = "0.1.0", default-features = false, path = "../../../test/subspace-test-primitives" }
 substrate-frame-rpc-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
 substrate-test-client = { git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
 tokio = { version = "1.40.0", features = ["macros"] }

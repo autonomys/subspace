@@ -7,6 +7,9 @@ use sp_messenger::messages::{ChainId, ChannelId};
 use sp_runtime::traits::NumberFor;
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 
+/// Domains Block pruning depth.
+pub const DOMAINS_BLOCK_PRUNING_DEPTH: u32 = 10;
+
 sp_api::decl_runtime_apis! {
     /// Api for querying onchain state in the test
     pub trait OnchainStateApi<AccountId, Balance>
