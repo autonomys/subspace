@@ -3,9 +3,9 @@
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use std::sync::Arc;
 use subspace_core_primitives::hashes::Blake3Hash;
-use subspace_core_primitives::objects::ObjectMappingResponse;
 use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_data_retrieval::piece_getter::PieceGetter;
+use subspace_rpc_primitives::ObjectMappingResponse;
 use tracing::{debug, error, trace};
 
 /// Parameters for the DSN object HTTP server.
@@ -22,7 +22,7 @@ where
 /// Multiple hashes are separated by `+`.
 async fn request_object_mapping(
     endpoint: &str,
-    hashes: &Vec<Blake3Hash>,
+    hashes: &[Blake3Hash],
 ) -> anyhow::Result<ObjectMappingResponse> {
     let client = reqwest::Client::new();
     let hash_list = hashes.iter().map(hex::encode).collect::<Vec<_>>();

@@ -58,11 +58,13 @@
 //! [`BlockBuilder`]: ../domain_block_builder/struct.BlockBuilder.html
 //! [`FraudProof`]: ../sp_domains/struct.FraudProof.html
 
-#![feature(array_windows)]
-#![feature(box_into_inner)]
-#![feature(duration_constructors)]
-#![feature(extract_if)]
-#![feature(assert_matches)]
+#![feature(
+    array_windows,
+    box_into_inner,
+    duration_constructors,
+    extract_if,
+    assert_matches
+)]
 
 mod aux_schema;
 mod bundle_processor;

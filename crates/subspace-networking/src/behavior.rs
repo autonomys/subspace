@@ -2,6 +2,7 @@ pub(crate) mod persistent_parameters;
 #[cfg(test)]
 mod tests;
 
+use crate::constructor::DummyRecordStore;
 use crate::protocols::autonat_wrapper::{
     Behaviour as AutonatWrapper, Config as AutonatWrapperConfig,
 };
@@ -29,7 +30,7 @@ use void::Void as VoidEvent;
 
 type BlockListBehaviour = AllowBlockListBehaviour<BlockedPeers>;
 
-pub(crate) struct BehaviorConfig<RecordStore> {
+pub(crate) struct BehaviorConfig {
     /// Identity keypair of a node used for authenticated connections.
     pub(crate) peer_id: PeerId,
     /// The configuration for the [`Identify`] behaviour.
@@ -38,8 +39,6 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     pub(crate) kademlia: KademliaConfig,
     /// The configuration for the [`Gossipsub`] behaviour.
     pub(crate) gossipsub: Option<GossipsubConfig>,
-    /// Externally provided implementation of the custom record store for Kademlia DHT,
-    pub(crate) record_store: RecordStore,
     /// The configuration for the [`RequestResponsesBehaviour`] protocol.
     pub(crate) request_response_protocols: Vec<Box<dyn RequestHandler>>,
     /// The upper bound for the number of concurrent inbound + outbound streams for request/response
@@ -55,12 +54,12 @@ pub(crate) struct BehaviorConfig<RecordStore> {
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "Event")]
-pub(crate) struct Behavior<RecordStore> {
+pub(crate) struct Behavior {
     // TODO: Connection limits must be the first protocol due to https://github.com/libp2p/rust-libp2p/issues/4773 as
     //  suggested in https://github.com/libp2p/rust-libp2p/issues/4898#issuecomment-1818013483
     pub(crate) connection_limits: ConnectionLimitsBehaviour,
     pub(crate) identify: Identify,
-    pub(crate) kademlia: Kademlia<RecordStore>,
+    pub(crate) kademlia: Kademlia<DummyRecordStore>,
     pub(crate) gossipsub: Toggle<Gossipsub>,
     pub(crate) ping: Ping,
     pub(crate) request_response: RequestResponseFactoryBehaviour,
@@ -69,16 +68,9 @@ pub(crate) struct Behavior<RecordStore> {
     pub(crate) autonat: AutonatWrapper,
 }
 
-impl<RecordStore> Behavior<RecordStore>
-where
-    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
-{
-    pub(crate) fn new(config: BehaviorConfig<RecordStore>) -> Self {
-        let kademlia = Kademlia::<RecordStore>::with_config(
-            config.peer_id,
-            config.record_store,
-            config.kademlia,
-        );
+impl Behavior {
+    pub(crate) fn new(config: BehaviorConfig) -> Self {
+        let kademlia = Kademlia::with_config(config.peer_id, DummyRecordStore, config.kademlia);
 
         let gossipsub = config
             .gossipsub

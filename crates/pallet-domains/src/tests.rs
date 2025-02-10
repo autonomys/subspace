@@ -634,7 +634,6 @@ fn test_bundle_format_verification() {
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
-            domain_runtime_config: Default::default(),
         };
         let domain_obj = DomainObject {
             owner_account_id: Default::default(),

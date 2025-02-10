@@ -21,8 +21,8 @@ use sp_core::crypto::AccountId32;
 use sp_core::Hasher;
 use sp_domains::storage::{RawGenesis, StorageData, StorageKey};
 use sp_domains::{
-    AutoIdDomainRuntimeConfig, DomainId, DomainsDigestItem, EvmDomainRuntimeConfig, RuntimeId,
-    RuntimeObject, RuntimeType,
+    AutoIdDomainRuntimeConfig, DomainId, DomainRuntimeConfig, DomainsDigestItem,
+    EvmDomainRuntimeConfig, RuntimeId, RuntimeObject, RuntimeType,
 };
 use sp_runtime::traits::{CheckedAdd, Get, Zero};
 use sp_runtime::DigestItem;
@@ -65,6 +65,38 @@ impl Default for DomainRuntimeInfo {
             chain_id: 0,
             domain_runtime_config: EvmDomainRuntimeConfig::default(),
         }
+    }
+}
+
+impl DomainRuntimeInfo {
+    /// Returns the inner config as a `DomainRuntimeConfig`.
+    pub fn domain_runtime_config(&self) -> DomainRuntimeConfig {
+        match self {
+            Self::Evm {
+                domain_runtime_config,
+                ..
+            } => DomainRuntimeConfig::Evm(domain_runtime_config.clone()),
+            Self::AutoId {
+                domain_runtime_config,
+                ..
+            } => DomainRuntimeConfig::AutoId(domain_runtime_config.clone()),
+        }
+    }
+
+    /// If this is an EVM runtime, returns the chain id.
+    pub fn evm_chain_id(&self) -> Option<EVMChainId> {
+        match self {
+            Self::Evm { chain_id, .. } => Some(*chain_id),
+            _ => None,
+        }
+    }
+
+    pub fn is_evm(&self) -> bool {
+        matches!(self, Self::Evm { .. })
+    }
+
+    pub fn is_auto_id(&self) -> bool {
+        matches!(self, Self::AutoId { .. })
     }
 }
 

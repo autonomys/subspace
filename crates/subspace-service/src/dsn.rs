@@ -70,7 +70,7 @@ pub(crate) fn create_dsn_instance(
     dsn_protocol_version: String,
     dsn_config: DsnConfig,
     prometheus_registry: Option<&mut Registry>,
-) -> Result<(Node, NodeRunner<()>), DsnConfigurationError> {
+) -> Result<(Node, NodeRunner), DsnConfigurationError> {
     trace!("Subspace networking starting.");
 
     let known_peers_registry = {
@@ -96,7 +96,7 @@ pub(crate) fn create_dsn_instance(
 
     let keypair = dsn_config.keypair.clone();
     let default_networking_config =
-        subspace_networking::Config::new(dsn_protocol_version, keypair, (), prometheus_registry);
+        subspace_networking::Config::new(dsn_protocol_version, keypair, prometheus_registry);
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair.clone(),

@@ -98,7 +98,7 @@ pub(in super::super) fn configure_network<FarmIndex, NC>(
     node_client: NC,
     farmer_caches: FarmerCaches,
     prometheus_metrics_registry: Option<&mut Registry>,
-) -> Result<(Node, NodeRunner<FarmerCaches>), anyhow::Error>
+) -> Result<(Node, NodeRunner), anyhow::Error>
 where
     FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
     usize: From<FarmIndex>,
@@ -116,12 +116,7 @@ where
     .map(Box::new)?;
 
     let maybe_weak_node = Arc::new(Mutex::new(None::<WeakNode>));
-    let default_config = Config::new(
-        protocol_prefix,
-        keypair,
-        farmer_caches.clone(),
-        prometheus_metrics_registry,
-    );
+    let default_config = Config::new(protocol_prefix, keypair, prometheus_metrics_registry);
     let config = Config {
         reserved_peers,
         listen_on,
