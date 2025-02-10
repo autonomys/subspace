@@ -2,9 +2,8 @@ use crate::behavior::persistent_parameters::{
     append_p2p_suffix, remove_p2p_suffix, KnownPeersRegistry, PeerAddressRemovedEvent,
 };
 use crate::behavior::{Behavior, Event};
-use crate::constructor;
 use crate::constructor::temporary_bans::TemporaryBans;
-use crate::constructor::LocalOnlyRecordStore;
+use crate::constructor::DummyRecordStore;
 use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, IfDisconnected,
 };
@@ -83,16 +82,13 @@ enum BootstrapCommandState {
 
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
-pub struct NodeRunner<LocalRecordProvider>
-where
-    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
-{
+pub struct NodeRunner {
     /// Should non-global addresses be added to the DHT?
     allow_non_global_addresses_in_dht: bool,
     /// Whether node is listening on some addresses
     is_listening: bool,
     command_receiver: mpsc::Receiver<Command>,
-    swarm: Swarm<Behavior<LocalOnlyRecordStore<LocalRecordProvider>>>,
+    swarm: Swarm<Behavior>,
     shared_weak: Weak<Shared>,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
@@ -132,10 +128,7 @@ where
     _address_removal_task_handler_id: Option<HandlerId>,
 }
 
-impl<LocalRecordProvider> fmt::Debug for NodeRunner<LocalRecordProvider>
-where
-    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
-{
+impl fmt::Debug for NodeRunner {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NodeRunner").finish_non_exhaustive()
@@ -143,15 +136,12 @@ where
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
-pub(crate) struct NodeRunnerConfig<LocalRecordProvider>
-where
-    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
-{
+pub(crate) struct NodeRunnerConfig {
     pub(crate) allow_non_global_addresses_in_dht: bool,
     /// Whether node is listening on some addresses
     pub(crate) is_listening: bool,
     pub(crate) command_receiver: mpsc::Receiver<Command>,
-    pub(crate) swarm: Swarm<Behavior<LocalOnlyRecordStore<LocalRecordProvider>>>,
+    pub(crate) swarm: Swarm<Behavior>,
     pub(crate) shared_weak: Weak<Shared>,
     pub(crate) next_random_query_interval: Duration,
     pub(crate) known_peers_registry: Box<dyn KnownPeersRegistry>,
@@ -163,10 +153,7 @@ where
     pub(crate) bootstrap_addresses: Vec<Multiaddr>,
 }
 
-impl<LocalRecordProvider> NodeRunner<LocalRecordProvider>
-where
-    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
-{
+impl NodeRunner {
     pub(crate) fn new(
         NodeRunnerConfig {
             allow_non_global_addresses_in_dht,
@@ -182,7 +169,7 @@ where
             metrics,
             protocol_version,
             bootstrap_addresses,
-        }: NodeRunnerConfig<LocalRecordProvider>,
+        }: NodeRunnerConfig,
     ) -> Self {
         // Setup the address removal events exchange between persistent params storage and Kademlia.
         let (removed_addresses_tx, removed_addresses_rx) = mpsc::unbounded();
@@ -1140,7 +1127,7 @@ where
 
     // Returns `true` if query was cancelled
     fn unbounded_send_and_cancel_on_error<T>(
-        kademlia: &mut Kademlia<LocalOnlyRecordStore<LocalRecordProvider>>,
+        kademlia: &mut Kademlia<DummyRecordStore>,
         sender: &mpsc::UnboundedSender<T>,
         value: T,
         channel: &'static str,

@@ -76,8 +76,6 @@ pub struct DomainConfig<AccountId: Ord, Balance> {
     pub operator_allow_list: OperatorAllowList<AccountId>,
     // Initial balances for this domain.
     pub initial_balances: Vec<(MultiAccountId, Balance)>,
-    /// Configurations for a specific type of domain runtime, for example, EVM.
-    pub domain_runtime_config: DomainRuntimeConfig,
 }
 
 /// Parameters of the `instantiate_domain` call, it is similar to `DomainConfig` except the `max_bundle_size/weight`
@@ -93,6 +91,9 @@ pub struct DomainConfigParams<AccountId: Ord, Balance> {
     pub bundle_slot_probability: (u64, u64),
     pub operator_allow_list: OperatorAllowList<AccountId>,
     pub initial_balances: Vec<(MultiAccountId, Balance)>,
+    /// Configurations for a specific type of domain runtime, for example, EVM.
+    /// Currently these are all copied into `DomainObject.domain_runtime_info`, so they don't need
+    /// to be in `DomainConfig`.
     pub domain_runtime_config: DomainRuntimeConfig,
 }
 
@@ -106,7 +107,7 @@ pub fn into_domain_config<T: Config>(
         bundle_slot_probability,
         operator_allow_list,
         initial_balances,
-        domain_runtime_config,
+        domain_runtime_config: _,
     } = domain_config_params;
 
     let DomainBundleLimit {
@@ -131,7 +132,6 @@ pub fn into_domain_config<T: Config>(
         bundle_slot_probability,
         operator_allow_list,
         initial_balances,
-        domain_runtime_config,
     })
 }
 
@@ -244,6 +244,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     owner_account_id: T::AccountId,
     created_at: BlockNumberFor<T>,
 ) -> Result<DomainId, Error> {
+    let domain_runtime_config = domain_config_params.domain_runtime_config.clone();
     let domain_config = can_instantiate_domain::<T>(&owner_account_id, domain_config_params)?;
 
     let domain_instantiation_deposit = T::DomainInstantiationDeposit::get();
@@ -257,10 +258,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         runtime_object
     });
 
-    let domain_runtime_info = match (
-        runtime_obj.runtime_type,
-        &domain_config.domain_runtime_config,
-    ) {
+    let domain_runtime_info = match (runtime_obj.runtime_type, domain_runtime_config) {
         (RuntimeType::Evm, DomainRuntimeConfig::Evm(domain_runtime_config)) => {
             let evm_chain_id = NextEVMChainId::<T>::get();
             let next_evm_chain_id = evm_chain_id.checked_add(1).ok_or(Error::MaxEVMChainId)?;
@@ -268,12 +266,12 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 
             DomainRuntimeInfo::Evm {
                 chain_id: evm_chain_id,
-                domain_runtime_config: domain_runtime_config.clone(),
+                domain_runtime_config,
             }
         }
         (RuntimeType::AutoId, DomainRuntimeConfig::AutoId(domain_runtime_config)) => {
             DomainRuntimeInfo::AutoId {
-                domain_runtime_config: domain_runtime_config.clone(),
+                domain_runtime_config,
             }
         }
         _ => return Err(Error::InvalidConfigForRuntimeType),
@@ -795,8 +793,8 @@ mod tests {
             );
             assert_eq!(
                 domain_obj
-                    .domain_config
-                    .domain_runtime_config
+                    .domain_runtime_info
+                    .domain_runtime_config()
                     .initial_contract_creation_allow_list(),
                 Some(&PermissionedActionAllowedBy::Anyone),
                 "anyone should be allowed to create contracts by default"
@@ -834,8 +832,8 @@ mod tests {
             );
             assert_eq!(
                 domain_obj
-                    .domain_config
-                    .domain_runtime_config
+                    .domain_runtime_info
+                    .domain_runtime_config()
                     .initial_contract_creation_allow_list(),
                 Some(&PermissionedActionAllowedBy::Accounts(list)),
                 "empty list should work"
@@ -873,8 +871,8 @@ mod tests {
             );
             assert_eq!(
                 domain_obj
-                    .domain_config
-                    .domain_runtime_config
+                    .domain_runtime_info
+                    .domain_runtime_config()
                     .initial_contract_creation_allow_list(),
                 Some(&PermissionedActionAllowedBy::Accounts(list)),
                 "1 account list should work"
@@ -916,8 +914,8 @@ mod tests {
             );
             assert_eq!(
                 domain_obj
-                    .domain_config
-                    .domain_runtime_config
+                    .domain_runtime_info
+                    .domain_runtime_config()
                     .initial_contract_creation_allow_list(),
                 Some(&PermissionedActionAllowedBy::Accounts(list)),
                 "multi account list should work"

@@ -16,14 +16,14 @@ use tracing::{debug, trace, warn};
 /// The maximum amount of segment padding.
 ///
 /// This is the difference between the lengths of the compact encodings of the minimum and maximum
-/// block sizes, in any domain. As of January 2025, the minimum block size is (potentially) 63 or
-/// less, and the maximum block size is in the range 2^14 to 2^30 - 1.
+/// block sizes in the consensus chain. As of January 2025, the minimum block size is (potentially)
+/// 63 or less, and the maximum block size is in the range 2^14 to 2^30 - 1.
 /// <https://docs.substrate.io/reference/scale-codec/#fn-1>
 pub const MAX_SEGMENT_PADDING: usize = 3;
 
 /// The maximum object length this module can handle.
 ///
-/// Currently objects are limited by the largest block size in any domain, which is 5 MB.
+/// Currently objects are limited by the largest block size on the consensus chain, which is 5 MB.
 /// But this implementation supports the maximum length of the 4 byte scale encoding.
 pub const MAX_SUPPORTED_OBJECT_LENGTH: usize = 1024 * 1024 * 1024 - 1;
 
@@ -42,7 +42,10 @@ pub enum Error {
     PieceOffsetTooLarge { mapping: GlobalObject },
 
     /// No item in segment at offset
-    #[error("Offset {offset_in_segment} in segment {segment_index} is not an item, current progress: {progress}, object: {mapping:?}")]
+    #[error(
+        "Offset {offset_in_segment} in segment {segment_index} is not an item, \
+         current progress: {progress}, object: {mapping:?}"
+    )]
     NoSegmentItem {
         progress: usize,
         offset_in_segment: usize,
@@ -51,7 +54,10 @@ pub enum Error {
     },
 
     /// Unexpected item in first segment at offset
-    #[error("Offset {offset_in_segment} in first segment {segment_index} has unexpected item, current progress: {segment_progress}, object: {mapping:?}, item: {segment_item:?}")]
+    #[error(
+        "Offset {offset_in_segment} in first segment {segment_index} has unexpected item, \
+         current progress: {segment_progress}, object: {mapping:?}, item: {segment_item:?}"
+    )]
     UnexpectedFirstSegmentItem {
         segment_progress: usize,
         offset_in_segment: usize,
@@ -61,7 +67,10 @@ pub enum Error {
     },
 
     /// Unexpected item in continuing segment at offset
-    #[error("Continuing segment {segment_index} has unexpected item, collected data: {collected_data}, object: {mapping:?}, item: {segment_item:?}")]
+    #[error(
+        "Continuing segment {segment_index} has unexpected item, \
+         collected data: {collected_data}, object: {mapping:?}, item: {segment_item:?}"
+    )]
     UnexpectedContinuingSegmentItem {
         collected_data: usize,
         segment_index: SegmentIndex,
@@ -70,7 +79,10 @@ pub enum Error {
     },
 
     /// Object not found after downloading expected number of segments
-    #[error("Object segment range {first_segment_index}..={last_segment_index} did not contain full object, object: {mapping:?}")]
+    #[error(
+        "Object segment range {first_segment_index}..={last_segment_index} did not contain \
+         full object, object: {mapping:?}"
+    )]
     TooManySegments {
         first_segment_index: SegmentIndex,
         last_segment_index: SegmentIndex,
@@ -79,7 +91,8 @@ pub enum Error {
 
     /// Object is too large error
     #[error(
-        "Data length {data_length} exceeds maximum object size {max_object_len} for object: {mapping:?}"
+        "Data length {data_length} exceeds maximum object size {max_object_len} \
+         for object: {mapping:?}"
     )]
     ObjectTooLarge {
         data_length: usize,
@@ -89,7 +102,8 @@ pub enum Error {
 
     /// Length prefix is too large error
     #[error(
-        "Length prefix length {length_prefix_len} exceeds maximum object size {max_object_len} for object: {mapping:?}"
+        "Length prefix length {length_prefix_len} exceeds maximum object size {max_object_len} \
+         for object: {mapping:?}"
     )]
     LengthPrefixTooLarge {
         length_prefix_len: usize,
@@ -98,10 +112,10 @@ pub enum Error {
     },
 
     /// Hash doesn't match data
-    #[error("Incorrect data hash {data_hash:?} for {data_size} byte object: {mapping:?}")]
+    #[error("Incorrect data hash {data_hash:?} for {data_length} byte object: {mapping:?}")]
     InvalidDataHash {
         data_hash: Blake3Hash,
-        data_size: usize,
+        data_length: usize,
         mapping: GlobalObject,
     },
 
@@ -240,7 +254,7 @@ where
             if data_hash != hash {
                 debug!(
                     ?data_hash,
-                    data_size = %data.len(),
+                    data_length = %data.len(),
                     ?mapping,
                     "Retrieved data doesn't match requested mapping hash"
                 );
@@ -248,7 +262,7 @@ where
 
                 return Err(Error::InvalidDataHash {
                     data_hash,
-                    data_size: data.len(),
+                    data_length: data.len(),
                     mapping,
                 });
             }
@@ -381,8 +395,8 @@ where
             let remaining_piece_indexes = (next_source_piece_index..)
                 .filter(|i| i.is_source())
                 .take(remaining_piece_count)
-                .collect::<Vec<_>>();
-            self.read_pieces(&remaining_piece_indexes, mapping)
+                .collect();
+            self.read_pieces(remaining_piece_indexes, mapping)
                 .await?
                 .into_iter()
                 .for_each(|piece| {
@@ -433,8 +447,9 @@ where
                 .await?
                 .into_items();
             // Go through the segment until we reach the offset.
-            // Unconditional progress is enum variant + compact encoding of number of elements
-            let mut progress = 1 + Compact::compact_len(&(items.len() as u64));
+            // Unconditional progress is enum variant, always 1 byte in SCALE encoding.
+            // (Segments do not have an item count, to make incremental writing easier.)
+            let mut progress = 1;
             let segment_item = items
                 .into_iter()
                 .find(|item| {
@@ -597,10 +612,10 @@ where
     /// The mapping is only used for error reporting.
     async fn read_pieces(
         &self,
-        piece_indexes: &Vec<PieceIndex>,
+        piece_indexes: Arc<[PieceIndex]>,
         mapping: GlobalObject,
     ) -> Result<Vec<Piece>, Error> {
-        download_pieces(piece_indexes, &self.piece_getter)
+        download_pieces(piece_indexes.clone(), &self.piece_getter)
             .await
             .map_err(|source| {
                 debug!(
@@ -622,7 +637,7 @@ where
         piece_index: PieceIndex,
         mapping: GlobalObject,
     ) -> Result<Piece, Error> {
-        download_pieces(&vec![piece_index], &self.piece_getter)
+        download_pieces(vec![piece_index].into(), &self.piece_getter)
             .await
             .map(|pieces| {
                 pieces

@@ -162,12 +162,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 kademlia_mode: KademliaMode::Static(Mode::Server),
                 external_addresses,
 
-                ..Config::new(
-                    protocol_version.to_string(),
-                    keypair,
-                    (),
-                    dsn_metrics_registry,
-                )
+                ..Config::new(protocol_version.to_string(), keypair, dsn_metrics_registry)
             };
             let (node, mut node_runner) =
                 subspace_networking::construct(config).expect("Networking stack creation failed.");

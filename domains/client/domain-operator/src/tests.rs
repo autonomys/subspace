@@ -19,10 +19,9 @@ use domain_test_service::evm_domain_test_runtime::{
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Dave, Eve};
 use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
 use domain_test_service::{
-    construct_extrinsic_generic, DomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID,
+    construct_extrinsic_generic, EvmDomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID,
 };
 use ethereum::TransactionV2 as EthereumTransaction;
-use evm_domain_test_runtime::{Runtime as EvmRuntime, RuntimeApi as EvmRuntimeApi};
 use fp_rpc::EthereumRuntimeRPCApi;
 use futures::StreamExt;
 use hex_literal::hex;
@@ -73,6 +72,7 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
 use std::assert_matches::assert_matches;
 use std::collections::{BTreeMap, VecDeque};
+use std::future::IntoFuture;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
@@ -84,7 +84,22 @@ use subspace_test_service::{
 use tempfile::TempDir;
 use tracing::error;
 
-const TIMEOUT: Duration = Duration::from_mins(2);
+/// The general timeout for test operations that could hang.
+const TIMEOUT: Duration = Duration::from_mins(10);
+
+/// A trait that makes it easier to add a timeout to any future: `future.timeout().await?`.
+trait TestTimeout: IntoFuture {
+    fn timeout(self) -> tokio::time::Timeout<Self::IntoFuture>;
+}
+
+impl<F> TestTimeout for F
+where
+    F: IntoFuture,
+{
+    fn timeout(self) -> tokio::time::Timeout<Self::IntoFuture> {
+        tokio::time::timeout(TIMEOUT, self)
+    }
+}
 
 fn number_of(consensus_node: &MockConsensusNode, block_hash: Hash) -> u32 {
     consensus_node
@@ -213,11 +228,7 @@ pub fn generate_evm_account_list(
 
 async fn setup_evm_test_nodes(
     ferdie_key: Sr25519Keyring,
-) -> (
-    TempDir,
-    MockConsensusNode,
-    DomainNode<EvmRuntime, EvmRuntimeApi>,
-) {
+) -> (TempDir, MockConsensusNode, EvmDomainNode) {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -246,12 +257,7 @@ async fn setup_evm_test_nodes(
 
 async fn setup_evm_test_accounts(
     ferdie_key: Sr25519Keyring,
-) -> (
-    TempDir,
-    MockConsensusNode,
-    DomainNode<EvmRuntime, EvmRuntimeApi>,
-    Vec<AccountInfo>,
-) {
+) -> (TempDir, MockConsensusNode, EvmDomainNode, Vec<AccountInfo>) {
     let (directory, mut ferdie, mut alice) = setup_evm_test_nodes(ferdie_key).await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -1601,44 +1607,39 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     );
 }
 
+// This test hangs occasionally, but we don't know which step hangs.
+// TODO: when the test is fixed, decide if we want to remove the timeouts.
 #[tokio::test(flavor = "multi_thread")]
-async fn test_domain_tx_propagate() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, Alice, &mut ferdie)
-    .await;
+async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
+    let (directory, mut ferdie, alice) = setup_evm_test_nodes(Ferdie).timeout().await?;
 
     // Run Bob (a evm domain full node)
     let mut bob = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle,
+        tokio::runtime::Handle::current(),
         BasePath::new(directory.path().join("bob")),
     )
     .connect_to_domain_node(alice.addr.clone())
     .build_evm_node(Role::Full, Bob, &mut ferdie)
-    .await;
+    .timeout()
+    .await?;
 
-    produce_blocks!(ferdie, alice, 5, bob).await.unwrap();
-    while alice.sync_service.is_major_syncing() || bob.sync_service.is_major_syncing() {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    produce_blocks!(ferdie, alice, 5, bob)
+        .timeout()
+        .await?
+        .unwrap();
+
+    async {
+        while alice.sync_service.is_major_syncing() || bob.sync_service.is_major_syncing() {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            // TODO: Unfortunately, this test contains a race condition where Alice sometimes bans
+            // Bob for making multiple requests for the same block. And in response to that ban's
+            // reject message, Bob bans Alice.
+            alice.unban_peer(bob.addr.clone());
+            bob.unban_peer(alice.addr.clone());
+        }
     }
+    .timeout()
+    .await?;
 
     let pre_bob_free_balance = alice.free_balance(bob.key.to_account_id());
     // Construct and send an extrinsic to bob, as bob is not a authority node, the extrinsic has
@@ -1647,7 +1648,8 @@ async fn test_domain_tx_propagate() {
         dest: Alice.to_account_id(),
         value: 123,
     })
-    .await
+    .timeout()
+    .await?
     .expect("Failed to send extrinsic");
 
     produce_blocks_until!(
@@ -1660,8 +1662,11 @@ async fn test_domain_tx_propagate() {
         },
         bob
     )
-    .await
+    .timeout()
+    .await?
     .unwrap();
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
