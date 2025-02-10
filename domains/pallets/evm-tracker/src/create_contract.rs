@@ -1,4 +1,4 @@
-//! Contract creation allow list implementations
+//! Contract creation allow list filtering implementations.
 
 use crate::traits::{AccountIdFor, MaybeIntoEthCall, MaybeIntoEvmCall};
 use codec::{Decode, Encode};

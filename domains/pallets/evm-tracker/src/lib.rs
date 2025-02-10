@@ -21,7 +21,9 @@
 extern crate alloc;
 
 mod check_nonce;
+#[cfg(feature = "create-contract-filter")]
 pub mod create_contract;
+#[cfg(feature = "create-contract-filter")]
 pub mod traits;
 
 pub use check_nonce::CheckNonce;
