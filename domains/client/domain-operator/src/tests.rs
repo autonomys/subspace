@@ -2026,7 +2026,17 @@ async fn test_bad_fraud_proof_is_rejected() {
         .await
         .expect("Failed to send extrinsic");
 
-    // Produce a domain block that contains the previously sent extrinsic
+    ferdie
+        .construct_and_send_extrinsic_with(
+            pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+                domain_id: EVM_DOMAIN_ID,
+                contract_creation_allowed_by: PermissionedActionAllowedBy::Anyone,
+            },
+        )
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Produce a domain block that contains the previously sent extrinsics
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // Get the receipt of that domain block and produce another bundle to submit the receipt
