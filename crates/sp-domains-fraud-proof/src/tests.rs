@@ -677,7 +677,7 @@ async fn test_evm_domain_block_fee() {
         .unwrap();
     let consensus_block_hash = ferdie.client.info().best_hash;
 
-    // Produce one more bundle, this bundle should contains the ER of the previous bundle
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
     assert_eq!(receipt.consensus_block_hash, consensus_block_hash);

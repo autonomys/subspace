@@ -5869,7 +5869,7 @@ async fn test_domain_transaction_fee_and_operator_reward() {
         .unwrap();
     let consensus_block_hash = ferdie.client.info().best_hash;
 
-    // Produce one more bundle, this bundle should contains the ER of the previous bundle
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
     assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
@@ -5989,8 +5989,8 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
             .unwrap();
     assert_ne!(domain_block_hash_fork_a, domain_block_hash_fork_b);
 
-    // The domain block header should contains digest that point to the consensus block, which
-    // devrive the domain block
+    // The domain block header should contain a digest that points to the consensus block, which
+    // devrives the domain block
     let get_header = |hash| alice.client.header(hash).unwrap().unwrap();
     let get_digest_consensus_block_hash = |header: &Header| -> <CBlock as BlockT>::Hash {
         header
