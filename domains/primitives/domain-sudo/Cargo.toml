@@ -10,7 +10,6 @@ description = "Primitives of pallet domain sudo"
 include = [
     "/src",
     "/Cargo.toml",
-    "/README.md",
 ]
 
 [dependencies]

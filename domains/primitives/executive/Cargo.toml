@@ -10,7 +10,6 @@ description = "Primitives of pallet executive"
 include = [
     "/src",
     "/Cargo.toml",
-    "/README.md",
 ]
 
 [dependencies]

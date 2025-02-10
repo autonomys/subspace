@@ -680,7 +680,7 @@ mod pallet {
     pub(super) type PermissionedActionAllowedBy<T: Config> =
         StorageValue<_, sp_domains::PermissionedActionAllowedBy<T::AccountId>, OptionQuery>;
 
-    /// Accumulate treasury funds temporarily until the funds are above Existential despoit.
+    /// Accumulate treasury funds temporarily until the funds are above Existential deposit.
     /// We do this to ensure minting small amounts into treasury would not fail.
     #[pallet::storage]
     pub(super) type AccumulatedTreasuryFunds<T> = StorageValue<_, BalanceOf<T>, ValueQuery>;
@@ -1140,11 +1140,11 @@ mod pallet {
             // consensus block, which also mean a domain block will be produced thus update `HeadDomainNumber`
             // to this domain block's block number.
             if SuccessfulBundles::<T>::get(domain_id).is_empty() {
-                // Domain runtime upgrade is forced happened even if there is no bundle submitted for a given domain
+                // Domain runtime upgrade is forced to happen, even if there is no bundle submitted for a given domain
                 // it will still derive a domain block for the upgrade, so we need to increase the `HeadDomainNumber`
-                // by the number of runtime upgrade happen since last block to account for these blocks.
+                // by the number of runtime upgrades that happened since the last block, to account for these blocks.
                 //
-                // NOTE: if a domain runtime upgrade happened in the current block it won't be accounted into
+                // NOTE: if a domain runtime upgrade happened in the current block it won't be accounted for in
                 // `missed_upgrade` because `DomainRuntimeUpgradeRecords` is updated in the next block's initialization.
                 let missed_upgrade =
                     Self::missed_domain_runtime_upgrade(domain_id).map_err(Error::<T>::from)?;
@@ -1155,7 +1155,7 @@ mod pallet {
                     .checked_add(&missed_upgrade.into())
                     .ok_or::<Error<T>>(BlockTreeError::MaxHeadDomainNumber.into())?;
 
-                // Trigger epoch transition if any at the first bundle in the block
+                // Trigger an epoch transition, if needed, at the first bundle in the block
                 #[cfg(not(feature = "runtime-benchmarks"))]
                 if next_number % T::StakeEpochDuration::get() == Zero::zero() {
                     let epoch_transition_res = do_finalize_domain_current_epoch::<T>(domain_id)
@@ -1173,7 +1173,7 @@ mod pallet {
                 HeadDomainNumber::<T>::set(domain_id, next_number);
             }
 
-            // Put the `extrinsics_root` to the inbox of the current under building domain block
+            // Put the `extrinsics_root` into the inbox of the current domain block being built
             let head_domain_number = HeadDomainNumber::<T>::get(domain_id);
             let consensus_block_number = frame_system::Pallet::<T>::current_block_number();
             ExecutionInbox::<T>::append(
@@ -1191,7 +1191,7 @@ mod pallet {
 
             OperatorBundleSlot::<T>::mutate(operator_id, |slot_set| slot_set.insert(slot_number));
 
-            // slash operator who are in pending slash
+            // slash operators who are in pending slash
             #[cfg(not(feature = "runtime-benchmarks"))]
             {
                 let slashed_nominator_count =
@@ -1288,8 +1288,8 @@ mod pallet {
             runtime_name: String,
             runtime_type: RuntimeType,
             // TODO: we can use `RawGenesis` as argument directly to avoid decoding but the in tool like
-            // `polkadot.js` it will required the user to provide each field of the struct type and not
-            // support upload file which will brings bad UX.
+            // `polkadot.js` it will require the user to provide each field of the struct type and not
+            // support uploading file, which is bad UX.
             raw_genesis_storage: Vec<u8>,
         ) -> DispatchResult {
             ensure_root(origin)?;
@@ -1436,7 +1436,7 @@ mod pallet {
         }
 
         /// Unlocks the first withdrawal given the unlocking period is complete.
-        /// Even if rest of the withdrawals are out of unlocking period, nominator
+        /// Even if the rest of the withdrawals are out of the unlocking period, the nominator
         /// should call this extrinsic to unlock each withdrawal
         #[pallet::call_index(10)]
         #[pallet::weight(T::WeightInfo::unlock_funds())]
@@ -1580,7 +1580,7 @@ mod pallet {
 
         /// Prunes a given execution receipt for given frozen domain.
         /// This call assumes the execution receipt to be bad and implicitly trusts Sudo
-        /// to do necessary validation of the ER before dispatching this call.
+        /// to do the necessary validation of the ER before dispatching this call.
         #[pallet::call_index(19)]
         #[pallet::weight(Pallet::<T>::max_prune_domain_execution_receipt())]
         pub fn prune_domain_execution_receipt(

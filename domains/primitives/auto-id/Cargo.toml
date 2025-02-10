@@ -10,7 +10,6 @@ description = "Primitives for AutoId"
 include = [
     "/src",
     "/Cargo.toml",
-    "/README.md",
 ]
 
 [dependencies]

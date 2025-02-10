@@ -10,7 +10,6 @@ description = "Primitives for Messenger"
 include = [
     "/src",
     "/Cargo.toml",
-    "/README.md",
 ]
 
 [dependencies]

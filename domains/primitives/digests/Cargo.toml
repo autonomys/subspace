@@ -10,7 +10,6 @@ description = "Primitives of domain related digests"
 include = [
     "/src",
     "/Cargo.toml",
-    "/README.md",
 ]
 
 [dependencies]
