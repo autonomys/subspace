@@ -15,7 +15,21 @@ runners:
     spot: capacity-optimized
     image: windowscustomimage
 
-# todo: replace with official image from maintainer https://github.com/runs-on/runner-images-for-aws/blob/main/releases/windows22/x64/images/windows/Windows2022-Readme.md
+# TODO: Replace with the official Windows runner image once all required packages are available.
+# Reference: https://github.com/runs-on/runner-images-for-aws/blob/main/releases/windows22/x64/images/windows/Windows2022-Readme.md
+#
+# Currently, this image is a minimal Windows base installation and lacks many essential packages listed in the official runner image readme.
+# The goal is to transition to an AWS-compatible image that maintains **1:1 compatibility** with the official GitHub-hosted Windows image.
+#
+# **Temporary Workaround:**
+# - We are using a **custom-built image** with the required dependencies pre-installed.
+# - This custom image (AMI) is derived from our **dedicated runners** image.
+# - More details: https://runs-on.com/configuration/custom-images/
+#
+# **Next Steps:**
+# - Replace the custom image with the official Windows runner image once it becomes available.
+# - Track progress here: https://github.com/runs-on/runs-on/issues/231
+
 images:
   windowscustomimage:
     platform: "windows"
