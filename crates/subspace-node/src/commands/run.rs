@@ -390,7 +390,7 @@ pub fn ensure_block_and_state_pruning_params(config: &mut Configuration) {
             blocks
         } else {
             warn!(
-                "Blocks pruning constraints needs to be atleast {:?}",
+                "Blocks pruning config needs to be at least {:?}",
                 blocks_to_prune
             );
             blocks_to_prune
@@ -412,7 +412,7 @@ pub fn ensure_block_and_state_pruning_params(config: &mut Configuration) {
                             blocks
                         } else {
                             warn!(
-                                "State pruning constraints needs to be atleast {:?}",
+                                "State pruning config needs to be at least {:?}",
                                 blocks_to_prune
                             );
                             blocks_to_prune
