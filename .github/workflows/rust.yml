@@ -53,7 +53,7 @@ jobs:
         os: ${{ fromJson(github.repository_owner == 'autonomys' &&
           '[
             "runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64",
-            ["self-hosted", "windows-server-2022-x86-64"],
+            "runs-on=${{ github.run_id }}/runner=self-hosted-windows-server-2022-x86-64",
             ["self-hosted", "macos-14-arm64"]
           ]' ||
           '["ubuntu-22.04", "windows-2022", "macos-14"]') }}
@@ -168,7 +168,7 @@ jobs:
         os: ${{ fromJson(github.repository_owner == 'autonomys' &&
           '[
             "runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64",
-            ["self-hosted", "windows-server-2022-x86-64"],
+            "runs-on=${{ github.run_id }}/runner=self-hosted-windows-server-2022-x86-64",
             ["self-hosted", "macos-14-arm64"]
           ]' ||
           '["ubuntu-22.04", "windows-2022", "macos-14"]') }}

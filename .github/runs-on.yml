@@ -15,6 +15,7 @@ runners:
     spot: capacity-optimized
     image: windowscustomimage
 
+# todo: replace with official image from maintainer https://github.com/runs-on/runner-images-for-aws/blob/main/releases/windows22/x64/images/windows/Windows2022-Readme.md
 images:
   windowscustomimage:
     platform: "windows"
