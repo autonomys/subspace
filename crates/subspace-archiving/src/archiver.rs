@@ -247,6 +247,21 @@ pub struct Archiver {
     last_archived_block: LastArchivedBlock,
 }
 
+// Equality, mainly for use in integration tests
+impl PartialEq for Archiver {
+    fn eq(&self, other: &Self) -> bool {
+        // We ignore incremental record commitments, because they depend on the order of method calls.
+        // Subspace uses fixed Kzg parameters, so they don't need to be checked either.
+        self.buffer == other.buffer
+            && self.erasure_coding == other.erasure_coding
+            && self.segment_index == other.segment_index
+            && self.prev_segment_header_hash == other.prev_segment_header_hash
+            && self.last_archived_block == other.last_archived_block
+    }
+}
+
+impl Eq for Archiver {}
+
 impl Archiver {
     /// Create a new instance
     pub fn new(kzg: Kzg, erasure_coding: ErasureCoding) -> Self {

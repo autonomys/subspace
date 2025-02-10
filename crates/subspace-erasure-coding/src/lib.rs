@@ -25,6 +25,15 @@ pub struct ErasureCoding {
     fft_settings: Arc<FsFFTSettings>,
 }
 
+impl PartialEq for ErasureCoding {
+    fn eq(&self, other: &Self) -> bool {
+        // The max_width is 1 << scale, so it is enough to compare just this one field
+        self.fft_settings.max_width == other.fft_settings.max_width
+    }
+}
+
+impl Eq for ErasureCoding {}
+
 impl ErasureCoding {
     /// Create new erasure coding instance.
     ///
