@@ -40,7 +40,7 @@ const LATEST_CONSENSUS_HASH: &[u8] = b"latest_consensus_hash";
 /// - Hash(ConsensusBlock12) => Hash(DomainBlock5)
 const BEST_DOMAIN_HASH: &[u8] = b"best_domain_hash";
 
-/// Tracks domain block hash and consensus block hash from which domain block is derived from
+/// Tracks a domain block hash and consensus block hash from which domain block is derived from
 /// at a given domain block height.
 const BEST_DOMAIN_HASH_KEYS: &[u8] = b"best_domain_hash_keys";
 

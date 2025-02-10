@@ -132,6 +132,11 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     };
 
     if maybe_domain_configuration.is_some() {
+        // TODO: currently, we set consensus block and state pruning to challenge period
+        //  when the node is running a domain node.
+        //  But is there a situation when challenge period is not enough?
+        //  If we do such a scenario, we would rather keep the consensus block and state pruning
+        //  to archive-canonical
         ensure_block_and_state_pruning_params(&mut subspace_configuration.base)
     }
 
