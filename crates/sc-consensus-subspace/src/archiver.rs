@@ -687,16 +687,19 @@ where
 
             let last_archived_block_encoded = encode_block(last_archived_block);
 
-            let archiver = Archiver::with_initial_state(
+            Archiver::with_initial_state(
                 subspace_link.kzg().clone(),
                 subspace_link.erasure_coding().clone(),
                 last_segment_header,
                 &last_archived_block_encoded,
                 block_object_mappings,
             )
-            .expect("Incorrect parameters for archiver");
-
-            archiver
+            .map_err(|error| {
+                sp_blockchain::Error::Application(
+                    format!("Incorrect parameters for archiver: {error:?} {last_segment_header:?}")
+                        .into(),
+                )
+            })?
         } else {
             info!("Starting archiving from genesis");
 
