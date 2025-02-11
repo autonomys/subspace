@@ -66,17 +66,17 @@ macro_rules! impl_runtime {
         #[derive(
             PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
         )]
-        pub enum MockHoldIdentifer {
+        pub enum MockHoldIdentifier {
             Messenger(HoldIdentifier)
         }
 
-        impl VariantCount for MockHoldIdentifer {
+        impl VariantCount for MockHoldIdentifier {
             const VARIANT_COUNT: u32 = mem::variant_count::<HoldIdentifier>() as u32;
         }
 
-        impl crate::HoldIdentifier<$runtime> for MockHoldIdentifer {
+        impl crate::HoldIdentifier<$runtime> for MockHoldIdentifier {
             fn messenger_channel() -> Self {
-                MockHoldIdentifer::Messenger(HoldIdentifier::MessengerChannel)
+                MockHoldIdentifier::Messenger(HoldIdentifier::MessengerChannel)
             }
         }
 
@@ -100,7 +100,7 @@ macro_rules! impl_runtime {
             type DomainOwner = ();
             type ChannelReserveFee = ChannelReserveFee;
             type ChannelInitReservePortion = ChannelInitReservePortion;
-            type HoldIdentifier = MockHoldIdentifer;
+            type HoldIdentifier = MockHoldIdentifier;
             type DomainRegistration = DomainRegistration;
             type ChannelFeeModel = ChannelFeeModel;
             type MaxOutgoingMessages = MaxOutgoingMessages;
@@ -138,7 +138,7 @@ macro_rules! impl_runtime {
             type Balance = Balance;
             type DustRemoval = ();
             type ExistentialDeposit = ExistentialDeposit;
-            type RuntimeHoldReason = MockHoldIdentifer;
+            type RuntimeHoldReason = MockHoldIdentifier;
         }
 
         parameter_types! {
