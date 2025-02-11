@@ -48,6 +48,14 @@ use sp_messenger::messages::{
 use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
 
+/// Maximum number of XDMs per domain/channel with future nonces that are allowed to be validated.
+/// Any XDM comes with a nonce above Maximum future nonce will be rejected.
+const MAX_FUTURE_ALLOWED_NONCES: u32 = 20;
+
+/// Transaction validity for a given validated XDM extrinsic.
+/// If the extrinsic is not included in the bundle, extrinsic is removed from the TxPool.
+const XDM_TRANSACTION_LONGEVITY: u64 = 5;
+
 pub(crate) mod verification_errors {
     // When updating these error codes, check for clashes between:
     // <https://github.com/autonomys/subspace/blob/main/domains/primitives/runtime/src/lib.rs#L85-L88>
@@ -56,6 +64,7 @@ pub(crate) mod verification_errors {
     pub(crate) const NONCE_OVERFLOW: u8 = 202;
     // This error code was previously 200, but that clashed with ERR_BALANCE_OVERFLOW.
     pub(crate) const INVALID_CHANNEL: u8 = 203;
+    pub(crate) const IN_FUTURE_NONCE: u8 = 204;
 }
 
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
@@ -118,7 +127,7 @@ mod pallet {
     use crate::{
         BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
         FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage,
-        STORAGE_VERSION, U256,
+        MAX_FUTURE_ALLOWED_NONCES, STORAGE_VERSION, U256, XDM_TRANSACTION_LONGEVITY,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -428,6 +437,15 @@ mod pallet {
                     let mut valid_tx_builder = ValidTransaction::with_tag_prefix("MessengerInbox");
                     // Only add the requires tag if the msg nonce is in future
                     if msg_nonce > next_nonce {
+                        let max_future_nonce =
+                            next_nonce.saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
+                        if msg_nonce > max_future_nonce {
+                            return Err(InvalidTransaction::Custom(
+                                crate::verification_errors::IN_FUTURE_NONCE,
+                            )
+                            .into());
+                        }
+
                         valid_tx_builder = valid_tx_builder.and_requires((
                             dst_chain_id,
                             channel_id,
@@ -438,7 +456,7 @@ mod pallet {
                         // XDM have a bit higher priority than normal extrinsic but must less than
                         // fraud proof
                         .priority(1)
-                        .longevity(TransactionLongevity::MAX)
+                        .longevity(XDM_TRANSACTION_LONGEVITY)
                         .and_provides((dst_chain_id, channel_id, msg_nonce))
                         .propagate(true)
                         .build()
@@ -461,6 +479,15 @@ mod pallet {
                         ValidTransaction::with_tag_prefix("MessengerOutboxResponse");
                     // Only add the requires tag if the msg nonce is in future
                     if msg_nonce > next_nonce {
+                        let max_future_nonce =
+                            next_nonce.saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
+                        if msg_nonce > max_future_nonce {
+                            return Err(InvalidTransaction::Custom(
+                                crate::verification_errors::IN_FUTURE_NONCE,
+                            )
+                            .into());
+                        }
+
                         valid_tx_builder = valid_tx_builder.and_requires((
                             dst_chain_id,
                             channel_id,
@@ -471,7 +498,7 @@ mod pallet {
                         // XDM have a bit higher priority than normal extrinsic but must less than
                         // fraud proof
                         .priority(1)
-                        .longevity(TransactionLongevity::MAX)
+                        .longevity(XDM_TRANSACTION_LONGEVITY)
                         .and_provides((dst_chain_id, channel_id, msg_nonce))
                         .propagate(true)
                         .build()
