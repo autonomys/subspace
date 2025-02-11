@@ -481,7 +481,7 @@ where
 pub fn can_allow_xdm_submission<Client, Block>(
     client: &Arc<Client>,
     xdm_id: XdmId,
-    submitted_block_id: BlockId<Block>,
+    maybe_submitted_block_id: Option<BlockId<Block>>,
     current_block_id: BlockId<Block>,
     maybe_channel_nonce: Option<ChannelNonce>,
 ) -> bool
@@ -517,20 +517,25 @@ where
         }
     }
 
-    match client.hash(submitted_block_id.number).ok().flatten() {
-        // there is no block at this number, allow xdm submission
-        None => return true,
-        Some(hash) => {
-            if hash != submitted_block_id.hash {
-                // client re-org'ed, allow xdm submission
-                return true;
+    match maybe_submitted_block_id {
+        None => true,
+        Some(submitted_block_id) => {
+            match client.hash(submitted_block_id.number).ok().flatten() {
+                // there is no block at this number, allow xdm submission
+                None => return true,
+                Some(hash) => {
+                    if hash != submitted_block_id.hash {
+                        // client re-org'ed, allow xdm submission
+                        return true;
+                    }
+                }
             }
+
+            let latest_block_number = current_block_id.number;
+            let block_limit: NumberFor<Block> = XDM_ACCEPT_BLOCK_LIMIT.saturated_into();
+            submitted_block_id.number < latest_block_number.saturating_sub(block_limit)
         }
     }
-
-    let latest_block_number = current_block_id.number;
-    let block_limit: NumberFor<Block> = XDM_ACCEPT_BLOCK_LIMIT.saturated_into();
-    submitted_block_id.number < latest_block_number.saturating_sub(block_limit)
 }
 
 async fn handle_xdm_message<TxPool, Client, CBlock>(
@@ -565,21 +570,22 @@ where
         let maybe_channel_nonce =
             runtime_api.channel_nonce(block_id.hash, src_chain_id, channel_id)?;
 
-        if let Some(submitted_block_id) =
-            get_xdm_processed_block_number::<_, BlockOf<TxPool>>(&**client, TX_POOL_PREFIX, xdm_id)?
-            && !can_allow_xdm_submission(
-                client,
-                xdm_id,
-                submitted_block_id.clone(),
-                block_id.clone(),
-                maybe_channel_nonce,
-            )
-        {
+        let maybe_submitted_xdm_block = get_xdm_processed_block_number::<_, BlockOf<TxPool>>(
+            &**client,
+            TX_POOL_PREFIX,
+            xdm_id,
+        )?;
+        if !can_allow_xdm_submission(
+            client,
+            xdm_id,
+            maybe_submitted_xdm_block,
+            block_id.clone(),
+            maybe_channel_nonce,
+        ) {
             tracing::debug!(
                 target: LOG_TARGET,
-                "Skipping XDM[{:?}] submission. At: {:?} and Now: {:?}",
+                "Skipping XDM[{:?}] submission. At: {:?}",
                 xdm_id,
-                submitted_block_id,
                 block_id
             );
             return Ok(true);
