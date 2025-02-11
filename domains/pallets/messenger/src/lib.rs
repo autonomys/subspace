@@ -50,11 +50,17 @@ use sp_runtime::DispatchError;
 
 /// Maximum number of XDMs per domain/channel with future nonces that are allowed to be validated.
 /// Any XDM comes with a nonce above Maximum future nonce will be rejected.
-const MAX_FUTURE_ALLOWED_NONCES: u32 = 20;
+// TODO: We need to benchmark how many XDMs can fit in to a
+//  - Single consensus block
+//  - Single domain block(includes all bundles filled with XDMs)
+//  Once we have that info, we can make a better judgement on how many XDMs
+//  we want to include per block while allowing other extrinsics to be included as well.
+//  Note: Currently XDM takes priority over other extrinsics unless they come with priority fee
+const MAX_FUTURE_ALLOWED_NONCES: u32 = 256;
 
 /// Transaction validity for a given validated XDM extrinsic.
 /// If the extrinsic is not included in the bundle, extrinsic is removed from the TxPool.
-const XDM_TRANSACTION_LONGEVITY: u64 = 5;
+const XDM_TRANSACTION_LONGEVITY: u64 = 10;
 
 pub(crate) mod verification_errors {
     // When updating these error codes, check for clashes between:
