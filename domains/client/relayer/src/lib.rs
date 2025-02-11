@@ -231,24 +231,26 @@ where
     .map_err(Error::UnableToSubmitCrossDomainMessage)
 }
 
-fn check_and_update_recent_xdm_submission<CClient, CBlock>(
-    consensus_client: &Arc<CClient>,
+fn check_and_update_recent_xdm_submission<Backend, Client, Block>(
+    backend: &Backend,
+    client: &Arc<Client>,
     xdm_id: XdmId,
     msg: &BlockMessageWithStorageKey,
 ) -> bool
 where
-    CBlock: BlockT,
-    CClient: AuxStore + HeaderBackend<CBlock>,
+    Backend: AuxStore,
+    Block: BlockT,
+    Client: HeaderBackend<Block>,
 {
-    let prefix = (RELAYER_PREFIX, msg.src_chain_id).encode();
-    let current_block_id: BlockId<CBlock> = consensus_client.info().into();
-    if let Ok(Some(submitted_block_id)) =
-        get_xdm_processed_block_number::<_, CBlock>(&**consensus_client, &prefix, xdm_id)
+    let prefix = (RELAYER_PREFIX, msg.dst_chain_id, msg.src_chain_id).encode();
+    let current_block_id: BlockId<Block> = client.info().into();
+    if let Ok(maybe_submitted_block_id) =
+        get_xdm_processed_block_number::<_, Block>(backend, &prefix, xdm_id)
     {
         if !can_allow_xdm_submission(
-            consensus_client,
+            client,
             xdm_id,
-            submitted_block_id,
+            maybe_submitted_block_id,
             current_block_id.clone(),
             None,
         ) {
@@ -262,9 +264,7 @@ where
         }
     }
 
-    if let Err(err) =
-        set_xdm_message_processed_at(&**consensus_client, &prefix, xdm_id, current_block_id)
-    {
+    if let Err(err) = set_xdm_message_processed_at(backend, &prefix, xdm_id, current_block_id) {
         log::error!(
             target: LOG_TARGET,
             "Failed to store submitted message from {:?} to {:?}: {:?}",
@@ -277,17 +277,18 @@ where
     true
 }
 
-fn should_relay_outbox_message<Client, Block, CClient, CBlock>(
-    consensus_client: &Arc<CClient>,
+fn should_relay_outbox_message<Backend, Client, Block, CBlock>(
+    backend: &Backend,
+    client: &Arc<Client>,
     api: &ApiRef<'_, Client::Api>,
     best_hash: Block::Hash,
     msg: &BlockMessageWithStorageKey,
 ) -> bool
 where
+    Backend: AuxStore,
     Block: BlockT,
     CBlock: BlockT,
-    Client: ProvideRuntimeApi<Block>,
-    CClient: AuxStore + HeaderBackend<CBlock>,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
     Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
 {
     let id = msg.id();
@@ -305,14 +306,10 @@ where
         }
     };
 
-    if let Some(dst_channel_state) = get_channel_state(
-        &**consensus_client,
-        msg.dst_chain_id,
-        msg.src_chain_id,
-        msg.channel_id,
-    )
-    .ok()
-    .flatten()
+    if let Some(dst_channel_state) =
+        get_channel_state(backend, msg.dst_chain_id, msg.src_chain_id, msg.channel_id)
+            .ok()
+            .flatten()
     {
         // if this message should relay,
         // check if the dst_chain inbox nonce is more than message nonce,
@@ -330,20 +327,21 @@ where
     }
 
     let xdm_id = XdmId::RelayMessage((msg.dst_chain_id, msg.channel_id, msg.nonce));
-    check_and_update_recent_xdm_submission(consensus_client, xdm_id, msg)
+    check_and_update_recent_xdm_submission(backend, client, xdm_id, msg)
 }
 
-fn should_relay_inbox_responses_message<Client, Block, CClient, CBlock>(
-    consensus_client: &Arc<CClient>,
+fn should_relay_inbox_responses_message<Backend, Client, Block, CBlock>(
+    backend: &Backend,
+    client: &Arc<Client>,
     api: &ApiRef<'_, Client::Api>,
     best_hash: Block::Hash,
     msg: &BlockMessageWithStorageKey,
 ) -> bool
 where
+    Backend: AuxStore,
     Block: BlockT,
     CBlock: BlockT,
-    Client: ProvideRuntimeApi<Block>,
-    CClient: AuxStore + HeaderBackend<CBlock>,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
     Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
 {
     let id = msg.id();
@@ -361,14 +359,10 @@ where
         }
     };
 
-    if let Some(dst_channel_state) = get_channel_state(
-        &**consensus_client,
-        msg.dst_chain_id,
-        msg.src_chain_id,
-        msg.channel_id,
-    )
-    .ok()
-    .flatten()
+    if let Some(dst_channel_state) =
+        get_channel_state(backend, msg.dst_chain_id, msg.src_chain_id, msg.channel_id)
+            .ok()
+            .flatten()
         && let Some(dst_chain_outbox_response_nonce) =
             dst_channel_state.latest_response_received_message_nonce
     {
@@ -386,7 +380,7 @@ where
     }
 
     let xdm_id = XdmId::RelayResponseMessage((msg.dst_chain_id, msg.channel_id, msg.nonce));
-    check_and_update_recent_xdm_submission(consensus_client, xdm_id, msg)
+    check_and_update_recent_xdm_submission(backend, client, xdm_id, msg)
 }
 
 // Fetch the XDM at the a given block and filter any already relayed XDM according to the best block
@@ -410,12 +404,19 @@ where
     let api = client.runtime_api();
     let best_hash = client.info().best_hash;
     msgs.outbox.retain(|msg| {
-        should_relay_outbox_message::<Client, _, _, CBlock>(consensus_client, &api, best_hash, msg)
+        should_relay_outbox_message::<_, _, _, CBlock>(
+            &**consensus_client,
+            client,
+            &api,
+            best_hash,
+            msg,
+        )
     });
 
     msgs.inbox_responses.retain(|msg| {
-        should_relay_inbox_responses_message::<Client, _, _, CBlock>(
-            consensus_client,
+        should_relay_inbox_responses_message::<_, _, _, CBlock>(
+            &**consensus_client,
+            client,
             &api,
             best_hash,
             msg,

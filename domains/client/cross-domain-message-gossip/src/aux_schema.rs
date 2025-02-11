@@ -16,10 +16,10 @@ const LOG_TARGET: &str = "gossip_aux_schema";
 
 fn channel_detail_key(
     src_chain_id: ChainId,
-    dst_chain_id: ChainId,
+    self_chain_id: ChainId,
     channel_id: ChannelId,
 ) -> Vec<u8> {
-    (CHANNEL_DETAIL, src_chain_id, dst_chain_id, channel_id).encode()
+    (CHANNEL_DETAIL, src_chain_id, self_chain_id, channel_id).encode()
 }
 
 fn load_decode<Backend: AuxStore, T: Decode>(
@@ -57,11 +57,11 @@ pub struct ChannelDetail {
     pub latest_response_received_message_nonce: Option<Nonce>,
 }
 
-/// Load the channel state of self_chain_id on chain_id.
+/// Load the channel state of self_chain_id on src_chain_id.
 pub fn get_channel_state<Backend>(
     backend: &Backend,
-    dst_chain_id: ChainId,
     src_chain_id: ChainId,
+    self_chain_id: ChainId,
     channel_id: ChannelId,
 ) -> ClientResult<Option<ChannelDetail>>
 where
@@ -69,15 +69,15 @@ where
 {
     load_decode(
         backend,
-        channel_detail_key(src_chain_id, dst_chain_id, channel_id).as_slice(),
+        channel_detail_key(src_chain_id, self_chain_id, channel_id).as_slice(),
     )
 }
 
-/// Set the channel state of self_chain_id on chain_id.
+/// Set the channel state of self_chain_id on src_chain_id.
 pub fn set_channel_state<Backend>(
     backend: &Backend,
-    dst_chain_id: ChainId,
     src_chain_id: ChainId,
+    self_chain_id: ChainId,
     channel_detail: ChannelDetail,
 ) -> ClientResult<()>
 where
@@ -85,7 +85,7 @@ where
 {
     backend.insert_aux(
         &[(
-            channel_detail_key(src_chain_id, dst_chain_id, channel_detail.channel_id).as_slice(),
+            channel_detail_key(src_chain_id, self_chain_id, channel_detail.channel_id).as_slice(),
             channel_detail.encode().as_slice(),
         )],
         vec![],
@@ -95,7 +95,7 @@ where
         relay_msg_nonce: Some(channel_detail.next_inbox_nonce),
         relay_response_msg_nonce: channel_detail.latest_response_received_message_nonce,
     };
-    let prefix = (RELAYER_PREFIX, src_chain_id).encode();
+    let prefix = (RELAYER_PREFIX, src_chain_id, self_chain_id).encode();
     cleanup_chain_channel_storages(
         backend,
         &prefix,
