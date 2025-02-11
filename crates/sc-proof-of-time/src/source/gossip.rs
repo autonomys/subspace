@@ -16,7 +16,7 @@ use schnellru::{ByLength, LruMap};
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::PotNextSlotInput;
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, HashingFor};
 use std::cmp;
 use std::collections::{HashMap, VecDeque};
 use std::future::poll_fn;
@@ -143,7 +143,7 @@ where
         GossipSync: GossipSyncing<Block> + 'static,
         SO: SyncOracle + Send + Sync + 'static,
     {
-        let topic = <Block::Header as HeaderT>::Hashing::hash(b"proofs");
+        let topic = HashingFor::<Block>::hash(b"proofs");
 
         let validator = Arc::new(PotGossipValidator::new(
             Arc::clone(&state),

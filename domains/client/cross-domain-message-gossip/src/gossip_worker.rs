@@ -12,7 +12,7 @@ use sp_api::StorageProof;
 use sp_consensus::SyncOracle;
 use sp_core::twox_256;
 use sp_messenger::messages::{ChainId, ChannelId};
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, HashingFor};
 use std::collections::{BTreeMap, HashSet};
 use std::future::poll_fn;
 use std::pin::pin;
@@ -159,7 +159,7 @@ pub fn xdm_gossip_peers_set_config() -> (NonDefaultSetConfig, Box<dyn Notificati
 
 /// Cross chain message topic.
 fn topic<Block: BlockT>() -> Block::Hash {
-    <Block::Header as HeaderT>::Hashing::hash(b"cross-chain-messages")
+    HashingFor::<Block>::hash(b"cross-chain-messages")
 }
 
 impl<Block: BlockT, Network, SO: SyncOracle> GossipWorker<Block, Network, SO> {

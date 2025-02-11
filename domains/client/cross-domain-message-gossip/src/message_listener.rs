@@ -23,7 +23,7 @@ use sp_domains::{DomainId, DomainsApi, RuntimeType};
 use sp_messenger::messages::{ChainId, Channel, ChannelId};
 use sp_messenger::{ChannelNonce, MessengerApi, RelayerApi, XdmId};
 use sp_runtime::codec::Decode;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header, NumberFor};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header, NumberFor};
 use sp_runtime::{SaturatedConversion, Saturating};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -40,7 +40,6 @@ const XDM_ACCEPT_BLOCK_LIMIT: u32 = 5;
 type BlockOf<T> = <T as TransactionPool>::Block;
 type HeaderOf<T> = <<T as TransactionPool>::Block as BlockT>::Header;
 type ExtrinsicOf<T> = <<T as TransactionPool>::Block as BlockT>::Extrinsic;
-type HashingFor<B> = <<B as BlockT>::Header as Header>::Hashing;
 
 #[derive(Debug, Error)]
 pub enum Error {

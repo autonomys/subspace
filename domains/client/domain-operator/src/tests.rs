@@ -1783,28 +1783,7 @@ async fn test_executor_inherent_timestamp_is_set() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, Alice, &mut ferdie)
-    .await;
+    let (_directory, mut ferdie, mut alice) = setup_evm_test_nodes(Ferdie).await;
 
     let fraud_proof_generator = FraudProofGenerator::new(
         alice.client.clone(),
@@ -1960,7 +1939,7 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
     // Produce all possible invalid fraud proof
     for bundle_index in 0..6 {
         for extrinsic_index in 0..4 {
-            for is_true_invalid in [true, false] {
+            for is_good_invalid_fraud_proof in [true, false] {
                 for invalid_type in 0..6 {
                     let invalid_bundle_type = match invalid_type {
                         0 => InvalidBundleType::UndecodableTx(extrinsic_index),
@@ -1975,12 +1954,12 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
                         5 if extrinsic_index == 0 => InvalidBundleType::InvalidBundleWeight,
                         _ => continue,
                     };
-                    let mismatch_type = if is_true_invalid {
-                        BundleMismatchType::TrueInvalid(invalid_bundle_type)
+                    let mismatch_type = if is_good_invalid_fraud_proof {
+                        BundleMismatchType::GoodInvalid(invalid_bundle_type)
                     } else {
-                        BundleMismatchType::FalseInvalid(invalid_bundle_type)
+                        BundleMismatchType::BadInvalid(invalid_bundle_type)
                     };
-                    let res = fraud_proof_generator.generate_invalid_bundle_proof(
+                    let res = fraud_proof_generator.generate_invalid_bundle_proof_for_test(
                         EVM_DOMAIN_ID,
                         &valid_receipt,
                         mismatch_type,
@@ -2028,28 +2007,7 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_fraud_proof_is_rejected() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, Alice, &mut ferdie)
-    .await;
+    let (_directory, mut ferdie, mut alice) = setup_evm_test_nodes(Ferdie).await;
 
     let fraud_proof_generator = FraudProofGenerator::new(
         alice.client.clone(),
@@ -2697,7 +2655,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
-                assert!(proof.is_true_invalid_fraud_proof);
+                assert!(proof.is_good_invalid_fraud_proof);
                 return true;
             }
         }
@@ -2814,7 +2772,7 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
-                assert!(!proof.is_true_invalid_fraud_proof);
+                assert!(!proof.is_good_invalid_fraud_proof);
                 return true;
             }
         }
@@ -2960,7 +2918,7 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type {
-                assert!(proof.is_true_invalid_fraud_proof);
+                assert!(proof.is_good_invalid_fraud_proof);
                 return true;
             }
         }
@@ -3077,7 +3035,7 @@ async fn test_false_invalid_bundles_undecodeable_tx_proof_creation_and_verificat
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type {
-                assert!(!proof.is_true_invalid_fraud_proof);
+                assert!(!proof.is_good_invalid_fraud_proof);
                 return true;
             }
         }
@@ -3234,7 +3192,7 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
-                assert!(proof.is_true_invalid_fraud_proof);
+                assert!(proof.is_good_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 0);
                 return true;
             }
@@ -3403,7 +3361,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
-                assert!(proof.is_true_invalid_fraud_proof);
+                assert!(proof.is_good_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 2);
                 return true;
             }
@@ -3540,7 +3498,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
-                assert!(!proof.is_true_invalid_fraud_proof);
+                assert!(!proof.is_good_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 1);
                 return true;
             }
@@ -3665,7 +3623,7 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type {
-                assert!(proof.is_true_invalid_fraud_proof);
+                assert!(proof.is_good_invalid_fraud_proof);
                 return true;
             }
         }
@@ -3780,7 +3738,7 @@ async fn test_false_invalid_bundle_weight_proof_creation_and_verification() {
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type {
-                assert!(!proof.is_true_invalid_fraud_proof);
+                assert!(!proof.is_good_invalid_fraud_proof);
                 return true;
             }
         }
@@ -5916,7 +5874,7 @@ async fn test_domain_transaction_fee_and_operator_reward() {
         .unwrap();
     let consensus_block_hash = ferdie.client.info().best_hash;
 
-    // Produce one more bundle, this bundle should contains the ER of the previous bundle
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
     assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
@@ -6036,8 +5994,8 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
             .unwrap();
     assert_ne!(domain_block_hash_fork_a, domain_block_hash_fork_b);
 
-    // The domain block header should contains digest that point to the consensus block, which
-    // devrive the domain block
+    // The domain block header should contain a digest that points to the consensus block, which
+    // devrives the domain block
     let get_header = |hash| alice.client.header(hash).unwrap().unwrap();
     let get_digest_consensus_block_hash = |header: &Header| -> <CBlock as BlockT>::Hash {
         header
@@ -6973,7 +6931,7 @@ async fn test_xdm_false_invalid_fraud_proof() {
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
-                assert!(!proof.is_true_invalid_fraud_proof);
+                assert!(!proof.is_good_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 0);
                 return true;
             }
@@ -7221,7 +7179,7 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
-                assert!(proof.is_true_invalid_fraud_proof);
+                assert!(proof.is_good_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 0);
                 return true;
             }

@@ -302,15 +302,19 @@ where
     )
 }
 
+/// Different kinds of bundle mismatches.
 #[derive(Encode, Decode, Debug, PartialEq)]
 pub(super) enum BundleMismatchType {
-    // The invalid bundle is mismatch
-    // For `TrueInvalid`, the fraud proof need to prove the bundle is indeed invalid due to `InvalidBundleType`
-    // For `FalseInvalid`, the fraud proof need to prove the bundle is not invalid due to `InvalidBundleType`
-    TrueInvalid(InvalidBundleType),
-    FalseInvalid(InvalidBundleType),
-    // The valid bundle is mismatch
-    Valid,
+    /// The fraud proof needs to prove the bundle is invalid with `InvalidBundleType`,
+    /// because the bundle is actually an invalid bundle, but it is either marked as valid,
+    /// or as a lower priority invalid type.
+    GoodInvalid(InvalidBundleType),
+    /// The fraud proof needs to prove the `InvalidBundleType` is incorrect,
+    /// because the bundle type is either valid, or a lower priority invalid type.
+    BadInvalid(InvalidBundleType),
+    /// The fraud proof needs to prove the valid bundle contents are incorrect,
+    /// because the bundles are both valid, but their contents are different.
+    ValidBundleContents,
 }
 
 #[cfg(test)]

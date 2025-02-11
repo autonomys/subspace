@@ -621,24 +621,26 @@ where
                 .checking_order()
                 .cmp(&external_invalid_type.checking_order())
             {
-                // The `external_invalid_type` claim a prior check is pass while the `local_invalid_type` think
-                // it is failed, so generate a fraud proof to prove that check is truely invalid
-                Ordering::Less => BundleMismatchType::TrueInvalid(local_invalid_type),
-                // The `external_invalid_type` claim a prior check is failed while the `local_invalid_type` think
-                // it is pass, so generate a fraud proof to prove that check is falsely invalid
-                Ordering::Greater => BundleMismatchType::FalseInvalid(external_invalid_type),
+                // The `external_invalid_type` claims a prior check passed, while the `local_invalid_type` thinks
+                // it failed, so generate a fraud proof to prove that prior check is truly invalid
+                Ordering::Less => BundleMismatchType::GoodInvalid(local_invalid_type),
+                // The `external_invalid_type` claims a prior check failed, while the `local_invalid_type` thinks
+                // it passed, so generate a fraud proof to prove that prior check was actually valid
+                Ordering::Greater => BundleMismatchType::BadInvalid(external_invalid_type),
                 Ordering::Equal => unreachable!(
                     "bundle validity must be different as the local/external bundle are checked to be different \
                     and they have the same `extrinsic_root`"
                 ),
             }
         }
-        (BundleValidity::Valid(_), BundleValidity::Valid(_)) => BundleMismatchType::Valid,
+        (BundleValidity::Valid(_), BundleValidity::Valid(_)) => {
+            BundleMismatchType::ValidBundleContents
+        }
         (BundleValidity::Valid(_), BundleValidity::Invalid(invalid_type)) => {
-            BundleMismatchType::FalseInvalid(invalid_type)
+            BundleMismatchType::BadInvalid(invalid_type)
         }
         (BundleValidity::Invalid(invalid_type), BundleValidity::Valid(_)) => {
-            BundleMismatchType::TrueInvalid(invalid_type)
+            BundleMismatchType::GoodInvalid(invalid_type)
         }
     };
 
@@ -841,7 +843,7 @@ where
         }) = find_inboxed_bundles_mismatch::<Block, CBlock>(&local_receipt, &bad_receipt)?
         {
             return match mismatch_type {
-                BundleMismatchType::Valid => self
+                BundleMismatchType::ValidBundleContents => self
                     .fraud_proof_generator
                     .generate_valid_bundle_proof(
                         self.domain_id,
@@ -862,7 +864,6 @@ where
                         mismatch_type,
                         bundle_index,
                         bad_receipt_hash,
-                        false,
                     )
                     .map_err(|err| {
                         sp_blockchain::Error::Application(Box::from(format!(
@@ -1031,7 +1032,7 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::Valid,
+                mismatch_type: BundleMismatchType::ValidBundleContents,
                 bundle_index: 1,
             })
         );
@@ -1050,7 +1051,7 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::UndecodableTx(1)),
+                mismatch_type: BundleMismatchType::GoodInvalid(InvalidBundleType::UndecodableTx(1)),
                 bundle_index: 1,
             })
         );
@@ -1067,9 +1068,7 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::UndecodableTx(
-                    3
-                )),
+                mismatch_type: BundleMismatchType::BadInvalid(InvalidBundleType::UndecodableTx(3)),
                 bundle_index: 1,
             })
         );
@@ -1087,7 +1086,7 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::IllegalTx(3)),
+                mismatch_type: BundleMismatchType::BadInvalid(InvalidBundleType::IllegalTx(3)),
                 bundle_index: 1,
             })
         );
@@ -1109,7 +1108,7 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::FalseInvalid(
+                mismatch_type: BundleMismatchType::BadInvalid(
                     InvalidBundleType::InherentExtrinsic(3)
                 ),
                 bundle_index: 1,
@@ -1132,7 +1131,7 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::TrueInvalid(
+                mismatch_type: BundleMismatchType::GoodInvalid(
                     InvalidBundleType::InherentExtrinsic(3)
                 ),
                 bundle_index: 1,
@@ -1156,7 +1155,7 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::Valid,
+                mismatch_type: BundleMismatchType::ValidBundleContents,
                 bundle_index: 0,
             })
         );
@@ -1175,7 +1174,7 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::IllegalTx(3)),
+                mismatch_type: BundleMismatchType::BadInvalid(InvalidBundleType::IllegalTx(3)),
                 bundle_index: 0,
             })
         );
@@ -1194,7 +1193,7 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::IllegalTx(3)),
+                mismatch_type: BundleMismatchType::GoodInvalid(InvalidBundleType::IllegalTx(3)),
                 bundle_index: 0,
             })
         );
