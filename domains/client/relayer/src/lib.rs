@@ -15,12 +15,12 @@ use parity_scale_codec::{Codec, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiRef, ProvideRuntimeApi};
-use sp_core::H256;
+use sp_core::{H256, U256};
 use sp_domains::DomainsApi;
 use sp_messenger::messages::{
     BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, Proof,
 };
-use sp_messenger::{MessengerApi, RelayerApi, XdmId};
+use sp_messenger::{MessengerApi, RelayerApi, XdmId, MAX_FUTURE_ALLOWED_NONCES};
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One};
 use sp_runtime::ArithmeticError;
@@ -314,13 +314,20 @@ where
         // if this message should relay,
         // check if the dst_chain inbox nonce is more than message nonce,
         // if so, skip relaying since message is already executed on dst_chain
-        let relay_message = msg.nonce >= dst_channel_state.next_inbox_nonce;
+        let max_messages_nonce_allowed = dst_channel_state
+            .next_inbox_nonce
+            .saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
+        let relay_message = msg.nonce >= dst_channel_state.next_inbox_nonce
+            && msg.nonce <= max_messages_nonce_allowed;
         if !relay_message {
             log::debug!(
                 target: LOG_TARGET,
-                "Skipping message relay from {:?} to {:?}",
+                "Skipping Outbox message relay from {:?} to {:?} of XDM[{:?}, {:?}]. Max Nonce allowed: {:?}",
                 msg.src_chain_id,
                 msg.dst_chain_id,
+                msg.channel_id,
+                msg.nonce,
+                max_messages_nonce_allowed
             );
             return false;
         }
@@ -363,17 +370,30 @@ where
         get_channel_state(backend, msg.dst_chain_id, msg.src_chain_id, msg.channel_id)
             .ok()
             .flatten()
-        && let Some(dst_chain_outbox_response_nonce) =
-            dst_channel_state.latest_response_received_message_nonce
     {
+        let next_nonce = if let Some(dst_chain_outbox_response_nonce) =
+            dst_channel_state.latest_response_received_message_nonce
+        {
+            // next nonce for outbox response will be +1 of current nonce for which
+            // dst_chain has received response.
+            dst_chain_outbox_response_nonce.saturating_add(U256::one())
+        } else {
+            // if dst_chain has not received the first outbox response,
+            // then next nonce will be just 0
+            U256::zero()
+        };
         // relay inbox response if the dst_chain did not execute is already
-        let relay_message = msg.nonce > dst_chain_outbox_response_nonce;
+        let max_msg_nonce_allowed = next_nonce.saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
+        let relay_message = msg.nonce >= next_nonce && msg.nonce <= max_msg_nonce_allowed;
         if !relay_message {
             log::debug!(
                 target: LOG_TARGET,
-                "Skipping message relay from {:?} to {:?}",
+                "Skipping Inbox response message relay from {:?} to {:?} of XDM[{:?}, {:?}]. Max nonce allowed: {:?}",
                 msg.src_chain_id,
                 msg.dst_chain_id,
+                msg.channel_id,
+                msg.nonce,
+                max_msg_nonce_allowed
             );
             return false;
         }

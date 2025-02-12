@@ -42,6 +42,16 @@ use std::collections::BTreeSet;
 /// Messenger inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"messengr";
 
+/// Maximum number of XDMs per domain/channel with future nonces that are allowed to be validated.
+/// Any XDM comes with a nonce above Maximum future nonce will be rejected.
+// TODO: We need to benchmark how many XDMs can fit in to a
+//  - Single consensus block
+//  - Single domain block(includes all bundles filled with XDMs)
+//  Once we have that info, we can make a better judgement on how many XDMs
+//  we want to include per block while allowing other extrinsics to be included as well.
+//  Note: Currently XDM takes priority over other extrinsics unless they come with priority fee
+pub const MAX_FUTURE_ALLOWED_NONCES: u32 = 256;
+
 /// Trait to handle XDM rewards.
 pub trait OnXDMRewards<Balance> {
     fn on_xdm_rewards(rewards: Balance);
