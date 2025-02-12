@@ -894,7 +894,7 @@ fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
     }
 }
 
-/// Returns a valid Sudo call.
+/// Returns `true` if this is a valid Sudo call.
 /// Should extend this function to limit specific calls Sudo can make when needed.
 fn is_valid_sudo_call(encoded_ext: Vec<u8>) -> bool {
     UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()).is_ok()

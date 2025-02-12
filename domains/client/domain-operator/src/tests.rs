@@ -5995,7 +5995,7 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     assert_ne!(domain_block_hash_fork_a, domain_block_hash_fork_b);
 
     // The domain block header should contain a digest that points to the consensus block, which
-    // devrives the domain block
+    // derives the domain block
     let get_header = |hash| alice.client.header(hash).unwrap().unwrap();
     let get_digest_consensus_block_hash = |header: &Header| -> <CBlock as BlockT>::Hash {
         header
