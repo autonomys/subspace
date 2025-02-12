@@ -1389,6 +1389,19 @@ mod pallet {
             UpdatedChannels::<T>::get()
         }
 
+        pub fn open_channels() -> BTreeSet<(ChainId, ChannelId)> {
+            Channels::<T>::iter().fold(
+                BTreeSet::new(),
+                |mut acc, (dst_chain_id, channel_id, channel)| {
+                    if channel.state != ChannelState::Closed {
+                        acc.insert((dst_chain_id, channel_id));
+                    }
+
+                    acc
+                },
+            )
+        }
+
         pub fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce> {
             Channels::<T>::get(chain_id, channel_id).map(|channel| {
                 let last_inbox_nonce = channel.next_inbox_nonce.checked_sub(U256::one());

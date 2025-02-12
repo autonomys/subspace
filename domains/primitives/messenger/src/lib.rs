@@ -198,6 +198,7 @@ pub struct ChannelNonce {
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
+    #[api_version(2)]
     pub trait RelayerApi<BlockNumber, CNumber, CHash>
     where
         BlockNumber: Encode + Decode,
@@ -229,6 +230,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns storage key for channels for given chain and channel id.
         fn channel_storage_key(chain_id: ChainId, channel_id: ChannelId) -> Vec<u8>;
+
+        /// Returns all the open channels to other chains.
+        fn open_channels() -> BTreeSet<(ChainId, ChannelId)>;
     }
 
     /// Api to provide XDM extraction from Runtime Calls.

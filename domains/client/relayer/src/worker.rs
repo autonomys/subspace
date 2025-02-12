@@ -2,13 +2,13 @@ use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, L
 use cross_domain_message_gossip::{ChannelUpdate, Message as GossipMessage, MessageData};
 use futures::StreamExt;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_consensus::SyncOracle;
 use sp_domains::{DomainId, DomainsApi};
 use sp_messenger::messages::ChainId;
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_mmr_primitives::MmrApi;
-use sp_runtime::traits::{CheckedSub, NumberFor, One};
+use sp_runtime::traits::{CheckedSub, NumberFor, One, Zero};
 use sp_runtime::SaturatedConversion;
 use std::sync::Arc;
 
@@ -103,9 +103,27 @@ where
 {
     let api = client.runtime_api();
 
-    let updated_channels = api.updated_channels(block_hash)?;
+    let channels_status_to_broadcast = {
+        let updated_channels = api.updated_channels(block_hash)?;
 
-    for (dst_chain_id, channel_id) in updated_channels {
+        // TODO: remove version check before next network
+        let relayer_api_version = api
+            .api_version::<dyn RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>>(block_hash)?
+            // It is safe to return a default version of 1, since there will always be version 1.
+            .unwrap_or(1);
+
+        // if there are no channel updates, broadcast channel's status for every 300 blocks
+        if updated_channels.is_empty()
+            && relayer_api_version >= 2
+            && block_number % 300u32.into() == Zero::zero()
+        {
+            api.open_channels(block_hash)?
+        } else {
+            updated_channels
+        }
+    };
+
+    for (dst_chain_id, channel_id) in channels_status_to_broadcast {
         let storage_key = api.channel_storage_key(block_hash, dst_chain_id, channel_id)?;
         let proof = client
             .read_proof(block_hash, &mut [storage_key.as_ref()].into_iter())

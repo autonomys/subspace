@@ -396,6 +396,10 @@ sp_api::impl_runtime_apis! {
         fn channel_storage_key(_chain_id: ChainId, _channel_id: ChannelId) -> Vec<u8> {
             unreachable!()
         }
+
+        fn open_channels() -> BTreeSet<(ChainId, ChannelId)> {
+            unreachable!()
+        }
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
