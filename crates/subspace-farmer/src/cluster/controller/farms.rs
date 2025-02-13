@@ -520,15 +520,21 @@ async fn initialize_farm(
         .map_err(|error| anyhow!("Failed to get plotted sectors for farm {farm_id}: {error}"))?;
 
     {
-        let mut plotted_pieces = plotted_pieces.write().await;
-        plotted_pieces.add_farm(farm_index, farm.piece_reader());
+        plotted_pieces
+            .write()
+            .await
+            .add_farm(farm_index, farm.piece_reader());
 
         while let Some(plotted_sector_result) = plotted_sectors.next().await {
             let plotted_sector = plotted_sector_result.map_err(|error| {
                 anyhow!("Failed to get plotted sector for farm {farm_id}: {error}")
             })?;
 
-            plotted_pieces.add_sector(farm_index, &plotted_sector);
+            let mut plotted_pieces_guard = plotted_pieces.write().await;
+            plotted_pieces_guard.add_sector(farm_index, &plotted_sector);
+
+            // Drop the guard immediately to make sure other tasks are able to access the plotted pieces
+            drop(plotted_pieces_guard);
 
             task::yield_now().await;
         }
