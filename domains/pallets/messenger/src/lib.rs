@@ -48,16 +48,6 @@ use sp_messenger::messages::{
 use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
 
-/// Maximum number of XDMs per domain/channel with future nonces that are allowed to be validated.
-/// Any XDM comes with a nonce above Maximum future nonce will be rejected.
-// TODO: We need to benchmark how many XDMs can fit in to a
-//  - Single consensus block
-//  - Single domain block(includes all bundles filled with XDMs)
-//  Once we have that info, we can make a better judgement on how many XDMs
-//  we want to include per block while allowing other extrinsics to be included as well.
-//  Note: Currently XDM takes priority over other extrinsics unless they come with priority fee
-const MAX_FUTURE_ALLOWED_NONCES: u32 = 256;
-
 /// Transaction validity for a given validated XDM extrinsic.
 /// If the extrinsic is not included in the bundle, extrinsic is removed from the TxPool.
 const XDM_TRANSACTION_LONGEVITY: u64 = 10;
@@ -133,7 +123,7 @@ mod pallet {
     use crate::{
         BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
         FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage,
-        MAX_FUTURE_ALLOWED_NONCES, STORAGE_VERSION, U256, XDM_TRANSACTION_LONGEVITY,
+        STORAGE_VERSION, U256, XDM_TRANSACTION_LONGEVITY,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -158,7 +148,7 @@ mod pallet {
     };
     use sp_messenger::{
         ChannelNonce, DomainRegistration, InherentError, InherentType, OnXDMRewards, StorageKeys,
-        INHERENT_IDENTIFIER,
+        INHERENT_IDENTIFIER, MAX_FUTURE_ALLOWED_NONCES,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{ArithmeticError, Perbill, Saturating};
@@ -1397,6 +1387,19 @@ mod pallet {
 
         pub fn updated_channels() -> BTreeSet<(ChainId, ChannelId)> {
             UpdatedChannels::<T>::get()
+        }
+
+        pub fn open_channels() -> BTreeSet<(ChainId, ChannelId)> {
+            Channels::<T>::iter().fold(
+                BTreeSet::new(),
+                |mut acc, (dst_chain_id, channel_id, channel)| {
+                    if channel.state != ChannelState::Closed {
+                        acc.insert((dst_chain_id, channel_id));
+                    }
+
+                    acc
+                },
+            )
         }
 
         pub fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce> {

@@ -1547,6 +1547,10 @@ impl_runtime_apis! {
         fn channel_storage_key(chain_id: ChainId, channel_id: ChannelId) -> Vec<u8> {
             Messenger::channel_storage_key(chain_id, channel_id)
         }
+
+        fn open_channels() -> BTreeSet<(ChainId, ChannelId)> {
+            Messenger::open_channels()
+        }
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {

@@ -42,6 +42,16 @@ use std::collections::BTreeSet;
 /// Messenger inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"messengr";
 
+/// Maximum number of XDMs per domain/channel with future nonces that are allowed to be validated.
+/// Any XDM comes with a nonce above Maximum future nonce will be rejected.
+// TODO: We need to benchmark how many XDMs can fit in to a
+//  - Single consensus block
+//  - Single domain block(includes all bundles filled with XDMs)
+//  Once we have that info, we can make a better judgement on how many XDMs
+//  we want to include per block while allowing other extrinsics to be included as well.
+//  Note: Currently XDM takes priority over other extrinsics unless they come with priority fee
+pub const MAX_FUTURE_ALLOWED_NONCES: u32 = 256;
+
 /// Trait to handle XDM rewards.
 pub trait OnXDMRewards<Balance> {
     fn on_xdm_rewards(rewards: Balance);
@@ -188,6 +198,7 @@ pub struct ChannelNonce {
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
+    #[api_version(2)]
     pub trait RelayerApi<BlockNumber, CNumber, CHash>
     where
         BlockNumber: Encode + Decode,
@@ -219,6 +230,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns storage key for channels for given chain and channel id.
         fn channel_storage_key(chain_id: ChainId, channel_id: ChannelId) -> Vec<u8>;
+
+        /// Returns all the open channels to other chains.
+        fn open_channels() -> BTreeSet<(ChainId, ChannelId)>;
     }
 
     /// Api to provide XDM extraction from Runtime Calls.
