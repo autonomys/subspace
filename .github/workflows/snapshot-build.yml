@@ -145,11 +145,11 @@ jobs:
           - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "macos-14-arm64"]' || '"macos-14"') }}
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
-          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "windows-server-2022-x86-64"]' || '"windows-2022"') }}
+          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '"runs-on=${{ github.run_id }}/runner=self-hosted-windows-server-2022-x86-64"' || '"windows-2022"') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-skylake-${{ github.ref_name }}
             rustflags: "-C target-cpu=skylake"
-          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "windows-server-2022-x86-64"]' || '"windows-2022"') }}
+          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '"runs-on=${{ github.run_id }}/runner=self-hosted-windows-server-2022-x86-64"' || '"windows-2022"') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-v2-${{ github.ref_name }}
             rustflags: "-C target-cpu=x86-64-v2"
