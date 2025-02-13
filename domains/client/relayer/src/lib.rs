@@ -311,9 +311,9 @@ where
             .ok()
             .flatten()
     {
-        // if this message should relay,
-        // check if the dst_chain inbox nonce is more than message nonce,
-        // if so, skip relaying since message is already executed on dst_chain
+        // if the dst_chain inbox nonce is more than message nonce, skip relaying since message is
+        // already executed on dst_chain.
+        // if the message nonce is more than the max allowed nonce on dst_chain, skip relaying message.
         let max_messages_nonce_allowed = dst_channel_state
             .next_inbox_nonce
             .saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
