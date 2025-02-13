@@ -6,33 +6,3 @@ runners:
     family: ["c7a", "c7i", "m7a", "m7i"]
     spot: capacity-optimized
     image: ubuntu22-full-x64
-
-  self-hosted-windows-server-2022-x86-64:
-    cpu: [16, 32, 64]
-    ram: [32, 64, 128]
-    disk: default
-    family: ["c7a", "c7i", "m7a", "m7i"]
-    spot: capacity-optimized
-    image: windowscustomimage
-
-# TODO: Replace with the official Windows runner image once all required packages are available.
-# Reference: https://github.com/runs-on/runner-images-for-aws/blob/main/releases/windows22/x64/images/windows/Windows2022-Readme.md
-#
-# Currently, this image is a minimal Windows base installation and lacks many essential packages listed in the official runner image readme.
-# The goal is to transition to an AWS-compatible image that maintains **1:1 compatibility** with the official GitHub-hosted Windows image.
-#
-# **Temporary Workaround:**
-# - We are using a **custom-built image** with the required dependencies pre-installed.
-# - This custom image (AMI) is derived from our **dedicated runners** image.
-# - More details: https://runs-on.com/configuration/custom-images/
-#
-# **Next Steps:**
-# - Replace the custom image with the official Windows runner image once it becomes available.
-# - Track progress here: https://github.com/runs-on/runs-on/issues/231
-
-images:
-  windowscustomimage:
-    platform: "windows"
-    arch: "x64"
-    owner: "227107093234"
-    ami: "ami-0108ce4fb0e0704da"
