@@ -15,13 +15,12 @@ use crate::farm::{Farm, FarmId, SectorPlottingDetails, SectorUpdate};
 use anyhow::anyhow;
 use async_lock::RwLock as AsyncRwLock;
 use futures::channel::oneshot;
-use futures::future::FusedFuture;
 use futures::stream::{FusedStream, FuturesUnordered};
 use futures::{select, FutureExt, Stream, StreamExt};
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
-use std::future::{ready, Future};
+use std::future::Future;
 use std::mem;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
@@ -34,20 +33,17 @@ use tokio::time::MissedTickBehavior;
 use tokio_stream::StreamMap;
 use tracing::{error, info, trace, warn};
 
-type AddRemoveFuture<'a> =
-    Pin<Box<dyn Future<Output = Option<(FarmIndex, oneshot::Receiver<()>, ClusterFarm)>> + 'a>>;
-
 /// Number of farms in a cluster is currently limited to 2^16
 pub type FarmIndex = u16;
 
 type AddRemoveResult = Option<(FarmIndex, oneshot::Receiver<()>, ClusterFarm)>;
-type AddRemoveResultFuture<'a, R> = Pin<Box<dyn Future<Output = R> + 'a>>;
+type AddRemoveFuture<'a, R> = Pin<Box<dyn Future<Output = R> + 'a>>;
 type AddRemoveStream<'a, R> = Pin<Box<dyn Stream<Item = R> + Unpin + 'a>>;
 
 /// A FarmsAddRemovetreamMap that keeps track of futures that are currently being processed for each `FarmIndex`.
 struct FarmsAddRemoveStreamMap<'a, R> {
     in_progress: StreamMap<FarmIndex, AddRemoveStream<'a, R>>,
-    farms_to_add_remove: HashMap<FarmIndex, VecDeque<AddRemoveResultFuture<'a, R>>>,
+    farms_to_add_remove: HashMap<FarmIndex, VecDeque<AddRemoveFuture<'a, R>>>,
     is_terminated: bool,
 }
 
@@ -65,7 +61,7 @@ impl<'a, R: 'a> FarmsAddRemoveStreamMap<'a, R> {
     /// When pushing a new task, it first checks if there is already a future for the given `FarmIndex` in `in_progress`.
     ///   - If there is, the task is added to `farms_to_add_remove`.
     ///   - If not, the task is directly added to `in_progress`.
-    fn push(&mut self, farm_index: FarmIndex, fut: AddRemoveResultFuture<'a, R>) {
+    fn push(&mut self, farm_index: FarmIndex, fut: AddRemoveFuture<'a, R>) {
         // Reset termination flag since there are new task to execute
         self.is_terminated = false;
 
@@ -247,13 +243,8 @@ pub async fn maintain_farms(
     identification_broadcast_interval: Duration,
 ) -> anyhow::Result<()> {
     let mut known_farms = KnownFarms::new(identification_broadcast_interval);
-
-    // Futures that need to be processed sequentially in order to add/remove farms, if farm was
-    // added, future will resolve with `Some`, `None` if removed
-    let mut farms_to_add_remove = VecDeque::<AddRemoveFuture<'_>>::new();
-    // Farm that is being added/removed right now (if any)
-    let mut farm_add_remove_in_progress = (Box::pin(ready(None)) as AddRemoveFuture<'_>).fuse();
-    // Initialize with pending future so it never ends
+    // Stream map for adding/removing farms
+    let mut farms_to_add_remove = FarmsAddRemoveStreamMap::default();
     let mut farms = FuturesUnordered::new();
 
     let farmer_identify_subscription = pin!(nats_client
@@ -279,16 +270,10 @@ pub async fn maintain_farms(
     farm_pruning_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     loop {
-        if farm_add_remove_in_progress.is_terminated() {
-            if let Some(fut) = farms_to_add_remove.pop_front() {
-                farm_add_remove_in_progress = fut.fuse();
-            }
-        }
-
         select! {
             (farm_index, result) = farms.select_next_some() => {
                 known_farms.remove(farm_index);
-                farms_to_add_remove.push_back(Box::pin(async move {
+                farms_to_add_remove.push(farm_index, Box::pin(async move {
                     let plotted_pieces = Arc::clone(plotted_pieces);
 
                     let delete_farm_fut = task::spawn_blocking(move || {
@@ -345,7 +330,7 @@ pub async fn maintain_farms(
                         );
                     }
 
-                    farms_to_add_remove.push_back(Box::pin(async move {
+                    farms_to_add_remove.push(farm_index, Box::pin(async move {
                         let plotted_pieces = Arc::clone(plotted_pieces);
 
                         let delete_farm_fut = task::spawn_blocking(move || {
@@ -364,7 +349,7 @@ pub async fn maintain_farms(
                     }));
                 }
             }
-            result = farm_add_remove_in_progress => {
+            result = farms_to_add_remove.select_next_some() => {
                 if let Some((farm_index, expired_receiver, farm)) = result {
                     farms.push(async move {
                         select! {
@@ -387,7 +372,7 @@ fn process_farm_identify_message<'a>(
     identify_message: ClusterFarmerIdentifyFarmBroadcast,
     nats_client: &'a NatsClient,
     known_farms: &mut KnownFarms,
-    farms_to_add_remove: &mut VecDeque<AddRemoveFuture<'a>>,
+    farms_to_add_remove: &mut FarmsAddRemoveStreamMap<'a, AddRemoveResult>,
     plotted_pieces: &'a Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
 ) {
     let ClusterFarmerIdentifyFarmBroadcast {
@@ -432,62 +417,68 @@ fn process_farm_identify_message<'a>(
         };
 
     if remove {
-        farms_to_add_remove.push_back(Box::pin(async move {
-            let plotted_pieces = Arc::clone(plotted_pieces);
+        farms_to_add_remove.push(
+            farm_index,
+            Box::pin(async move {
+                let plotted_pieces = Arc::clone(plotted_pieces);
 
-            let delete_farm_fut = task::spawn_blocking(move || {
-                plotted_pieces.write_blocking().delete_farm(farm_index);
-            });
-            if let Err(error) = delete_farm_fut.await {
-                error!(
-                    %farm_index,
-                    %farm_id,
-                    %error,
-                    "Failed to delete farm that was replaced"
-                );
-            }
+                let delete_farm_fut = task::spawn_blocking(move || {
+                    plotted_pieces.write_blocking().delete_farm(farm_index);
+                });
+                if let Err(error) = delete_farm_fut.await {
+                    error!(
+                        %farm_index,
+                        %farm_id,
+                        %error,
+                        "Failed to delete farm that was replaced"
+                    );
+                }
 
-            None
-        }));
+                None
+            }),
+        );
     }
 
     if add {
-        farms_to_add_remove.push_back(Box::pin(async move {
-            match initialize_farm(
-                farm_index,
-                farm_id,
-                total_sectors_count,
-                Arc::clone(plotted_pieces),
-                nats_client,
-            )
-            .await
-            {
-                Ok(farm) => {
-                    if remove {
-                        info!(
-                            %farm_index,
-                            %farm_id,
-                            "Farm re-initialized successfully"
-                        );
-                    } else {
-                        info!(
-                            %farm_index,
-                            %farm_id,
-                            "Farm initialized successfully"
-                        );
-                    }
+        farms_to_add_remove.push(
+            farm_index,
+            Box::pin(async move {
+                match initialize_farm(
+                    farm_index,
+                    farm_id,
+                    total_sectors_count,
+                    Arc::clone(plotted_pieces),
+                    nats_client,
+                )
+                .await
+                {
+                    Ok(farm) => {
+                        if remove {
+                            info!(
+                                %farm_index,
+                                %farm_id,
+                                "Farm re-initialized successfully"
+                            );
+                        } else {
+                            info!(
+                                %farm_index,
+                                %farm_id,
+                                "Farm initialized successfully"
+                            );
+                        }
 
-                    Some((farm_index, expired_receiver, farm))
+                        Some((farm_index, expired_receiver, farm))
+                    }
+                    Err(error) => {
+                        warn!(
+                            %error,
+                            "Failed to initialize farm {farm_id}"
+                        );
+                        None
+                    }
                 }
-                Err(error) => {
-                    warn!(
-                        %error,
-                        "Failed to initialize farm {farm_id}"
-                    );
-                    None
-                }
-            }
-        }));
+            }),
+        );
     }
 }
 
