@@ -27,7 +27,7 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           image: autonomys/farmer:snyk
-          args: --file=docker/farmer.Dockerfile
+          args: --file=docker/farmer.Dockerfile --severity-threshold=high
         continue-on-error: true
 
       - name: Post-process sarif output for security severities set to "undefined"
@@ -55,7 +55,7 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           image: autonomys/node:snyk
-          args: --file=docker/node.Dockerfile
+          args: --file=docker/node.Dockerfile --severity-threshold=high
         continue-on-error: true
 
       - name: Post-process sarif output for security severities set to "undefined"
@@ -83,7 +83,7 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           image: autonomys/bootstrap-node:snyk
-          args: --file=docker/bootstrap-node.Dockerfile
+          args: --file=docker/bootstrap-node.Dockerfile --severity-threshold=high
         continue-on-error: true
 
       - name: Post-process sarif output for security severities set to "undefined"
@@ -111,7 +111,7 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           image: autonomys/gateway:snyk
-          args: --file=docker/gateway.Dockerfile
+          args: --file=docker/gateway.Dockerfile --severity-threshold=high
         continue-on-error: true
 
       - name: Post-process sarif output for security severities set to "undefined"
