@@ -44,7 +44,6 @@ type AddRemoveStream<'a, R> = Pin<Box<dyn Stream<Item = R> + Unpin + 'a>>;
 struct FarmsAddRemoveStreamMap<'a, R> {
     in_progress: StreamMap<FarmIndex, AddRemoveStream<'a, R>>,
     farms_to_add_remove: HashMap<FarmIndex, VecDeque<AddRemoveFuture<'a, R>>>,
-    is_terminated: bool,
 }
 
 impl<R> Default for FarmsAddRemoveStreamMap<'_, R> {
@@ -52,7 +51,6 @@ impl<R> Default for FarmsAddRemoveStreamMap<'_, R> {
         Self {
             in_progress: StreamMap::default(),
             farms_to_add_remove: HashMap::default(),
-            is_terminated: true,
         }
     }
 }
@@ -62,9 +60,6 @@ impl<'a, R: 'a> FarmsAddRemoveStreamMap<'a, R> {
     ///   - If there is, the task is added to `farms_to_add_remove`.
     ///   - If not, the task is directly added to `in_progress`.
     fn push(&mut self, farm_index: FarmIndex, fut: AddRemoveFuture<'a, R>) {
-        // Reset termination flag since there are new task to execute
-        self.is_terminated = false;
-
         if self.in_progress.contains_key(&farm_index) {
             let queue = self.farms_to_add_remove.entry(farm_index).or_default();
             queue.push_back(fut);
@@ -78,45 +73,30 @@ impl<'a, R: 'a> FarmsAddRemoveStreamMap<'a, R> {
     /// If there are no more tasks to execute, returns `None`.
     fn poll_next_entry(&mut self, cx: &mut Context<'_>) -> Poll<Option<R>> {
         if let Some((farm_index, res)) = std::task::ready!(self.in_progress.poll_next_unpin(cx)) {
-            // Current task completed, remove from in_progress queue, check if there are more tasks to execute
+            // Current task completed, remove from in_progress queue and check for more tasks
             self.in_progress.remove(&farm_index);
-            if self.farms_to_add_remove.is_empty() && self.in_progress.is_empty() {
-                // No more tasks to execute
-                self.is_terminated = true;
-                return Poll::Ready(Some(res));
-            }
+            self.process_farm_queue(farm_index);
+            Poll::Ready(Some(res))
+        } else {
+            // No more tasks to execute
+            assert!(self.farms_to_add_remove.is_empty());
+            Poll::Ready(None)
+        }
+    }
 
-            let Some(mut next_entry) = self.farms_to_add_remove.remove(&farm_index) else {
-                // Current index no more tasks to execute
-                return Poll::Ready(Some(res));
-            };
-            if let Some(fut) = next_entry.pop_front() {
+    /// Process the next task from the farm queue for the given `farm_index`
+    fn process_farm_queue(&mut self, farm_index: FarmIndex) {
+        if let Entry::Occupied(mut next_entry) = self.farms_to_add_remove.entry(farm_index) {
+            let task_queue = next_entry.get_mut();
+            if let Some(fut) = task_queue.pop_front() {
                 self.in_progress
                     .insert(farm_index, Box::pin(fut.into_stream()) as _);
             }
 
-            // Re-insert back into farms_to_add_remove if there are more tasks to execute
-            if !next_entry.is_empty() {
-                self.farms_to_add_remove.insert(farm_index, next_entry);
+            // Remove the farm index from the map if there are no more tasks
+            if task_queue.is_empty() {
+                next_entry.remove();
             }
-
-            Poll::Ready(Some(res))
-        } else {
-            // All tasks completed
-            if self.farms_to_add_remove.is_empty() {
-                // No more tasks to execute
-                self.is_terminated = true;
-                return Poll::Ready(None);
-            }
-
-            // Push tasks into in_progress queue
-            for (farm_index, futs) in self.farms_to_add_remove.iter_mut() {
-                if let Some(fut) = futs.pop_front() {
-                    self.in_progress
-                        .insert(*farm_index, Box::pin(fut.into_stream()) as _);
-                }
-            }
-            Poll::Pending
         }
     }
 }
@@ -132,7 +112,7 @@ impl<'a, R: 'a> Stream for FarmsAddRemoveStreamMap<'a, R> {
 
 impl<'a, R: 'a> FusedStream for FarmsAddRemoveStreamMap<'a, R> {
     fn is_terminated(&self) -> bool {
-        self.is_terminated
+        self.in_progress.is_empty() && self.farms_to_add_remove.is_empty()
     }
 }
 
