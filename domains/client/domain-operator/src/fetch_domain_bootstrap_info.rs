@@ -35,10 +35,25 @@ where
 
     // Check if the domain instance data already exist in the consensus chain's state
     let best_hash = consensus_client.info().best_hash;
-    if let Some((domain_instance_data, domain_created_at)) = consensus_client
+    if let Some((_, domain_created_at)) = consensus_client
         .runtime_api()
         .domain_instance_data(best_hash, self_domain_id)?
     {
+        let domain_created_at_hash = consensus_client.hash(domain_created_at)?.ok_or(
+            sp_blockchain::Error::MissingHeader(format!("Block hash at:{:?}", domain_created_at)),
+        )?;
+
+        let (domain_instance_data, _) = consensus_client
+            .runtime_api()
+            .domain_instance_data(domain_created_at_hash, self_domain_id)?
+            .ok_or(sp_blockchain::Error::Application(
+                format!(
+                    "Missing Domain[{:?}] instance data of {:?}",
+                    self_domain_id, domain_created_at_hash
+                )
+                .into(),
+            ))?;
+
         return Ok(BootstrapResult {
             domain_instance_data,
             domain_created_at,
