@@ -2,6 +2,7 @@
 
 use sc_chain_spec::{ChainType, GenericChainSpec};
 use sp_core::{sr25519, Pair, Public};
+use sp_domains::{EvmType, PermissionedActionAllowedBy};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
@@ -26,7 +27,18 @@ pub fn get_account_id_from_seed(seed: &str) -> AccountId {
 }
 
 /// Local testnet config (multivalidator Alice + Bob).
-pub fn subspace_local_testnet_config() -> Result<GenericChainSpec, String> {
+///
+/// If `private_evm` is `true`, contract creation will have an allow list, which is set to `Anyone` by default.
+/// Otherwise, any account can create contracts, and the allow list can't be changed.
+pub fn subspace_local_testnet_config(private_evm: bool) -> Result<GenericChainSpec, String> {
+    let evm_type = if private_evm {
+        EvmType::Private {
+            initial_contract_creation_allow_list: PermissionedActionAllowedBy::Anyone,
+        }
+    } else {
+        EvmType::Public
+    };
+
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?,
         None,
@@ -54,6 +66,7 @@ pub fn subspace_local_testnet_config() -> Result<GenericChainSpec, String> {
                 (get_account_id_from_seed("Eve//stash"), 1_000 * SSC),
                 (get_account_id_from_seed("Ferdie//stash"), 1_000 * SSC),
             ],
+            evm_type,
         )?)
         .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
     )
@@ -65,6 +78,7 @@ pub fn subspace_local_testnet_config() -> Result<GenericChainSpec, String> {
 fn create_genesis_config(
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,
+    evm_type: EvmType,
 ) -> Result<RuntimeGenesisConfig, String> {
     Ok(RuntimeGenesisConfig {
         system: SystemConfig::default(),
@@ -88,10 +102,10 @@ fn create_genesis_config(
         domains: DomainsConfig {
             permissioned_action_allowed_by: Some(sp_domains::PermissionedActionAllowedBy::Anyone),
             genesis_domains: vec![
-                crate::evm_domain_chain_spec::get_genesis_domain(sudo_account.clone())
-                    .expect("Must success"),
+                crate::evm_domain_chain_spec::get_genesis_domain(sudo_account.clone(), evm_type)
+                    .expect("hard-coded values are valid; qed"),
                 crate::auto_id_domain_chain_spec::get_genesis_domain(sudo_account.clone())
-                    .expect("Must success"),
+                    .expect("hard-coded values are valid; qed"),
             ],
         },
         runtime_configs: Default::default(),

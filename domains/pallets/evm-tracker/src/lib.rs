@@ -80,27 +80,19 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// Replace ContractCreationAllowedBy setting in storage, as a domain sudo call.
-        #[pallet::call_index(0)]
-        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(0, 1))]
-        pub fn set_contract_creation_allowed_by(
-            origin: OriginFor<T>,
-            contract_creation_allowed_by: PermissionedActionAllowedBy<EthereumAccountId>,
-        ) -> DispatchResult {
-            ensure_root(origin)?;
-            ContractCreationAllowedBy::<T>::put(contract_creation_allowed_by);
-            Ok(())
-        }
-
         /// An inherent call to set ContractCreationAllowedBy.
-        #[pallet::call_index(1)]
-        #[pallet::weight((T::DbWeight::get().reads_writes(1, 1), DispatchClass::Mandatory))]
+        #[pallet::call_index(0)]
+        #[pallet::weight((T::DbWeight::get().reads_writes(0, 1), DispatchClass::Mandatory))]
         pub fn inherent_set_contract_creation_allowed_by(
             origin: OriginFor<T>,
             contract_creation_allowed_by: PermissionedActionAllowedBy<EthereumAccountId>,
         ) -> DispatchResult {
             ensure_none(origin)?;
+
+            // is_private_evm_domain() was already checked by pallet-domains.
+
             ContractCreationAllowedBy::<T>::put(contract_creation_allowed_by);
+
             Ok(())
         }
     }

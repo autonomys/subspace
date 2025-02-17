@@ -356,7 +356,7 @@ where
         )
     }
 
-    /// This is stateful runtime api call and require setting of storage keys.
+    /// This is a stateful runtime api call and requires setting storage keys.
     pub fn check_extrinsics_and_do_pre_dispatch(
         &self,
         uxts: Vec<Block::Extrinsic>,

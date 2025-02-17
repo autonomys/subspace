@@ -889,20 +889,52 @@ impl<AccountId: Codec + PartialEq + Clone> PermissionedActionAllowedBy<AccountId
     }
 }
 
-/// EVM-specific domain runtime config.
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EvmDomainRuntimeConfig {
-    /// Accounts initially allowed to create contracts on an EVM domain.
-    /// The domain owner can update this list using a sudo call.
-    pub initial_contract_creation_allow_list: PermissionedActionAllowedBy<EthereumAccountId>,
+/// EVM-specific domain type (and associated data).
+#[derive(
+    TypeInfo, Debug, Default, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize,
+)]
+pub enum EvmType {
+    #[default]
+    /// An EVM domain where any account can create contracts.
+    Public,
+    /// An EVM domain with a contract creation allow list.
+    Private {
+        /// Accounts initially allowed to create contracts on a private EVM domain.
+        /// The domain owner can update this list using a pallet-domains call (or there's a sudo call).
+        initial_contract_creation_allow_list: PermissionedActionAllowedBy<EthereumAccountId>,
+    },
 }
 
-impl Default for EvmDomainRuntimeConfig {
-    fn default() -> Self {
-        EvmDomainRuntimeConfig {
-            initial_contract_creation_allow_list: PermissionedActionAllowedBy::Anyone,
+impl EvmType {
+    /// Returns the initial contract creation allow list, or `None` if this is a public EVM domain.
+    pub fn initial_contract_creation_allow_list(
+        &self,
+    ) -> Option<&PermissionedActionAllowedBy<EthereumAccountId>> {
+        match self {
+            EvmType::Public => None,
+            EvmType::Private {
+                initial_contract_creation_allow_list,
+            } => Some(initial_contract_creation_allow_list),
         }
     }
+
+    /// Returns true if the EVM domain is public.
+    pub fn is_public_evm_domain(&self) -> bool {
+        matches!(self, EvmType::Public)
+    }
+
+    /// Returns true if the EVM domain is private.
+    pub fn is_private_evm_domain(&self) -> bool {
+        matches!(self, EvmType::Private { .. })
+    }
+}
+
+/// EVM-specific domain runtime config.
+#[derive(
+    TypeInfo, Debug, Default, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize,
+)]
+pub struct EvmDomainRuntimeConfig {
+    pub evm_type: EvmType,
 }
 
 /// AutoId-specific domain runtime config.
@@ -947,7 +979,7 @@ impl DomainRuntimeConfig {
         DomainRuntimeConfig::AutoId(AutoIdDomainRuntimeConfig::default())
     }
 
-    pub fn is_evm(&self) -> bool {
+    pub fn is_evm_domain(&self) -> bool {
         matches!(self, DomainRuntimeConfig::Evm(_))
     }
 
@@ -966,7 +998,7 @@ impl DomainRuntimeConfig {
         &self,
     ) -> Option<&PermissionedActionAllowedBy<EthereumAccountId>> {
         self.evm()
-            .map(|evm_config| &evm_config.initial_contract_creation_allow_list)
+            .and_then(|evm_config| evm_config.evm_type.initial_contract_creation_allow_list())
     }
 
     pub fn auto_id(&self) -> Option<&AutoIdDomainRuntimeConfig> {

@@ -897,10 +897,10 @@ mod pallet {
         InvalidDomainSudoCall,
         /// Domain must be frozen before execution receipt can be pruned.
         DomainNotFrozen,
-        /// Domain is not an EVM domain.
-        NotEvmDomain,
-        /// Account is not a Domain owner.
-        NotDomainOwner,
+        /// Domain is not a private EVM domain.
+        NotPrivateEvmDomain,
+        /// Account is not a Domain owner or root.
+        NotDomainOwnerOrRoot,
         /// EVM Domain "set contract creation allowed by" call already exists.
         EvmDomainContractCreationAllowedByCallExists,
     }
@@ -1778,7 +1778,7 @@ mod pallet {
             Ok(Some(actual_weight.min(Self::max_submit_receipt_weight())).into())
         }
 
-        /// Submit an EVM domain "set contract creation allowed by" call.
+        /// Submit an EVM domain "set contract creation allowed by" call as domain owner or root.
         #[pallet::call_index(22)]
         #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(3, 1))]
         pub fn send_evm_domain_set_contract_creation_allowed_by_call(
@@ -1788,16 +1788,18 @@ mod pallet {
                 EthereumAccountId,
             >,
         ) -> DispatchResult {
-            let signer = ensure_signed(origin)?;
+            let signer = ensure_signed_or_root(origin)?;
 
             ensure!(
-                Pallet::<T>::is_evm_domain(domain_id),
-                Error::<T>::NotEvmDomain,
+                Pallet::<T>::is_private_evm_domain(domain_id),
+                Error::<T>::NotPrivateEvmDomain,
             );
-            ensure!(
-                Pallet::<T>::is_domain_owner(domain_id, signer),
-                Error::<T>::NotDomainOwner,
-            );
+            if let Some(non_root_signer) = signer {
+                ensure!(
+                    Pallet::<T>::is_domain_owner(domain_id, non_root_signer),
+                    Error::<T>::NotDomainOwnerOrRoot,
+                );
+            }
             ensure!(
                 EvmDomainContractCreationAllowedByCalls::<T>::get(domain_id)
                     .maybe_call
@@ -3133,9 +3135,18 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Returns true if this is an EVM domain.
-    fn is_evm_domain(domain_id: DomainId) -> bool {
+    pub fn is_evm_domain(domain_id: DomainId) -> bool {
         if let Some(domain_obj) = DomainRegistry::<T>::get(domain_id) {
-            domain_obj.domain_runtime_info.is_evm()
+            domain_obj.domain_runtime_info.is_evm_domain()
+        } else {
+            false
+        }
+    }
+
+    /// Returns true if this is a private EVM domain.
+    pub fn is_private_evm_domain(domain_id: DomainId) -> bool {
+        if let Some(domain_obj) = DomainRegistry::<T>::get(domain_id) {
+            domain_obj.domain_runtime_info.is_private_evm_domain()
         } else {
             false
         }

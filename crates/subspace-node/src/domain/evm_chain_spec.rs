@@ -13,7 +13,9 @@ use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
 use sp_core::crypto::UncheckedFrom;
 use sp_domains::storage::RawGenesis;
-use sp_domains::{EvmDomainRuntimeConfig, OperatorAllowList, OperatorPublicKey, RuntimeType};
+use sp_domains::{
+    EvmDomainRuntimeConfig, EvmType, OperatorAllowList, OperatorPublicKey, RuntimeType,
+};
 use sp_runtime::traits::Convert;
 use sp_runtime::BuildStorage;
 use std::collections::BTreeSet;
@@ -182,6 +184,7 @@ fn get_operator_params(
 pub fn get_genesis_domain(
     spec_id: SpecId,
     sudo_account: subspace_runtime_primitives::AccountId,
+    evm_type: EvmType,
 ) -> Result<GenesisDomain, String> {
     let chain_spec = match spec_id {
         SpecId::Dev => development_config(get_testnet_genesis_by_spec_id(spec_id))?,
@@ -207,11 +210,6 @@ pub fn get_genesis_domain(
         initial_balances: get_testnet_endowed_accounts_by_spec_id(spec_id),
         operator_allow_list,
         operator_signing_key,
-        domain_runtime_config: EvmDomainRuntimeConfig {
-            // TODO: for the private EVM instance, set this to the accounts that are initially
-            // allowed to create contracts (for example, the domain owner)
-            initial_contract_creation_allow_list: sp_domains::PermissionedActionAllowedBy::Anyone,
-        }
-        .into(),
+        domain_runtime_config: EvmDomainRuntimeConfig { evm_type }.into(),
     })
 }

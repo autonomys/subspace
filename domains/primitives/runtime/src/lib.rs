@@ -243,7 +243,7 @@ pub struct CheckExtrinsicsValidityError {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct DecodeExtrinsicError(pub String);
 
-/// fullu qualified method name of check_extrinsics_and_do_pre_dispatch runtime api.
+/// Fully qualified method name of check_extrinsics_and_do_pre_dispatch runtime api.
 /// Used to call state machine.
 /// Change it when the runtime api's name is changed in the interface.
 pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =
