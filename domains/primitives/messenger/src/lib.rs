@@ -236,7 +236,7 @@ sp_api::decl_runtime_apis! {
     }
 
     /// Api to provide XDM extraction from Runtime Calls.
-    #[api_version(2)]
+    #[api_version(3)]
     pub trait MessengerApi<CNumber, CHash>
     where
         CNumber: Encode + Decode,
@@ -268,5 +268,8 @@ sp_api::decl_runtime_apis! {
 
         /// Get Channel nonce for given chain and channel id.
         fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce>;
+
+        /// Get allowed list of chains on a given chain.
+        fn chain_allowlist(chain_id: ChainId) -> BTreeSet<ChainId>;
     }
 }

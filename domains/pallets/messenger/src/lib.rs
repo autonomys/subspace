@@ -1447,8 +1447,11 @@ mod pallet {
             }
         }
 
-        pub fn domain_chain_allowlist(domain_id: DomainId) -> BTreeSet<ChainId> {
-            DomainChainAllowlist::<T>::get(domain_id)
+        pub fn get_chain_allowlist(chain_id: ChainId) -> BTreeSet<ChainId> {
+            match chain_id {
+                ChainId::Consensus => ChainAllowlist::<T>::get(),
+                ChainId::Domain(domain_id) => DomainChainAllowlist::<T>::get(domain_id),
+            }
         }
     }
 }

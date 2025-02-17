@@ -911,7 +911,7 @@ impl_runtime_apis! {
         }
 
         fn domain_chains_allowlist_update(_domain_id: DomainId) -> Option<DomainAllowlistUpdates>{
-            // not valid call on domains
+            // not a valid call on domains
             None
         }
 
@@ -929,6 +929,11 @@ impl_runtime_apis! {
 
         fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce> {
             Messenger::channel_nonce(chain_id, channel_id)
+        }
+
+        fn chain_allowlist(_chain_id: ChainId) -> BTreeSet<ChainId> {
+            // not a valid call on domains
+            BTreeSet::new()
         }
     }
 

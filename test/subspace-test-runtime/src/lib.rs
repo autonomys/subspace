@@ -1517,6 +1517,10 @@ impl_runtime_apis! {
         fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce> {
             Messenger::channel_nonce(chain_id, channel_id)
         }
+
+        fn chain_allowlist(chain_id: ChainId) -> BTreeSet<ChainId> {
+            Messenger::get_chain_allowlist(chain_id)
+        }
     }
 
     impl sp_messenger::RelayerApi<Block, BlockNumber, BlockNumber, <Block as BlockT>::Hash> for Runtime {

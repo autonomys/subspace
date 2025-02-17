@@ -366,6 +366,10 @@ sp_api::impl_runtime_apis! {
         fn channel_nonce(_chain_id: ChainId, _channel_id: ChannelId) -> Option<ChannelNonce> {
             unreachable!()
         }
+
+        fn chain_allowlist(_chain_id: ChainId) -> BTreeSet<ChainId> {
+            unreachable!()
+        }
     }
 
     impl sp_messenger::RelayerApi<Block, BlockNumber, BlockNumber, <Block as BlockT>::Hash> for Runtime {
