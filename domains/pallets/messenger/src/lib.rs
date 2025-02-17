@@ -302,6 +302,11 @@ mod pallet {
     pub(super) type UpdatedChannels<T: Config> =
         StorageValue<_, BTreeSet<(ChainId, ChannelId)>, ValueQuery>;
 
+    /// Storage on consensus that keeps track of list of allowed chains on a given domain.
+    #[pallet::storage]
+    pub(super) type DomainChainAllowlist<T: Config> =
+        StorageMap<_, Identity, DomainId, BTreeSet<ChainId>, ValueQuery>;
+
     /// `pallet-messenger` events
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
@@ -1441,6 +1446,10 @@ mod pallet {
                 call => Self::pre_dispatch(call),
             }
         }
+
+        pub fn domain_chain_allowlist(domain_id: DomainId) -> BTreeSet<ChainId> {
+            DomainChainAllowlist::<T>::get(domain_id)
+        }
     }
 }
 
@@ -1480,6 +1489,22 @@ impl<T: Config> sp_domains::DomainBundleSubmitted for Pallet<T> {
         // to generate a proof-of-empty-value for the domain.
         DomainChainAllowlistUpdate::<T>::mutate(domain_id, |maybe_updates| {
             if let Some(ref mut updates) = maybe_updates {
+                // update domain chain allowlist once the bundle is produced.
+                // this is to protect against scenario where in the same block
+                // dst_chain allows src_chain
+                // channel init from src_chain
+                // dst_chain removes src_chain from allowlist
+                // this will make XDM being rejected on dst_chain since dst_chain update will never
+                // individually see adding and removing the chains in the same block
+                let mut domain_allowlist = DomainChainAllowlist::<T>::get(domain_id);
+                updates.remove_chains.iter().for_each(|chain_id| {
+                    domain_allowlist.remove(chain_id);
+                });
+
+                updates.allow_chains.iter().for_each(|chain_id| {
+                    domain_allowlist.insert(*chain_id);
+                });
+
                 updates.clear();
             }
         });
