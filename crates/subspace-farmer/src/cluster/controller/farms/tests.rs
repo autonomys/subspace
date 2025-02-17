@@ -22,7 +22,7 @@ fn test_stream_map_push() {
     let mut stream_map = FarmsAddRemoveStreamMap::default();
 
     let farm_index = 1;
-    let fut = Box::pin(async { () });
+    let fut = Box::pin(async {});
     stream_map.push(farm_index, fut);
     assert!(stream_map.farms_to_add_remove.is_empty());
     assert!(stream_map.in_progress.contains_key(&farm_index));
@@ -33,7 +33,7 @@ fn test_stream_map_push() {
 fn test_stream_map_poll_next_entry() {
     let mut stream_map = FarmsAddRemoveStreamMap::default();
 
-    let fut = Box::pin(async { () });
+    let fut = Box::pin(async {});
     stream_map.push(0, fut);
 
     let mut cx = Context::from_waker(futures::task::noop_waker_ref());
@@ -129,7 +129,7 @@ async fn test_stream_map_stream() {
     assert_eq!(stream_map.in_progress.len(), 2);
     assert!(stream_map.in_progress.contains_key(&1));
     assert!(stream_map.in_progress.contains_key(&2));
-    assert!(stream_map.farms_to_add_remove.get(&1).is_none());
+    assert!(!stream_map.farms_to_add_remove.contains_key(&1));
 
     // Poll the next item in the stream, fut13 should be polled next.
     // For now, all futures in farm index 1 have been polled, so farm index 1 should be removed
@@ -140,7 +140,7 @@ async fn test_stream_map_stream() {
     assert_eq!(stream_map.in_progress.len(), 1);
     assert!(!stream_map.in_progress.contains_key(&1));
     assert!(stream_map.in_progress.contains_key(&2));
-    assert!(stream_map.farms_to_add_remove.get(&1).is_none());
+    assert!(!stream_map.farms_to_add_remove.contains_key(&1));
     assert_eq!(stream_map.farms_to_add_remove[&2].len(), 1);
 
     // We hope futures with the same index are polled in the order they are pushed,
@@ -154,8 +154,8 @@ async fn test_stream_map_stream() {
     assert_eq!(stream_map.in_progress.len(), 1);
     assert!(!stream_map.in_progress.contains_key(&1));
     assert!(stream_map.in_progress.contains_key(&2));
-    assert!(stream_map.farms_to_add_remove.get(&1).is_none());
-    assert!(stream_map.farms_to_add_remove.get(&2).is_none());
+    assert!(!stream_map.farms_to_add_remove.contains_key(&1));
+    assert!(!stream_map.farms_to_add_remove.contains_key(&2));
 
     // Poll the next item in the stream, fut22 should be polled next.
     // For now, all futures in farm index 2 have been polled, so farm index 2 should be removed
