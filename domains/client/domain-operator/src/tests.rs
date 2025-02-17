@@ -229,7 +229,10 @@ pub fn generate_evm_account_list(
 async fn setup_evm_test_nodes(
     ferdie_key: Sr25519Keyring,
     private_evm: bool,
+    evm_owner: impl Into<Option<Sr25519Keyring>>,
 ) -> (TempDir, MockConsensusNode, EvmDomainNode) {
+    let evm_owner = evm_owner.into();
+
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -245,6 +248,7 @@ async fn setup_evm_test_nodes(
         BasePath::new(directory.path().join("ferdie")),
         None,
         private_evm,
+        evm_owner,
     );
 
     // Run Alice (an evm domain)
@@ -261,8 +265,10 @@ async fn setup_evm_test_nodes(
 async fn setup_evm_test_accounts(
     ferdie_key: Sr25519Keyring,
     private_evm: bool,
+    evm_owner: impl Into<Option<Sr25519Keyring>>,
 ) -> (TempDir, MockConsensusNode, EvmDomainNode, Vec<AccountInfo>) {
-    let (directory, mut ferdie, mut alice) = setup_evm_test_nodes(ferdie_key, private_evm).await;
+    let (directory, mut ferdie, mut alice) =
+        setup_evm_test_nodes(ferdie_key, private_evm, evm_owner).await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -294,7 +300,7 @@ async fn setup_evm_test_accounts(
 #[tokio::test(flavor = "multi_thread")]
 async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
     let (_directory, mut ferdie, mut alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice, true).await;
+        setup_evm_test_accounts(Sr25519Alice, true, None).await;
 
     let gas_price = alice
         .client
@@ -411,7 +417,7 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_public_evm_domain_create_contracts() {
     let (_directory, mut ferdie, mut alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice, false).await;
+        setup_evm_test_accounts(Sr25519Alice, false, None).await;
 
     let gas_price = alice
         .client
@@ -528,7 +534,7 @@ async fn test_public_evm_domain_create_contracts() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
     let (_directory, mut ferdie, mut alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice, true).await;
+        setup_evm_test_accounts(Sr25519Alice, true, Ferdie).await;
 
     let gas_price = alice
         .client
@@ -750,7 +756,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_evm_domain_create_contracts_with_allow_list_single() {
     let (_directory, mut ferdie, mut alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice, true).await;
+        setup_evm_test_accounts(Sr25519Alice, true, Ferdie).await;
 
     let gas_price = alice
         .client
@@ -1702,7 +1708,8 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
 // TODO: when the test is fixed, decide if we want to remove the timeouts.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
-    let (directory, mut ferdie, alice) = setup_evm_test_nodes(Ferdie, false).timeout().await?;
+    let (directory, mut ferdie, alice) =
+        setup_evm_test_nodes(Ferdie, false, None).timeout().await?;
 
     // Run Bob (a evm domain full node)
     let mut bob = domain_test_service::DomainNodeBuilder::new(
@@ -1874,7 +1881,7 @@ async fn test_executor_inherent_timestamp_is_set() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
-    let (_directory, mut ferdie, mut alice) = setup_evm_test_nodes(Ferdie, false).await;
+    let (_directory, mut ferdie, mut alice) = setup_evm_test_nodes(Ferdie, false, None).await;
 
     let fraud_proof_generator = FraudProofGenerator::new(
         alice.client.clone(),
@@ -2098,7 +2105,8 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_fraud_proof_is_rejected() {
-    let (_directory, mut ferdie, mut alice) = setup_evm_test_nodes(Ferdie, true).await;
+    let (_directory, mut ferdie, mut alice) =
+        setup_evm_test_nodes(Ferdie, true, Sr25519Alice).await;
 
     let fraud_proof_generator = FraudProofGenerator::new(
         alice.client.clone(),
@@ -5117,7 +5125,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_domain_sudo_calls() {
     let (_directory, mut ferdie, mut alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice, true).await;
+        setup_evm_test_accounts(Sr25519Alice, true, Ferdie).await;
 
     // Run the cross domain gossip message worker
     ferdie.start_cross_domain_gossip_message_worker();
@@ -5305,7 +5313,7 @@ async fn test_domain_sudo_calls() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_domain_owner_calls() {
     let (_directory, mut ferdie, alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice, true).await;
+        setup_evm_test_accounts(Ferdie, true, Ferdie).await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -5399,7 +5407,7 @@ async fn test_domain_owner_calls() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_public_evm_rejects_allow_list_domain_sudo_calls() {
     let (_directory, mut ferdie, alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice, false).await;
+        setup_evm_test_accounts(Sr25519Alice, false, Sr25519Alice).await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -5490,7 +5498,7 @@ async fn test_public_evm_rejects_allow_list_domain_sudo_calls() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_public_evm_rejects_allow_list_domain_owner_calls() {
     let (_directory, mut ferdie, alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice, false).await;
+        setup_evm_test_accounts(Ferdie, false, Ferdie).await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -6879,6 +6887,7 @@ async fn test_verify_mmr_proof_stateless() {
         // finalization depth
         Some(10),
         false,
+        None,
     );
 
     // Run Alice (an evm domain)
@@ -6956,6 +6965,7 @@ async fn test_equivocated_bundle_check() {
         // finalization depth
         Some(10),
         false,
+        None,
     );
 
     // Run Alice (an evm domain)

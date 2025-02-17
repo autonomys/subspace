@@ -30,7 +30,12 @@ pub fn get_account_id_from_seed(seed: &str) -> AccountId {
 ///
 /// If `private_evm` is `true`, contract creation will have an allow list, which is set to `Anyone` by default.
 /// Otherwise, any account can create contracts, and the allow list can't be changed.
-pub fn subspace_local_testnet_config(private_evm: bool) -> Result<GenericChainSpec, String> {
+///
+/// If the EVM owner account isn't specified, `sudo_account` will be used.
+pub fn subspace_local_testnet_config(
+    private_evm: bool,
+    evm_owner_account: Option<AccountId>,
+) -> Result<GenericChainSpec, String> {
     let evm_type = if private_evm {
         EvmType::Private {
             initial_contract_creation_allow_list: PermissionedActionAllowedBy::Anyone,
@@ -38,6 +43,35 @@ pub fn subspace_local_testnet_config(private_evm: bool) -> Result<GenericChainSp
     } else {
         EvmType::Public
     };
+
+    let sudo_account = get_account_id_from_seed("Alice");
+    let evm_owner_account = evm_owner_account.unwrap_or_else(|| sudo_account.clone());
+
+    // Pre-funded accounts
+    // Alice and the EVM owner get more funds that are used during domain instantiation
+    let mut balances = vec![
+        (get_account_id_from_seed("Alice"), 1_000_000_000 * SSC),
+        (get_account_id_from_seed("Bob"), 1_000 * SSC),
+        (get_account_id_from_seed("Charlie"), 1_000 * SSC),
+        (get_account_id_from_seed("Dave"), 1_000 * SSC),
+        (get_account_id_from_seed("Eve"), 1_000 * SSC),
+        (get_account_id_from_seed("Ferdie"), 1_000 * SSC),
+        (get_account_id_from_seed("Alice//stash"), 1_000 * SSC),
+        (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
+        (get_account_id_from_seed("Charlie//stash"), 1_000 * SSC),
+        (get_account_id_from_seed("Dave//stash"), 1_000 * SSC),
+        (get_account_id_from_seed("Eve//stash"), 1_000 * SSC),
+        (get_account_id_from_seed("Ferdie//stash"), 1_000 * SSC),
+    ];
+
+    if let Some((_existing_account, balance)) = balances
+        .iter_mut()
+        .find(|(account_id, _balance)| account_id == &evm_owner_account)
+    {
+        *balance = 1_000_000_000 * SSC;
+    } else {
+        balances.push((evm_owner_account.clone(), 1_000_000_000 * SSC));
+    }
 
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?,
@@ -49,24 +83,10 @@ pub fn subspace_local_testnet_config(private_evm: bool) -> Result<GenericChainSp
     .with_genesis_config(
         serde_json::to_value(create_genesis_config(
             // Sudo account
-            get_account_id_from_seed("Alice"),
-            // Pre-funded accounts
-            // Alice also get more funds that are used during the domain instantiation
-            vec![
-                (get_account_id_from_seed("Alice"), 1_000_000_000 * SSC),
-                (get_account_id_from_seed("Bob"), 1_000 * SSC),
-                (get_account_id_from_seed("Charlie"), 1_000 * SSC),
-                (get_account_id_from_seed("Dave"), 1_000 * SSC),
-                (get_account_id_from_seed("Eve"), 1_000 * SSC),
-                (get_account_id_from_seed("Ferdie"), 1_000 * SSC),
-                (get_account_id_from_seed("Alice//stash"), 1_000 * SSC),
-                (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
-                (get_account_id_from_seed("Charlie//stash"), 1_000 * SSC),
-                (get_account_id_from_seed("Dave//stash"), 1_000 * SSC),
-                (get_account_id_from_seed("Eve//stash"), 1_000 * SSC),
-                (get_account_id_from_seed("Ferdie//stash"), 1_000 * SSC),
-            ],
+            sudo_account,
+            balances,
             evm_type,
+            evm_owner_account,
         )?)
         .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
     )
@@ -79,6 +99,7 @@ fn create_genesis_config(
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,
     evm_type: EvmType,
+    evm_owner_account: AccountId,
 ) -> Result<RuntimeGenesisConfig, String> {
     Ok(RuntimeGenesisConfig {
         system: SystemConfig::default(),
@@ -102,9 +123,9 @@ fn create_genesis_config(
         domains: DomainsConfig {
             permissioned_action_allowed_by: Some(sp_domains::PermissionedActionAllowedBy::Anyone),
             genesis_domains: vec![
-                crate::evm_domain_chain_spec::get_genesis_domain(sudo_account.clone(), evm_type)
+                crate::evm_domain_chain_spec::get_genesis_domain(evm_owner_account, evm_type)
                     .expect("hard-coded values are valid; qed"),
-                crate::auto_id_domain_chain_spec::get_genesis_domain(sudo_account.clone())
+                crate::auto_id_domain_chain_spec::get_genesis_domain(sudo_account)
                     .expect("hard-coded values are valid; qed"),
             ],
         },
