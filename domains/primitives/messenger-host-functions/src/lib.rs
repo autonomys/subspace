@@ -27,9 +27,11 @@ extern crate alloc;
 use codec::{Decode, Encode};
 #[cfg(feature = "std")]
 pub use host_functions::{MessengerApi, MessengerExtension, MessengerHostFunctionsImpl};
-pub use runtime_interface::messenger_runtime_interface::get_storage_key;
 #[cfg(feature = "std")]
 pub use runtime_interface::messenger_runtime_interface::HostFunctions;
+pub use runtime_interface::messenger_runtime_interface::{
+    get_storage_key, is_src_chain_in_dst_chain_allowlist,
+};
 use scale_info::TypeInfo;
 use sp_domains::DomainId;
 use sp_messenger::messages::{ChainId, MessageKey};

@@ -247,6 +247,10 @@ impl ChainId {
     }
 }
 
+impl PassBy for ChainId {
+    type PassBy = pass_by::Codec<Self>;
+}
+
 impl From<u32> for ChainId {
     #[inline]
     fn from(x: u32) -> Self {

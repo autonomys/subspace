@@ -1,7 +1,7 @@
 use crate::StorageKeyRequest;
 use domain_block_preprocessor::stateless_runtime::StatelessRuntime;
 use sc_executor::RuntimeVersionOf;
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
@@ -16,6 +16,13 @@ use std::sync::Arc;
 pub trait MessengerHostFunctions: Send + Sync {
     /// Returns the storage key for the given request.
     fn get_storage_key(&self, req: StorageKeyRequest) -> Option<Vec<u8>>;
+
+    /// Checks if the given src_chain_id is in the dst_chain's allowlist
+    fn is_src_chain_in_dst_chain_allowlist(
+        &self,
+        src_chain_id: ChainId,
+        dst_chain_id: ChainId,
+    ) -> bool;
 }
 
 sp_externalities::decl_extension! {
@@ -143,5 +150,37 @@ where
         .expect(
             "Runtime Api should not fail in host function, there is no recovery from this; qed.",
         )
+    }
+
+    fn is_src_chain_in_dst_chain_allowlist(
+        &self,
+        src_chain_id: ChainId,
+        dst_chain_id: ChainId,
+    ) -> bool {
+        let best_hash = self.consensus_client.info().best_hash;
+        let runtime_api = self.consensus_client.runtime_api();
+
+        // TODO: remove version check before next network
+        let messenger_api_version = runtime_api
+            .api_version::<dyn DomainsApi<Block, Block::Header>>(best_hash)
+            .ok()
+            .flatten()
+            // It is safe to return a default version of 1, since there will always be version 1.
+            .unwrap_or(1);
+
+        if messenger_api_version >= 3 {
+            let allowlist = runtime_api
+                .chain_allowlist(best_hash, dst_chain_id)
+                .ok()
+                .unwrap_or_default();
+            allowlist.contains(&src_chain_id)
+        } else {
+            // if the consensus runtime is not upgraded but domains are upgrade,
+            // we return still return false
+            // This is since new runtime would always check allowlist on dst_chain and message is
+            // rejected and this will break the XDM request and response protocol.
+            // Rejecting means, new channels wont be created until consensus rutime is upgraded.
+            false
+        }
     }
 }
