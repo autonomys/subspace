@@ -2,8 +2,6 @@ use crate::cluster::controller::farms::FarmsAddRemoveStreamMap;
 use futures::stream::FusedStream;
 use futures::StreamExt;
 use std::task::Context;
-use std::time::Duration;
-use tokio::time::{sleep, timeout};
 
 fn assert_is_terminated<'a, R: 'a>(stream_map: &FarmsAddRemoveStreamMap<'a, R>) {
     assert!(stream_map.in_progress.is_empty());
@@ -46,39 +44,24 @@ fn test_stream_map_poll_next_entry() {
 async fn test_stream_map_stream() {
     let mut stream_map = FarmsAddRemoveStreamMap::default();
 
-    // Push a future that sleeps for 1 millisecond and returns 0x00
-    let fut00 = Box::pin(async {
-        sleep(Duration::from_millis(1)).await;
-        0x00
-    });
+    let fut00 = Box::pin(async { 0x00 });
     stream_map.push(0, fut00);
 
-    // Wait for the next item in the stream with a timeout of 3 milliseconds
-    let next_item = timeout(Duration::from_millis(3), stream_map.next()).await;
-    assert_eq!(next_item.unwrap(), Some(0x00));
+    let next_item = stream_map.next().await;
+    assert_eq!(next_item, Some(0x00));
     assert_is_terminated(&stream_map);
 
-    // Push multiple futures with different sleep durations and return values
-    let fut11 = Box::pin(async {
-        sleep(Duration::from_millis(1)).await;
-        0x11
-    });
-    let fut12 = Box::pin(async {
-        sleep(Duration::from_millis(1)).await;
-        0x12
-    });
-    let fut13 = Box::pin(async {
-        sleep(Duration::from_millis(1)).await;
-        0x13
-    });
+    let fut11 = Box::pin(async { 0x11 });
+    let fut12 = Box::pin(async { 0x12 });
+    let fut13 = Box::pin(async { 0x13 });
     let fut21 = Box::pin(async {
-        sleep(Duration::from_millis(10)).await;
+        // Yield the current task three times to ensure that fut22 is polled last.
+        for _ in 0..3 {
+            tokio::task::yield_now().await;
+        }
         0x21
     });
-    let fut22 = Box::pin(async {
-        sleep(Duration::from_millis(1)).await;
-        0x22
-    });
+    let fut22 = Box::pin(async { 0x22 });
 
     // Push 2 futs into the same farm index 1, expect fut11 to be polled first,
     // fut12 should push into the in_progress queue and wait for fut11 to finish
@@ -119,8 +102,8 @@ async fn test_stream_map_stream() {
     assert_eq!(stream_map.in_progress.len(), 2);
     assert_eq!(stream_map.farms_to_add_remove[&1].len(), 1);
 
-    // Here, fut12 and fut 13 should be polled before fut21 because fut21 has a longer sleep duration
-    // fut13 should be pushed into the in_progress queue.
+    // Here, fut12 and fut 13 should be polled before fut21 because fut21 has a yield point.
+    // Fut13 should be pushed into the in_progress queue.
     // There are no more futures waiting to be polled in farm index 1, so the farm index 1
     // should be removed from the farms_to_add_remove map.
     let next_item = stream_map.next().await;
@@ -144,7 +127,7 @@ async fn test_stream_map_stream() {
     assert_eq!(stream_map.farms_to_add_remove[&2].len(), 1);
 
     // We hope futures with the same index are polled in the order they are pushed,
-    // so fut21 should be polled next, even though fut22 has a shorter sleep duration.
+    // so fut21 should be polled next.
     // fut22 should be pushed into the in-progress queue.
     // There are no more futures waiting to be polled in farm index 2, so the farm index 2
     // should be removed from the farms_to_add_remove map.
@@ -161,7 +144,7 @@ async fn test_stream_map_stream() {
     // For now, all futures in farm index 2 have been polled, so farm index 2 should be removed
     // from the in-progress queue.
     // Finally, the stream should be terminated.
-    let next_item = timeout(Duration::from_millis(3), stream_map.next()).await;
-    assert_eq!(next_item.unwrap(), Some(0x22));
+    let next_item = stream_map.next().await;
+    assert_eq!(next_item, Some(0x22));
     assert_is_terminated(&stream_map);
 }
