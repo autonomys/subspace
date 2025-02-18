@@ -326,7 +326,7 @@ impl Node {
         Ok(result_receiver)
     }
 
-    /// Subcribe to some topic on the DSN.
+    /// Subscribe to some topic on the DSN.
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
         let permit = self.shared.rate_limiter.acquire_permit().await;
         let (result_sender, result_receiver) = oneshot::channel();
@@ -354,7 +354,7 @@ impl Node {
         })
     }
 
-    /// Subcribe a messgo to some topic on the DSN.
+    /// Subscribe a messgo to some topic on the DSN.
     pub async fn publish(&self, topic: Sha256Topic, message: Vec<u8>) -> Result<(), PublishError> {
         let _permit = self.shared.rate_limiter.acquire_permit().await;
         let (result_sender, result_receiver) = oneshot::channel();
