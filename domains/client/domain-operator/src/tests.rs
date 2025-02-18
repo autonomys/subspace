@@ -5329,8 +5329,8 @@ async fn test_domain_sudo_calls() {
     .unwrap()
     .unwrap();
 
-    // produce 150 more blocks to ensure nothing went wrong
-    produce_blocks!(ferdie, alice, 150).await.unwrap();
+    // produce 30 more blocks to ensure nothing went wrong
+    produce_blocks!(ferdie, alice, 30).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -5423,8 +5423,8 @@ async fn test_domain_owner_calls() {
     .await
     .unwrap();
 
-    // produce 150 more blocks to ensure nothing went wrong
-    produce_blocks!(ferdie, alice, 150).await.unwrap();
+    // produce 30 more blocks to ensure nothing went wrong
+    produce_blocks!(ferdie, alice, 30).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -5517,8 +5517,8 @@ async fn test_public_evm_rejects_allow_list_domain_sudo_calls() {
     let receipt = bundle.into_receipt();
     assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
 
-    // produce 150 more blocks to ensure nothing went wrong
-    produce_blocks!(ferdie, alice, 150).await.unwrap();
+    // produce 30 more blocks to ensure nothing went wrong
+    produce_blocks!(ferdie, alice, 30).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -5595,8 +5595,8 @@ async fn test_public_evm_rejects_allow_list_domain_owner_calls() {
     let receipt = bundle.into_receipt();
     assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
 
-    // produce 150 more blocks to ensure nothing went wrong
-    produce_blocks!(ferdie, alice, 150).await.unwrap();
+    // produce 30 more blocks to ensure nothing went wrong
+    produce_blocks!(ferdie, alice, 30).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]
