@@ -956,7 +956,7 @@ fn construct_evm_contract_creation_allowed_by_extrinsic(
     decoded_argument: PermissionedActionAllowedBy<AccountId>,
 ) -> <Block as BlockT>::Extrinsic {
     UncheckedExtrinsic::new_unsigned(
-        pallet_evm_tracker::Call::inherent_set_contract_creation_allowed_by {
+        pallet_evm_tracker::Call::set_contract_creation_allowed_by {
             contract_creation_allowed_by: decoded_argument,
         }
         .into(),

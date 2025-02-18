@@ -83,7 +83,7 @@ mod pallet {
         /// An inherent call to set ContractCreationAllowedBy.
         #[pallet::call_index(0)]
         #[pallet::weight((T::DbWeight::get().reads_writes(0, 1), DispatchClass::Mandatory))]
-        pub fn inherent_set_contract_creation_allowed_by(
+        pub fn set_contract_creation_allowed_by(
             origin: OriginFor<T>,
             contract_creation_allowed_by: PermissionedActionAllowedBy<EthereumAccountId>,
         ) -> DispatchResult {
@@ -111,11 +111,11 @@ mod pallet {
 
             inherent_data
                 .maybe_call
-                .map(|contract_creation_allowed_by| {
-                    Call::inherent_set_contract_creation_allowed_by {
+                .map(
+                    |contract_creation_allowed_by| Call::set_contract_creation_allowed_by {
                         contract_creation_allowed_by,
-                    }
-                })
+                    },
+                )
         }
 
         fn is_inherent_required(data: &InherentData) -> Result<Option<Self::Error>, Self::Error> {
@@ -144,7 +144,7 @@ mod pallet {
         }
 
         fn is_inherent(call: &Self::Call) -> bool {
-            matches!(call, Call::inherent_set_contract_creation_allowed_by { .. })
+            matches!(call, Call::set_contract_creation_allowed_by { .. })
         }
     }
 
