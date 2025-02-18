@@ -389,7 +389,7 @@ mod tests {
     use frame_support::{assert_err, assert_ok};
     use hex_literal::hex;
     use sp_domains::storage::RawGenesis;
-    use sp_domains::{EvmDomainRuntimeConfig, PermissionedActionAllowedBy, RuntimeObject};
+    use sp_domains::{EvmDomainRuntimeConfig, EvmType, PermissionedActionAllowedBy, RuntimeObject};
     use sp_runtime::traits::Convert;
     use sp_std::vec;
     use sp_version::RuntimeVersion;
@@ -796,16 +796,54 @@ mod tests {
                     .domain_runtime_info
                     .domain_runtime_config()
                     .initial_contract_creation_allow_list(),
-                Some(&PermissionedActionAllowedBy::Anyone),
-                "anyone should be allowed to create contracts by default"
+                None,
+                "default is public EVM, which does not have a contract creation allow list"
+            );
+
+            // Set public EVM
+            domain_config_params.domain_runtime_config = EvmDomainRuntimeConfig {
+                evm_type: EvmType::Public,
+            }
+            .into();
+
+            // Set enough fund to creator
+            Balances::make_free_balance_be(
+                &creator,
+                <Test as Config>::DomainInstantiationDeposit::get()
+                                // for domain total issuance
+                                + 1_000_000 * SSC
+                                + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
+            );
+
+            // should be successful
+            let domain_id =
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at)
+                    .unwrap();
+            let domain_obj = DomainRegistry::<Test>::get(domain_id).unwrap();
+
+            assert_eq!(domain_obj.owner_account_id, creator);
+            assert_eq!(domain_obj.created_at, created_at);
+            assert_eq!(
+                domain_obj.domain_config,
+                into_domain_config::<Test>(domain_config_params.clone()).unwrap()
+            );
+            assert_eq!(
+                domain_obj
+                    .domain_runtime_info
+                    .domain_runtime_config()
+                    .initial_contract_creation_allow_list(),
+                None,
+                "public EVMs do not have a contract creation allow list"
             );
 
             // Set empty list
             let mut list = vec![];
             domain_config_params.domain_runtime_config = EvmDomainRuntimeConfig {
-                initial_contract_creation_allow_list: PermissionedActionAllowedBy::Accounts(
-                    list.clone(),
-                ),
+                evm_type: EvmType::Private {
+                    initial_contract_creation_allow_list: PermissionedActionAllowedBy::Accounts(
+                        list.clone(),
+                    ),
+                },
             }
             .into();
 
@@ -842,9 +880,11 @@ mod tests {
             // Set 1 account in list
             list = vec![hex!("0102030405060708091011121314151617181920").into()];
             domain_config_params.domain_runtime_config = EvmDomainRuntimeConfig {
-                initial_contract_creation_allow_list: PermissionedActionAllowedBy::Accounts(
-                    list.clone(),
-                ),
+                evm_type: EvmType::Private {
+                    initial_contract_creation_allow_list: PermissionedActionAllowedBy::Accounts(
+                        list.clone(),
+                    ),
+                },
             }
             .into();
 
@@ -885,9 +925,11 @@ mod tests {
                 hex!("2102030405060708091011121314151617181920").into(),
             ];
             domain_config_params.domain_runtime_config = EvmDomainRuntimeConfig {
-                initial_contract_creation_allow_list: PermissionedActionAllowedBy::Accounts(
-                    list.clone(),
-                ),
+                evm_type: EvmType::Private {
+                    initial_contract_creation_allow_list: PermissionedActionAllowedBy::Accounts(
+                        list.clone(),
+                    ),
+                },
             }
             .into();
 

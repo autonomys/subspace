@@ -109,6 +109,7 @@ const MAX_PRODUCE_BUNDLE_TRY: usize = 10;
 ///
 /// By default an in-memory socket will be used, therefore you need to provide boot
 /// nodes if you want the future node to be connected to other nodes.
+#[expect(clippy::too_many_arguments)]
 pub fn node_config(
     tokio_handle: tokio::runtime::Handle,
     key: Sr25519Keyring,
@@ -116,6 +117,8 @@ pub fn node_config(
     run_farmer: bool,
     force_authoring: bool,
     force_synced: bool,
+    private_evm: bool,
+    evm_owner_account: Option<AccountId>,
     base_path: BasePath,
 ) -> Configuration {
     let root = base_path.path();
@@ -125,7 +128,7 @@ pub fn node_config(
         Role::Full
     };
     let key_seed = key.to_seed();
-    let spec = chain_spec::subspace_local_testnet_config().unwrap();
+    let spec = chain_spec::subspace_local_testnet_config(private_evm, evm_owner_account).unwrap();
 
     let mut network_config = NetworkConfiguration::new(
         key_seed.to_string(),
@@ -388,7 +391,17 @@ impl MockConsensusNode {
         key: Sr25519Keyring,
         base_path: BasePath,
     ) -> MockConsensusNode {
-        Self::run_with_finalization_depth(tokio_handle, key, base_path, None)
+        Self::run_with_finalization_depth(tokio_handle, key, base_path, None, false, None)
+    }
+
+    /// Run a mock consensus node with a private EVM domain
+    pub fn run_with_private_evm(
+        tokio_handle: tokio::runtime::Handle,
+        key: Sr25519Keyring,
+        evm_owner: Option<Sr25519Keyring>,
+        base_path: BasePath,
+    ) -> MockConsensusNode {
+        Self::run_with_finalization_depth(tokio_handle, key, base_path, None, true, evm_owner)
     }
 
     /// Run a mock consensus node with finalization depth
@@ -397,10 +410,22 @@ impl MockConsensusNode {
         key: Sr25519Keyring,
         base_path: BasePath,
         finalize_block_depth: Option<NumberFor<Block>>,
+        private_evm: bool,
+        evm_owner: Option<Sr25519Keyring>,
     ) -> MockConsensusNode {
         let log_prefix = key.into();
 
-        let mut config = node_config(tokio_handle, key, vec![], false, false, false, base_path);
+        let mut config = node_config(
+            tokio_handle,
+            key,
+            vec![],
+            false,
+            false,
+            false,
+            private_evm,
+            evm_owner.map(|key| key.to_account_id()),
+            base_path,
+        );
 
         // Set `transaction_pool.ban_time` to 0 such that duplicated tx will not immediately rejected
         // by `TemporarilyBanned`
