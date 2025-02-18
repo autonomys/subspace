@@ -298,7 +298,7 @@ where
             .expect("Fail to get account nonce")
     }
 
-    /// Sends an system.remark extrinsic to the pool.
+    /// Sends a signed system.remark extrinsic to the pool containing the current account nonce.
     pub async fn send_system_remark(&mut self) {
         let nonce = self.account_nonce();
         let _ = self
@@ -309,7 +309,7 @@ where
             .map(|_| ());
     }
 
-    /// Construct an extrinsic with the current nonce of the node account and send it to this node.
+    /// Construct a signed extrinsic with the current nonce of the node account and send it to this node.
     pub async fn construct_and_send_extrinsic(
         &mut self,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
@@ -318,7 +318,7 @@ where
             .await
     }
 
-    /// Construct an extrinsic with the given nonce and tip for the node account and send it to this node.
+    /// Construct a signed extrinsic with the given nonce and tip for the node account and send it to this node.
     pub async fn construct_and_send_extrinsic_with(
         &self,
         nonce: u32,
@@ -336,7 +336,7 @@ where
         self.rpc_handlers.send_transaction(extrinsic.into()).await
     }
 
-    /// Construct an extrinsic.
+    /// Construct a signed extrinsic.
     pub fn construct_extrinsic(
         &mut self,
         nonce: u32,
@@ -352,7 +352,7 @@ where
         )
     }
 
-    /// Construct an extrinsic with the given transaction tip.
+    /// Construct a signed extrinsic with the given transaction tip.
     pub fn construct_extrinsic_with_tip(
         &mut self,
         nonce: u32,
@@ -407,6 +407,15 @@ where
     {
         let function = function.into();
         UncheckedExtrinsicFor::<Runtime>::new_unsigned(function)
+    }
+
+    /// Construct an unsigned extrinsic and send it to this node.
+    pub async fn construct_and_send_unsigned_extrinsic(
+        &mut self,
+        function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+    ) -> Result<RpcTransactionOutput, RpcTransactionError> {
+        let extrinsic = self.construct_unsigned_extrinsic(function);
+        self.rpc_handlers.send_transaction(extrinsic.into()).await
     }
 
     /// Give the peer at `addr` the minimum reputation, which will ban it.
