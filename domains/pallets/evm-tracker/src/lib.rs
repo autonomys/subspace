@@ -89,7 +89,7 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
 
-            // is_private_evm_domain() was already checked by pallet-domains.
+            // signer and is_private_evm_domain() were already checked by pallet-domains.
 
             ContractCreationAllowedBy::<T>::put(contract_creation_allowed_by);
 

@@ -232,6 +232,14 @@ async fn setup_evm_test_nodes(
     evm_owner: impl Into<Option<Sr25519Keyring>>,
 ) -> (TempDir, MockConsensusNode, EvmDomainNode) {
     let evm_owner = evm_owner.into();
+    println!(
+        "Setting up EVM test nodes with sudo: {:?}, ferdie: {:?}, \
+        and {} evm owner: {:?} (defaults to sudo)",
+        Sr25519Alice.to_account_id(),
+        ferdie_key.to_account_id(),
+        if private_evm { "private" } else { "public" },
+        evm_owner.map(|k| k.to_account_id()),
+    );
 
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -578,10 +586,11 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
     // Sudo on consensus chain will send a sudo call to domain
     // once the call is executed in the domain, list will be updated.
     let allow_list = generate_evm_account_list(&account_infos, EvmAccountList::NoOne);
-    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
         domain_id: EVM_DOMAIN_ID,
         contract_creation_allowed_by: allow_list.clone(),
-    })
+    }))})
     .await
     .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
@@ -796,10 +805,11 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
 
     // 1 account in the allow list
     let allow_list = generate_evm_account_list(&account_infos, EvmAccountList::One);
-    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
         domain_id: EVM_DOMAIN_ID,
         contract_creation_allowed_by: allow_list.clone(),
-    })
+    }))})
     .await
     .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
@@ -982,10 +992,11 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
 
     // Multiple accounts in the allow list
     let allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Multiple);
-    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
         domain_id: EVM_DOMAIN_ID,
         contract_creation_allowed_by: allow_list.clone(),
-    })
+    }))})
     .await
     .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
@@ -5125,7 +5136,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_domain_sudo_calls() {
     let (_directory, mut ferdie, mut alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice, true, Ferdie).await;
+        setup_evm_test_accounts(Sr25519Alice, true, Sr25519Alice).await;
 
     // Run the cross domain gossip message worker
     ferdie.start_cross_domain_gossip_message_worker();
@@ -5177,7 +5188,9 @@ async fn test_domain_sudo_calls() {
             .get_open_channel_for_chain(ChainId::Consensus)
             .is_some()
     })
+    .timeout()
     .await
+    .unwrap()
     .unwrap();
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -5195,10 +5208,11 @@ async fn test_domain_sudo_calls() {
 
     // Start with a redundant set to make sure the test framework works.
     let mut allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Anyone);
-    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
         domain_id: EVM_DOMAIN_ID,
         contract_creation_allowed_by: allow_list.clone(),
-    })
+    }))})
     .await
     .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
@@ -5215,10 +5229,11 @@ async fn test_domain_sudo_calls() {
 
     // Then use actual settings
     allow_list = generate_evm_account_list(&account_infos, EvmAccountList::NoOne);
-    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
         domain_id: EVM_DOMAIN_ID,
         contract_creation_allowed_by: allow_list.clone(),
-    })
+    }))})
     .await
     .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
@@ -5235,10 +5250,11 @@ async fn test_domain_sudo_calls() {
 
     // 1 account in the allow list
     allow_list = generate_evm_account_list(&account_infos, EvmAccountList::One);
-    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
         domain_id: EVM_DOMAIN_ID,
         contract_creation_allowed_by: allow_list.clone(),
-    })
+    }))})
     .await
     .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
@@ -5246,17 +5262,20 @@ async fn test_domain_sudo_calls() {
     produce_blocks_until!(ferdie, alice, {
         alice.evm_contract_creation_allowed_by() == allow_list
     })
+    .timeout()
     .await
+    .unwrap()
     .unwrap();
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     // Multiple accounts in the allow list
     allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Multiple);
-    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
         domain_id: EVM_DOMAIN_ID,
         contract_creation_allowed_by: allow_list.clone(),
-    })
+    }))})
     .await
     .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
@@ -5264,7 +5283,9 @@ async fn test_domain_sudo_calls() {
     produce_blocks_until!(ferdie, alice, {
         alice.evm_contract_creation_allowed_by() == allow_list
     })
+    .timeout()
     .await
+    .unwrap()
     .unwrap();
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -5303,7 +5324,9 @@ async fn test_domain_sudo_calls() {
             .get_open_channel_for_chain(ChainId::Consensus)
             .is_none()
     })
+    .timeout()
     .await
+    .unwrap()
     .unwrap();
 
     // produce 150 more blocks to ensure nothing went wrong
@@ -5423,10 +5446,11 @@ async fn test_public_evm_rejects_allow_list_domain_sudo_calls() {
 
     // A redundant set should still fail
     let mut allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Anyone);
-    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
         domain_id: EVM_DOMAIN_ID,
         contract_creation_allowed_by: allow_list.clone(),
-    })
+    }))})
     .await
     .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
@@ -5447,10 +5471,11 @@ async fn test_public_evm_rejects_allow_list_domain_sudo_calls() {
 
     // Then use actual settings
     allow_list = generate_evm_account_list(&account_infos, EvmAccountList::NoOne);
-    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
         domain_id: EVM_DOMAIN_ID,
         contract_creation_allowed_by: allow_list.clone(),
-    })
+    }))})
     .await
     .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
@@ -5471,10 +5496,11 @@ async fn test_public_evm_rejects_allow_list_domain_sudo_calls() {
 
     // Multiple accounts in the allow list
     allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Multiple);
-    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
         domain_id: EVM_DOMAIN_ID,
         contract_creation_allowed_by: allow_list.clone(),
-    })
+    }))})
     .await
     .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
