@@ -67,8 +67,8 @@ use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::generic::{Era, ExtrinsicFormat, Preamble};
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Checkable, DispatchInfoOf, Dispatchable, IdentityLookup,
-    Keccak256, NumberFor, One, PostDispatchInfoOf, TransactionExtension, TxBaseImplication,
+    BlakeTwo256, Block as BlockT, Checkable, DispatchInfoOf, DispatchTransaction, Dispatchable,
+    IdentityLookup, Keccak256, NumberFor, One, PostDispatchInfoOf, TransactionExtension,
     UniqueSaturatedInto, ValidateUnsigned, Zero,
 };
 use sp_runtime::transaction_validity::{
@@ -1095,7 +1095,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
     // runtime instance.
     match xt.signed {
         CheckedSignature::GenericDelegated(format) => match format {
-            ExtrinsicFormat::Bare | ExtrinsicFormat::General(_, _) => {
+            ExtrinsicFormat::Bare => {
                 if let RuntimeCall::Messenger(call) = &xt.function {
                     Messenger::pre_dispatch_with_trusted_mmr_proof(call)?;
                 } else {
@@ -1105,6 +1105,30 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     &xt.function,
                     &dispatch_info,
                     encoded_len,
+                )
+                .map(|_| ())
+            }
+            ExtrinsicFormat::General(extension_version, extra) => {
+                let custom_extra: CustomSignedExtra = (
+                    extra.0,
+                    extra.1,
+                    extra.2,
+                    extra.3,
+                    extra.4,
+                    pallet_evm_tracker::CheckNonce::from(extra.5 .0),
+                    extra.6,
+                    extra.7.clone(),
+                    extra.8,
+                );
+
+                let origin = RuntimeOrigin::none();
+                <CustomSignedExtra as DispatchTransaction<RuntimeCall>>::validate_and_prepare(
+                    custom_extra,
+                    origin,
+                    &xt.function,
+                    &dispatch_info,
+                    encoded_len,
+                    extension_version,
                 )
                 .map(|_| ())
             }
@@ -1121,43 +1145,16 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.8,
                 );
 
-                let nonce_val =
-                    pallet_evm_tracker::check_nonce::Val::CheckNonce((account_id, extra.5 .0));
-                let (_, weight_val) =
-                    frame_system::CheckWeight::<Runtime>::do_validate(&dispatch_info, encoded_len)?;
-
                 let origin = RuntimeOrigin::signed(account_id);
-
-                let implication = TxBaseImplication(xt.function.clone());
-                let (_, transaction_payment_val, origin) =
-                    pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::validate(
-                        &extra.7,
-                        origin,
-                        &xt.function,
-                        &dispatch_info,
-                        encoded_len,
-                        (),
-                        &implication,
-                        TransactionSource::External,
-                    )?;
-
-                <CustomSignedExtra as TransactionExtension<RuntimeCall>>::prepare(
+                <CustomSignedExtra as DispatchTransaction<RuntimeCall>>::validate_and_prepare(
                     custom_extra,
-                    (
-                        (),
-                        (),
-                        (),
-                        (),
-                        (),
-                        nonce_val,
-                        weight_val,
-                        transaction_payment_val,
-                        (),
-                    ),
-                    &origin,
+                    origin,
                     &xt.function,
                     &dispatch_info,
                     encoded_len,
+                    // default extension version define here -
+                    // https://github.com/paritytech/polkadot-sdk/blob/master/substrate/primitives/runtime/src/generic/checked_extrinsic.rs#L37
+                    0,
                 )
                 .map(|_| ())
             }

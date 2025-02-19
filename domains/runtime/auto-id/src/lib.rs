@@ -50,8 +50,8 @@ use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::generic::{Era, ExtrinsicFormat, Preamble};
 use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, Block as BlockT, Checkable, Keccak256, NumberFor, One,
-    TransactionExtension, TxBaseImplication, ValidateUnsigned, Zero,
+    AccountIdLookup, BlakeTwo256, Block as BlockT, Checkable, DispatchTransaction, Keccak256,
+    NumberFor, One, TransactionExtension, ValidateUnsigned, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -626,55 +626,35 @@ fn check_transaction_and_do_pre_dispatch_inner(
     // which would help to maintain context across multiple transaction validity check against same
     // runtime instance.
     match xt.format {
-        // signed transaction
-        ExtrinsicFormat::Signed(account_id, extra) => {
-            let origin = RuntimeOrigin::signed(account_id);
-            let implication = TxBaseImplication(xt.function.clone());
-            let (_, nonce_val, origin) = frame_system::CheckNonce::<Runtime>::validate(
-                &extra.5,
+        ExtrinsicFormat::General(extension_version, extra) => {
+            let origin = RuntimeOrigin::none();
+            <SignedExtra as DispatchTransaction<RuntimeCall>>::validate_and_prepare(
+                extra,
                 origin,
                 &xt.function,
                 &dispatch_info,
                 encoded_len,
-                (),
-                &implication,
-                TransactionSource::External,
-            )?;
-            let (_, weight_val) =
-                frame_system::CheckWeight::<Runtime>::do_validate(&dispatch_info, encoded_len)?;
-
-            let (_, transaction_payment_val, origin) =
-                pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::validate(
-                    &extra.7,
-                    origin,
-                    &xt.function,
-                    &dispatch_info,
-                    encoded_len,
-                    (),
-                    &implication,
-                    TransactionSource::External,
-                )?;
-            <SignedExtra as TransactionExtension<RuntimeCall>>::prepare(
+                extension_version,
+            )
+            .map(|_| ())
+        }
+        // signed transaction
+        ExtrinsicFormat::Signed(account_id, extra) => {
+            let origin = RuntimeOrigin::signed(account_id);
+            <SignedExtra as DispatchTransaction<RuntimeCall>>::validate_and_prepare(
                 extra,
-                (
-                    (),
-                    (),
-                    (),
-                    (),
-                    (),
-                    nonce_val,
-                    weight_val,
-                    transaction_payment_val,
-                ),
-                &origin,
+                origin,
                 &xt.function,
                 &dispatch_info,
                 encoded_len,
+                // default extension version define here -
+                // https://github.com/paritytech/polkadot-sdk/blob/master/substrate/primitives/runtime/src/generic/checked_extrinsic.rs#L37
+                0,
             )
             .map(|_| ())
         }
         // unsigned transaction
-        ExtrinsicFormat::Bare | ExtrinsicFormat::General(_, _) => {
+        ExtrinsicFormat::Bare => {
             if let RuntimeCall::Messenger(call) = &xt.function {
                 Messenger::pre_dispatch_with_trusted_mmr_proof(call)?;
             } else {
