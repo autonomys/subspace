@@ -24,6 +24,7 @@ sp-block-fees = { version = "0.1.0", path = "../../primitives/block-fees" }
 sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
 sp-domain-sudo = { version = "0.1.0", path = "../../primitives/domain-sudo" }
+sp-evm-tracker = { version = "0.1.0", path = "../../primitives/evm-tracker" }
 sp-executive = { version = "0.1.0", path = "../../primitives/executive" }
 sp-externalities = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
 sp-inherents = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }

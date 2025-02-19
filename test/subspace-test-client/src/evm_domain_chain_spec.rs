@@ -10,7 +10,8 @@ use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension};
 use sp_core::{ecdsa, Pair, Public};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    DomainId, DomainRuntimeConfig, GenesisDomain, OperatorAllowList, OperatorPublicKey, RuntimeType,
+    DomainId, EvmDomainRuntimeConfig, EvmType, GenesisDomain, OperatorAllowList, OperatorPublicKey,
+    RuntimeType,
 };
 use sp_runtime::traits::{Convert, IdentifyAccount, Verify};
 use sp_runtime::{BuildStorage, Percent};
@@ -94,6 +95,7 @@ pub fn testnet_evm_genesis() -> RuntimeGenesisConfig {
 
 pub fn get_genesis_domain(
     sudo_account: subspace_runtime_primitives::AccountId,
+    evm_type: EvmType,
 ) -> Result<GenesisDomain<AccountId, Balance>, String> {
     let raw_genesis_storage = {
         let domain_chain_spec = GenericChainSpec::<NoExtension, ()>::builder(
@@ -135,6 +137,6 @@ pub fn get_genesis_domain(
             .map(|k| (AccountId20Converter::convert(k), 2_000_000 * SSC))
             .collect(),
 
-        domain_runtime_config: DomainRuntimeConfig::default_evm(),
+        domain_runtime_config: EvmDomainRuntimeConfig { evm_type }.into(),
     })
 }

@@ -61,6 +61,9 @@ pub type Signature = MultiSignature;
 
 /// Some way of identifying an account on the chain. We intentionally make it equivalent
 /// to the public key of our transaction signing scheme.
+//
+// Note: sometimes this type alias causes complex trait ambiguity / conflicting implementation errors.
+// As a workaround, `use sp_runtime::AccountId32 as AccountId` instead.
 pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 /// Balance of an account.

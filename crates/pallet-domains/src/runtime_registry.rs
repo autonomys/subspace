@@ -91,8 +91,20 @@ impl DomainRuntimeInfo {
         }
     }
 
-    pub fn is_evm(&self) -> bool {
+    pub fn is_evm_domain(&self) -> bool {
         matches!(self, Self::Evm { .. })
+    }
+
+    pub fn is_private_evm_domain(&self) -> bool {
+        if let Self::Evm {
+            domain_runtime_config,
+            ..
+        } = self
+        {
+            domain_runtime_config.evm_type.is_private_evm_domain()
+        } else {
+            false
+        }
     }
 
     pub fn is_auto_id(&self) -> bool {
@@ -153,9 +165,13 @@ pub fn into_complete_raw_genesis<T: Config>(
             domain_runtime_config,
         } => {
             raw_genesis.set_evm_chain_id(*chain_id);
-            raw_genesis.set_evm_contract_creation_allowed_by(
-                &domain_runtime_config.initial_contract_creation_allow_list,
-            );
+            if let Some(initial_contract_creation_allow_list) = domain_runtime_config
+                .evm_type
+                .initial_contract_creation_allow_list()
+            {
+                raw_genesis
+                    .set_evm_contract_creation_allowed_by(initial_contract_creation_allow_list);
+            }
 
             let initial_balances = initial_balances.into_iter().try_fold(
                 Vec::<(AccountId20, BalanceOf<T>)>::new(),

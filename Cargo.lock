@@ -2862,6 +2862,7 @@ dependencies = [
  "sp-core",
  "sp-domain-sudo",
  "sp-domains",
+ "sp-evm-tracker",
  "sp-executive",
  "sp-externalities",
  "sp-inherents",
@@ -3611,6 +3612,7 @@ dependencies = [
  "sp-core",
  "sp-domain-sudo",
  "sp-domains",
+ "sp-evm-tracker",
  "sp-genesis-builder",
  "sp-inherents",
  "sp-messenger",
@@ -3669,6 +3671,7 @@ dependencies = [
  "sp-core",
  "sp-domain-sudo",
  "sp-domains",
+ "sp-evm-tracker",
  "sp-genesis-builder",
  "sp-inherents",
  "sp-io",
@@ -8498,6 +8501,7 @@ dependencies = [
  "scale-info",
  "sp-core",
  "sp-domains",
+ "sp-evm-tracker",
  "sp-runtime",
  "sp-weights",
  "subspace-runtime-primitives",
@@ -12977,6 +12981,18 @@ dependencies = [
  "thiserror 2.0.0",
  "tokio",
  "trie-db",
+]
+
+[[package]]
+name = "sp-evm-tracker"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "domain-runtime-primitives",
+ "parity-scale-codec",
+ "sp-api",
+ "sp-domains",
+ "sp-inherents",
 ]
 
 [[package]]

@@ -227,7 +227,19 @@ pub fn generate_evm_account_list(
 
 async fn setup_evm_test_nodes(
     ferdie_key: Sr25519Keyring,
+    private_evm: bool,
+    evm_owner: impl Into<Option<Sr25519Keyring>>,
 ) -> (TempDir, MockConsensusNode, EvmDomainNode) {
+    let evm_owner = evm_owner.into();
+    println!(
+        "Setting up EVM test nodes with sudo: {:?}, ferdie: {:?}, \
+        and {} evm owner: {:?} (defaults to sudo)",
+        Sr25519Alice.to_account_id(),
+        ferdie_key.to_account_id(),
+        if private_evm { "private" } else { "public" },
+        evm_owner.map(|k| k.to_account_id()),
+    );
+
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -237,10 +249,13 @@ async fn setup_evm_test_nodes(
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie with Alice Key since that is the sudo key
-    let mut ferdie = MockConsensusNode::run(
+    let mut ferdie = MockConsensusNode::run_with_finalization_depth(
         tokio_handle.clone(),
         ferdie_key,
         BasePath::new(directory.path().join("ferdie")),
+        None,
+        private_evm,
+        evm_owner,
     );
 
     // Run Alice (an evm domain)
@@ -256,8 +271,11 @@ async fn setup_evm_test_nodes(
 
 async fn setup_evm_test_accounts(
     ferdie_key: Sr25519Keyring,
+    private_evm: bool,
+    evm_owner: impl Into<Option<Sr25519Keyring>>,
 ) -> (TempDir, MockConsensusNode, EvmDomainNode, Vec<AccountInfo>) {
-    let (directory, mut ferdie, mut alice) = setup_evm_test_nodes(ferdie_key).await;
+    let (directory, mut ferdie, mut alice) =
+        setup_evm_test_nodes(ferdie_key, private_evm, evm_owner).await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -287,9 +305,9 @@ async fn setup_evm_test_accounts(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_evm_domain_create_contracts_with_allow_list_default() {
+async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
     let (_directory, mut ferdie, mut alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice).await;
+        setup_evm_test_accounts(Sr25519Alice, true, None).await;
 
     let gas_price = alice
         .client
@@ -404,9 +422,126 @@ async fn test_evm_domain_create_contracts_with_allow_list_default() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_public_evm_domain_create_contracts() {
+    let (_directory, mut ferdie, mut alice, account_infos) =
+        setup_evm_test_accounts(Sr25519Alice, false, None).await;
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // Any account should be able to create contracts in a public EVM domain
+    let mut eth_nonce = U256::zero();
+    let eth_tx = generate_eth_domain_extrinsic(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Create,
+        eth_nonce,
+        gas_price,
+    );
+    eth_nonce += U256::one();
+
+    let result = alice.send_extrinsic(eth_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send self-contained extrinsic"
+    );
+
+    let mut evm_nonce = U256::zero();
+    let mut evm_tx = generate_evm_domain_call(
+        account_infos[1].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send signed extrinsic"
+    );
+
+    // Produce a bundle that contains just the sent extrinsics
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 2);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // Nested should behave exactly the same
+    evm_tx = generate_evm_domain_call(
+        account_infos[1].clone(),
+        ethereum::TransactionAction::Create,
+        1,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send nested signed extrinsic"
+    );
+
+    evm_tx = generate_evm_domain_call(
+        account_infos[2].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    evm_nonce += U256::one();
+
+    let evm_ex = alice.construct_unsigned_extrinsic(evm_tx);
+    let result = alice.send_extrinsic(evm_ex).await;
+    // TODO: fix NoUnsignedValidator error
+    assert_matches!(
+        result,
+        Err(_),
+        "Test should fail until the test runtime is given an unsigned validator"
+    );
+
+    // Produce a bundle that contains just the sent extrinsics
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
     let (_directory, mut ferdie, mut alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice).await;
+        setup_evm_test_accounts(Sr25519Alice, true, Ferdie).await;
 
     let gas_price = alice
         .client
@@ -450,30 +585,21 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
     // Sudo on consensus chain will send a sudo call to domain
     // once the call is executed in the domain, list will be updated.
     let allow_list = generate_evm_account_list(&account_infos, EvmAccountList::NoOne);
-    let sudo_unsigned_extrinsic = alice
-        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
-            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
-                contract_creation_allowed_by: allow_list.clone(),
-            },
-        ))
-        .encode();
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
-                pallet_domains::Call::send_domain_sudo_call {
-                    domain_id: EVM_DOMAIN_ID,
-                    call: sudo_unsigned_extrinsic,
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    }))})
+    .await
+    .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
         alice.evm_contract_creation_allowed_by() == allow_list
     })
+    .timeout()
     .await
+    .unwrap()
     .unwrap();
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -638,7 +764,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_evm_domain_create_contracts_with_allow_list_single() {
     let (_directory, mut ferdie, mut alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice).await;
+        setup_evm_test_accounts(Sr25519Alice, true, Ferdie).await;
 
     let gas_price = alice
         .client
@@ -678,30 +804,21 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
 
     // 1 account in the allow list
     let allow_list = generate_evm_account_list(&account_infos, EvmAccountList::One);
-    let sudo_unsigned_extrinsic = alice
-        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
-            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
-                contract_creation_allowed_by: allow_list.clone(),
-            },
-        ))
-        .encode();
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
-                pallet_domains::Call::send_domain_sudo_call {
-                    domain_id: EVM_DOMAIN_ID,
-                    call: sudo_unsigned_extrinsic,
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    }))})
+    .await
+    .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
         alice.evm_contract_creation_allowed_by() == allow_list
     })
+    .timeout()
     .await
+    .unwrap()
     .unwrap();
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -870,34 +987,25 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
     let (_directory, mut ferdie, mut alice, account_infos) =
-        setup_evm_test_accounts(Sr25519Alice).await;
+        setup_evm_test_accounts(Sr25519Alice, true, Ferdie).await;
 
     // Multiple accounts in the allow list
     let allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Multiple);
-    let sudo_unsigned_extrinsic = alice
-        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
-            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
-                contract_creation_allowed_by: allow_list.clone(),
-            },
-        ))
-        .encode();
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
-                pallet_domains::Call::send_domain_sudo_call {
-                    domain_id: EVM_DOMAIN_ID,
-                    call: sudo_unsigned_extrinsic,
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    }))})
+    .await
+    .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
         alice.evm_contract_creation_allowed_by() == allow_list
     })
+    .timeout()
     .await
+    .unwrap()
     .unwrap();
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -1610,7 +1718,8 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
 // TODO: when the test is fixed, decide if we want to remove the timeouts.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
-    let (directory, mut ferdie, alice) = setup_evm_test_nodes(Ferdie).timeout().await?;
+    let (directory, mut ferdie, alice) =
+        setup_evm_test_nodes(Ferdie, false, None).timeout().await?;
 
     // Run Bob (a evm domain full node)
     let mut bob = domain_test_service::DomainNodeBuilder::new(
@@ -1782,7 +1891,7 @@ async fn test_executor_inherent_timestamp_is_set() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
-    let (_directory, mut ferdie, mut alice) = setup_evm_test_nodes(Ferdie).await;
+    let (_directory, mut ferdie, mut alice) = setup_evm_test_nodes(Ferdie, false, None).await;
 
     let fraud_proof_generator = FraudProofGenerator::new(
         alice.client.clone(),
@@ -2006,7 +2115,8 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_fraud_proof_is_rejected() {
-    let (_directory, mut ferdie, mut alice) = setup_evm_test_nodes(Ferdie).await;
+    let (_directory, mut ferdie, mut alice) =
+        setup_evm_test_nodes(Ferdie, true, Sr25519Alice).await;
 
     let fraud_proof_generator = FraudProofGenerator::new(
         alice.client.clone(),
@@ -2025,7 +2135,17 @@ async fn test_bad_fraud_proof_is_rejected() {
         .await
         .expect("Failed to send extrinsic");
 
-    // Produce a domain block that contains the previously sent extrinsic
+    ferdie
+        .construct_and_send_extrinsic_with(
+            pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+                domain_id: EVM_DOMAIN_ID,
+                contract_creation_allowed_by: PermissionedActionAllowedBy::Anyone,
+            },
+        )
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Produce a domain block that contains the previously sent extrinsics
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // Get the receipt of that domain block and produce another bundle to submit the receipt
@@ -5011,28 +5131,8 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_domain_sudo_calls() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie with Alice Key since that is the sudo key
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Sr25519Alice,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (an evm domain)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, Alice, &mut ferdie)
-    .await;
+    let (_directory, mut ferdie, mut alice, account_infos) =
+        setup_evm_test_accounts(Sr25519Alice, true, Sr25519Alice).await;
 
     // Run the cross domain gossip message worker
     ferdie.start_cross_domain_gossip_message_worker();
@@ -5084,7 +5184,9 @@ async fn test_domain_sudo_calls() {
             .get_open_channel_for_chain(ChainId::Consensus)
             .is_some()
     })
+    .timeout()
     .await
+    .unwrap()
     .unwrap();
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -5099,127 +5201,87 @@ async fn test_domain_sudo_calls() {
     // set EVM contract allow list on Domain using domain sudo.
     // Sudo on consensus chain will send a sudo call to domain
     // once the call is executed in the domain, list will be updated.
-    let accounts_to_create = 4;
-    let account_infos = (0..accounts_to_create)
-        .map(|i| address_build(i as u128))
-        .collect::<Vec<AccountInfo>>();
 
     // Start with a redundant set to make sure the test framework works.
     let mut allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Anyone);
-    let sudo_unsigned_extrinsic = alice
-        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
-            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
-                contract_creation_allowed_by: allow_list.clone(),
-            },
-        ))
-        .encode();
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
-                pallet_domains::Call::send_domain_sudo_call {
-                    domain_id: EVM_DOMAIN_ID,
-                    call: sudo_unsigned_extrinsic,
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    }))})
+    .await
+    .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
         alice.evm_contract_creation_allowed_by() == allow_list
     })
+    .timeout()
     .await
+    .unwrap()
     .unwrap();
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     // Then use actual settings
     allow_list = generate_evm_account_list(&account_infos, EvmAccountList::NoOne);
-    let sudo_unsigned_extrinsic = alice
-        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
-            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
-                contract_creation_allowed_by: allow_list.clone(),
-            },
-        ))
-        .encode();
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
-                pallet_domains::Call::send_domain_sudo_call {
-                    domain_id: EVM_DOMAIN_ID,
-                    call: sudo_unsigned_extrinsic,
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    }))})
+    .await
+    .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
         alice.evm_contract_creation_allowed_by() == allow_list
     })
+    .timeout()
     .await
+    .unwrap()
     .unwrap();
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     // 1 account in the allow list
     allow_list = generate_evm_account_list(&account_infos, EvmAccountList::One);
-    let sudo_unsigned_extrinsic = alice
-        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
-            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
-                contract_creation_allowed_by: allow_list.clone(),
-            },
-        ))
-        .encode();
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
-                pallet_domains::Call::send_domain_sudo_call {
-                    domain_id: EVM_DOMAIN_ID,
-                    call: sudo_unsigned_extrinsic,
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    }))})
+    .await
+    .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
         alice.evm_contract_creation_allowed_by() == allow_list
     })
+    .timeout()
     .await
+    .unwrap()
     .unwrap();
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     // Multiple accounts in the allow list
     allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Multiple);
-    let sudo_unsigned_extrinsic = alice
-        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::EVMNoncetracker(
-            pallet_evm_tracker::Call::set_contract_creation_allowed_by {
-                contract_creation_allowed_by: allow_list.clone(),
-            },
-        ))
-        .encode();
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
-                pallet_domains::Call::send_domain_sudo_call {
-                    domain_id: EVM_DOMAIN_ID,
-                    call: sudo_unsigned_extrinsic,
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain to update EVM contract allow list");
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    }))})
+    .await
+    .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
 
     // Wait until list is updated
     produce_blocks_until!(ferdie, alice, {
         alice.evm_contract_creation_allowed_by() == allow_list
     })
+    .timeout()
     .await
+    .unwrap()
     .unwrap();
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -5258,11 +5320,279 @@ async fn test_domain_sudo_calls() {
             .get_open_channel_for_chain(ChainId::Consensus)
             .is_none()
     })
+    .timeout()
+    .await
+    .unwrap()
+    .unwrap();
+
+    // produce 30 more blocks to ensure nothing went wrong
+    produce_blocks!(ferdie, alice, 30).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_domain_owner_calls() {
+    let (_directory, mut ferdie, alice, account_infos) =
+        setup_evm_test_accounts(Ferdie, true, Ferdie).await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // TODO: other domain owner calls
+
+    // check initial contract allow list
+    assert_eq!(
+        alice.evm_contract_creation_allowed_by(),
+        PermissionedActionAllowedBy::Anyone,
+        "initial contract allow list should be anyone"
+    );
+
+    // set EVM contract allow list on Domain using domain owner.
+    // Consensus chain will send the call to domain as an inherent.
+    // Once the call is executed in the domain, list will be updated.
+
+    // Start with a redundant set to make sure the test framework works.
+    let mut allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Anyone);
+    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    })
+    .await
+    .expect("Failed to construct and send consensus chain owner call to update EVM contract allow list");
+
+    // Wait until list is updated
+    produce_blocks_until!(ferdie, alice, {
+        alice.evm_contract_creation_allowed_by() == allow_list
+    })
     .await
     .unwrap();
 
-    // produce 150 more blocks to ensure nothing went wrong
-    produce_blocks!(ferdie, alice, 150).await.unwrap();
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Then use actual settings
+    allow_list = generate_evm_account_list(&account_infos, EvmAccountList::NoOne);
+    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    })
+    .await
+    .expect("Failed to construct and send consensus chain owner call to update EVM contract allow list");
+
+    // Wait until list is updated
+    produce_blocks_until!(ferdie, alice, {
+        alice.evm_contract_creation_allowed_by() == allow_list
+    })
+    .await
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // 1 account in the allow list
+    allow_list = generate_evm_account_list(&account_infos, EvmAccountList::One);
+    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    })
+    .await
+    .expect("Failed to construct and send consensus chain owner call to update EVM contract allow list");
+
+    // Wait until list is updated
+    produce_blocks_until!(ferdie, alice, {
+        alice.evm_contract_creation_allowed_by() == allow_list
+    })
+    .await
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Multiple accounts in the allow list
+    allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Multiple);
+    ferdie.construct_and_send_extrinsic_with(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    })
+    .await
+    .expect("Failed to construct and send consensus chain owner call to update EVM contract allow list");
+
+    // Wait until list is updated
+    produce_blocks_until!(ferdie, alice, {
+        alice.evm_contract_creation_allowed_by() == allow_list
+    })
+    .await
+    .unwrap();
+
+    // produce 30 more blocks to ensure nothing went wrong
+    produce_blocks!(ferdie, alice, 30).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_public_evm_rejects_allow_list_domain_sudo_calls() {
+    let (_directory, mut ferdie, alice, account_infos) =
+        setup_evm_test_accounts(Sr25519Alice, false, Sr25519Alice).await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // check initial contract allow list
+    assert_eq!(
+        alice.evm_contract_creation_allowed_by(),
+        PermissionedActionAllowedBy::Anyone,
+        "initial contract allow list should be anyone"
+    );
+
+    // try to set EVM contract allow list on Domain using domain sudo.
+    // pallet-domains should reject these calls on a public EVM instance.
+
+    // A redundant set should still fail
+    let mut allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Anyone);
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    }))})
+    .await
+    .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
+
+    // Produce a bundle that contains just the sent extrinsics (and not the failed ones)
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 0);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Then use actual settings
+    allow_list = generate_evm_account_list(&account_infos, EvmAccountList::NoOne);
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    }))})
+    .await
+    .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
+
+    // Produce a bundle that contains just the sent extrinsics (and not the failed ones)
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 0);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Multiple accounts in the allow list
+    allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Multiple);
+    ferdie.construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+        call: Box::new(subspace_test_runtime::RuntimeCall::Domains(pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+        domain_id: EVM_DOMAIN_ID,
+        contract_creation_allowed_by: allow_list.clone(),
+    }))})
+    .await
+    .expect("Failed to construct and send consensus chain sudo call to update EVM contract allow list");
+
+    // Produce a bundle that contains just the sent extrinsics (and not the failed ones)
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 0);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    // produce 30 more blocks to ensure nothing went wrong
+    produce_blocks!(ferdie, alice, 30).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_public_evm_rejects_allow_list_domain_owner_calls() {
+    let (_directory, mut ferdie, alice, account_infos) =
+        setup_evm_test_accounts(Ferdie, false, Ferdie).await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // check initial contract allow list
+    assert_eq!(
+        alice.evm_contract_creation_allowed_by(),
+        PermissionedActionAllowedBy::Anyone,
+        "initial contract allow list should be anyone"
+    );
+
+    // Try to set EVM contract allow list on Domain using domain owner.
+    // pallet-domains should reject these calls on a public EVM instance.
+
+    // A redundant set should still fail.
+    let mut allow_list = generate_evm_account_list(&account_infos, EvmAccountList::Anyone);
+    ferdie
+        .construct_and_send_extrinsic_with(
+            pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+                domain_id: EVM_DOMAIN_ID,
+                contract_creation_allowed_by: allow_list.clone(),
+            },
+        )
+        .await
+        .expect(
+            "Owner update to public EVM contract allow list shouldn't have failed at this stage",
+        );
+
+    // Produce a bundle that contains just the sent extrinsics (and not the failed ones)
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 0);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Then use actual settings
+    // 1 account in the allow list
+    allow_list = generate_evm_account_list(&account_infos, EvmAccountList::One);
+    ferdie
+        .construct_and_send_extrinsic_with(
+            pallet_domains::Call::send_evm_domain_set_contract_creation_allowed_by_call {
+                domain_id: EVM_DOMAIN_ID,
+                contract_creation_allowed_by: allow_list.clone(),
+            },
+        )
+        .await
+        .expect(
+            "Owner update to public EVM contract allow list shouldn't have failed at this stage",
+        );
+
+    // Produce a bundle that contains just the sent extrinsics (and not the failed ones)
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 0);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    // produce 30 more blocks to ensure nothing went wrong
+    produce_blocks!(ferdie, alice, 30).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -6578,6 +6908,8 @@ async fn test_verify_mmr_proof_stateless() {
         BasePath::new(directory.path().join("ferdie")),
         // finalization depth
         Some(10),
+        false,
+        None,
     );
 
     // Run Alice (an evm domain)
@@ -6654,6 +6986,8 @@ async fn test_equivocated_bundle_check() {
         BasePath::new(directory.path().join("ferdie")),
         // finalization depth
         Some(10),
+        false,
+        None,
     );
 
     // Run Alice (an evm domain)

@@ -10,7 +10,7 @@ use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, MAINNET_CHAIN_SPEC, TAURUS_CHAI
 use sc_telemetry::TelemetryEndpoints;
 use serde::Deserialize;
 use sp_core::crypto::Ss58Codec;
-use sp_domains::PermissionedActionAllowedBy;
+use sp_domains::{EvmType, PermissionedActionAllowedBy};
 use sp_runtime::{BoundedVec, Percent};
 use std::marker::PhantomData;
 use std::num::{NonZeroU128, NonZeroU32};
@@ -359,6 +359,11 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     genesis_domains: vec![evm_chain_spec::get_genesis_domain(
                         SpecId::Dev,
                         sudo_account,
+                        // TODO: in production configs, set this to Public, unless we specifically want a private EVM
+                        EvmType::Private {
+                            initial_contract_creation_allow_list:
+                                PermissionedActionAllowedBy::Anyone,
+                        },
                     )?],
                 },
                 CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),

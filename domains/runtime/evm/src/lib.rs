@@ -55,7 +55,9 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
-use sp_domains::{ChannelId, DomainAllowlistUpdates, DomainId, Transfers};
+use sp_domains::{
+    ChannelId, DomainAllowlistUpdates, DomainId, PermissionedActionAllowedBy, Transfers,
+};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, FeeModel, MessageId, MessageKey,
@@ -919,12 +921,25 @@ fn is_valid_sudo_call(encoded_ext: Vec<u8>) -> bool {
     UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()).is_ok()
 }
 
+/// Constructs a domain-sudo call extrinsic from the given encoded extrinsic.
 fn construct_sudo_call_extrinsic(encoded_ext: Vec<u8>) -> <Block as BlockT>::Extrinsic {
     let ext = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice())
         .expect("must always be an valid extrinsic due to the check above; qed");
     UncheckedExtrinsic::new_bare(
         pallet_domain_sudo::Call::sudo {
             call: Box::new(ext.0.function),
+        }
+        .into(),
+    )
+}
+
+/// Constructs an evm-tracker call extrinsic from the given extrinsic.
+fn construct_evm_contract_creation_allowed_by_extrinsic(
+    decoded_argument: PermissionedActionAllowedBy<AccountId>,
+) -> <Block as BlockT>::Extrinsic {
+    UncheckedExtrinsic::new_bare(
+        pallet_evm_tracker::Call::set_contract_creation_allowed_by {
+            contract_creation_allowed_by: decoded_argument,
         }
         .into(),
     )
@@ -1322,6 +1337,7 @@ impl_runtime_apis! {
                 RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(call),
                 RuntimeCall::Messenger(call) => Messenger::is_inherent(call),
                 RuntimeCall::Sudo(call) => Sudo::is_inherent(call),
+                RuntimeCall::EVMNoncetracker(call) => EVMNoncetracker::is_inherent(call),
                 _ => false,
             }
         }
@@ -1694,6 +1710,12 @@ impl_runtime_apis! {
 
         fn construct_domain_sudo_extrinsic(inner: Vec<u8>) -> <Block as BlockT>::Extrinsic {
             construct_sudo_call_extrinsic(inner)
+        }
+    }
+
+    impl sp_evm_tracker::EvmTrackerApi<Block> for Runtime {
+        fn construct_evm_contract_creation_allowed_by_extrinsic(decoded_argument: PermissionedActionAllowedBy<AccountId>) -> <Block as BlockT>::Extrinsic {
+            construct_evm_contract_creation_allowed_by_extrinsic(decoded_argument)
         }
     }
 

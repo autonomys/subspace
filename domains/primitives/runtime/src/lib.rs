@@ -45,6 +45,9 @@ pub type Signature = MultiSignature;
 
 /// Some way of identifying an account on the chain. We intentionally make it equivalent
 /// to the public key of our transaction signing scheme.
+//
+// Note: sometimes this type alias causes complex trait ambiguity / conflicting implementation errors.
+// As a workaround, `use sp_runtime::AccountId32 as AccountId` instead.
 pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 /// Balance of an account.
@@ -73,6 +76,9 @@ pub type EthereumSignature = EVMSignature;
 
 /// Some way of identifying an account on the EVM chain. We intentionally make it equivalent
 /// to the public key of the EVM transaction signing scheme.
+//
+// Note: sometimes this type alias causes complex trait ambiguity / conflicting implementation errors.
+// As a workaround, `use fp_account::AccountId20 as EthereumAccountId` instead.
 pub type EthereumAccountId = <<EthereumSignature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 /// Dispatch ratio for domains
@@ -240,7 +246,7 @@ pub struct CheckExtrinsicsValidityError {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct DecodeExtrinsicError(pub String);
 
-/// fullu qualified method name of check_extrinsics_and_do_pre_dispatch runtime api.
+/// Fully qualified method name of check_extrinsics_and_do_pre_dispatch runtime api.
 /// Used to call state machine.
 /// Change it when the runtime api's name is changed in the interface.
 pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =

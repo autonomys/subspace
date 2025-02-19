@@ -889,20 +889,52 @@ impl<AccountId: Codec + PartialEq + Clone> PermissionedActionAllowedBy<AccountId
     }
 }
 
-/// EVM-specific domain runtime config.
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EvmDomainRuntimeConfig {
-    /// Accounts initially allowed to create contracts on an EVM domain.
-    /// The domain owner can update this list using a sudo call.
-    pub initial_contract_creation_allow_list: PermissionedActionAllowedBy<EthereumAccountId>,
+/// EVM-specific domain type (and associated data).
+#[derive(
+    TypeInfo, Debug, Default, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize,
+)]
+pub enum EvmType {
+    #[default]
+    /// An EVM domain where any account can create contracts.
+    Public,
+    /// An EVM domain with a contract creation allow list.
+    Private {
+        /// Accounts initially allowed to create contracts on a private EVM domain.
+        /// The domain owner can update this list using a pallet-domains call (or there's a sudo call).
+        initial_contract_creation_allow_list: PermissionedActionAllowedBy<EthereumAccountId>,
+    },
 }
 
-impl Default for EvmDomainRuntimeConfig {
-    fn default() -> Self {
-        EvmDomainRuntimeConfig {
-            initial_contract_creation_allow_list: PermissionedActionAllowedBy::Anyone,
+impl EvmType {
+    /// Returns the initial contract creation allow list, or `None` if this is a public EVM domain.
+    pub fn initial_contract_creation_allow_list(
+        &self,
+    ) -> Option<&PermissionedActionAllowedBy<EthereumAccountId>> {
+        match self {
+            EvmType::Public => None,
+            EvmType::Private {
+                initial_contract_creation_allow_list,
+            } => Some(initial_contract_creation_allow_list),
         }
     }
+
+    /// Returns true if the EVM domain is public.
+    pub fn is_public_evm_domain(&self) -> bool {
+        matches!(self, EvmType::Public)
+    }
+
+    /// Returns true if the EVM domain is private.
+    pub fn is_private_evm_domain(&self) -> bool {
+        matches!(self, EvmType::Private { .. })
+    }
+}
+
+/// EVM-specific domain runtime config.
+#[derive(
+    TypeInfo, Debug, Default, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize,
+)]
+pub struct EvmDomainRuntimeConfig {
+    pub evm_type: EvmType,
 }
 
 /// AutoId-specific domain runtime config.
@@ -947,7 +979,7 @@ impl DomainRuntimeConfig {
         DomainRuntimeConfig::AutoId(AutoIdDomainRuntimeConfig::default())
     }
 
-    pub fn is_evm(&self) -> bool {
+    pub fn is_evm_domain(&self) -> bool {
         matches!(self, DomainRuntimeConfig::Evm(_))
     }
 
@@ -966,7 +998,7 @@ impl DomainRuntimeConfig {
         &self,
     ) -> Option<&PermissionedActionAllowedBy<EthereumAccountId>> {
         self.evm()
-            .map(|evm_config| &evm_config.initial_contract_creation_allow_list)
+            .and_then(|evm_config| evm_config.evm_type.initial_contract_creation_allow_list())
     }
 
     pub fn auto_id(&self) -> Option<&AutoIdDomainRuntimeConfig> {
@@ -1529,6 +1561,22 @@ impl DomainSudoCall {
     }
 }
 
+/// EVM Domain "update contract creation allowed by" runtime call.
+///
+/// This structure exists because we need to generate a storage proof for FP
+/// and Storage shouldn't be None. So each domain must always hold this value even if
+/// there is an empty runtime call inside
+#[derive(Default, Debug, Encode, Decode, PartialEq, Eq, Clone, TypeInfo)]
+pub struct EvmDomainContractCreationAllowedByCall {
+    pub maybe_call: Option<PermissionedActionAllowedBy<EthereumAccountId>>,
+}
+
+impl EvmDomainContractCreationAllowedByCall {
+    pub fn clear(&mut self) {
+        self.maybe_call.take();
+    }
+}
+
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct RuntimeObject<Number, Hash> {
     pub runtime_name: String,
@@ -1574,7 +1622,7 @@ sp_api::decl_runtime_apis! {
     // When updating this version, document new APIs with "Only present in API versions" comments.
     // TODO: when removing this version, also remove "Only present in API versions" comments and
     // deprecated attributes.
-    #[api_version(3)]
+    #[api_version(4)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
@@ -1664,8 +1712,12 @@ sp_api::decl_runtime_apis! {
         /// Returns true if the given domain's runtime code has been upgraded since `at`.
         fn is_domain_runtime_upgraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool>;
 
-        /// Returns the domain sudo calls for the given domain, if any.
+        /// Returns the domain sudo call for the given domain, if any.
         fn domain_sudo_call(domain_id: DomainId) -> Option<Vec<u8>>;
+
+        /// Returns the "set contract creation allowed by" call for the given EVM domain, if any.
+        /// Only present in API versions 4 and later.
+        fn evm_domain_contract_creation_allowed_by_call(domain_id: DomainId) -> Option<PermissionedActionAllowedBy<EthereumAccountId>>;
 
         /// Returns the last confirmed domain block execution receipt.
         fn last_confirmed_domain_block_receipt(domain_id: DomainId) ->Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
