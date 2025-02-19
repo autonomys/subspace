@@ -51,7 +51,7 @@ where
 
     /// Check the block length and the max extrinsic weight and notes the new weight and length value.
     ///
-    /// It is same as the [`frame_system::CheckWeight::do_pre_dispatch`] except the `max_total/max_block`
+    /// It is same as the [`frame_system::CheckWeight::do_prepare`] except the `max_total/max_block`
     /// weight limit check is removed.
     pub fn do_prepare(
         info: &DispatchInfoOf<T::RuntimeCall>,
