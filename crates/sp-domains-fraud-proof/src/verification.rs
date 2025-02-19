@@ -161,7 +161,7 @@ where
     // - block_fees transaction_byte_fee_extrinsic
     // - domain_sudo extrinsic
     // Since we use `push_front`, the extrinsics should be pushed in reverse order.
-    // TODO: this will not be valid once we have a different runtime. To achive consistency across
+    // TODO: this will not be valid once we have a different runtime. To achieve consistency across
     // domains, we should define a runtime api for each domain, which orders the extrinsics the
     // same way the inherents are derived while the domain block is being built.
 
@@ -610,7 +610,7 @@ where
     )?;
     let bundle_extrinsic_root = targeted_invalid_bundle_entry.extrinsics_root;
 
-    // Verify the bundle proof so in following we can use the bundle dirctly
+    // Verify the bundle proof so in following we can use the bundle directly
     match proof_data {
         InvalidBundlesProofData::Bundle(bundle_with_proof)
         | InvalidBundlesProofData::BundleAndExecution {
@@ -625,7 +625,7 @@ where
         InvalidBundlesProofData::InvalidXDMProofData { .. } => {}
     }
 
-    // Fast path to check if the fraud proof is targetting a bad receipt that claim a non-exist extrinsic
+    // Fast path to check if the fraud proof is targeting a bad receipt that claim a non-exist extrinsic
     // is invalid
     if let Some(invalid_extrinsic_index) = targeted_invalid_bundle_entry.invalid_extrinsic_index() {
         if let InvalidBundlesProofData::Bundle(bundle_with_proof) = proof_data {

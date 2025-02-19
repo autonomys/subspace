@@ -234,7 +234,7 @@ mod benchmarks {
 
         assert_eq!(
             PendingSlashes::<T>::get(domain_id)
-                .expect("pedning slash must exist")
+                .expect("pending slash must exist")
                 .len(),
             n as usize
         );
@@ -304,7 +304,7 @@ mod benchmarks {
         if s != 0 {
             assert_eq!(
                 PendingSlashes::<T>::get(domain_id)
-                    .expect("pedning slash must exist")
+                    .expect("pending slash must exist")
                     .len(),
                 s as usize
             );
