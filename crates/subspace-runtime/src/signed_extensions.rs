@@ -3,8 +3,9 @@ use codec::{Decode, Encode};
 use frame_support::pallet_prelude::Weight;
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use scale_info::TypeInfo;
+use sp_runtime::impl_tx_ext_default;
 use sp_runtime::traits::{
-    AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, TransactionExtension, ValidateResult,
+    AsSystemOriginSigner, DispatchInfoOf, TransactionExtension, ValidateResult,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -34,13 +35,6 @@ impl DisablePallets {
             Ok(ValidTransaction::default())
         }
     }
-
-    fn do_validate(origin: &OriginFor<Runtime>, call: &RuntimeCall) -> TransactionValidity {
-        match origin.as_system_origin_signer() {
-            None => Self::do_validate_unsigned(call),
-            Some(_) => Self::do_validate_signed(call),
-        }
-    }
 }
 
 impl TransactionExtension<RuntimeCall> for DisablePallets {
@@ -65,20 +59,16 @@ impl TransactionExtension<RuntimeCall> for DisablePallets {
         _inherited_implication: &impl Encode,
         _source: TransactionSource,
     ) -> ValidateResult<Self::Val, RuntimeCallFor<Runtime>> {
-        let validity = Self::do_validate(&origin, call)?;
+        let validity = if origin.as_system_origin_signer().is_some() {
+            Self::do_validate_signed(call)?
+        } else {
+            ValidTransaction::default()
+        };
+
         Ok((validity, (), origin))
     }
 
-    fn prepare(
-        self,
-        _val: Self::Val,
-        _origin: &DispatchOriginOf<RuntimeCallFor<Runtime>>,
-        _call: &RuntimeCallFor<Runtime>,
-        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
-        _len: usize,
-    ) -> Result<Self::Pre, TransactionValidityError> {
-        Ok(())
-    }
+    impl_tx_ext_default!(RuntimeCallFor<Runtime>; prepare);
 
     fn bare_validate(
         call: &RuntimeCallFor<Runtime>,

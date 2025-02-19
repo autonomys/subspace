@@ -119,6 +119,8 @@ pub type SignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     pallet_evm_tracker::create_contract::CheckContractCreation<Runtime>,
+    // TODO: remove or adapt after or during migration to General extrinsic respectively
+    subspace_runtime_primitives::extensions::DisableGeneralExtrinsics<Runtime>,
 );
 
 /// Custom signed extra for check_and_pre_dispatch.
@@ -133,6 +135,8 @@ type CustomSignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     pallet_evm_tracker::create_contract::CheckContractCreation<Runtime>,
+    // TODO: remove or adapt after or during migration to General extrinsic respectively
+    subspace_runtime_primitives::extensions::DisableGeneralExtrinsics<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -176,6 +180,7 @@ pub fn construct_extrinsic_raw_payload(
         domain_check_weight::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
         pallet_evm_tracker::create_contract::CheckContractCreation::<Runtime>::new(),
+        subspace_runtime_primitives::extensions::DisableGeneralExtrinsics::<Runtime>::new(),
     );
     (
         generic::SignedPayload::<RuntimeCallFor<Runtime>, SignedExtra>::from_raw(
@@ -187,6 +192,7 @@ pub fn construct_extrinsic_raw_payload(
                 0,
                 genesis_block_hash,
                 current_block_hash,
+                (),
                 (),
                 (),
                 (),
@@ -1145,6 +1151,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.6,
                     extra.7.clone(),
                     extra.8,
+                    extra.9,
                 );
 
                 let origin = RuntimeOrigin::none();
@@ -1169,6 +1176,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.6,
                     extra.7.clone(),
                     extra.8,
+                    extra.9,
                 );
 
                 let origin = RuntimeOrigin::signed(account_id);

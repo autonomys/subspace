@@ -91,6 +91,8 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    // TODO: remove or adapt after or during migration to General extrinsic respectively
+    subspace_runtime_primitives::extensions::DisableGeneralExtrinsics<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.

@@ -8,9 +8,9 @@ use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use pallet_ethereum::{Transaction as EthereumTransaction, TransactionAction};
 use scale_info::prelude::fmt;
 use sp_core::Get;
+use sp_runtime::impl_tx_ext_default;
 use sp_runtime::traits::{
-    AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, Dispatchable, TransactionExtension,
-    ValidateResult,
+    AsSystemOriginSigner, DispatchInfoOf, Dispatchable, TransactionExtension, ValidateResult,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -229,16 +229,7 @@ where
         Ok((validity, (), origin))
     }
 
-    fn prepare(
-        self,
-        _val: Self::Val,
-        _origin: &DispatchOriginOf<RuntimeCallFor<Runtime>>,
-        _call: &RuntimeCallFor<Runtime>,
-        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
-        _len: usize,
-    ) -> Result<Self::Pre, TransactionValidityError> {
-        Ok(())
-    }
+    impl_tx_ext_default!(RuntimeCallFor<Runtime>; prepare);
 
     fn bare_validate(
         call: &RuntimeCallFor<Runtime>,
