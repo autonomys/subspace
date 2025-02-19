@@ -42,6 +42,7 @@ pub enum Cli {
     Domain(crate::domain::cli::Subcommand),
 
     /// Sub-commands concerned with benchmarking.
+    #[cfg(feature = "runtime-benchmarks")]
     #[clap(subcommand)]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
