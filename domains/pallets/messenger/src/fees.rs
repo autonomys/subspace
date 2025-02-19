@@ -7,7 +7,7 @@ use sp_messenger::endpoint::Endpoint;
 use sp_messenger::messages::{ChainId, ChannelId, FeeModel, MessageId, Nonce};
 use sp_messenger::OnXDMRewards;
 use sp_runtime::traits::CheckedAdd;
-use sp_runtime::DispatchResult;
+use sp_runtime::{DispatchResult, Saturating};
 
 impl<T: Config> Pallet<T> {
     /// Ensures the fees from the sender per FeeModel provided for a single request for a response.
@@ -58,15 +58,17 @@ impl<T: Config> Pallet<T> {
         message_id: (ChainId, MessageId),
         fee_model: &FeeModel<BalanceOf<T>>,
         endpoint: &Endpoint,
-    ) -> DispatchResult {
-        let handler = T::get_endpoint_handler(endpoint).ok_or(Error::<T>::NoMessageHandler)?;
-        let inbox_execution_fee = T::WeightToFee::weight_to_fee(&handler.message_weight());
-        let inbox_fee = inbox_execution_fee
-            .checked_add(&fee_model.relay_fee)
-            .ok_or(Error::<T>::BalanceOverflow)?;
+    ) {
+        let mut inbox_fee = fee_model.relay_fee;
+
+        // If the endpoint handler does not exist the message won't be handled thus it is okay
+        // to not add the execution fee in this case
+        if let Some(handler) = T::get_endpoint_handler(endpoint) {
+            let inbox_execution_fee = T::WeightToFee::weight_to_fee(&handler.message_weight());
+            inbox_fee = inbox_fee.saturating_add(inbox_execution_fee);
+        }
 
         InboxFee::<T>::insert(message_id, inbox_fee);
-        Ok(())
     }
 
     /// Rewards operators for executing an inbox message since src_chain signalled that responses are delivered.

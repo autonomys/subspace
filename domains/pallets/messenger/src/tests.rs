@@ -9,8 +9,8 @@ use crate::mock::{
 use crate::pallet::OutboxMessageCount;
 use crate::{
     ChainAllowlist, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, Channels,
-    CloseChannelBy, Error, FeeModel, Inbox, InboxResponses, Nonce, Outbox, OutboxMessageResult,
-    OutboxResponses, Pallet, U256,
+    CloseChannelBy, Error, FeeModel, Inbox, InboxFee, InboxResponses, Nonce, Outbox,
+    OutboxMessageResult, OutboxResponses, Pallet, U256,
 };
 use frame_support::traits::fungible::Inspect;
 use frame_support::traits::tokens::{Fortitude, Preservation};
@@ -1068,7 +1068,13 @@ fn test_transport_funds_between_chains_if_dst_chain_disallows_after_message_is_s
     let post_response_balance =
         chain_a_test_ext.execute_with(|| chain_a::Balances::total_balance(&account_id));
     // The transferred fund should be refunded
-    assert_eq!(post_response_balance, post_transfer_balance + 500)
+    assert_eq!(post_response_balance, post_transfer_balance + 500);
+
+    // The relayer fee and inbox execution fee should be moved to the dst chain and
+    // distribute to the operator of the dst chain later
+    chain_b_test_ext.execute_with(|| {
+        assert_eq!(1, InboxFee::<chain_b::Runtime>::iter().count());
+    });
 }
 
 #[test]
