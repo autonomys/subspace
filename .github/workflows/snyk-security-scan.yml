@@ -17,7 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
+      # we can just scan the images, but we are building the image and scanning from the Dockerfile as it can be more accurate and find more obscured vulnerabilities than simply scanning the pre-built image.
+      # See https://docs.snyk.io/scan-with-snyk/snyk-container/use-snyk-container/detect-the-container-base-image#how-snyk-container-identifies-base-images
       - name: Build Farmer Docker image
         run: docker build -t autonomys/farmer:snyk -f docker/farmer.Dockerfile .
 
@@ -46,6 +47,8 @@ jobs:
           sarif_file: snyk.sarif
           category: snyk-farmer-image
 
+      # we can just scan the images, but we are building the image and scanning from the Dockerfile as it can be more accurate and find more obscured vulnerabilities than simply scanning the pre-built image.
+      # See https://docs.snyk.io/scan-with-snyk/snyk-container/use-snyk-container/detect-the-container-base-image#how-snyk-container-identifies-base-images
       - name: Build Node Docker image
         run: docker build -t autonomys/node:snyk -f docker/node.Dockerfile .
 
@@ -74,6 +77,8 @@ jobs:
           sarif_file: snyk.sarif
           category: snyk-node-image
 
+      # we can just scan the images, but we are building the image and scanning from the Dockerfile as it can be more accurate and find more obscured vulnerabilities than simply scanning the pre-built image.
+      # See https://docs.snyk.io/scan-with-snyk/snyk-container/use-snyk-container/detect-the-container-base-image#how-snyk-container-identifies-base-images
       - name: Build Bootstrap node Docker image
         run: docker build -t autonomys/bootstrap-node:snyk -f docker/bootstrap-node.Dockerfile .
 
@@ -102,6 +107,8 @@ jobs:
           sarif_file: snyk.sarif
           category: snyk-bootstrap-node-image
 
+      # we can just scan the images, but we are building the image and scanning from the Dockerfile as it can be more accurate and find more obscured vulnerabilities than simply scanning the pre-built image.
+      # See https://docs.snyk.io/scan-with-snyk/snyk-container/use-snyk-container/detect-the-container-base-image#how-snyk-container-identifies-base-images
       - name: Build Gateway Docker image
         run: docker build -t autonomys/gateway:snyk -f docker/gateway.Dockerfile .
 
