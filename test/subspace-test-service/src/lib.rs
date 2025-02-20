@@ -46,7 +46,8 @@ use sc_service::config::{
     WasmtimeInstantiationStrategy,
 };
 use sc_service::{
-    BasePath, BlocksPruning, Configuration, NetworkStarter, Role, SpawnTasksParams, TaskManager,
+    BasePath, BlocksPruning, ChainSpec, Configuration, NetworkStarter, Role, SpawnTasksParams,
+    TaskManager,
 };
 use sc_transaction_pool::{BasicPool, FullChainApi, Options};
 use sc_transaction_pool_api::error::{Error as TxPoolError, IntoPoolError};
@@ -64,6 +65,7 @@ use sp_core::offchain::storage::OffchainDb;
 use sp_core::offchain::OffchainDbExt;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
+use sp_domains::storage::RawGenesis;
 use sp_domains::{BundleProducerElectionApi, ChainId, DomainsApi, OpaqueBundle};
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
@@ -77,7 +79,9 @@ use sp_runtime::generic::{Digest, SignedPayload};
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
 };
-use sp_runtime::{generic, DigestItem, MultiAddress, OpaqueExtrinsic, SaturatedConversion};
+use sp_runtime::{
+    generic, BuildStorage, DigestItem, MultiAddress, OpaqueExtrinsic, SaturatedConversion,
+};
 use sp_subspace_mmr::host_functions::{SubspaceMmrExtension, SubspaceMmrHostFunctionsImpl};
 use sp_timestamp::Timestamp;
 use std::collections::HashMap;
@@ -94,7 +98,7 @@ use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Signature};
 use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{chain_spec, Backend, Client};
-use subspace_test_primitives::OnchainStateApi;
+use subspace_test_primitives::{OnchainStateApi, DOMAINS_BLOCK_PRUNING_DEPTH};
 use subspace_test_runtime::{
     Runtime, RuntimeApi, RuntimeCall, SignedExtra, UncheckedExtrinsic, SLOT_DURATION,
 };
@@ -118,6 +122,7 @@ pub fn node_config(
     run_farmer: bool,
     force_authoring: bool,
     force_synced: bool,
+    challenge_period: Option<NumberFor<Block>>,
     private_evm: bool,
     evm_owner_account: Option<AccountId>,
     base_path: BasePath,
@@ -129,7 +134,18 @@ pub fn node_config(
         Role::Full
     };
     let key_seed = key.to_seed();
-    let spec = chain_spec::subspace_local_testnet_config(private_evm, evm_owner_account).unwrap();
+    let mut chain_spec =
+        chain_spec::subspace_local_testnet_config(private_evm, evm_owner_account).unwrap();
+
+    // Set pallet-domains parameters
+    let challenge_period = challenge_period.unwrap_or(DOMAINS_BLOCK_PRUNING_DEPTH);
+    let mut raw_genesis = RawGenesis::from_storage(
+        chain_spec
+            .build_storage()
+            .expect("Failed to build genesis storage from genesis runtime config"),
+    );
+    raw_genesis.set_consensus_challenge_period(challenge_period);
+    chain_spec.set_storage(raw_genesis.into_storage());
 
     let mut network_config = NetworkConfiguration::new(
         key_seed.to_string(),
@@ -165,7 +181,7 @@ pub fn node_config(
         trie_cache_maximum_size: Some(64 * 1024 * 1024),
         state_pruning: Default::default(),
         blocks_pruning: BlocksPruning::KeepAll,
-        chain_spec: Box::new(spec),
+        chain_spec: Box::new(chain_spec),
         executor: ExecutorConfiguration {
             wasm_method: WasmExecutionMethod::Compiled {
                 instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
@@ -392,7 +408,7 @@ impl MockConsensusNode {
         key: Sr25519Keyring,
         base_path: BasePath,
     ) -> MockConsensusNode {
-        Self::run_with_finalization_depth(tokio_handle, key, base_path, None, false, None)
+        Self::run_with_finalization_depth(tokio_handle, key, base_path, None, None, false, None)
     }
 
     /// Run a mock consensus node with a private EVM domain
@@ -402,7 +418,7 @@ impl MockConsensusNode {
         evm_owner: Option<Sr25519Keyring>,
         base_path: BasePath,
     ) -> MockConsensusNode {
-        Self::run_with_finalization_depth(tokio_handle, key, base_path, None, true, evm_owner)
+        Self::run_with_finalization_depth(tokio_handle, key, base_path, None, None, true, evm_owner)
     }
 
     /// Run a mock consensus node with finalization depth
@@ -411,6 +427,7 @@ impl MockConsensusNode {
         key: Sr25519Keyring,
         base_path: BasePath,
         finalize_block_depth: Option<NumberFor<Block>>,
+        challenge_period: Option<NumberFor<Block>>,
         private_evm: bool,
         evm_owner: Option<Sr25519Keyring>,
     ) -> MockConsensusNode {
@@ -423,6 +440,7 @@ impl MockConsensusNode {
             false,
             false,
             false,
+            challenge_period,
             private_evm,
             evm_owner.map(|key| key.to_account_id()),
             base_path,

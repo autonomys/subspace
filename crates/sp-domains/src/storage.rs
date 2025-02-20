@@ -2,8 +2,11 @@
 extern crate alloc;
 
 use crate::{
-    evm_chain_id_storage_key, evm_contract_creation_allowed_by_storage_key,
-    self_domain_id_storage_key, DomainId, PermissionedActionAllowedBy,
+    consensus_block_tree_pruning_depth_storage_key,
+    consensus_domain_runtime_upgrade_delay_storage_key,
+    consensus_stake_withdrawal_locking_period_storage_key, evm_chain_id_storage_key,
+    evm_contract_creation_allowed_by_storage_key, self_domain_id_storage_key, DomainId,
+    PermissionedActionAllowedBy,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -51,6 +54,7 @@ pub struct RawGenesis {
 }
 
 impl RawGenesis {
+    /// Set Domain ID storage for a domain.
     pub fn set_domain_id(&mut self, domain_id: DomainId) {
         let _ = self.top.insert(
             self_domain_id_storage_key(),
@@ -58,12 +62,16 @@ impl RawGenesis {
         );
     }
 
+    /// Set EVM Chain ID storage for an EVM domain.
+    /// Has no effect on other domains.
     pub fn set_evm_chain_id(&mut self, chain_id: EVMChainId) {
         let _ = self
             .top
             .insert(evm_chain_id_storage_key(), StorageData(chain_id.encode()));
     }
 
+    /// Set EVM Contract Creation Allowed By storage for an EVM domain.
+    /// `contract_creation_allowed_by` must be `Anyone` for public EVM domains.
     pub fn set_evm_contract_creation_allowed_by(
         &mut self,
         contract_creation_allowed_by: &PermissionedActionAllowedBy<EthereumAccountId>,
@@ -71,6 +79,23 @@ impl RawGenesis {
         let _ = self.top.insert(
             evm_contract_creation_allowed_by_storage_key(),
             StorageData(contract_creation_allowed_by.encode()),
+        );
+    }
+
+    /// Set challenge period storages for a subspace consensus runtime.
+    /// Has no effect on domains. (Domains receive their challenge period via a config function parameter.)
+    pub fn set_consensus_challenge_period(&mut self, challenge_period: u32) {
+        let _ = self.top.insert(
+            consensus_block_tree_pruning_depth_storage_key(),
+            StorageData(challenge_period.encode()),
+        );
+        let _ = self.top.insert(
+            consensus_stake_withdrawal_locking_period_storage_key(),
+            StorageData(challenge_period.encode()),
+        );
+        let _ = self.top.insert(
+            consensus_domain_runtime_upgrade_delay_storage_key(),
+            StorageData((challenge_period as u64).encode()),
         );
     }
 

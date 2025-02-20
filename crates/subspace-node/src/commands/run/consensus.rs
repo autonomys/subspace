@@ -4,7 +4,7 @@ use clap::Parser;
 use prometheus_client::registry::Registry;
 use sc_chain_spec::GenericChainSpec;
 use sc_cli::{
-    generate_node_name, Cors, NodeKeyParams, NodeKeyType, RpcMethods, TelemetryParams,
+    generate_node_name, ChainSpec, Cors, NodeKeyParams, NodeKeyType, RpcMethods, TelemetryParams,
     TransactionPoolParams, RPC_DEFAULT_PORT,
 };
 use sc_consensus_subspace::archiver::CreateObjectMappings;
@@ -12,6 +12,8 @@ use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, Role, SetConf
 use sc_service::{BlocksPruning, Configuration, PruningMode};
 use sc_storage_monitor::StorageMonitorParams;
 use sc_telemetry::TelemetryEndpoints;
+use sp_domains::storage::RawGenesis;
+use sp_runtime::BuildStorage;
 use std::collections::HashSet;
 use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -21,6 +23,7 @@ use std::str::FromStr;
 use subspace_core_primitives::BlockNumber;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_runtime_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 use subspace_service::config::{
     ChainSyncMode, SubspaceConfiguration, SubspaceNetworking, SubstrateConfiguration,
     SubstrateNetworkConfiguration, SubstrateRpcConfiguration,
@@ -430,6 +433,11 @@ pub(super) struct ConsensusChainOptions {
     #[clap(flatten)]
     pruning_params: PruningOptions,
 
+    /// The blockchain challenge period.
+    /// All nodes in the network must have the same value for this parameter.
+    #[arg(long, default_value_t = DOMAINS_BLOCK_PRUNING_DEPTH)]
+    challenge_period: u32,
+
     /// Options for Substrate networking
     #[clap(flatten)]
     network_options: SubstrateNetworkOptions,
@@ -492,6 +500,7 @@ pub(super) struct ConsensusChainConfiguration {
     pub(super) maybe_tmp_dir: Option<TempDir>,
     pub(super) subspace_configuration: SubspaceConfiguration,
     pub(super) dev: bool,
+    pub(super) challenge_period: u32,
     /// External entropy, used initially when PoT chain starts to derive the first seed
     pub(super) pot_external_entropy: Vec<u8>,
     pub(super) storage_monitor: StorageMonitorParams,
@@ -512,6 +521,7 @@ pub(super) fn create_consensus_chain_configuration(
         name,
         telemetry_params,
         prometheus_listen_on,
+        challenge_period,
         pruning_params,
         mut network_options,
         pool_config,
@@ -566,12 +576,19 @@ pub(super) fn create_consensus_chain_configuration(
                 ])
             }
         });
+
+        if challenge_period != DOMAINS_BLOCK_PRUNING_DEPTH && !dev {
+            return Err(Error::Other(
+                "Challenge period must be set to {DOMAINS_BLOCK_PRUNING_DEPTH}, unless in dev mode"
+                    .to_string(),
+            ));
+        }
     }
 
     // Snap sync is the default mode.
     let sync = sync.unwrap_or(ChainSyncMode::Snap);
 
-    let chain_spec = match chain.as_deref() {
+    let mut chain_spec = match chain.as_deref() {
         Some("mainnet-compiled") => chain_spec::mainnet_compiled()?,
         Some("mainnet") => chain_spec::mainnet_config()?,
         Some("taurus") => chain_spec::taurus_config()?,
@@ -585,6 +602,18 @@ pub(super) fn create_consensus_chain_configuration(
             ));
         }
     };
+
+    // Set pallet-domains parameters, if needed
+    if challenge_period != DOMAINS_BLOCK_PRUNING_DEPTH {
+        let mut raw_genesis = RawGenesis::from_storage(
+            chain_spec
+                .build_storage()
+                .expect("Failed to build genesis storage from genesis runtime config"),
+        );
+        raw_genesis.set_consensus_challenge_period(challenge_period);
+        chain_spec.set_storage(raw_genesis.into_storage());
+    }
+
     let mut maybe_tmp_dir = None;
     let base_path = match base_path {
         Some(base_path) => base_path,
@@ -762,6 +791,7 @@ pub(super) fn create_consensus_chain_configuration(
             timekeeper_cpu_cores: timekeeper_options.timekeeper_cpu_cores,
         },
         dev,
+        challenge_period,
         pot_external_entropy,
         storage_monitor,
         prometheus_configuration: prometheus_listen_on.zip(substrate_registry).map(

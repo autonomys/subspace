@@ -106,8 +106,8 @@ use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilit
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
     HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC,
-    DOMAINS_BLOCK_PRUNING_DEPTH, MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO,
-    SHANNON, SLOT_PROBABILITY, SSC,
+    MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY,
+    SSC,
 };
 
 sp_runtime::impl_opaque_keys! {

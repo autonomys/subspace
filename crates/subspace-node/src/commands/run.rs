@@ -32,7 +32,7 @@ use std::sync::Arc;
 use subspace_logging::init_logger;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_runtime::{Block, RuntimeApi};
-use subspace_runtime_primitives::{DOMAINS_BLOCK_PRUNING_DEPTH, DOMAINS_PRUNING_DEPTH_MULTIPLIER};
+use subspace_runtime_primitives::DOMAINS_PRUNING_DEPTH_MULTIPLIER;
 use subspace_service::config::ChainSyncMode;
 use tracing::{debug, error, info, info_span, warn};
 
@@ -93,6 +93,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         maybe_tmp_dir: _maybe_tmp_dir,
         mut subspace_configuration,
         dev,
+        challenge_period,
         pot_external_entropy,
         storage_monitor,
         mut prometheus_configuration,
@@ -100,7 +101,12 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
     let maybe_domain_configuration = domain_options
         .map(|domain_options| {
-            create_domain_configuration(&subspace_configuration, dev, domain_options)
+            create_domain_configuration(
+                &subspace_configuration,
+                dev,
+                challenge_period,
+                domain_options,
+            )
         })
         .transpose()?;
 
@@ -131,13 +137,16 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         None
     };
 
-    if maybe_domain_configuration.is_some() {
+    if let Some(ref domain_configuration) = maybe_domain_configuration {
         // TODO: currently, we set consensus block and state pruning to challenge period
         //  when the node is running a domain node.
         //  But is there a situation when challenge period is not enough?
         //  If we do such a scenario, we would rather keep the consensus block and state pruning
         //  to archive-canonical
-        ensure_block_and_state_pruning_params(&mut subspace_configuration.base)
+        ensure_block_and_state_pruning_params(
+            &mut subspace_configuration.base,
+            domain_configuration.challenge_period,
+        );
     }
 
     let mut task_manager = {
@@ -195,7 +204,10 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
         // Run a domain
         if let Some(mut domain_configuration) = maybe_domain_configuration {
-            ensure_block_and_state_pruning_params(&mut domain_configuration.domain_config);
+            ensure_block_and_state_pruning_params(
+                &mut domain_configuration.domain_config,
+                domain_configuration.challenge_period,
+            );
             let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
             let gossip_message_sink = xdm_gossip_worker_builder.gossip_msg_sink();
             let (domain_message_sink, domain_message_receiver) =
@@ -386,9 +398,9 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         .map_err(Into::into)
 }
 
-pub fn ensure_block_and_state_pruning_params(config: &mut Configuration) {
-    let domains_pruning_depth =
-        DOMAINS_BLOCK_PRUNING_DEPTH.saturating_mul(DOMAINS_PRUNING_DEPTH_MULTIPLIER);
+/// Make sure the configuration is valid, using the configured challenge period.
+pub fn ensure_block_and_state_pruning_params(config: &mut Configuration, challenge_period: u32) {
+    let domains_pruning_depth = challenge_period.saturating_mul(DOMAINS_PRUNING_DEPTH_MULTIPLIER);
 
     if let BlocksPruning::Some(blocks) = config.blocks_pruning {
         config.blocks_pruning = BlocksPruning::Some(if blocks >= domains_pruning_depth {

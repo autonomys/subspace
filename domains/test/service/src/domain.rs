@@ -140,6 +140,7 @@ where
         domain_nodes_exclusive: bool,
         skip_empty_bundle_production: bool,
         maybe_operator_id: Option<OperatorId>,
+        maybe_challenge_period: Option<u32>,
         role: Role,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
@@ -219,7 +220,7 @@ where
             skip_out_of_order_slot: true,
             maybe_operator_id,
             confirmation_depth_k: chain_constants.confirmation_depth_k(),
-            challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+            challenge_period: maybe_challenge_period.unwrap_or(DOMAINS_BLOCK_PRUNING_DEPTH),
             consensus_chain_sync_params: None::<
                 ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
             >,
@@ -499,6 +500,7 @@ pub struct DomainNodeBuilder {
     skip_empty_bundle_production: bool,
     base_path: BasePath,
     maybe_operator_id: Option<OperatorId>,
+    maybe_challenge_period: Option<u32>,
 }
 
 impl DomainNodeBuilder {
@@ -514,6 +516,7 @@ impl DomainNodeBuilder {
             skip_empty_bundle_production: false,
             base_path,
             maybe_operator_id: None,
+            maybe_challenge_period: None,
         }
     }
 
@@ -546,6 +549,12 @@ impl DomainNodeBuilder {
         self
     }
 
+    /// Set the challenge period
+    pub fn challenge_period(mut self, challenge_period: u32) -> Self {
+        self.maybe_challenge_period = Some(challenge_period);
+        self
+    }
+
     /// Build an EVM domain node
     pub async fn build_evm_node(
         self,
@@ -562,6 +571,7 @@ impl DomainNodeBuilder {
             self.domain_nodes_exclusive,
             self.skip_empty_bundle_production,
             self.maybe_operator_id,
+            self.maybe_challenge_period,
             role,
             mock_consensus_node,
         )
@@ -584,6 +594,7 @@ impl DomainNodeBuilder {
             self.domain_nodes_exclusive,
             self.skip_empty_bundle_production,
             self.maybe_operator_id,
+            self.maybe_challenge_period,
             role,
             mock_consensus_node,
         )

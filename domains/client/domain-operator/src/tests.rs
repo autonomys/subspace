@@ -252,6 +252,7 @@ async fn setup_evm_test_nodes(
         ferdie_key,
         BasePath::new(directory.path().join("ferdie")),
         None,
+        None,
         private_evm,
         evm_owner,
     );
@@ -6855,6 +6856,7 @@ async fn test_verify_mmr_proof_stateless() {
         BasePath::new(directory.path().join("ferdie")),
         // finalization depth
         Some(10),
+        None,
         false,
         None,
     );
@@ -6933,6 +6935,7 @@ async fn test_equivocated_bundle_check() {
         BasePath::new(directory.path().join("ferdie")),
         // finalization depth
         Some(10),
+        None,
         false,
         None,
     );

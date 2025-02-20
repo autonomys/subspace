@@ -81,6 +81,7 @@ fn main() -> Result<(), Error> {
     let cli = Cli::from_args();
 
     let sudo_account = cli.sudo_account();
+    let challenge_period = cli.challenge_period;
     let runner = cli.create_runner(&cli.run)?;
     set_default_ss58_version(&runner.config().chain_spec);
     runner.run_node_until_exit(|mut consensus_chain_config| async move {
@@ -323,7 +324,7 @@ fn main() -> Result<(), Error> {
                             }
                         };
 
-                        match domain_starter.start(bootstrap_result, sudo_account).await {
+                        match domain_starter.start(bootstrap_result, sudo_account, challenge_period).await {
                             Ok(domain_code_executor) => {
                                 let span = sc_tracing::tracing::info_span!(
                                     sc_tracing::logging::PREFIX_LOG_SPAN,

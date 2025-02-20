@@ -16,7 +16,10 @@ use sc_service::config::{
 };
 use sc_service::{BasePath, BlocksPruning, Configuration, DatabaseSource};
 use sp_core::crypto::{AccountId32, Ss58Codec};
+use sp_domains::storage::RawGenesis;
 use sp_domains::DomainId;
+use sp_runtime::BuildStorage;
+use subspace_runtime_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 
 /// Subspace Cli.
 #[derive(Debug, Parser)]
@@ -34,6 +37,11 @@ pub struct Cli {
     /// If not passed, dev sudo account is used instead.
     #[arg(long)]
     pub sudo_account: Option<String>,
+
+    /// The blockchain challenge period.
+    /// All valid nodes in the network have the same value for this parameter.
+    #[arg(long, default_value_t = DOMAINS_BLOCK_PRUNING_DEPTH)]
+    pub challenge_period: u32,
 
     /// Domain arguments
     ///
@@ -88,10 +96,19 @@ impl SubstrateCli for Cli {
     }
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
-        let chain_spec = match id {
+        let mut chain_spec = match id {
             "dev" => crate::chain_spec::dev_config()?,
             path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         };
+
+        // Set pallet-domains parameters
+        let mut raw_genesis = RawGenesis::from_storage(
+            chain_spec
+                .build_storage()
+                .expect("Failed to build genesis storage from genesis runtime config"),
+        );
+        raw_genesis.set_consensus_challenge_period(self.challenge_period);
+        chain_spec.set_storage(raw_genesis.into_storage());
 
         Ok(Box::new(chain_spec))
     }
