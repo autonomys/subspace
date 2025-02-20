@@ -19,8 +19,8 @@ use core::mem;
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
     block_weights, maximum_block_length, maximum_domain_block_weight, EthereumAccountId,
-    ERR_BALANCE_OVERFLOW, ERR_CONTRACT_CREATION_NOT_ALLOWED, ERR_NONCE_OVERFLOW,
-    EXISTENTIAL_DEPOSIT, MAX_OUTGOING_MESSAGES, SLOT_DURATION,
+    DEFAULT_EXTENSION_VERSION, ERR_BALANCE_OVERFLOW, ERR_CONTRACT_CREATION_NOT_ALLOWED,
+    ERR_NONCE_OVERFLOW, EXISTENTIAL_DEPOSIT, MAX_OUTGOING_MESSAGES, SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError,
@@ -1186,9 +1186,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     &xt.function,
                     &dispatch_info,
                     encoded_len,
-                    // default extension version define here -
-                    // https://github.com/paritytech/polkadot-sdk/blob/master/substrate/primitives/runtime/src/generic/checked_extrinsic.rs#L37
-                    0,
+                    DEFAULT_EXTENSION_VERSION,
                 )
                 .map(|_| ())
             }

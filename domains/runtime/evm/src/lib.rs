@@ -23,8 +23,9 @@ pub use domain_runtime_primitives::{
     EXISTENTIAL_DEPOSIT,
 };
 use domain_runtime_primitives::{
-    CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier, ERR_BALANCE_OVERFLOW,
-    ERR_CONTRACT_CREATION_NOT_ALLOWED, ERR_NONCE_OVERFLOW, MAX_OUTGOING_MESSAGES, SLOT_DURATION,
+    CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier, DEFAULT_EXTENSION_VERSION,
+    ERR_BALANCE_OVERFLOW, ERR_CONTRACT_CREATION_NOT_ALLOWED, ERR_NONCE_OVERFLOW,
+    MAX_OUTGOING_MESSAGES, SLOT_DURATION,
 };
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
@@ -1158,9 +1159,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     &xt.function,
                     &dispatch_info,
                     encoded_len,
-                    // default extension version define here -
-                    // https://github.com/paritytech/polkadot-sdk/blob/master/substrate/primitives/runtime/src/generic/checked_extrinsic.rs#L37
-                    0,
+                    DEFAULT_EXTENSION_VERSION,
                 )
                 .map(|_| ())
             }
