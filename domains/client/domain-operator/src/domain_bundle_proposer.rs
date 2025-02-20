@@ -224,7 +224,7 @@ where
                     continue;
                 }
 
-                // Skip the tx if is already bundled by a recent bundle
+                // Skip the tx if it is already bundled by a recent bundle
                 if self
                     .previous_bundled_tx
                     .already_bundled(&self.transaction_pool.hash_of(pending_tx_data))
