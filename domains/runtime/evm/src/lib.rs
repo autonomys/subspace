@@ -23,9 +23,9 @@ pub use domain_runtime_primitives::{
     EXISTENTIAL_DEPOSIT,
 };
 use domain_runtime_primitives::{
-    CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier, DEFAULT_EXTENSION_VERSION,
-    ERR_BALANCE_OVERFLOW, ERR_CONTRACT_CREATION_NOT_ALLOWED, ERR_NONCE_OVERFLOW,
-    MAX_OUTGOING_MESSAGES, SLOT_DURATION,
+    AccountId20, CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier,
+    DEFAULT_EXTENSION_VERSION, ERR_BALANCE_OVERFLOW, ERR_CONTRACT_CREATION_NOT_ALLOWED,
+    ERR_NONCE_OVERFLOW, MAX_OUTGOING_MESSAGES, SLOT_DURATION,
 };
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
@@ -245,17 +245,20 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
                 // Copied from [`pallet_ethereum::Call::pre_dispatch_self_contained`] with `frame_system::CheckWeight`
                 // replaced with `domain_check_weight::CheckWeight`
                 if let pallet_ethereum::Call::transact { transaction } = call {
-                    if let Err(e) =
-                        frame_system::CheckWeight::<Runtime>::do_validate(dispatch_info, len)
-                            .and_then(|(_, next_len)| {
-                                domain_check_weight::CheckWeight::<Runtime>::do_prepare(
-                                    dispatch_info,
-                                    len,
-                                    next_len,
-                                )
-                            })
+                    let origin = RuntimeOrigin::signed(AccountId20::from(*info));
+                    if let Err(err) =
+                        <domain_check_weight::CheckWeight<Runtime> as DispatchTransaction<
+                            RuntimeCall,
+                        >>::validate_and_prepare(
+                            domain_check_weight::CheckWeight::<Runtime>::new(),
+                            origin,
+                            self,
+                            dispatch_info,
+                            len,
+                            DEFAULT_EXTENSION_VERSION,
+                        )
                     {
-                        return Some(Err(e));
+                        return Some(Err(err));
                     }
 
                     Some(Ethereum::validate_transaction_in_block(*info, transaction))
