@@ -16,7 +16,7 @@ use frame_support::ensure;
 use scale_info::TypeInfo;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_messenger::messages::{
-    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, FeeModel, Message, MessageId,
+    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, Message, MessageId,
     MessageWeightTag, Payload, ProtocolMessageRequest, ProtocolMessageResponse, RequestResponse,
     VersionedPayload,
 };
@@ -136,6 +136,14 @@ impl<T: Config> Pallet<T> {
 
             // process incoming endpoint message.
             VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))) => {
+                // Firstly, store fees for inbox message execution regardless what the execution result is,
+                // since the fee is already charged from the sender of the src chain and processing of the
+                // XDM in this end is finished.
+                Self::store_fees_for_inbox_message(
+                    (dst_chain_id, (channel_id, nonce)),
+                    &channel.fee,
+                    &req.src_endpoint,
+                );
                 let response =
                     if let Some(endpoint_handler) = T::get_endpoint_handler(&req.dst_endpoint) {
                         Self::process_incoming_endpoint_message_req(
@@ -144,7 +152,6 @@ impl<T: Config> Pallet<T> {
                             channel_id,
                             nonce,
                             &msg_weight_tag,
-                            &channel.fee,
                             endpoint_handler,
                         )
                     } else {
@@ -228,7 +235,6 @@ impl<T: Config> Pallet<T> {
         channel_id: ChannelId,
         nonce: Nonce,
         msg_weight_tag: &MessageWeightTag,
-        fee: &FeeModel<BalanceOf<T>>,
         endpoint_handler: Box<dyn sp_messenger::endpoint::EndpointHandler<MessageId>>,
     ) -> EndpointResponse {
         if !ChainAllowlist::<T>::get().contains(&dst_chain_id) {
@@ -244,13 +250,6 @@ impl<T: Config> Pallet<T> {
         if channel.state != ChannelState::Open {
             return Err(Error::<T>::InvalidChannelState.into());
         }
-
-        // store fees for inbox message execution
-        Self::store_fees_for_inbox_message(
-            (dst_chain_id, (channel_id, nonce)),
-            fee,
-            &req.src_endpoint,
-        )?;
 
         endpoint_handler.message(dst_chain_id, (channel_id, nonce), req)
     }
@@ -321,11 +320,7 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::WeightTagNotMatch.into());
         }
 
-        let resp = endpoint_handler.message_response(dst_chain_id, (channel_id, nonce), req, resp);
-
-        Self::reward_operators_for_outbox_execution(dst_chain_id, (channel_id, nonce));
-
-        resp
+        endpoint_handler.message_response(dst_chain_id, (channel_id, nonce), req, resp)
     }
 
     pub(crate) fn process_outbox_message_responses(
@@ -384,6 +379,10 @@ impl<T: Config> Pallet<T> {
                 VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
                 VersionedPayload::V0(Payload::Endpoint(RequestResponse::Response(resp))),
             ) => {
+                // Firstly, distribute the fees for outbox message execution regardless what the result is,
+                // since the fee is already charged from the sender and the processing of the XDM is finished.
+                Self::reward_operators_for_outbox_execution(dst_chain_id, (channel_id, nonce));
+
                 if let Some(endpoint_handler) = T::get_endpoint_handler(&req.dst_endpoint) {
                     Self::process_incoming_endpoint_message_response(
                         dst_chain_id,
