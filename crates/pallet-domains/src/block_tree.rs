@@ -4,9 +4,9 @@
 extern crate alloc;
 
 use crate::{
-    BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, Config, ConsensusBlockHash,
-    DomainBlockNumberFor, DomainHashingFor, DomainRuntimeUpgradeRecords, ExecutionInbox,
-    ExecutionReceiptOf, HeadDomainNumber, HeadReceiptNumber, InboxedBundleAuthor,
+    BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, BlockTreePruningDepth, Config,
+    ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRuntimeUpgradeRecords,
+    ExecutionInbox, ExecutionReceiptOf, HeadDomainNumber, HeadReceiptNumber, InboxedBundleAuthor,
     LatestConfirmedDomainExecutionReceipt, LatestSubmittedER, NewAddedHeadReceipt, Pallet,
     ReceiptHashFor,
 };
@@ -16,7 +16,6 @@ use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
 use frame_system::pallet_prelude::BlockNumberFor;
 use scale_info::TypeInfo;
-use sp_core::Get;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     ChainId, DomainId, DomainsTransfersTracker, ExecutionReceipt, OnChainRewards, OperatorId,
@@ -353,7 +352,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
 
             // Prune expired domain block
             if let Some(to_prune) =
-                receipt_block_number.checked_sub(&T::BlockTreePruningDepth::get())
+                receipt_block_number.checked_sub(&BlockTreePruningDepth::<T>::get())
             {
                 let BlockTreeNode {
                     execution_receipt,
@@ -621,9 +620,9 @@ mod tests {
     use crate::tests::{
         create_dummy_bundle_with_receipts, create_dummy_receipt, extend_block_tree,
         extend_block_tree_from_zero, get_block_tree_node_at, new_test_ext_with_extensions,
-        register_genesis_domain, run_to_block, BlockTreePruningDepth, Domains, Test,
+        register_genesis_domain, run_to_block, Domains, Test,
     };
-    use crate::FrozenDomains;
+    use crate::{BlockTreePruningDepth, FrozenDomains};
     use frame_support::dispatch::RawOrigin;
     use frame_support::{assert_err, assert_ok};
     use frame_system::Origin;
@@ -667,7 +666,6 @@ mod tests {
     fn test_new_head_receipt() {
         let creator = 0u128;
         let operator_id = 1u64;
-        let block_tree_pruning_depth = <Test as Config>::BlockTreePruningDepth::get();
 
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
@@ -682,7 +680,7 @@ mod tests {
             );
             let mut receipt_of_block_1 = None;
             let mut bundle_header_hash_of_block_1 = None;
-            for block_number in 1..=(block_tree_pruning_depth as u64 + 3) {
+            for block_number in 1..=(BlockTreePruningDepth::<Test>::get() as u64 + 3) {
                 // Finilize parent block and initialize block at `block_number`
                 run_to_block::<Test>(block_number, receipt.consensus_block_hash);
 
@@ -1212,10 +1210,10 @@ mod tests {
     #[test]
     fn test_collect_invalid_bundle_author() {
         let creator = 0u128;
-        let challenge_period = BlockTreePruningDepth::get() as u64;
         let operator_set: Vec<_> = (1..15).collect();
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
+            let challenge_period = BlockTreePruningDepth::<Test>::get() as u64;
             let domain_id = register_genesis_domain(creator, operator_set.clone());
             let next_receipt = extend_block_tree_from_zero(domain_id, operator_set[0], 3);
 

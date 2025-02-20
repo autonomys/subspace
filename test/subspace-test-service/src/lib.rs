@@ -98,7 +98,7 @@ use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Signature};
 use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{chain_spec, Backend, Client};
-use subspace_test_primitives::{OnchainStateApi, DOMAINS_BLOCK_PRUNING_DEPTH};
+use subspace_test_primitives::{OnchainStateApi, TEST_DOMAINS_BLOCK_PRUNING_DEPTH};
 use subspace_test_runtime::{
     Runtime, RuntimeApi, RuntimeCall, SignedExtra, UncheckedExtrinsic, SLOT_DURATION,
 };
@@ -138,7 +138,7 @@ pub fn node_config(
         chain_spec::subspace_local_testnet_config(private_evm, evm_owner_account).unwrap();
 
     // Set pallet-domains parameters
-    let challenge_period = challenge_period.unwrap_or(DOMAINS_BLOCK_PRUNING_DEPTH);
+    let challenge_period = challenge_period.unwrap_or(TEST_DOMAINS_BLOCK_PRUNING_DEPTH);
     let mut raw_genesis = RawGenesis::from_storage(
         chain_spec
             .build_storage()
@@ -1315,16 +1315,16 @@ where
 /// Produce the given number of blocks for both the primary node and the domain nodes
 #[macro_export]
 macro_rules! produce_blocks {
-    ($primary_node:ident, $operator_node:ident, $count: literal $(, $domain_node:ident)*) => {
+    ($primary_node:ident, $operator_node:ident, $count: expr $(, $domain_node:ident)*) => {
         {
             async {
                 let domain_fut = {
                     let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
-                    futs.push(Box::pin($operator_node.wait_for_blocks($count)));
-                    $( futs.push( Box::pin( $domain_node.wait_for_blocks($count) ) ); )*
+                    futs.push(Box::pin($operator_node.wait_for_blocks(($count) as usize)));
+                    $( futs.push( Box::pin( $domain_node.wait_for_blocks(($count) as usize) ) ); )*
                     futures::future::join_all(futs)
                 };
-                $primary_node.produce_blocks_with_bundles($count).await?;
+                $primary_node.produce_blocks_with_bundles(($count) as u64).await?;
                 domain_fut.await;
                 Ok::<(), Box<dyn std::error::Error>>(())
             }

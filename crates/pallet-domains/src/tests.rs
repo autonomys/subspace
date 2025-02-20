@@ -4,11 +4,11 @@ use crate::pallet::OperatorIdOwner;
 use crate::runtime_registry::ScheduledRuntimeUpgrade;
 use crate::staking::Operator;
 use crate::{
-    self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
-    ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry,
-    DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptOf,
-    FraudProofError, FungibleHoldId, HeadDomainNumber, HeadReceiptNumber, NextDomainId, Operators,
-    RuntimeRegistry, ScheduledRuntimeUpgrades,
+    self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BlockTreePruningDepth,
+    BundleError, Config, ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor,
+    DomainRegistry, DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades, ExecutionInbox,
+    ExecutionReceiptOf, FraudProofError, FungibleHoldId, HeadDomainNumber, HeadReceiptNumber,
+    NextDomainId, Operators, RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
@@ -83,12 +83,12 @@ parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const InitialDomainTxRange: u64 = 3;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
-    pub const DomainRuntimeUpgradeDelay: BlockNumber = 100;
+    pub const DefaultDomainRuntimeUpgradeDelay: BlockNumber = 100;
     pub const MaxDomainBlockSize: u32 = 1024 * 1024;
     pub const MaxDomainBlockWeight: Weight = Weight::from_parts(1024 * 1024, 0);
     pub const DomainInstantiationDeposit: Balance = 100;
     pub const MaxDomainNameLength: u32 = 16;
-    pub const BlockTreePruningDepth: u32 = 16;
+    pub const DefaultBlockTreePruningDepth: u32 = 16;
     pub const SlotProbability: (u64, u64) = (1, 6);
 }
 
@@ -139,7 +139,7 @@ impl pallet_balances::Config for Test {
 parameter_types! {
     pub const MinOperatorStake: Balance = 100 * SSC;
     pub const MinNominatorStake: Balance = SSC;
-    pub const StakeWithdrawalLockingPeriod: DomainBlockNumber = 5;
+    pub const DefaultStakeWithdrawalLockingPeriod: DomainBlockNumber = 5;
     pub const StakeEpochDuration: DomainBlockNumber = 5;
     pub TreasuryAccount: u128 = PalletId(*b"treasury").into_account_truncating();
     pub const BlockReward: Balance = 10 * SSC;
@@ -151,6 +151,10 @@ parameter_types! {
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 10;
 }
+
+// Stake Withdrawal locking period must be >= Block tree pruning depth in production
+// TODO: this doesn't currently hold in the tests
+//const_assert!(DefaultStakeWithdrawalLockingPeriod::get() >= DefaultBlockTreePruningDepth::get());
 
 pub struct MockRandomness;
 
@@ -245,7 +249,7 @@ impl pallet_domains::Config for Test {
     type DomainHash = sp_core::H256;
     type DomainHeader = DomainHeader;
     type ConfirmationDepthK = ConfirmationDepthK;
-    type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
+    type DefaultDomainRuntimeUpgradeDelay = DefaultDomainRuntimeUpgradeDelay;
     type Currency = Balances;
     type HoldIdentifier = HoldIdentifierWrapper;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
@@ -258,8 +262,8 @@ impl pallet_domains::Config for Test {
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
-    type BlockTreePruningDepth = BlockTreePruningDepth;
-    type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
+    type DefaultBlockTreePruningDepth = DefaultBlockTreePruningDepth;
+    type DefaultStakeWithdrawalLockingPeriod = DefaultStakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
@@ -752,11 +756,15 @@ fn test_basic_fraud_proof_processing() {
     let creator = 0u128;
     let malicious_operator = 1u64;
     let honest_operator = 2u64;
-    let head_domain_number = BlockTreePruningDepth::get() - 1;
+
+    let mut ext = new_test_ext_with_extensions();
+    let block_tree_pruning_depth = ext.execute_with(BlockTreePruningDepth::<Test>::get);
+
+    let head_domain_number = block_tree_pruning_depth - 1;
     let test_cases = vec![
         1,
         2,
-        head_domain_number - BlockTreePruningDepth::get() / 2,
+        head_domain_number - block_tree_pruning_depth / 2,
         head_domain_number - 1,
         head_domain_number,
     ];
@@ -771,7 +779,7 @@ fn test_basic_fraud_proof_processing() {
                 head_domain_number
             );
 
-            // Construct and submit fraud proof that target ER at `head_domain_number - BlockTreePruningDepth::get() / 2`
+            // Construct and submit fraud proof that targets ER at `bad_receipt_at`
             let bad_receipt = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at)
                 .unwrap()
                 .execution_receipt;

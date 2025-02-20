@@ -7,8 +7,15 @@ use sp_messenger::messages::{ChainId, ChannelId};
 use sp_runtime::traits::NumberFor;
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 
-/// Domains Block pruning depth.
-pub const DOMAINS_BLOCK_PRUNING_DEPTH: u32 = 10;
+/// Test domain runtime upgrade period for lower-level runtime tests.
+pub const TEST_DOMAIN_RUNTIME_UPGRADE_DELAY: u32 = 10;
+
+/// Test domains block pruning depth, also used as the test challenge period.
+/// In operator instance tests, also used as the staking withdrawal period and domain runtime upgrade delay.
+pub const TEST_DOMAINS_BLOCK_PRUNING_DEPTH: u32 = 16;
+
+/// Test staking withdrawal period for lower-level runtime tests.
+pub const TEST_STAKE_WITHDRAWAL_LOCKING_PERIOD: u32 = 20;
 
 sp_api::decl_runtime_apis! {
     /// Api for querying onchain state in the test

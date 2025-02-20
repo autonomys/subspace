@@ -523,7 +523,7 @@ mod tests {
         do_finalize_domain_current_epoch, operator_take_reward_tax_and_stake,
     };
     use crate::tests::{new_test_ext, Test};
-    use crate::{BalanceOf, Config, HoldIdentifier, NominatorId};
+    use crate::{BalanceOf, Config, HoldIdentifier, NominatorId, StakeWithdrawalLockingPeriod};
     #[cfg(not(feature = "std"))]
     use alloc::vec;
     use frame_support::assert_ok;
@@ -611,7 +611,7 @@ mod tests {
             // Update `HeadDomainNumber` to ensure unlock success
             HeadDomainNumber::<Test>::set(
                 domain_id,
-                head_domain_number + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get(),
+                head_domain_number + StakeWithdrawalLockingPeriod::<Test>::get(),
             );
 
             for (nominator_id, _) in nominators {

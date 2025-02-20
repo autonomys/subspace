@@ -47,7 +47,7 @@ mod benchmarks {
     /// - The bundle contains receipt that will prune the block tree
     #[benchmark]
     fn submit_bundle() {
-        let block_tree_pruning_depth = T::BlockTreePruningDepth::get().saturated_into::<u32>();
+        let block_tree_pruning_depth = BlockTreePruningDepth::<T>::get().saturated_into::<u32>();
         let domain_id = register_domain::<T>();
         let (_, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
@@ -72,9 +72,7 @@ mod benchmarks {
                 let bundle = dummy_opaque_bundle(domain_id, operator_id, receipt);
                 assert_ok!(Domains::<T>::submit_bundle(RawOrigin::None.into(), bundle));
             } else {
-                // Since the challenge period is set to 1 day we don't want to fill up all the ERs
-                // (i.e. 14_400 number of ERs) which seems take forever to finish, thus we instead
-                // manually insert the last ER into the state.
+                // TODO: we manually insert the last ER into the state, but we could just fill up all 16 ERs instead
                 let receipt_block_number = domain_block_number - One::one();
                 let receipt = ExecutionReceipt::dummy::<DomainHashingFor<T>>(
                     consensus_block_number - One::one(),
@@ -516,7 +514,7 @@ mod benchmarks {
         _(RawOrigin::Root, runtime_id, genesis_storage.clone());
 
         let scheduled_at = frame_system::Pallet::<T>::current_block_number()
-            .checked_add(&T::DomainRuntimeUpgradeDelay::get())
+            .checked_add(&DomainRuntimeUpgradeDelay::<T>::get())
             .expect("must not overflow");
         let scheduled_upgrade = ScheduledRuntimeUpgrades::<T>::get(scheduled_at, runtime_id)
             .expect("scheduled upgrade must exist");
@@ -660,7 +658,7 @@ mod benchmarks {
         assert_eq!(
             *operator.status::<T>(operator_id),
             OperatorStatus::Deregistered(
-                (domain_id, 1u32, T::StakeWithdrawalLockingPeriod::get()).into()
+                (domain_id, 1u32, StakeWithdrawalLockingPeriod::<T>::get()).into()
             ),
         );
     }
@@ -761,7 +759,7 @@ mod benchmarks {
 
         // Update the `HeadDomainNumber` so unlock can success
         let next_head_domain_number = HeadDomainNumber::<T>::get(domain_id)
-            + T::StakeWithdrawalLockingPeriod::get()
+            + StakeWithdrawalLockingPeriod::<T>::get()
             + One::one();
         HeadDomainNumber::<T>::set(domain_id, next_head_domain_number);
 
@@ -795,7 +793,7 @@ mod benchmarks {
 
         // Update the `HeadDomainNumber` so unlock can success
         let next_head_domain_number = HeadDomainNumber::<T>::get(domain_id)
-            + T::StakeWithdrawalLockingPeriod::get()
+            + StakeWithdrawalLockingPeriod::<T>::get()
             + One::one();
         HeadDomainNumber::<T>::set(domain_id, next_head_domain_number);
 

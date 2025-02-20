@@ -285,9 +285,9 @@ mod pallet {
         #[pallet::constant]
         type ConfirmationDepthK: Get<BlockNumberFor<Self>>;
 
-        /// Delay before a domain runtime is upgraded.
+        /// Default delay before a domain runtime is upgraded.
         #[pallet::constant]
-        type DomainRuntimeUpgradeDelay: Get<BlockNumberFor<Self>>;
+        type DefaultDomainRuntimeUpgradeDelay: Get<BlockNumberFor<Self>>;
 
         /// Currency type used by the domains for staking and other currency related stuff.
         type Currency: Inspect<Self::AccountId, Balance = Self::Balance>
@@ -311,9 +311,9 @@ mod pallet {
         /// A variation of the Identifier used for holding the funds used for staking and domains.
         type HoldIdentifier: HoldIdentifier<Self>;
 
-        /// The block tree pruning depth.
+        /// The default block tree pruning depth.
         #[pallet::constant]
-        type BlockTreePruningDepth: Get<DomainBlockNumberFor<Self>>;
+        type DefaultBlockTreePruningDepth: Get<DomainBlockNumberFor<Self>>;
 
         /// Consensus chain slot probability.
         #[pallet::constant]
@@ -354,9 +354,9 @@ mod pallet {
         #[pallet::constant]
         type MinNominatorStake: Get<BalanceOf<Self>>;
 
-        /// Minimum number of blocks after which any finalized withdrawals are released to nominators.
+        /// Default minimum number of blocks after which any finalized withdrawals are released to nominators.
         #[pallet::constant]
-        type StakeWithdrawalLockingPeriod: Get<DomainBlockNumberFor<Self>>;
+        type DefaultStakeWithdrawalLockingPeriod: Get<DomainBlockNumberFor<Self>>;
 
         /// Domain epoch transition interval
         #[pallet::constant]
@@ -594,6 +594,37 @@ mod pallet {
     #[pallet::storage]
     pub(super) type BlockTreeNodes<T: Config> =
         StorageMap<_, Identity, ReceiptHashFor<T>, BlockTreeNodeFor<T>, OptionQuery>;
+
+    /// The block tree pruning depth.
+    /// In dev and test environments, the default value can be overridden from the command-line,
+    /// by storing a different value in this storage item.
+    ///
+    /// If this type name is updated, consensus_block_tree_pruning_depth_storage_key() also needs to be updated.
+    #[pallet::storage]
+    pub(super) type BlockTreePruningDepth<T: Config> =
+        StorageValue<_, DomainBlockNumberFor<T>, ValueQuery, T::DefaultBlockTreePruningDepth>;
+
+    /// Minimum number of blocks after which any finalized withdrawals are released to nominators.
+    /// In dev and test environments, the default value can be overridden from the command-line,
+    /// by storing a different value in this storage item.
+    ///
+    /// If this type name is updated, consensus_stake_withdrawal_locking_period_storage_key() also needs to be updated.
+    #[pallet::storage]
+    pub(super) type StakeWithdrawalLockingPeriod<T: Config> = StorageValue<
+        _,
+        DomainBlockNumberFor<T>,
+        ValueQuery,
+        T::DefaultStakeWithdrawalLockingPeriod,
+    >;
+
+    /// Delay before a domain runtime is upgraded.
+    /// In dev and test environments, the default value can be overridden from the command-line,
+    /// by storing a different value in this storage item.
+    ///
+    /// If this type name is updated, consensus_domain_runtime_upgrade_delay_storage_key() also needs to be updated.
+    #[pallet::storage]
+    pub(super) type DomainRuntimeUpgradeDelay<T: Config> =
+        StorageValue<_, BlockNumberFor<T>, ValueQuery, T::DefaultDomainRuntimeUpgradeDelay>;
 
     /// The head receipt number of each domain
     #[pallet::storage]

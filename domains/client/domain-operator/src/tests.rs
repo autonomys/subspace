@@ -75,6 +75,7 @@ use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::{Balance, SSC};
+use subspace_test_primitives::TEST_DOMAINS_BLOCK_PRUNING_DEPTH;
 use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockConsensusNode,
 };
@@ -6337,9 +6338,11 @@ async fn test_skip_empty_bundle_production() {
     .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
-    // Wait for `BlockTreePruningDepth + 1` blocks which is 10 + 1 in test
+    // Wait for `BlockTreePruningDepth + 1` blocks
     // to enure the genesis ER is confirmed
-    produce_blocks!(ferdie, alice, 11).await.unwrap();
+    produce_blocks!(ferdie, alice, TEST_DOMAINS_BLOCK_PRUNING_DEPTH + 1)
+        .await
+        .unwrap();
     let consensus_block_number = ferdie.client.info().best_number;
     let domain_block_number = alice.client.info().best_number;
 

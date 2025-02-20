@@ -4,7 +4,8 @@
 extern crate alloc;
 
 use crate::pallet::{
-    DomainRuntimeUpgrades, NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades,
+    DomainRuntimeUpgradeDelay, DomainRuntimeUpgrades, NextRuntimeId, RuntimeRegistry,
+    ScheduledRuntimeUpgrades,
 };
 use crate::{BalanceOf, Config, Event};
 #[cfg(not(feature = "std"))]
@@ -24,7 +25,7 @@ use sp_domains::{
     AutoIdDomainRuntimeConfig, DomainId, DomainRuntimeConfig, DomainsDigestItem,
     EvmDomainRuntimeConfig, RuntimeId, RuntimeObject, RuntimeType,
 };
-use sp_runtime::traits::{CheckedAdd, Get, Zero};
+use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
 use sp_std::vec;
 use sp_version::RuntimeVersion;
@@ -350,7 +351,7 @@ pub(crate) fn do_schedule_runtime_upgrade<T: Config>(
         hash: new_runtime_hash,
     };
     let scheduled_at = current_block_number
-        .checked_add(&T::DomainRuntimeUpgradeDelay::get())
+        .checked_add(&DomainRuntimeUpgradeDelay::<T>::get())
         .ok_or(Error::MaxScheduledBlockNumber)?;
 
     ScheduledRuntimeUpgrades::<T>::insert(scheduled_at, runtime_id, scheduled_upgrade);
@@ -387,11 +388,11 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
 
 #[cfg(test)]
 mod tests {
-    use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
-    use crate::runtime_registry::Error as RuntimeRegistryError;
-    use crate::tests::{
-        new_test_ext, DomainRuntimeUpgradeDelay, Domains, ReadRuntimeVersion, System, Test,
+    use crate::pallet::{
+        DomainRuntimeUpgradeDelay, NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades,
     };
+    use crate::runtime_registry::Error as RuntimeRegistryError;
+    use crate::tests::{new_test_ext, Domains, ReadRuntimeVersion, System, Test};
     use crate::Error;
     use codec::Encode;
     use frame_support::assert_ok;
@@ -526,7 +527,7 @@ mod tests {
 
             let block_number = frame_system::Pallet::<Test>::current_block_number();
             let scheduled_block_number = block_number
-                .checked_add(DomainRuntimeUpgradeDelay::get())
+                .checked_add(DomainRuntimeUpgradeDelay::<Test>::get())
                 .unwrap();
             let scheduled_upgrade =
                 ScheduledRuntimeUpgrades::<Test>::get(scheduled_block_number, 0).unwrap();
@@ -619,7 +620,7 @@ mod tests {
 
             let current_block = frame_system::Pallet::<Test>::current_block_number();
             let scheduled_block_number = current_block
-                .checked_add(DomainRuntimeUpgradeDelay::get())
+                .checked_add(DomainRuntimeUpgradeDelay::<Test>::get())
                 .unwrap();
 
             go_to_block(scheduled_block_number);

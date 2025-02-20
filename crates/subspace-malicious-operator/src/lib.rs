@@ -19,7 +19,7 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_domains::storage::RawGenesis;
 use sp_domains::DomainId;
 use sp_runtime::BuildStorage;
-use subspace_runtime_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
+use subspace_runtime_primitives::DEFAULT_DOMAINS_BLOCK_PRUNING_DEPTH;
 
 /// Subspace Cli.
 #[derive(Debug, Parser)]
@@ -40,7 +40,7 @@ pub struct Cli {
 
     /// The blockchain challenge period.
     /// All valid nodes in the network have the same value for this parameter.
-    #[arg(long, default_value_t = DOMAINS_BLOCK_PRUNING_DEPTH)]
+    #[arg(long, default_value_t = DEFAULT_DOMAINS_BLOCK_PRUNING_DEPTH)]
     pub challenge_period: u32,
 
     /// Domain arguments

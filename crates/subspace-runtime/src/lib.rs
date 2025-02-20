@@ -106,8 +106,8 @@ use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilit
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
     HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC,
-    MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY,
-    SSC,
+    DEFAULT_DOMAINS_BLOCK_PRUNING_DEPTH, MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR,
+    NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY, SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -760,8 +760,8 @@ parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
-    /// Runtime upgrade is delayed for 1 day at 6 sec block time.
-    pub const DomainRuntimeUpgradeDelay: BlockNumber = 14_400;
+    /// This should match the default value in the command-line options.
+    pub const DefaultDomainRuntimeUpgradeDelay: BlockNumber = DEFAULT_DOMAINS_BLOCK_PRUNING_DEPTH;
     /// Minimum operator stake to become an operator.
     // TODO: this value should be properly updated before mainnet
     pub const MinOperatorStake: Balance = 100 * SSC;
@@ -774,8 +774,9 @@ parameter_types! {
     pub MaxDomainBlockWeight: Weight = maximum_domain_block_weight();
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
-    pub const BlockTreePruningDepth: u32 = DOMAINS_BLOCK_PRUNING_DEPTH;
-    pub const StakeWithdrawalLockingPeriod: DomainNumber = 14_400;
+    /// These should also match the default values in the command-line options.
+    pub const DefaultBlockTreePruningDepth: u32 = DEFAULT_DOMAINS_BLOCK_PRUNING_DEPTH;
+    pub const DefaultStakeWithdrawalLockingPeriod: DomainNumber = DEFAULT_DOMAINS_BLOCK_PRUNING_DEPTH;
     // TODO: revisit these. For now epoch every 10 mins for a 6 second block and only 100 number of staking
     // operations allowed within each epoch.
     pub const StakeEpochDuration: DomainNumber = 100;
@@ -800,7 +801,7 @@ const_assert!(BlockHashCount::get() > BlockSlotCount::get());
 const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
 
 // Stake Withdrawal locking period must be >= Block tree pruning depth
-const_assert!(StakeWithdrawalLockingPeriod::get() >= BlockTreePruningDepth::get());
+const_assert!(DefaultStakeWithdrawalLockingPeriod::get() >= DefaultBlockTreePruningDepth::get());
 
 pub struct BlockSlot;
 
@@ -847,7 +848,7 @@ impl pallet_domains::Config for Runtime {
     type DomainHash = DomainHash;
     type DomainHeader = sp_runtime::generic::Header<DomainNumber, BlakeTwo256>;
     type ConfirmationDepthK = ConfirmationDepthK;
-    type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
+    type DefaultDomainRuntimeUpgradeDelay = DefaultDomainRuntimeUpgradeDelay;
     type Currency = Balances;
     type HoldIdentifier = HoldIdentifierWrapper;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
@@ -860,9 +861,9 @@ impl pallet_domains::Config for Runtime {
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
-    type BlockTreePruningDepth = BlockTreePruningDepth;
+    type DefaultBlockTreePruningDepth = DefaultBlockTreePruningDepth;
     type ConsensusSlotProbability = SlotProbability;
-    type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
+    type DefaultStakeWithdrawalLockingPeriod = DefaultStakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;

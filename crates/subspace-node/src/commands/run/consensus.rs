@@ -23,7 +23,7 @@ use std::str::FromStr;
 use subspace_core_primitives::BlockNumber;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
-use subspace_runtime_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
+use subspace_runtime_primitives::DEFAULT_DOMAINS_BLOCK_PRUNING_DEPTH;
 use subspace_service::config::{
     ChainSyncMode, SubspaceConfiguration, SubspaceNetworking, SubstrateConfiguration,
     SubstrateNetworkConfiguration, SubstrateRpcConfiguration,
@@ -435,7 +435,7 @@ pub(super) struct ConsensusChainOptions {
 
     /// The blockchain challenge period.
     /// All nodes in the network must have the same value for this parameter.
-    #[arg(long, default_value_t = DOMAINS_BLOCK_PRUNING_DEPTH)]
+    #[arg(long, default_value_t = DEFAULT_DOMAINS_BLOCK_PRUNING_DEPTH)]
     challenge_period: u32,
 
     /// Options for Substrate networking
@@ -577,9 +577,9 @@ pub(super) fn create_consensus_chain_configuration(
             }
         });
 
-        if challenge_period != DOMAINS_BLOCK_PRUNING_DEPTH && !dev {
+        if challenge_period != DEFAULT_DOMAINS_BLOCK_PRUNING_DEPTH && !dev {
             return Err(Error::Other(
-                "Challenge period must be set to {DOMAINS_BLOCK_PRUNING_DEPTH}, unless in dev mode"
+                "Challenge period must be set to {DEFAULT_DOMAINS_BLOCK_PRUNING_DEPTH}, unless in dev mode"
                     .to_string(),
             ));
         }
@@ -604,7 +604,7 @@ pub(super) fn create_consensus_chain_configuration(
     };
 
     // Set pallet-domains parameters, if needed
-    if challenge_period != DOMAINS_BLOCK_PRUNING_DEPTH {
+    if challenge_period != DEFAULT_DOMAINS_BLOCK_PRUNING_DEPTH {
         let mut raw_genesis = RawGenesis::from_storage(
             chain_spec
                 .build_storage()
