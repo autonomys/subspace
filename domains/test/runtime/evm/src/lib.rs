@@ -406,8 +406,8 @@ impl frame_system::Config for Runtime {
     /// What to do if an account is fully reaped from the system.
     type OnKilledAccount = ();
     /// Weight information for the extrinsics of this pallet.
-    type SystemWeightInfo = ();
-    type ExtensionsWeightInfo = ();
+    type SystemWeightInfo = frame_system::weights::SubstrateWeight<Runtime>;
+    type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
     type SS58Prefix = ConstU16<6094>;
     /// The action to take on a Runtime Upgrade
     type OnSetCode = ();
@@ -424,7 +424,7 @@ impl pallet_timestamp::Config for Runtime {
     type Moment = Moment;
     type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
-    type WeightInfo = ();
+    type WeightInfo = pallet_timestamp::weights::SubstrateWeight<Runtime>;
 }
 
 parameter_types! {

@@ -261,7 +261,7 @@ impl frame_system::Config for Runtime {
     /// The data to be stored in an account.
     type AccountData = pallet_balances::AccountData<Balance>;
     /// Weight information for the extrinsics of this pallet.
-    type SystemWeightInfo = ();
+    type SystemWeightInfo = frame_system::weights::SubstrateWeight<Runtime>;
     /// This is used as an identifier of the chain.
     type SS58Prefix = SS58Prefix;
     /// The set code logic, just the default since we're not a parachain.
@@ -272,7 +272,7 @@ impl frame_system::Config for Runtime {
     type PostInherents = ();
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtensionsWeightInfo = ();
+    type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
 }
 
 parameter_types! {
@@ -313,7 +313,7 @@ impl pallet_subspace::Config for Runtime {
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type BlockSlotCount = BlockSlotCount;
-    type WeightInfo = ();
+    type WeightInfo = pallet_subspace::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -321,7 +321,7 @@ impl pallet_timestamp::Config for Runtime {
     type Moment = Moment;
     type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
-    type WeightInfo = ();
+    type WeightInfo = pallet_timestamp::weights::SubstrateWeight<Runtime>;
 }
 
 #[derive(
@@ -836,7 +836,7 @@ impl pallet_rewards::Config for Runtime {
     type RewardsEnabled = Subspace;
     type FindBlockRewardAddress = Subspace;
     type FindVotingRewardAddresses = Subspace;
-    type WeightInfo = ();
+    type WeightInfo = pallet_rewards::weights::SubstrateWeight<Runtime>;
     type OnReward = ();
 }
 

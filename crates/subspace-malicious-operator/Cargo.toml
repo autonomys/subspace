@@ -29,45 +29,45 @@ domain-service = { version = "0.1.0", path = "../../domains/service" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 evm-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/evm" }
 fp-evm = { version = "3.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409" }
-frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-frame-system-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+frame-system-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
 futures = "0.3.31"
 hex-literal = "0.4.1"
 log = "0.4.22"
 mimalloc = "0.1.43"
 pallet-domains = { version = "0.1.0", default-features = false, path = "../pallet-domains" }
-pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
 parity-scale-codec = "3.6.12"
-pallet-sudo = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sc-cli = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997", default-features = false }
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sc-consensus-slots = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+pallet-sudo = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sc-cli = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de", default-features = false }
+sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sc-consensus-slots = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
 sc-consensus-subspace = { version = "0.1.0", path = "../sc-consensus-subspace" }
 sc-domains = { version = "0.1.0", path = "../sc-domains" }
-sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sc-service = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997", default-features = false }
-sc-storage-monitor = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997", default-features = false }
+sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sc-service = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de", default-features = false }
+sc-storage-monitor = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de", default-features = false }
 sc-subspace-chain-specs = { version = "0.1.0", path = "../sc-subspace-chain-specs" }
-sc-tracing = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sc-network-sync = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+sc-tracing = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sc-network-sync = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
 serde_json = "1.0.133"
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sp-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997", default-features = false }
+sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sp-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de", default-features = false }
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
-sp-consensus-slots = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+sp-consensus-slots = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
 sp-domains = { version = "0.1.0", path = "../sp-domains" }
 sp-domain-digests = { version = "0.1.0", path = "../../domains/primitives/digests" }
-sp-transaction-pool = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+sp-transaction-pool = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
 sp-messenger = { version = "0.1.0", path = "../../domains/primitives/messenger" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sp-keystore = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sp-keyring = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
-sp-weights = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sp-keystore = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sp-keyring = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
+sp-weights = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
@@ -80,7 +80,7 @@ rand = "0.8.5"
 tracing = "0.1.40"
 
 [build-dependencies]
-substrate-build-script-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+substrate-build-script-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
 
 [features]
 default = []

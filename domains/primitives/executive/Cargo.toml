@@ -15,7 +15,7 @@ include = [
 [dependencies]
 async-trait = { version = "0.1.83", optional = true }
 codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
-sp-inherents = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "56f7854d5ca9edcc8ee4b89776d2fcbda910f997" }
+sp-inherents = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cadd3f11eb252ab37e6fae28cdba721ea5c08de" }
 
 [features]
 default = ["std"]
