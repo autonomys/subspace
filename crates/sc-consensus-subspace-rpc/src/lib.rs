@@ -287,7 +287,7 @@ where
         let info = config.client.info();
         let best_hash = info.best_hash;
         let genesis_hash = BlockHash::try_from(info.genesis_hash.as_ref())
-            .expect("Genesis hash must always be convertable into BlockHash; qed");
+            .expect("Genesis hash must always be convertible into BlockHash; qed");
         let runtime_api = config.client.runtime_api();
         let chain_constants = runtime_api.chain_constants(best_hash)?;
         // While the number can technically change in runtime, farmer will not adjust to it on the
