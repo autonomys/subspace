@@ -931,6 +931,41 @@ impl pallet_subspace_mmr::Config for Runtime {
     type MmrRootHashCount = MmrRootHashCount;
 }
 
+parameter_types! {
+    pub const MaxSignatories: u32 = 100;
+}
+
+macro_rules! deposit {
+    ($name:ident, $item_fee:expr, $items:expr, $bytes:expr) => {
+        pub struct $name;
+
+        impl Get<Balance> for $name {
+            fn get() -> Balance {
+                $item_fee.saturating_mul($items.into()).saturating_add(
+                    TransactionFees::transaction_byte_fee().saturating_mul($bytes.into()),
+                )
+            }
+        }
+    };
+}
+
+// One storage item; key size is 32; value is size 4+4+16+32 bytes = 56 bytes.
+// Each multisig costs 20 SSC + bytes_of_storge * TransactionByteFee
+deposit!(DepositBaseFee, 20 * SSC, 1u32, 88u32);
+
+// Additional storage item size of 32 bytes.
+deposit!(DepositFactor, 20 * SSC, 0u32, 32u32);
+
+impl pallet_multisig::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
+    type Currency = Balances;
+    type DepositBase = DepositBaseFee;
+    type DepositFactor = DepositFactor;
+    type MaxSignatories = MaxSignatories;
+    type WeightInfo = pallet_multisig::weights::SubstrateWeight<Runtime>;
+}
+
 construct_runtime!(
     pub struct Runtime {
         System: frame_system = 0,
@@ -960,6 +995,9 @@ construct_runtime!(
         Council: pallet_collective::<Instance1> = 82,
         Democracy: pallet_democracy = 83,
         Preimage: pallet_preimage = 84,
+
+        // Multisig
+        Multisig: pallet_multisig = 90,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,

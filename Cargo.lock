@@ -8440,6 +8440,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-multisig"
+version = "39.0.0"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe#949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe"
+dependencies = [
+ "log",
+ "parity-scale-codec",
+ "polkadot-sdk-frame",
+ "scale-info",
+]
+
+[[package]]
 name = "pallet-preimage"
 version = "39.0.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe#949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe"
@@ -9202,6 +9213,40 @@ dependencies = [
  "sp-staking",
  "sp-std",
  "thiserror 1.0.64",
+]
+
+[[package]]
+name = "polkadot-sdk-frame"
+version = "0.8.0"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe#949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe"
+dependencies = [
+ "docify",
+ "frame-benchmarking",
+ "frame-executive",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "frame-try-runtime",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-arithmetic",
+ "sp-block-builder",
+ "sp-consensus-aura",
+ "sp-consensus-grandpa",
+ "sp-core",
+ "sp-genesis-builder",
+ "sp-inherents",
+ "sp-io",
+ "sp-keyring",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-storage",
+ "sp-transaction-pool",
+ "sp-version",
 ]
 
 [[package]]
@@ -12574,6 +12619,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-consensus-aura"
+version = "0.41.0"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe#949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe"
+dependencies = [
+ "async-trait",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-application-crypto",
+ "sp-consensus-slots",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-timestamp",
+]
+
+[[package]]
 name = "sp-consensus-babe"
 version = "0.41.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe#949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe"
@@ -14080,6 +14141,7 @@ dependencies = [
  "pallet-domains",
  "pallet-messenger",
  "pallet-mmr",
+ "pallet-multisig",
  "pallet-preimage",
  "pallet-rewards",
  "pallet-runtime-configs",
