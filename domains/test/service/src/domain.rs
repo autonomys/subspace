@@ -300,6 +300,14 @@ where
             .expect("Fail to get account nonce")
     }
 
+    /// Get the nonce of the given account
+    pub fn account_nonce_of(&self, account_id: <Runtime as DomainRuntime>::AccountId) -> u32 {
+        self.client
+            .runtime_api()
+            .account_nonce(self.client.info().best_hash, account_id)
+            .expect("Fail to get account nonce")
+    }
+
     /// Sends a signed system.remark extrinsic to the pool containing the current account nonce.
     pub async fn send_system_remark(&mut self) {
         let nonce = self.account_nonce();
