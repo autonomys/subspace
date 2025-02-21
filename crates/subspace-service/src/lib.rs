@@ -16,7 +16,6 @@ pub(crate) mod mmr;
 pub mod rpc;
 pub mod sync_from_dsn;
 mod task_spawner;
-pub mod transaction_pool;
 mod utils;
 
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
@@ -27,7 +26,6 @@ pub use crate::mmr::sync::mmr_sync;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::sync_from_dsn::snap_sync::snap_sync;
 use crate::sync_from_dsn::DsnPieceGetter;
-use crate::transaction_pool::FullPool;
 use async_lock::Semaphore;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::xdm_gossip_peers_set_config;
@@ -80,6 +78,7 @@ use sc_subspace_block_relay::{
     build_consensus_relay, BlockRelayConfigurationError, NetworkWrapper,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker};
+use sc_transaction_pool::TransactionPoolHandle;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -459,7 +458,7 @@ type PartialComponents<RuntimeApi> = sc_service::PartialComponents<
     FullBackend,
     FullSelectChain,
     DefaultImportQueue<Block>,
-    FullPool<FullClient<RuntimeApi>, Block, DomainHeader>,
+    TransactionPoolHandle<Block, FullClient<RuntimeApi>>,
     OtherPartialComponents<RuntimeApi>,
 >;
 
@@ -611,13 +610,16 @@ where
     );
 
     let sync_target_block_number = Arc::new(AtomicU32::new(0));
-    let transaction_pool = transaction_pool::new_full(
-        config.transaction_pool.clone(),
-        config.role.is_authority(),
-        config.prometheus_registry(),
-        &task_manager,
-        client.clone(),
-    )?;
+    let transaction_pool = Arc::from(
+        sc_transaction_pool::Builder::new(
+            task_manager.spawn_essential_handle(),
+            client.clone(),
+            config.role.is_authority().into(),
+        )
+        .with_options(config.transaction_pool.clone())
+        .with_prometheus(config.prometheus_registry())
+        .build(),
+    );
 
     let verifier = SubspaceVerifier::<PosTable, _, _>::new(SubspaceVerifierOptions {
         client: client.clone(),
@@ -710,7 +712,7 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Client, Block, DomainHeader>>,
+    pub transaction_pool: Arc<TransactionPoolHandle<Block, Client>>,
 }
 
 type FullNode<RuntimeApi> = NewFull<FullClient<RuntimeApi>>;
@@ -1134,9 +1136,7 @@ where
     let offchain_tx_pool_factory = OffchainTransactionPoolFactory::new(transaction_pool.clone());
 
     if config.base.offchain_worker.enabled {
-        task_manager.spawn_handle().spawn(
-            "offchain-workers-runner",
-            "offchain-worker",
+        let offchain_workers =
             sc_offchain::OffchainWorkers::new(sc_offchain::OffchainWorkerOptions {
                 runtime_api_provider: client.clone(),
                 is_validator: config.base.role.is_authority(),
@@ -1146,9 +1146,13 @@ where
                 network_provider: Arc::new(network_service.clone()),
                 enable_http_requests: true,
                 custom_extensions: |_| vec![],
-            })
-            .run(client.clone(), task_manager.spawn_handle())
-            .boxed(),
+            })?;
+        task_manager.spawn_handle().spawn(
+            "offchain-workers-runner",
+            "offchain-worker",
+            offchain_workers
+                .run(client.clone(), task_manager.spawn_handle())
+                .boxed(),
         );
     }
 

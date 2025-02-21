@@ -35,7 +35,7 @@ use sp_domains::{DomainId, OperatorId, PermissionedActionAllowedBy};
 use sp_messenger::messages::{ChainId, ChannelId};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
-use sp_runtime::traits::{Block as BlockT, Dispatchable, NumberFor};
+use sp_runtime::traits::{AsSystemOriginSigner, Block as BlockT, Dispatchable, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -127,6 +127,8 @@ where
         + MessengerApi<Block, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
         + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
         + OnchainStateApi<Block, <Runtime as DomainRuntime>::AccountId, Balance>,
+    <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
+        AsSystemOriginSigner<<Runtime as frame_system::Config>::AccountId> + Clone,
 {
     #[allow(clippy::too_many_arguments)]
     async fn build(
@@ -406,7 +408,7 @@ where
         BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
     {
         let function = function.into();
-        UncheckedExtrinsicFor::<Runtime>::new_unsigned(function)
+        UncheckedExtrinsicFor::<Runtime>::new_bare(function)
     }
 
     /// Construct an unsigned extrinsic and send it to this node.

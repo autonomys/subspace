@@ -7,11 +7,16 @@ use core::fmt;
 use core::result::Result;
 use frame_support::dispatch::DispatchInfo;
 use frame_support::pallet_prelude::{
-    InvalidTransaction, TransactionLongevity, TransactionValidity, TransactionValidityError,
-    TypeInfo, ValidTransaction,
+    InvalidTransaction, TransactionLongevity, TransactionValidityError, TypeInfo, ValidTransaction,
+    Weight,
 };
-use frame_support::sp_runtime::traits::{DispatchInfoOf, One, SignedExtension};
-use sp_runtime::traits::{Dispatchable, Zero};
+use frame_support::sp_runtime::traits::{DispatchInfoOf, One, TransactionExtension};
+use frame_support::RuntimeDebugNoBound;
+use sp_runtime::traits::{
+    AsSystemOriginSigner, Dispatchable, PostDispatchInfoOf, ValidateResult, Zero,
+};
+use sp_runtime::transaction_validity::TransactionSource;
+use sp_runtime::DispatchResult;
 #[cfg(feature = "std")]
 use std::vec;
 
@@ -38,34 +43,60 @@ impl<T: Config> fmt::Debug for CheckNonce<T> {
     }
 }
 
-impl<T: Config> SignedExtension for CheckNonce<T>
+/// Operation to perform from `validate` to `prepare` in [`frame_system::CheckNonce`] transaction extension.
+#[derive(RuntimeDebugNoBound)]
+pub enum Val<T: frame_system::Config> {
+    /// Account and its nonce to check for.
+    CheckNonce((T::AccountId, T::Nonce)),
+    /// Weight to refund.
+    Refund(Weight),
+}
+
+/// Operation to perform from `prepare` to `post_dispatch_details` in [`frame_system::CheckNonce`] transaction
+/// extension.
+#[derive(RuntimeDebugNoBound)]
+pub enum Pre {
+    /// The transaction extension weight should not be refunded.
+    NonceChecked,
+    /// The transaction extension weight should be refunded.
+    Refund(Weight),
+}
+
+impl<T: Config> TransactionExtension<T::RuntimeCall> for CheckNonce<T>
 where
     T::RuntimeCall: Dispatchable<Info = DispatchInfo>,
+    <T::RuntimeCall as Dispatchable>::RuntimeOrigin: AsSystemOriginSigner<T::AccountId> + Clone,
 {
     const IDENTIFIER: &'static str = "CheckNonce";
-    type AccountId = T::AccountId;
-    type Call = T::RuntimeCall;
-    type AdditionalSigned = ();
-    type Pre = ();
+    type Implicit = ();
+    type Val = Val<T>;
+    type Pre = Pre;
 
-    fn additional_signed(&self) -> Result<(), TransactionValidityError> {
-        Ok(())
+    fn weight(&self, _: &T::RuntimeCall) -> sp_weights::Weight {
+        <T::ExtensionsWeightInfo as frame_system::ExtensionsWeightInfo>::check_nonce()
     }
 
     fn validate(
         &self,
-        who: &Self::AccountId,
-        _call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
+        origin: <T as frame_system::Config>::RuntimeOrigin,
+        call: &T::RuntimeCall,
+        _info: &DispatchInfoOf<T::RuntimeCall>,
         _len: usize,
-    ) -> TransactionValidity {
+        _self_implicit: Self::Implicit,
+        _inherited_implication: &impl Encode,
+        _source: TransactionSource,
+    ) -> ValidateResult<Self::Val, T::RuntimeCall> {
+        let Some(who) = origin.as_system_origin_signer() else {
+            return Ok((Default::default(), Val::Refund(self.weight(call)), origin));
+        };
+
         let account = frame_system::Account::<T>::get(who);
         if account.providers.is_zero() && account.sufficients.is_zero() {
             // Nonce storage not paid for
-            return InvalidTransaction::Payment.into();
+            return Err(InvalidTransaction::Payment.into());
         }
         if self.0 < account.nonce {
-            return InvalidTransaction::Stale.into();
+            return Err(InvalidTransaction::Stale.into());
         }
 
         let provides = vec![Encode::encode(&(who, self.0))];
@@ -75,48 +106,68 @@ where
             vec![]
         };
 
-        Ok(ValidTransaction {
+        let validity = ValidTransaction {
             priority: 0,
             requires,
             provides,
             longevity: TransactionLongevity::MAX,
             propagate: true,
-        })
+        };
+
+        Ok((
+            validity,
+            Val::CheckNonce((who.clone(), account.nonce)),
+            origin,
+        ))
     }
 
-    fn pre_dispatch(
+    fn prepare(
         self,
-        who: &Self::AccountId,
-        _call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
+        val: Self::Val,
+        _origin: &T::RuntimeOrigin,
+        _call: &T::RuntimeCall,
+        _info: &DispatchInfoOf<T::RuntimeCall>,
         _len: usize,
-    ) -> Result<(), TransactionValidityError> {
-        let mut account = frame_system::Account::<T>::get(who);
-        if account.providers.is_zero() && account.sufficients.is_zero() {
-            // Nonce storage not paid for
-            return Err(InvalidTransaction::Payment.into());
-        }
+    ) -> Result<Self::Pre, TransactionValidityError> {
+        let (who, mut nonce) = match val {
+            Val::CheckNonce((who, nonce)) => (who, nonce),
+            Val::Refund(weight) => return Ok(Pre::Refund(weight)),
+        };
+
         // if a sender sends an evm transaction first and substrate transaction
         // after with same nonce, then reject the second transaction
         // if sender reverse the transaction types, substrate first and evm second,
         // evm transaction will be rejected, since substrate updates nonce in pre_dispatch.
         let account_nonce = if let Some(tracked_nonce) = crate::AccountNonce::<T>::get(who.clone())
         {
-            max(tracked_nonce.as_u32().into(), account.nonce)
+            max(tracked_nonce.as_u32().into(), nonce)
         } else {
-            account.nonce
+            nonce
         };
 
         if self.0 != account_nonce {
-            return Err(if self.0 < account.nonce {
+            return Err(if self.0 < nonce {
                 InvalidTransaction::Stale
             } else {
                 InvalidTransaction::Future
             }
             .into());
         }
-        account.nonce += T::Nonce::one();
-        frame_system::Account::<T>::insert(who, account);
-        Ok(())
+        nonce += T::Nonce::one();
+        frame_system::Account::<T>::mutate(who, |account| account.nonce = nonce);
+        Ok(Pre::NonceChecked)
+    }
+
+    fn post_dispatch_details(
+        pre: Self::Pre,
+        _info: &DispatchInfo,
+        _post_info: &PostDispatchInfoOf<T::RuntimeCall>,
+        _len: usize,
+        _result: &DispatchResult,
+    ) -> Result<Weight, TransactionValidityError> {
+        match pre {
+            Pre::NonceChecked => Ok(Weight::zero()),
+            Pre::Refund(weight) => Ok(weight),
+        }
     }
 }

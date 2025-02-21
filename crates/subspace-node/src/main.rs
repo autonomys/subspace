@@ -15,6 +15,7 @@ use crate::domain::cli::DomainKey;
 use crate::domain::{DomainCli, DomainSubcommand};
 use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
+#[cfg(feature = "runtime-benchmarks")]
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use sc_cli::{ChainSpec, SubstrateCli};
@@ -22,9 +23,11 @@ use sc_domains::HostFunctions as DomainsHostFunctions;
 use sc_service::{Configuration, PartialComponents};
 use serde_json::Value;
 use sp_core::crypto::Ss58AddressFormat;
+#[cfg(feature = "runtime-benchmarks")]
 use sp_runtime::traits::HashingFor;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
+#[cfg(feature = "runtime-benchmarks")]
 use subspace_service::HostFunctions;
 use tracing::warn;
 
@@ -232,6 +235,7 @@ fn main() -> Result<(), Error> {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             runner.sync_run(|config| cmd.run::<Block>(&config))?;
         }
+        #[cfg(feature = "runtime-benchmarks")]
         Cli::Benchmark(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
 
@@ -239,19 +243,8 @@ fn main() -> Result<(), Error> {
                 // This switch needs to be in the client, since the client decides
                 // which sub-commands it wants to support.
                 match cmd {
-                    BenchmarkCmd::Pallet(cmd) => {
-                        if !cfg!(feature = "runtime-benchmarks") {
-                            return Err(
-                                "Runtime benchmarking wasn't enabled when building the node. \
-                                You can enable it with `--features runtime-benchmarks`."
-                                    .into(),
-                            );
-                        }
-
-                        cmd.run_with_spec::<HashingFor<Block>, HostFunctions>(Some(
-                            config.chain_spec,
-                        ))
-                    }
+                    BenchmarkCmd::Pallet(cmd) => cmd
+                        .run_with_spec::<HashingFor<Block>, HostFunctions>(Some(config.chain_spec)),
                     BenchmarkCmd::Block(cmd) => {
                         let PartialComponents { client, .. } =
                             subspace_service::new_partial::<PosTable, RuntimeApi>(
@@ -262,12 +255,6 @@ fn main() -> Result<(), Error> {
 
                         cmd.run(client)
                     }
-                    #[cfg(not(feature = "runtime-benchmarks"))]
-                    BenchmarkCmd::Storage(_) => Err(sc_cli::Error::Input(
-                        "Compile with --features=runtime-benchmarks to enable storage benchmarks."
-                            .into(),
-                    )),
-                    #[cfg(feature = "runtime-benchmarks")]
                     BenchmarkCmd::Storage(cmd) => {
                         let PartialComponents {
                             client, backend, ..
@@ -322,6 +309,7 @@ fn main() -> Result<(), Error> {
             DomainSubcommand::Key(DomainKey::Insert(insert_domain_key_options)) => {
                 commands::insert_domain_key(insert_domain_key_options)?;
             }
+            #[cfg(feature = "runtime-benchmarks")]
             DomainSubcommand::Benchmark(cmd) => {
                 let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
                 runner.sync_run(|consensus_chain_config| {
@@ -342,18 +330,10 @@ fn main() -> Result<(), Error> {
                             ))
                         })?;
                     match cmd {
-                        BenchmarkCmd::Pallet(cmd) => {
-                            if !cfg!(feature = "runtime-benchmarks") {
-                                return Err(
-                                    "Runtime benchmarking wasn't enabled when building the node. \
-                                    You can enable it with `--features runtime-benchmarks`."
-                                        .into(),
-                                );
-                            }
-                            cmd.run_with_spec::<HashingFor<DomainBlock>, DomainsHostFunctions>(
-                                Some(domain_config.chain_spec),
-                            )
-                        }
+                        BenchmarkCmd::Pallet(cmd) => cmd
+                            .run_with_spec::<HashingFor<DomainBlock>, DomainsHostFunctions>(Some(
+                                domain_config.chain_spec,
+                            )),
                         _ => todo!("Not implemented"),
                     }
                 })?;

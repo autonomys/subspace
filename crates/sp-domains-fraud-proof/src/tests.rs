@@ -18,7 +18,7 @@ use sp_core::{keccak_256, Pair as _, U256};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::test_ethereum::{generate_eip1559_tx, generate_eip2930_tx, generate_legacy_tx};
 use sp_domains::test_ethereum_tx::{address_build, AccountInfo};
-use sp_runtime::traits::{Extrinsic, Zero};
+use sp_runtime::traits::Zero;
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_test_service::{produce_block_with, produce_blocks, MockConsensusNode};
@@ -31,7 +31,7 @@ use tempfile::TempDir;
 /// `runtime_api().check_extrinsics_and_do_pre_dispatch()`.
 pub fn generate_eth_domain_sc_extrinsic(tx: EthereumTransaction) -> EvmUncheckedExtrinsic {
     let call = pallet_ethereum::Call::<TestRuntime>::transact { transaction: tx };
-    fp_self_contained::UncheckedExtrinsic::new(RuntimeCall::Ethereum(call), None).unwrap()
+    fp_self_contained::UncheckedExtrinsic::new_bare(RuntimeCall::Ethereum(call))
 }
 
 async fn benchmark_bundle_with_evm_tx(

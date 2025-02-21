@@ -42,7 +42,7 @@ use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::traits::{Get, Randomness as RandomnessT, Time};
 use frame_support::weights::Weight;
-use frame_system::offchain::SubmitTransaction;
+use frame_system::offchain::{CreateInherent, SubmitTransaction};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use scale_info::TypeInfo;
@@ -3173,7 +3173,7 @@ impl<T: Config> sp_domains::DomainOwner<T::AccountId> for Pallet<T> {
 
 impl<T> Pallet<T>
 where
-    T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
+    T: Config + CreateInherent<Call<T>>,
 {
     /// Submits an unsigned extrinsic [`Call::submit_bundle`].
     pub fn submit_bundle_unsigned(opaque_bundle: OpaqueBundleOf<T>) {
@@ -3181,8 +3181,9 @@ where
         let extrincis_count = opaque_bundle.extrinsics.len();
 
         let call = Call::submit_bundle { opaque_bundle };
+        let ext = T::create_inherent(call.into());
 
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+        match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
                 log::info!(
                     target: "runtime::domains",
@@ -3201,7 +3202,8 @@ where
         let domain_block_number = singleton_receipt.receipt().domain_block_number;
 
         let call = Call::submit_receipt { singleton_receipt };
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+        let ext = T::create_inherent(call.into());
+        match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
                 log::info!(
                     target: "runtime::domains",
@@ -3220,7 +3222,8 @@ where
             fraud_proof: Box::new(fraud_proof),
         };
 
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+        let ext = T::create_inherent(call.into());
+        match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
                 log::info!(target: "runtime::domains", "Submitted fraud proof");
             }

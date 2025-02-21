@@ -30,7 +30,6 @@ use pallet_messenger::ChainAllowlistUpdate;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
 use sc_domains::generate_mmr_proof;
 use sc_service::{BasePath, Role};
-use sc_transaction_pool::error::Error as PoolError;
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionPool;
 use sc_utils::mpsc::tracing_unbounded;
@@ -60,7 +59,7 @@ use sp_messenger::MessengerApi;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Convert, Extrinsic, Hash as HashT, Header as HeaderT, Zero,
+    BlakeTwo256, Block as BlockT, Convert, Hash as HashT, Header as HeaderT, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidityError,
@@ -132,7 +131,7 @@ pub fn generate_eth_domain_extrinsic(
 /// The returned extrinsic can be passed to `runtime_api().check_extrinsics_and_do_pre_dispatch()`.
 pub fn generate_eth_domain_sc_extrinsic(tx: EthereumTransaction) -> EvmUncheckedExtrinsic {
     let call = pallet_ethereum::Call::<TestRuntime>::transact { transaction: tx };
-    fp_self_contained::UncheckedExtrinsic::new(RuntimeCall::Ethereum(call), None).unwrap()
+    fp_self_contained::UncheckedExtrinsic::new_bare(RuntimeCall::Ethereum(call))
 }
 
 /// Generate a pallet-evm call, which can be passed to `construct_and_send_extrinsic()`.
@@ -1368,7 +1367,7 @@ async fn test_domain_block_production() {
     // Simply producing more block on fork C
     for _ in 0..10 {
         let (slot, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-        let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        let tx = subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into();
@@ -1953,7 +1952,7 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
     // InvalidXDM
     bundles.push({
         let (_, mut b) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-        let invalid_xdm = evm_domain_test_runtime::UncheckedExtrinsic::new_unsigned(
+        let invalid_xdm = evm_domain_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_messenger::Call::relay_message {
                 msg: CrossDomainMessage {
                     src_chain_id: ChainId::Consensus,
@@ -1987,7 +1986,7 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
     // InherentTx
     bundles.push({
         let (_, mut b) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-        let inherent_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        let inherent_tx = subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_timestamp::Call::set { now: 12345 }.into(),
         )
         .into();
@@ -2017,7 +2016,7 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
                 .pair()
                 .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
                 .into();
-            subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            subspace_test_runtime::UncheckedExtrinsic::new_bare(
                 pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
             )
             .into()
@@ -2087,7 +2086,7 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
                     };
 
                     let submit_fraud_proof_extrinsic =
-                        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+                        subspace_test_runtime::UncheckedExtrinsic::new_bare(
                             pallet_domains::Call::submit_fraud_proof {
                                 fraud_proof: Box::new(fp),
                             }
@@ -2101,9 +2100,9 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
 
                     assert!(matches!(
                         res,
-                        Err(PoolError::Pool(TxPoolInvalidTransaction(
+                        Err(TxPoolInvalidTransaction(
                             InvalidTransaction::Custom(tx_code)
-                        ))) if tx_code == InvalidTransactionCode::FraudProof as u8
+                        )) if tx_code == InvalidTransactionCode::FraudProof as u8
                     ));
                 }
             }
@@ -2196,7 +2195,7 @@ async fn test_bad_fraud_proof_is_rejected() {
     );
 
     for fp in fraud_proofs {
-        let submit_fraud_proof_extrinsic = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        let submit_fraud_proof_extrinsic = subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_fraud_proof {
                 fraud_proof: Box::new(fp),
             }
@@ -2210,9 +2209,9 @@ async fn test_bad_fraud_proof_is_rejected() {
 
         assert!(matches!(
             res,
-            Err(PoolError::Pool(TxPoolInvalidTransaction(
+            Err(TxPoolInvalidTransaction(
                 InvalidTransaction::Custom(tx_code)
-            ))) if tx_code == InvalidTransactionCode::FraudProof as u8
+            )) if tx_code == InvalidTransactionCode::FraudProof as u8
         ));
     }
 
@@ -2342,14 +2341,13 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
                     "Fraud proof generation should succeed for every valid execution phase; qed",
                 );
 
-            let submit_fraud_proof_extrinsic =
-                subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-                    pallet_domains::Call::submit_fraud_proof {
-                        fraud_proof: Box::new(fraud_proof.clone()),
-                    }
-                    .into(),
-                )
-                .into();
+            let submit_fraud_proof_extrinsic = subspace_test_runtime::UncheckedExtrinsic::new_bare(
+                pallet_domains::Call::submit_fraud_proof {
+                    fraud_proof: Box::new(fraud_proof.clone()),
+                }
+                .into(),
+            )
+            .into();
 
             let response = ferdie
                 .submit_transaction(submit_fraud_proof_extrinsic)
@@ -2357,9 +2355,9 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
 
             assert!(matches!(
                 response,
-                Err(PoolError::Pool(TxPoolInvalidTransaction(
+                Err(TxPoolInvalidTransaction(
                     InvalidTransaction::Custom(tx_code)
-                ))) if tx_code == InvalidTransactionCode::FraudProof as u8
+                )) if tx_code == InvalidTransactionCode::FraudProof as u8
             ));
 
             // To prevent receiving TemporarilyBanned error from the pool
@@ -2404,7 +2402,7 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
             }
 
             let submit_fraud_proof_with_invalid_mismatch_index_extrinsic =
-                subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+                subspace_test_runtime::UncheckedExtrinsic::new_bare(
                     pallet_domains::Call::submit_fraud_proof {
                         fraud_proof: Box::new(fraud_proof),
                     }
@@ -2418,9 +2416,9 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
 
             assert!(matches!(
                 response,
-                Err(PoolError::Pool(TxPoolInvalidTransaction(
+                Err(TxPoolInvalidTransaction(
                     InvalidTransaction::Custom(tx_code)
-                ))) if tx_code == InvalidTransactionCode::FraudProof as u8
+                )) if tx_code == InvalidTransactionCode::FraudProof as u8
             ));
 
             // To prevent receiving TemporarilyBanned error from the pool
@@ -2507,7 +2505,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -2687,7 +2685,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -2695,7 +2693,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
 
     let inherent_extrinsic = || {
         let now = 1234;
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_timestamp::Call::set { now }.into(),
         )
         .into()
@@ -2835,7 +2833,7 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -2952,7 +2950,7 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -3098,7 +3096,7 @@ async fn test_false_invalid_bundles_undecodeable_tx_proof_creation_and_verificat
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -3215,7 +3213,7 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -3233,7 +3231,7 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
 
     let bundle_extrinsic_root;
     let bad_submit_bundle_tx = {
-        let invalid_xdm = evm_domain_test_runtime::UncheckedExtrinsic::new_unsigned(
+        let invalid_xdm = evm_domain_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_messenger::Call::relay_message {
                 msg: CrossDomainMessage {
                     src_chain_id: ChainId::Consensus,
@@ -3374,7 +3372,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -3542,7 +3540,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -3679,7 +3677,7 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -3803,7 +3801,7 @@ async fn test_false_invalid_bundle_weight_proof_creation_and_verification() {
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -3918,7 +3916,7 @@ async fn test_false_invalid_bundles_non_exist_extrinsic_proof_creation_and_verif
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -4034,7 +4032,7 @@ async fn test_invalid_block_fees_proof_creation() {
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -4120,7 +4118,7 @@ async fn test_invalid_transfers_fraud_proof() {
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -4226,7 +4224,7 @@ async fn test_invalid_domain_block_hash_proof_creation() {
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -4327,7 +4325,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -4640,13 +4638,13 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         }
     }
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
     };
     let proof_to_tx = |fraud_proof| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_fraud_proof { fraud_proof }.into(),
         )
         .into()
@@ -4880,7 +4878,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     // .into();
     // opaque_bundle.receipt = execution_receipt;
 
-    //     subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+    //     subspace_test_runtime::UncheckedExtrinsic::new_bare(
     //         pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
     //     )
     //     .into()
@@ -4936,7 +4934,7 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
 
     produce_blocks!(ferdie, alice, 10).await.unwrap();
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -4987,7 +4985,7 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
         .await
         .unwrap_err()
     {
-        sc_transaction_pool::error::Error::Pool(TxPoolError::InvalidTransaction(invalid_tx)) => {
+        TxPoolError::InvalidTransaction(invalid_tx) => {
             assert_eq!(invalid_tx, InvalidTransactionCode::Bundle.into())
         }
         e => panic!("Unexpected error: {e}"),
@@ -5044,9 +5042,7 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
             .await
             .unwrap_err()
         {
-            sc_transaction_pool::error::Error::Pool(TxPoolError::InvalidTransaction(
-                invalid_tx,
-            )) => {
+            TxPoolError::InvalidTransaction(invalid_tx) => {
                 assert_eq!(invalid_tx, InvalidTransactionCode::Bundle.into())
             }
             e => panic!("Unexpected error: {e}"),
@@ -5105,7 +5101,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     let mut parent_hash = ferdie.client.info().best_hash;
 
     let (slot, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+    let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_bare(
         pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
     )
     .into();
@@ -6257,7 +6253,7 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     produce_blocks!(ferdie, alice, 3).await.unwrap();
     let common_block_hash = ferdie.client.info().best_hash;
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -6444,7 +6440,7 @@ async fn test_bad_receipt_chain() {
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -6600,7 +6596,7 @@ async fn test_bad_receipt_chain() {
         .await
         .unwrap_err()
     {
-        sc_transaction_pool::error::Error::Pool(TxPoolError::InvalidTransaction(invalid_tx)) => {
+        TxPoolError::InvalidTransaction(invalid_tx) => {
             assert_eq!(invalid_tx, InvalidTransactionCode::Bundle.into())
         }
         e => panic!("Unexpected error: {e}"),
@@ -7005,7 +7001,7 @@ async fn test_equivocated_bundle_check() {
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     let bundle_to_tx = |opaque_bundle| -> OpaqueExtrinsic {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -7036,7 +7032,7 @@ async fn test_equivocated_bundle_check() {
         .await
         .unwrap_err()
     {
-        sc_transaction_pool::error::Error::Pool(TxPoolError::TooLowPriority { .. }) => {}
+        TxPoolError::TooLowPriority { .. } => {}
         e => panic!("Unexpected error: {e}"),
     }
 
@@ -7093,7 +7089,7 @@ async fn test_equivocated_bundle_check() {
         .await
         .unwrap_err()
     {
-        sc_transaction_pool::error::Error::Pool(TxPoolError::InvalidTransaction(invalid_tx)) => {
+        TxPoolError::InvalidTransaction(invalid_tx) => {
             assert_eq!(invalid_tx, InvalidTransactionCode::Bundle.into())
         }
         e => panic!("Unexpected error: {e}"),
@@ -7135,7 +7131,7 @@ async fn test_xdm_false_invalid_fraud_proof() {
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
@@ -7330,7 +7326,7 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()

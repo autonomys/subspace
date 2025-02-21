@@ -20,7 +20,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-mod check_nonce;
+pub mod check_nonce;
 pub mod create_contract;
 pub mod traits;
 

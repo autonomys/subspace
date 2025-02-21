@@ -48,11 +48,12 @@ use sc_service::config::{
 use sc_service::{
     BasePath, BlocksPruning, Configuration, NetworkStarter, Role, SpawnTasksParams, TaskManager,
 };
-use sc_transaction_pool::error::Error as PoolError;
+use sc_transaction_pool::{BasicPool, FullChainApi, Options};
+use sc_transaction_pool_api::error::{Error as TxPoolError, IntoPoolError};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::{ApiExt, ProvideRuntimeApi};
-use sp_blockchain::HeaderBackend;
+use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
@@ -72,7 +73,7 @@ use sp_keyring::Sr25519Keyring;
 use sp_messenger::MessengerApi;
 use sp_messenger_host_functions::{MessengerExtension, MessengerHostFunctionsImpl};
 use sp_mmr_primitives::MmrApi;
-use sp_runtime::generic::{BlockId, Digest, SignedPayload};
+use sp_runtime::generic::{Digest, SignedPayload};
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
 };
@@ -85,12 +86,12 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time;
+use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::solutions::Solution;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Signature};
-use subspace_service::transaction_pool::FullPool;
 use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{chain_spec, Backend, Client};
 use subspace_test_primitives::OnchainStateApi;
@@ -352,7 +353,7 @@ pub struct MockConsensusNode {
     /// Code executor.
     pub executor: RuntimeExecutor,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Client, Block, DomainHeader>>,
+    pub transaction_pool: Arc<BasicPool<FullChainApi<Client, Block>, Block>>,
     /// The SelectChain Strategy
     pub select_chain: FullSelectChain,
     /// Network service.
@@ -429,7 +430,11 @@ impl MockConsensusNode {
 
         // Set `transaction_pool.ban_time` to 0 such that duplicated tx will not immediately rejected
         // by `TemporarilyBanned`
-        config.transaction_pool.ban_time = time::Duration::from_millis(0);
+        // rest of the options are taken from default
+        let tx_pool_options = Options {
+            ban_time: Duration::from_millis(0),
+            ..Default::default()
+        };
 
         config.network.node_name = format!("{} (Consensus)", config.network.node_name);
         let span = sc_tracing::tracing::info_span!(
@@ -467,14 +472,13 @@ impl MockConsensusNode {
             ));
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
-        let transaction_pool = subspace_service::transaction_pool::new_full(
-            config.transaction_pool.clone(),
-            config.role.is_authority(),
+        let transaction_pool = Arc::from(BasicPool::new_full(
+            tx_pool_options,
+            config.role.is_authority().into(),
             config.prometheus_registry(),
-            &task_manager,
+            task_manager.spawn_essential_handle(),
             client.clone(),
-        )
-        .expect("failed to create transaction pool");
+        ));
 
         let block_import = MockBlockImport::<_, _>::new(client.clone());
 
@@ -781,7 +785,7 @@ impl MockConsensusNode {
     }
 
     /// Submit a tx to the tx pool
-    pub async fn submit_transaction(&self, tx: OpaqueExtrinsic) -> Result<H256, PoolError> {
+    pub async fn submit_transaction(&self, tx: OpaqueExtrinsic) -> Result<H256, TxPoolError> {
         self.transaction_pool
             .submit_one(
                 self.client.info().best_hash,
@@ -789,6 +793,10 @@ impl MockConsensusNode {
                 tx,
             )
             .await
+            .map_err(|err| {
+                err.into_pool_error()
+                    .expect("should always be a pool error")
+            })
     }
 
     /// Remove all tx from the tx pool
@@ -811,16 +819,20 @@ impl MockConsensusNode {
         &self,
         tx_hashes: &[<Block as BlockT>::Hash],
     ) -> Result<(), Box<dyn Error>> {
+        let hash_and_number = HashAndNumber {
+            number: self.client.info().best_number,
+            hash: self.client.info().best_hash,
+        };
         self.transaction_pool
             .pool()
-            .prune_known(&BlockId::Hash(self.client.info().best_hash), tx_hashes)?;
+            .prune_known(&hash_and_number, tx_hashes);
         // `ban_time` have set to 0, explicitly wait 1ms here to ensure `clear_stale` will remove
         // all the bans as the ban time must be passed.
         tokio::time::sleep(time::Duration::from_millis(1)).await;
         self.transaction_pool
             .pool()
             .validated_pool()
-            .clear_stale(&BlockId::Number(self.client.info().best_number))?;
+            .clear_stale(&hash_and_number);
         Ok(())
     }
 
@@ -907,14 +919,11 @@ impl MockConsensusNode {
 }
 
 impl MockConsensusNode {
-    async fn collect_txn_from_pool(
-        &self,
-        parent_number: NumberFor<Block>,
-    ) -> Vec<<Block as BlockT>::Extrinsic> {
+    async fn collect_txn_from_pool(&self, parent_hash: Hash) -> Vec<<Block as BlockT>::Extrinsic> {
         self.transaction_pool
-            .ready_at(parent_number)
+            .ready_at(parent_hash)
             .await
-            .map(|pending_tx| pending_tx.data().clone())
+            .map(|pending_tx| pending_tx.data().as_ref().clone())
             .collect()
     }
 
@@ -1032,16 +1041,9 @@ impl MockConsensusNode {
     ) -> Result<<Block as BlockT>::Hash, Box<dyn Error>> {
         let block_timer = time::Instant::now();
 
-        let parent_number =
-            self.client
-                .number(parent_hash)?
-                .ok_or(sp_blockchain::Error::Backend(format!(
-                    "Number for {parent_hash} not found"
-                )))?;
-
         let extrinsics = match maybe_extrinsics {
             Some(extrinsics) => extrinsics,
-            None => self.collect_txn_from_pool(parent_number).await,
+            None => self.collect_txn_from_pool(parent_hash).await,
         };
         let tx_hashes: Vec<_> = extrinsics
             .iter()
@@ -1368,6 +1370,7 @@ where
         frame_system::CheckNonce::<Runtime>::from(nonce),
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+        subspace_runtime_primitives::extensions::DisableGeneralExtrinsics::<Runtime>::new(),
     );
     (
         generic::SignedPayload::<
@@ -1376,7 +1379,7 @@ where
         >::from_raw(
             function,
             extra.clone(),
-            ((), 100, 1, genesis_block, current_block_hash, (), (), ()),
+            ((), 100, 1, genesis_block, current_block_hash, (), (), (), ()),
         ),
         extra,
     )

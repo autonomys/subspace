@@ -23,7 +23,7 @@ use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
-use sp_core::{Get, H256, U256};
+use sp_core::{Get, H256};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
@@ -32,6 +32,7 @@ use sp_domains::{
     SealedBundleHeader,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_runtime::generic::{Preamble, EXTRINSIC_FORMAT_VERSION};
 use sp_runtime::traits::{
     AccountIdConversion, BlakeTwo256, BlockNumberProvider, Hash as HashT, IdentityLookup, One, Zero,
 };
@@ -400,7 +401,7 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     bundle_extrinsics_root: H256,
     receipt: ExecutionReceipt<BlockNumber, Hash, DomainBlockNumber, H256, u128>,
 ) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
-    let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+    let pair = OperatorPair::from_seed(&[0; 32]);
 
     let header = BundleHeader::<_, _, DomainHeader, _> {
         proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
@@ -479,7 +480,7 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
     )
     .unwrap();
 
-    let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+    let pair = OperatorPair::from_seed(&[0; 32]);
     for operator_id in operator_ids {
         Operators::<Test>::insert(operator_id, Operator::dummy(domain_id, pair.public(), SSC));
         OperatorIdOwner::<Test>::insert(operator_id, creator);
@@ -614,7 +615,7 @@ fn test_calculate_tx_range() {
 fn test_bundle_format_verification() {
     let opaque_extrinsic = |dest: u128, value: u128| -> OpaqueExtrinsic {
         UncheckedExtrinsic {
-            signature: None,
+            preamble: Preamble::Bare(EXTRINSIC_FORMAT_VERSION),
             function: RuntimeCall::Balances(pallet_balances::Call::transfer_allow_death {
                 dest,
                 value,

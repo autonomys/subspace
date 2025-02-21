@@ -31,8 +31,9 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
-use sp_runtime::generic::UncheckedExtrinsic;
-use sp_runtime::traits::{Convert, IdentifyAccount, Verify};
+use sp_runtime::generic::{ExtensionVersion, Preamble, UncheckedExtrinsic};
+use sp_runtime::traits::transaction_extension::TransactionExtension;
+use sp_runtime::traits::{Convert, Dispatchable, IdentifyAccount, Verify};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{MultiAddress, MultiSignature, Perbill};
 use sp_weights::constants::WEIGHT_REF_TIME_PER_SECOND;
@@ -116,6 +117,10 @@ pub fn maximum_block_length() -> BlockLength {
     BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO)
 }
 
+/// Default version of the Extension used to construct the inherited implication for legacy transactions.
+// https://github.com/paritytech/polkadot-sdk/blob/master/substrate/primitives/runtime/src/generic/checked_extrinsic.rs#L37
+pub const DEFAULT_EXTENSION_VERSION: ExtensionVersion = 0;
+
 /// Computed as ED = Account data size * Price per byte, where
 /// Price per byte = Min Number of validators * Storage duration (years) * Storage cost per year
 /// Account data size (80 bytes)
@@ -169,13 +174,16 @@ impl<Address, AccountId, Call, Signature, Extra, Lookup> Signer<AccountId, Looku
     for UncheckedExtrinsic<Address, Call, Signature, Extra>
 where
     Address: Clone,
-    Extra: sp_runtime::traits::SignedExtension<AccountId = AccountId>,
+    Call: Dispatchable,
+    Extra: TransactionExtension<Call>,
     Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
 {
     fn signer(&self, lookup: &Lookup) -> Option<AccountId> {
-        self.signature
-            .as_ref()
-            .and_then(|(signed, _, _)| lookup.lookup(signed.clone()).ok())
+        match &self.preamble {
+            Preamble::Bare(_) => None,
+            Preamble::Signed(address, _, _) => lookup.lookup(address.clone()).ok(),
+            Preamble::General(_, _) => None,
+        }
     }
 }
 

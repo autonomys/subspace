@@ -600,7 +600,7 @@ where
         // Look up the transaction pool.
         self.transaction_pool
             .ready_transaction(tx_hash)
-            .map(|in_pool_tx| in_pool_tx.data().clone())
+            .map(|in_pool_tx| in_pool_tx.data().as_ref().clone())
     }
 }
 
@@ -668,7 +668,7 @@ where
         // Next look up the transaction pool.
         self.transaction_pool
             .ready_transaction(tx_hash)
-            .map(|in_pool_tx| in_pool_tx.data().clone())
+            .map(|in_pool_tx| in_pool_tx.data().as_ref().clone())
     }
 }
 

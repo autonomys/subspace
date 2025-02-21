@@ -22,7 +22,7 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use frame_support::dispatch::DispatchResult;
 use frame_support::traits::Get;
-use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
+use frame_system::offchain::{CreateInherent, SubmitTransaction};
 use frame_system::pallet_prelude::*;
 use log::{debug, error, warn};
 pub use pallet::*;
@@ -1187,7 +1187,7 @@ impl<T: Config> Pallet<T> {
 
 impl<T> Pallet<T>
 where
-    T: Config + SendTransactionTypes<Call<T>>,
+    T: Config + CreateInherent<Call<T>>,
 {
     /// Submit farmer vote vote that is essentially a header with bigger solution range than
     /// acceptable for block authoring.
@@ -1196,7 +1196,8 @@ where
             signed_vote: Box::new(signed_vote),
         };
 
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+        let ext = T::create_inherent(call.into());
+        match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
                 debug!(target: "runtime::subspace", "Submitted Subspace vote");
             }

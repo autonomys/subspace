@@ -117,19 +117,12 @@ pub(crate) fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
     let mut base_offset =
         block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
     for extrinsic in block.extrinsics {
-        let signature_size = extrinsic
-            .signature
-            .as_ref()
-            .map(|s| s.encoded_size())
-            .unwrap_or_default();
-        // Extrinsic starts with vector length and version byte, followed by optional signature and
+        let preamble_size = extrinsic.preamble.encoded_size();
+        // Extrinsic starts with vector length followed by preamble and
         // `function` encoding.
         let base_extrinsic_offset = base_offset
-            + Compact::compact_len(
-                &((1 + signature_size + extrinsic.function.encoded_size()) as u32),
-            )
-            + 1
-            + signature_size;
+            + Compact::compact_len(&((preamble_size + extrinsic.function.encoded_size()) as u32))
+            + preamble_size;
 
         extract_call_block_object_mapping(
             base_extrinsic_offset as u32,

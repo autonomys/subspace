@@ -1,5 +1,7 @@
 use crate::Pallet as BlockFees;
 use codec::Encode;
+use frame_support::traits::fungible::Inspect;
+use frame_support::traits::tokens::WithdrawConsequence;
 use frame_support::traits::{Currency, ExistenceRequirement, Imbalance, WithdrawReasons};
 use sp_runtime::traits::{DispatchInfoOf, PostDispatchInfoOf, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
@@ -22,11 +24,11 @@ pub struct OnChargeDomainTransaction<C>(PhantomData<C>);
 impl<T, C> pallet_transaction_payment::OnChargeTransaction<T> for OnChargeDomainTransaction<C>
 where
     T: pallet_transaction_payment::Config + crate::Config<Balance = BalanceOf<C, T>>,
-    C: Currency<AccountIdOf<T>>,
+    C: Currency<AccountIdOf<T>> + Inspect<AccountIdOf<T>, Balance = BalanceOf<C, T>>,
     C::PositiveImbalance: Imbalance<BalanceOf<C, T>, Opposite = C::NegativeImbalance>,
 {
-    type LiquidityInfo = Option<LiquidityInfo<BalanceOf<C, T>, NegativeImbalanceOf<C, T>>>;
     type Balance = BalanceOf<C, T>;
+    type LiquidityInfo = Option<LiquidityInfo<BalanceOf<C, T>, NegativeImbalanceOf<C, T>>>;
 
     fn withdraw_fee(
         who: &AccountIdOf<T>,
@@ -57,6 +59,23 @@ where
             consensus_storage_fee,
             imbalance,
         }))
+    }
+
+    fn can_withdraw_fee(
+        who: &T::AccountId,
+        _call: &T::RuntimeCall,
+        _dispatch_info: &DispatchInfoOf<T::RuntimeCall>,
+        fee: Self::Balance,
+        _tip: Self::Balance,
+    ) -> Result<(), TransactionValidityError> {
+        if fee.is_zero() {
+            return Ok(());
+        }
+
+        match C::can_withdraw(who, fee) {
+            WithdrawConsequence::Success => Ok(()),
+            _ => Err(InvalidTransaction::Payment.into()),
+        }
     }
 
     fn correct_and_deposit_fee(

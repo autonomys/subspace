@@ -17,6 +17,8 @@
 use sc_client_api::{
     BlockBackend, BlockchainEvents, ExecutorProvider, ProofProvider, StorageProvider, UsageProvider,
 };
+use sc_network::multiaddr::Protocol;
+use sc_network::Multiaddr;
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
     gen_rpc_module, init_telemetry, propagate_transaction_notifications, start_rpc_servers, Error,
@@ -149,28 +151,32 @@ where
             &*rpc_builder,
         )
     };
+
+    let rpc_server_handle = start_rpc_servers(
+        &config.rpc,
+        config.prometheus_registry(),
+        &config.tokio_handle,
+        gen_rpc_module,
+        rpc_id_provider,
+    )?;
+
+    let listen_addrs = rpc_server_handle
+        .listen_addrs()
+        .iter()
+        .map(|socket_addr| {
+            let mut multiaddr: Multiaddr = socket_addr.ip().into();
+            multiaddr.push(Protocol::Tcp(socket_addr.port()));
+            multiaddr
+        })
+        .collect();
+
     let in_memory_rpc = {
         let mut module = gen_rpc_module()?;
         module.extensions_mut().insert(DenyUnsafe::No);
         module
     };
 
-    let rpc = config
-        .rpc
-        .addr
-        .is_some()
-        .then(|| {
-            start_rpc_servers(
-                &config.rpc,
-                config.prometheus_registry(),
-                &config.tokio_handle,
-                gen_rpc_module,
-                rpc_id_provider,
-            )
-        })
-        .transpose()?;
-    let rpc_handlers = RpcHandlers::new(Arc::new(in_memory_rpc));
-
+    let in_memory_rpc_handle = RpcHandlers::new(Arc::new(in_memory_rpc), listen_addrs);
     // Spawn informant task
     spawn_handle.spawn(
         "informant",
@@ -178,7 +184,7 @@ where
         sc_informant::build(client.clone(), network, sync_service.clone()),
     );
 
-    task_manager.keep_alive((config.base_path, rpc));
+    task_manager.keep_alive((config.base_path, rpc_server_handle));
 
-    Ok(rpc_handlers)
+    Ok(in_memory_rpc_handle)
 }

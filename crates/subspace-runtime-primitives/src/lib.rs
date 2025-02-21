@@ -2,6 +2,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod extensions;
 pub mod utility;
 
 #[cfg(not(feature = "std"))]

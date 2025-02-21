@@ -46,6 +46,8 @@ use domain_runtime_primitives::{
 };
 use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::inherent::ProvideInherent;
+use frame_support::traits::fungible::Inspect;
+use frame_support::traits::tokens::WithdrawConsequence;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, Time, VariantCount, WithdrawReasons,
@@ -259,7 +261,7 @@ impl frame_system::Config for Runtime {
     /// The data to be stored in an account.
     type AccountData = pallet_balances::AccountData<Balance>;
     /// Weight information for the extrinsics of this pallet.
-    type SystemWeightInfo = ();
+    type SystemWeightInfo = frame_system::weights::SubstrateWeight<Runtime>;
     /// This is used as an identifier of the chain.
     type SS58Prefix = SS58Prefix;
     /// The set code logic, just the default since we're not a parachain.
@@ -270,6 +272,7 @@ impl frame_system::Config for Runtime {
     type PostInherents = ();
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
 }
 
 parameter_types! {
@@ -310,7 +313,7 @@ impl pallet_subspace::Config for Runtime {
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type BlockSlotCount = BlockSlotCount;
-    type WeightInfo = ();
+    type WeightInfo = pallet_subspace::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -318,7 +321,7 @@ impl pallet_timestamp::Config for Runtime {
     type Moment = Moment;
     type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
-    type WeightInfo = ();
+    type WeightInfo = pallet_timestamp::weights::SubstrateWeight<Runtime>;
 }
 
 #[derive(
@@ -366,6 +369,7 @@ impl pallet_balances::Config for Runtime {
     type FreezeIdentifier = ();
     type MaxFreezes = ();
     type RuntimeHoldReason = HoldIdentifierWrapper;
+    type DoneSlashHandler = ();
 }
 
 pub struct CreditSupply;
@@ -501,6 +505,23 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
         }
         Ok(())
     }
+
+    fn can_withdraw_fee(
+        who: &AccountId,
+        _call: &RuntimeCall,
+        _dispatch_info: &DispatchInfoOf<RuntimeCall>,
+        fee: Self::Balance,
+        _tip: Self::Balance,
+    ) -> Result<(), TransactionValidityError> {
+        if fee.is_zero() {
+            return Ok(());
+        }
+
+        match Balances::can_withdraw(who, fee) {
+            WithdrawConsequence::Success => Ok(()),
+            _ => Err(InvalidTransaction::Payment.into()),
+        }
+    }
 }
 
 impl pallet_transaction_payment::Config for Runtime {
@@ -510,6 +531,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     type FeeMultiplierUpdate = ();
+    type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_utility::Config for Runtime {
@@ -649,12 +671,21 @@ impl pallet_messenger::Config for Runtime {
     type MaxOutgoingMessages = MaxOutgoingMessages;
 }
 
-impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
+impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
 where
     RuntimeCall: From<C>,
 {
     type Extrinsic = UncheckedExtrinsic;
-    type OverarchingCall = RuntimeCall;
+    type RuntimeCall = RuntimeCall;
+}
+
+impl<C> frame_system::offchain::CreateInherent<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    fn create_inherent(call: Self::RuntimeCall) -> Self::Extrinsic {
+        UncheckedExtrinsic::new_bare(call)
+    }
 }
 
 parameter_types! {
@@ -805,7 +836,7 @@ impl pallet_rewards::Config for Runtime {
     type RewardsEnabled = Subspace;
     type FindBlockRewardAddress = Subspace;
     type FindVotingRewardAddresses = Subspace;
-    type WeightInfo = ();
+    type WeightInfo = pallet_rewards::weights::SubstrateWeight<Runtime>;
     type OnReward = ();
 }
 
@@ -896,6 +927,8 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    // TODO: remove or adapt after or during migration to General extrinsic respectively
+    subspace_runtime_primitives::extensions::DisableGeneralExtrinsics<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
@@ -1050,19 +1083,12 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
     let mut base_offset =
         block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
     for extrinsic in block.extrinsics {
-        let signature_size = extrinsic
-            .signature
-            .as_ref()
-            .map(|s| s.encoded_size())
-            .unwrap_or_default();
-        // Extrinsic starts with vector length and version byte, followed by optional signature and
+        let preamble_size = extrinsic.preamble.encoded_size();
+        // Extrinsic starts with vector length followed by preamble and
         // `function` encoding.
         let base_extrinsic_offset = base_offset
-            + Compact::compact_len(
-                &((1 + signature_size + extrinsic.function.encoded_size()) as u32),
-            )
-            + 1
-            + signature_size;
+            + Compact::compact_len(&((preamble_size + extrinsic.function.encoded_size()) as u32))
+            + preamble_size;
 
         extract_call_block_object_mapping(
             base_extrinsic_offset as u32,

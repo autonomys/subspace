@@ -48,10 +48,10 @@ use sp_messenger::messages::{
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
-use sp_runtime::generic::Era;
+use sp_runtime::generic::{Era, ExtrinsicFormat, Preamble};
 use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, Block as BlockT, Checkable, Keccak256, NumberFor, One,
-    SignedExtension, ValidateUnsigned, Zero,
+    AccountIdLookup, BlakeTwo256, Block as BlockT, Checkable, DispatchTransaction, Keccak256,
+    NumberFor, One, TransactionExtension, ValidateUnsigned, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -91,6 +91,8 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    // TODO: remove or adapt after or during migration to General extrinsic respectively
+    subspace_runtime_primitives::extensions::DisableGeneralExtrinsics<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -174,7 +176,7 @@ impl frame_system::Config for Runtime {
     /// The basic call filter to use in dispatchable.
     type BaseCallFilter = Everything;
     /// Weight information for the extrinsics of this pallet.
-    type SystemWeightInfo = ();
+    type SystemWeightInfo = frame_system::weights::SubstrateWeight<Runtime>;
     /// Block & extrinsics weights: base values and limits.
     type BlockWeights = RuntimeBlockWeights;
     /// The maximum length of a block (in bytes).
@@ -188,6 +190,7 @@ impl frame_system::Config for Runtime {
     type PostInherents = ();
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -195,7 +198,7 @@ impl pallet_timestamp::Config for Runtime {
     type Moment = Moment;
     type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
-    type WeightInfo = ();
+    type WeightInfo = pallet_timestamp::weights::SubstrateWeight<Runtime>;
 }
 
 parameter_types! {
@@ -229,6 +232,7 @@ impl pallet_balances::Config for Runtime {
     type FreezeIdentifier = ();
     type MaxFreezes = ();
     type RuntimeHoldReason = HoldIdentifierWrapper;
+    type DoneSlashHandler = ();
 }
 
 parameter_types! {
@@ -257,6 +261,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type LengthToFee = ConstantMultiplier<Balance, FinalDomainTransactionByteFee>;
     type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
+    type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_auto_id::Config for Runtime {
@@ -426,12 +431,21 @@ impl pallet_messenger::Config for Runtime {
     type MaxOutgoingMessages = MaxOutgoingMessages;
 }
 
-impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
+impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
 where
     RuntimeCall: From<C>,
 {
     type Extrinsic = UncheckedExtrinsic;
-    type OverarchingCall = RuntimeCall;
+    type RuntimeCall = RuntimeCall;
+}
+
+impl<C> frame_system::offchain::CreateInherent<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    fn create_inherent(call: Self::RuntimeCall) -> Self::Extrinsic {
+        UncheckedExtrinsic::new_bare(call)
+    }
 }
 
 parameter_types! {
@@ -538,7 +552,7 @@ fn is_valid_sudo_call(encoded_ext: Vec<u8>) -> bool {
 fn construct_sudo_call_extrinsic(encoded_ext: Vec<u8>) -> <Block as BlockT>::Extrinsic {
     let ext = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice())
         .expect("must always be an valid extrinsic due to the check above; qed");
-    UncheckedExtrinsic::new_unsigned(
+    UncheckedExtrinsic::new_bare(
         pallet_domain_sudo::Call::sudo {
             call: Box::new(ext.function),
         }
@@ -553,9 +567,10 @@ fn extract_signer_inner<Lookup>(
 where
     Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
 {
-    ext.signature
-        .as_ref()
-        .map(|(signed, _, _)| lookup.lookup(signed.clone()).map_err(|e| e.into()))
+    match &ext.preamble {
+        Preamble::Bare(_) | Preamble::General(_, _) => None,
+        Preamble::Signed(signed, _, _) => Some(lookup.lookup(signed.clone()).map_err(|e| e.into())),
+    }
 }
 
 pub fn extract_signer(
@@ -576,7 +591,10 @@ pub fn extract_signer(
 }
 
 fn extrinsic_era(extrinsic: &<Block as BlockT>::Extrinsic) -> Option<Era> {
-    extrinsic.signature.as_ref().map(|(_, _, extra)| extra.4 .0)
+    match &extrinsic.preamble {
+        Preamble::Bare(_) | Preamble::General(_, _) => None,
+        Preamble::Signed(_, _, extra) => Some(extra.4 .0),
+    }
 }
 
 #[cfg(feature = "runtime-benchmarks")]
@@ -609,20 +627,47 @@ fn check_transaction_and_do_pre_dispatch_inner(
     // as that will add the side effect of SignedExtension in the storage buffer
     // which would help to maintain context across multiple transaction validity check against same
     // runtime instance.
-    match xt.signed {
+    match xt.format {
+        ExtrinsicFormat::General(extension_version, extra) => {
+            let origin = RuntimeOrigin::none();
+            <SignedExtra as DispatchTransaction<RuntimeCall>>::validate_and_prepare(
+                extra,
+                origin,
+                &xt.function,
+                &dispatch_info,
+                encoded_len,
+                extension_version,
+            )
+            .map(|_| ())
+        }
         // signed transaction
-        Some((account_id, extra)) => extra
-            .pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len)
-            .map(|_| ()),
+        ExtrinsicFormat::Signed(account_id, extra) => {
+            let origin = RuntimeOrigin::signed(account_id);
+            <SignedExtra as DispatchTransaction<RuntimeCall>>::validate_and_prepare(
+                extra,
+                origin,
+                &xt.function,
+                &dispatch_info,
+                encoded_len,
+                // default extension version define here -
+                // https://github.com/paritytech/polkadot-sdk/blob/master/substrate/primitives/runtime/src/generic/checked_extrinsic.rs#L37
+                0,
+            )
+            .map(|_| ())
+        }
         // unsigned transaction
-        None => {
+        ExtrinsicFormat::Bare => {
             if let RuntimeCall::Messenger(call) = &xt.function {
                 Messenger::pre_dispatch_with_trusted_mmr_proof(call)?;
             } else {
                 Runtime::pre_dispatch(&xt.function).map(|_| ())?;
             }
-            SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len)
-                .map(|_| ())
+            <SignedExtra as TransactionExtension<RuntimeCall>>::bare_validate_and_prepare(
+                &xt.function,
+                &dispatch_info,
+                encoded_len,
+            )
+            .map(|_| ())
         }
     }
 }
@@ -777,7 +822,7 @@ impl_runtime_apis! {
         }
 
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
-            UncheckedExtrinsic::new_unsigned(
+            UncheckedExtrinsic::new_bare(
                 domain_pallet_executive::Call::set_code {
                     code
                 }.into()
@@ -785,7 +830,7 @@ impl_runtime_apis! {
         }
 
         fn construct_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
-            UncheckedExtrinsic::new_unsigned(
+            UncheckedExtrinsic::new_bare(
                 pallet_timestamp::Call::set{ now: moment }.into()
             )
         }
@@ -838,7 +883,7 @@ impl_runtime_apis! {
         fn extrinsic_weight(ext: &<Block as BlockT>::Extrinsic) -> Weight {
             let len = ext.encoded_size() as u64;
             let info = ext.get_dispatch_info();
-            info.weight
+            info.call_weight.saturating_add(info.extension_weight)
                 .saturating_add(<Runtime as frame_system::Config>::BlockWeights::get().get(info.class).base_extrinsic)
                 .saturating_add(Weight::from_parts(0, len))
         }
@@ -856,13 +901,13 @@ impl_runtime_apis! {
         }
 
         fn construct_consensus_chain_byte_fee_extrinsic(transaction_byte_fee: Balance) -> <Block as BlockT>::Extrinsic {
-            UncheckedExtrinsic::new_unsigned(
+            UncheckedExtrinsic::new_bare(
                 pallet_block_fees::Call::set_next_consensus_chain_byte_fee{ transaction_byte_fee }.into()
             )
         }
 
         fn construct_domain_update_chain_allowlist_extrinsic(updates: DomainAllowlistUpdates) -> <Block as BlockT>::Extrinsic {
-             UncheckedExtrinsic::new_unsigned(
+             UncheckedExtrinsic::new_bare(
                 pallet_messenger::Call::update_domain_allowlist{ updates }.into()
             )
         }

@@ -30,7 +30,7 @@ parking_lot = "0.12.2"
 rand = "0.8.5"
 rayon = "1.10.0"
 schnorrkel = "0.11.4"
-serde = { version = "1.0.110", features = ["derive"] }
+serde = { version = "1.0.216", features = ["derive"] }
 static_assertions = "1.1.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
