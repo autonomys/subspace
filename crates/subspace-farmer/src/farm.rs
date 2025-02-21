@@ -526,29 +526,17 @@ impl HandlerId for event_listener_primitives::HandlerId {
 #[derive(
     Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
 )]
-#[serde(untagged)]
-pub enum FarmerId {
-    /// Farmer ID
-    Ulid(Ulid),
-}
+pub struct FarmerId(FarmId);
 
 impl Encode for FarmerId {
     #[inline]
     fn size_hint(&self) -> usize {
-        1_usize
-            + match self {
-                FarmerId::Ulid(ulid) => 0_usize.saturating_add(Encode::size_hint(&ulid.0)),
-            }
+        self.0.size_hint()
     }
 
     #[inline]
     fn encode_to<O: Output + ?Sized>(&self, output: &mut O) {
-        match self {
-            FarmerId::Ulid(ulid) => {
-                output.push_byte(0);
-                Encode::encode_to(&ulid.0, output);
-            }
-        }
+        self.0.encode_to(output);
     }
 }
 
@@ -557,24 +545,27 @@ impl EncodeLike for FarmerId {}
 impl Decode for FarmerId {
     #[inline]
     fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
-        match input
-            .read_byte()
-            .map_err(|e| e.chain("Could not decode `FarmerId`, failed to read variant byte"))?
-        {
-            0 => u128::decode(input)
-                .map(|ulid| FarmerId::Ulid(Ulid(ulid)))
-                .map_err(|e| e.chain("Could not decode `FarmerId::Ulid.0`")),
-            _ => Err("Could not decode `FarmerId`, variant doesn't exist".into()),
-        }
+        FarmId::decode(input).map(FarmerId)
     }
 }
 
 #[allow(clippy::new_without_default)]
 impl FarmerId {
-    /// Creates new ID
+    // Creates new ID
     #[inline]
-    pub fn new() -> Self {
-        Self::Ulid(Ulid::new())
+    fn new() -> Self {
+        Self(FarmId::new())
+    }
+
+    /// Use the smallest FarmId as the FarmerId, create one if it doesn't exist.
+    pub fn from_farms<F: Farm>(farms: &[F]) -> Self {
+        farms
+            .iter()
+            .map(Farm::id)
+            .copied()
+            .min()
+            .map(FarmerId)
+            .unwrap_or_else(Self::new)
     }
 }
 

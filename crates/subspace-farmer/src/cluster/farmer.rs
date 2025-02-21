@@ -400,7 +400,7 @@ pub fn farmer_service<F>(
 where
     F: Farm,
 {
-    let farmer_id = FarmerId::new();
+    let farmer_id = FarmerId::from_farms(farms);
     let farmer_id_string = farmer_id.to_string();
 
     // For each farm start forwarding notifications as broadcast messages and create farm details
