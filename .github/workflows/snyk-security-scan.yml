@@ -1,0 +1,138 @@
+##
+# This action runs Snyk container vulnerability scanner for Docker images.
+##
+
+name: Snyk Container
+on:
+  repository_dispatch:
+    types: [snyk-scan-dispatch]
+  workflow_dispatch:
+  push:
+    branches:
+      - snyk-vulnerability-scan
+
+
+jobs:
+  snyk-container-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # we can just scan the images, but we are building the image and scanning from the Dockerfile as it can be more accurate and find more obscured vulnerabilities than simply scanning the pre-built image.
+      # See https://docs.snyk.io/scan-with-snyk/snyk-container/use-snyk-container/detect-the-container-base-image#how-snyk-container-identifies-base-images
+      - name: Build Farmer Docker image
+        run: docker build -t autonomys/farmer:snyk -f docker/farmer.Dockerfile .
+
+      - name: Run Snyk to check Docker image for vulnerabilities
+        uses: snyk/actions/docker@b98d498629f1c368650224d6d212bf7dfa89e4bf # v0.4.0
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: autonomys/farmer:snyk
+          args: --file=docker/farmer.Dockerfile --severity-threshold=high
+        continue-on-error: true
+
+      - name: Post-process sarif output for security severities set to "undefined"
+        run: |
+          sed -i 's/"security-severity": "undefined"/"security-severity": "0"/g' snyk.sarif
+        # Replace any "null" security severity values with 0. The undefined value is used in the case
+        # the NVD CVSS Score is not available.
+        # https://github.com/github/codeql-action/issues/2187 for more context.
+      - name: Post-process sarif output for security severities set to "null"
+        run: |
+          sed -i 's/"security-severity": "null"/"security-severity": "0"/g' snyk.sarif
+
+      - name: Upload result to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@9e8d0789d4a0fa9ceb6b1738f7e269594bdd67f0 # v3.28.9
+        with:
+          sarif_file: snyk.sarif
+          category: snyk-farmer-image
+
+      # we can just scan the images, but we are building the image and scanning from the Dockerfile as it can be more accurate and find more obscured vulnerabilities than simply scanning the pre-built image.
+      # See https://docs.snyk.io/scan-with-snyk/snyk-container/use-snyk-container/detect-the-container-base-image#how-snyk-container-identifies-base-images
+      - name: Build Node Docker image
+        run: docker build -t autonomys/node:snyk -f docker/node.Dockerfile .
+
+      - name: Run Snyk to check Docker image for vulnerabilities
+        uses: snyk/actions/docker@b98d498629f1c368650224d6d212bf7dfa89e4bf # v0.4.0
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: autonomys/node:snyk
+          args: --file=docker/node.Dockerfile --severity-threshold=high
+        continue-on-error: true
+
+      - name: Post-process sarif output for security severities set to "undefined"
+        run: |
+          sed -i 's/"security-severity": "undefined"/"security-severity": "0"/g' snyk.sarif
+        # Replace any "null" security severity values with 0. The undefined value is used in the case
+        # the NVD CVSS Score is not available.
+        # https://github.com/github/codeql-action/issues/2187 for more context.
+      - name: Post-process sarif output for security severities set to "null"
+        run: |
+          sed -i 's/"security-severity": "null"/"security-severity": "0"/g' snyk.sarif
+
+      - name: Upload result to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@9e8d0789d4a0fa9ceb6b1738f7e269594bdd67f0 # v3.28.9
+        with:
+          sarif_file: snyk.sarif
+          category: snyk-node-image
+
+      # we can just scan the images, but we are building the image and scanning from the Dockerfile as it can be more accurate and find more obscured vulnerabilities than simply scanning the pre-built image.
+      # See https://docs.snyk.io/scan-with-snyk/snyk-container/use-snyk-container/detect-the-container-base-image#how-snyk-container-identifies-base-images
+      - name: Build Bootstrap node Docker image
+        run: docker build -t autonomys/bootstrap-node:snyk -f docker/bootstrap-node.Dockerfile .
+
+      - name: Run Snyk to check Docker image for vulnerabilities
+        uses: snyk/actions/docker@b98d498629f1c368650224d6d212bf7dfa89e4bf # v0.4.0
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: autonomys/bootstrap-node:snyk
+          args: --file=docker/bootstrap-node.Dockerfile --severity-threshold=high
+        continue-on-error: true
+
+      - name: Post-process sarif output for security severities set to "undefined"
+        run: |
+          sed -i 's/"security-severity": "undefined"/"security-severity": "0"/g' snyk.sarif
+        # Replace any "null" security severity values with 0. The undefined value is used in the case
+        # the NVD CVSS Score is not available.
+        # https://github.com/github/codeql-action/issues/2187 for more context.
+      - name: Post-process sarif output for security severities set to "null"
+        run: |
+          sed -i 's/"security-severity": "null"/"security-severity": "0"/g' snyk.sarif
+
+      - name: Upload result to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@9e8d0789d4a0fa9ceb6b1738f7e269594bdd67f0 # v3.28.9
+        with:
+          sarif_file: snyk.sarif
+          category: snyk-bootstrap-node-image
+
+      # we can just scan the images, but we are building the image and scanning from the Dockerfile as it can be more accurate and find more obscured vulnerabilities than simply scanning the pre-built image.
+      # See https://docs.snyk.io/scan-with-snyk/snyk-container/use-snyk-container/detect-the-container-base-image#how-snyk-container-identifies-base-images
+      - name: Build Gateway Docker image
+        run: docker build -t autonomys/gateway:snyk -f docker/gateway.Dockerfile .
+
+      - name: Run Snyk to check Docker image for vulnerabilities
+        uses: snyk/actions/docker@b98d498629f1c368650224d6d212bf7dfa89e4bf # v0.4.0
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: autonomys/gateway:snyk
+          args: --file=docker/gateway.Dockerfile --severity-threshold=high
+        continue-on-error: true
+
+      - name: Post-process sarif output for security severities set to "undefined"
+        run: |
+          sed -i 's/"security-severity": "undefined"/"security-severity": "0"/g' snyk.sarif
+        # Replace any "null" security severity values with 0. The undefined value is used in the case
+        # the NVD CVSS Score is not available.
+        # https://github.com/github/codeql-action/issues/2187 for more context.
+      - name: Post-process sarif output for security severities set to "null"
+        run: |
+          sed -i 's/"security-severity": "null"/"security-severity": "0"/g' snyk.sarif
+
+      - name: Upload result to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@9e8d0789d4a0fa9ceb6b1738f7e269594bdd67f0 # v3.28.9
+        with:
+          sarif_file: snyk.sarif
+          category: snyk-gateway-image
