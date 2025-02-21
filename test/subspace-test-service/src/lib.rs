@@ -1367,7 +1367,7 @@ where
         } else {
             generic::Era::mortal(period, current_block)
         }),
-        frame_system::CheckNonce::<Runtime>::from(nonce),
+        frame_system::CheckNonce::<Runtime>::from(nonce.into()),
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
         subspace_runtime_primitives::extensions::DisableGeneralExtrinsics::<Runtime>::new(),

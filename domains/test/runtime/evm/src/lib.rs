@@ -74,6 +74,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
+use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{
     generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
     ExtrinsicInclusionMode, SaturatedConversion,
@@ -177,7 +178,7 @@ pub fn construct_extrinsic_raw_payload(
         } else {
             generic::Era::mortal(period, current_block)
         }),
-        frame_system::CheckNonce::<Runtime>::from(nonce),
+        frame_system::CheckNonce::<Runtime>::from(nonce.into()),
         domain_check_weight::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
         pallet_evm_tracker::create_contract::CheckContractCreation::<Runtime>::new(),
@@ -368,6 +369,18 @@ parameter_types! {
     pub RuntimeBlockWeights: BlockWeights = block_weights();
 }
 
+// `DefaultNonceProvider` uses the current block number as the nonce of the new account,
+// this is used to prevent the replay attack see https://wiki.polkadot.network/docs/transaction-attacks#replay-attack
+// for more detail.
+#[derive(Debug, TypeInfo)]
+pub struct DefaultNonceProvider;
+
+impl Get<Nonce> for DefaultNonceProvider {
+    fn get() -> Nonce {
+        System::block_number()
+    }
+}
+
 impl frame_system::Config for Runtime {
     /// The ubiquitous event type.
     type RuntimeEvent = RuntimeEvent;
@@ -384,7 +397,7 @@ impl frame_system::Config for Runtime {
     /// The aggregated `RuntimeTask` type.
     type RuntimeTask = RuntimeTask;
     /// The type for storing how many extrinsics an account has signed.
-    type Nonce = Nonce;
+    type Nonce = TypeWithDefault<Nonce, DefaultNonceProvider>;
     /// The type for hashing blocks and tries.
     type Hash = Hash;
     /// The hashing algorithm used.
@@ -1281,7 +1294,7 @@ impl_runtime_apis! {
 
     impl frame_system_rpc_runtime_api::AccountNonceApi<Block, AccountId, Nonce> for Runtime {
         fn account_nonce(account: AccountId) -> Nonce {
-            System::account_nonce(account)
+            *System::account_nonce(account)
         }
     }
 

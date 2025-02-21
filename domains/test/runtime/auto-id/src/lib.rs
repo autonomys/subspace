@@ -56,6 +56,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
+use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{generic, impl_opaque_keys, ApplyExtrinsicResult, Digest, ExtrinsicInclusionMode};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::collections::btree_set::BTreeSet;
@@ -136,6 +137,18 @@ parameter_types! {
     pub RuntimeBlockWeights: BlockWeights = block_weights();
 }
 
+// `DefaultNonceProvider` uses the current block number as the nonce of the new account,
+// this is used to prevent the replay attack see https://wiki.polkadot.network/docs/transaction-attacks#replay-attack
+// for more detail.
+#[derive(Debug, TypeInfo)]
+pub struct DefaultNonceProvider;
+
+impl Get<Nonce> for DefaultNonceProvider {
+    fn get() -> Nonce {
+        System::block_number()
+    }
+}
+
 impl frame_system::Config for Runtime {
     /// The identifier used to distinguish between accounts.
     type AccountId = AccountId;
@@ -146,7 +159,7 @@ impl frame_system::Config for Runtime {
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
     type Lookup = AccountIdLookup<AccountId, ()>;
     /// The type for storing how many extrinsics an account has signed.
-    type Nonce = Nonce;
+    type Nonce = TypeWithDefault<Nonce, DefaultNonceProvider>;
     /// The type for hashing blocks and tries.
     type Hash = Hash;
     /// The hashing algorithm used.
@@ -754,7 +767,7 @@ impl_runtime_apis! {
 
     impl frame_system_rpc_runtime_api::AccountNonceApi<Block, AccountId, Nonce> for Runtime {
         fn account_nonce(account: AccountId) -> Nonce {
-            System::account_nonce(account)
+            *System::account_nonce(account)
         }
     }
 
