@@ -1028,6 +1028,12 @@ fn test_type_with_default_nonce_encode() {
         }
     }
 
+    let nonce_1_default = 0;
+    let nonce_2_default = TypeWithDefault::<Nonce, DefaultNonceProvider>::min_value();
+    let encode_1 = nonce_1_default.encode();
+    let encode_2 = nonce_2_default.encode();
+    assert_eq!(encode_1, encode_2);
+
     let nonce_1_default = 13452234;
     let nonce_2_default = TypeWithDefault::<Nonce, DefaultNonceProvider>::default();
     let encode_1 = nonce_1_default.encode();

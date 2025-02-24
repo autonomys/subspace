@@ -99,7 +99,7 @@ use subspace_core_primitives::solutions::{
     pieces_to_solution_range, solution_range_to_pieces, SolutionRange,
 };
 use subspace_core_primitives::{PublicKey, Randomness, SlotNumber, U256};
-use subspace_runtime_primitives::utility::MaybeIntoUtilityCall;
+use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilityCall};
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
     HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC,
@@ -192,18 +192,6 @@ parameter_types! {
 
 pub type SS58Prefix = ConstU16<6094>;
 
-// `DefaultNonceProvider` uses the current block number as the nonce of the new account,
-// this is used to prevent the replay attack see https://wiki.polkadot.network/docs/transaction-attacks#replay-attack
-// for more detail.
-#[derive(Debug, TypeInfo)]
-pub struct DefaultNonceProvider;
-
-impl Get<Nonce> for DefaultNonceProvider {
-    fn get() -> Nonce {
-        System::block_number()
-    }
-}
-
 // Configure FRAME pallets to include in runtime.
 
 impl frame_system::Config for Runtime {
@@ -225,7 +213,7 @@ impl frame_system::Config for Runtime {
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
     type Lookup = AccountIdLookup<AccountId, ()>;
     /// The type for storing how many extrinsics an account has signed.
-    type Nonce = TypeWithDefault<Nonce, DefaultNonceProvider>;
+    type Nonce = TypeWithDefault<Nonce, DefaultNonceProvider<System, Nonce>>;
     /// The type for hashing blocks and tries.
     type Hash = Hash;
     /// The hashing algorithm used.

@@ -1118,7 +1118,7 @@ impl MockConsensusNode {
             .expect("Fail to get account nonce")
     }
 
-    /// Get the nonce of the node account
+    /// Get the nonce of the given account
     pub fn account_nonce_of(&self, account_id: AccountId) -> u32 {
         self.client
             .runtime_api()

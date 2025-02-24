@@ -314,7 +314,12 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
         .unwrap();
 
     // Any account should be able to create contracts by default
-    let mut eth_nonce = U256::zero();
+    let mut eth_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
     let eth_tx = generate_eth_domain_extrinsic(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
@@ -330,7 +335,12 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
         "Unexpectedly failed to send self-contained extrinsic"
     );
 
-    let mut evm_nonce = U256::zero();
+    let mut evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[1].address)
+        .unwrap()
+        .nonce;
     let mut evm_tx = generate_evm_domain_call(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
@@ -431,7 +441,12 @@ async fn test_public_evm_domain_create_contracts() {
         .unwrap();
 
     // Any account should be able to create contracts in a public EVM domain
-    let mut eth_nonce = U256::zero();
+    let mut eth_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
     let eth_tx = generate_eth_domain_extrinsic(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
@@ -447,7 +462,12 @@ async fn test_public_evm_domain_create_contracts() {
         "Unexpectedly failed to send self-contained extrinsic"
     );
 
-    let mut evm_nonce = U256::zero();
+    let mut evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[1].address)
+        .unwrap()
+        .nonce;
     let mut evm_tx = generate_evm_domain_call(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
@@ -548,7 +568,12 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         .unwrap();
 
     // Create contracts used for testing contract calls
-    let mut eth_nonce = U256::zero();
+    let mut eth_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
     let mut eth_tx = generate_eth_domain_extrinsic(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
@@ -560,7 +585,12 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
 
     alice.send_extrinsic(eth_tx).await.unwrap();
 
-    let mut evm_nonce = U256::zero();
+    let mut evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[1].address)
+        .unwrap()
+        .nonce;
     let mut evm_tx = generate_evm_domain_call(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
@@ -771,7 +801,12 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
         .unwrap();
 
     // Create contracts used for testing contract calls
-    let mut eth_nonce = U256::zero();
+    let mut eth_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
     let mut eth_tx = generate_eth_domain_extrinsic(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
@@ -782,7 +817,12 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
 
     alice.send_extrinsic(eth_tx).await.unwrap();
 
-    let mut evm_nonce = U256::zero();
+    let mut evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[1].address)
+        .unwrap()
+        .nonce;
     let mut evm_tx = generate_evm_domain_call(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
@@ -1015,7 +1055,12 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
         .unwrap();
 
     // Accounts 0-2 should be able to create contracts
-    let mut eth_nonce = U256::zero();
+    let mut eth_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[1].address)
+        .unwrap()
+        .nonce;
     let mut eth_tx = generate_eth_domain_extrinsic(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
@@ -1031,7 +1076,12 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
         "Unexpectedly failed to send self-contained extrinsic"
     );
 
-    let mut evm_nonce = U256::zero();
+    let mut evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[2].address)
+        .unwrap()
+        .nonce;
     let mut evm_tx = generate_evm_domain_call(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
