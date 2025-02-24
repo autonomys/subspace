@@ -1,7 +1,10 @@
 //! Runtime primitives for pallet-utility.
 
+use core::marker::PhantomData;
+use frame_support::pallet_prelude::TypeInfo;
 use frame_system::pallet_prelude::RuntimeCallFor;
 use scale_info::prelude::collections::VecDeque;
+use sp_runtime::traits::{BlockNumberProvider, Get};
 
 /// Trait used to convert from a generated `RuntimeCall` type to `pallet_utility::Call<Runtime>`.
 pub trait MaybeIntoUtilityCall<Runtime>
@@ -51,4 +54,16 @@ where
 
         Some(call)
     })
+}
+
+// `DefaultNonceProvider` uses the current block number as the nonce of the new account,
+// this is used to prevent the replay attack see https://wiki.polkadot.network/docs/transaction-attacks#replay-attack
+// for more detail.
+#[derive(Debug, TypeInfo)]
+pub struct DefaultNonceProvider<T, N>(PhantomData<(T, N)>);
+
+impl<N, T: BlockNumberProvider<BlockNumber = N>> Get<N> for DefaultNonceProvider<T, N> {
+    fn get() -> N {
+        T::current_block_number()
+    }
 }

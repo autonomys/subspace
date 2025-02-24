@@ -412,7 +412,7 @@ pub fn construct_signed_extrinsic(
             period,
             consensus_chain_info.best_number.into(),
         )),
-        frame_system::CheckNonce::<Runtime>::from(nonce),
+        frame_system::CheckNonce::<Runtime>::from(nonce.into()),
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
         DisablePallets,

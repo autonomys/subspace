@@ -80,6 +80,7 @@ use sp_runtime::traits::{
     NumberFor,
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
+use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
@@ -98,7 +99,7 @@ use subspace_core_primitives::solutions::{
     pieces_to_solution_range, solution_range_to_pieces, SolutionRange,
 };
 use subspace_core_primitives::{PublicKey, Randomness, SlotNumber, U256};
-use subspace_runtime_primitives::utility::MaybeIntoUtilityCall;
+use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilityCall};
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
     HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC,
@@ -213,7 +214,7 @@ impl frame_system::Config for Runtime {
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
     type Lookup = AccountIdLookup<AccountId, ()>;
     /// The type for storing how many extrinsics an account has signed.
-    type Nonce = Nonce;
+    type Nonce = TypeWithDefault<Nonce, DefaultNonceProvider<System, Nonce>>;
     /// The type for hashing blocks and tries.
     type Hash = Hash;
     /// The hashing algorithm used.
@@ -1463,7 +1464,7 @@ impl_runtime_apis! {
 
     impl frame_system_rpc_runtime_api::AccountNonceApi<Block, AccountId, Nonce> for Runtime {
         fn account_nonce(account: AccountId) -> Nonce {
-            System::account_nonce(account)
+            *System::account_nonce(account)
         }
     }
 

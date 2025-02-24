@@ -18,9 +18,7 @@ use domain_test_service::evm_domain_test_runtime::{
 };
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Dave, Eve};
 use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
-use domain_test_service::{
-    construct_extrinsic_generic, EvmDomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID,
-};
+use domain_test_service::{EvmDomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID};
 use ethereum::TransactionV2 as EthereumTransaction;
 use fp_rpc::EthereumRuntimeRPCApi;
 use futures::StreamExt;
@@ -64,7 +62,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidityError,
 };
-use sp_runtime::{Digest, OpaqueExtrinsic, TransactionOutcome};
+use sp_runtime::{Digest, MultiAddress, OpaqueExtrinsic, TransactionOutcome};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -316,7 +314,12 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
         .unwrap();
 
     // Any account should be able to create contracts by default
-    let mut eth_nonce = U256::zero();
+    let mut eth_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
     let eth_tx = generate_eth_domain_extrinsic(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
@@ -332,7 +335,12 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
         "Unexpectedly failed to send self-contained extrinsic"
     );
 
-    let mut evm_nonce = U256::zero();
+    let mut evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[1].address)
+        .unwrap()
+        .nonce;
     let mut evm_tx = generate_evm_domain_call(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
@@ -433,7 +441,12 @@ async fn test_public_evm_domain_create_contracts() {
         .unwrap();
 
     // Any account should be able to create contracts in a public EVM domain
-    let mut eth_nonce = U256::zero();
+    let mut eth_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
     let eth_tx = generate_eth_domain_extrinsic(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
@@ -449,7 +462,12 @@ async fn test_public_evm_domain_create_contracts() {
         "Unexpectedly failed to send self-contained extrinsic"
     );
 
-    let mut evm_nonce = U256::zero();
+    let mut evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[1].address)
+        .unwrap()
+        .nonce;
     let mut evm_tx = generate_evm_domain_call(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
@@ -550,7 +568,12 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         .unwrap();
 
     // Create contracts used for testing contract calls
-    let mut eth_nonce = U256::zero();
+    let mut eth_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
     let mut eth_tx = generate_eth_domain_extrinsic(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
@@ -562,7 +585,12 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
 
     alice.send_extrinsic(eth_tx).await.unwrap();
 
-    let mut evm_nonce = U256::zero();
+    let mut evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[1].address)
+        .unwrap()
+        .nonce;
     let mut evm_tx = generate_evm_domain_call(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
@@ -773,7 +801,12 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
         .unwrap();
 
     // Create contracts used for testing contract calls
-    let mut eth_nonce = U256::zero();
+    let mut eth_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
     let mut eth_tx = generate_eth_domain_extrinsic(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
@@ -784,7 +817,12 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
 
     alice.send_extrinsic(eth_tx).await.unwrap();
 
-    let mut evm_nonce = U256::zero();
+    let mut evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[1].address)
+        .unwrap()
+        .nonce;
     let mut evm_tx = generate_evm_domain_call(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
@@ -1017,7 +1055,12 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
         .unwrap();
 
     // Accounts 0-2 should be able to create contracts
-    let mut eth_nonce = U256::zero();
+    let mut eth_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[1].address)
+        .unwrap()
+        .nonce;
     let mut eth_tx = generate_eth_domain_extrinsic(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
@@ -1033,7 +1076,12 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
         "Unexpectedly failed to send self-contained extrinsic"
     );
 
-    let mut evm_nonce = U256::zero();
+    let mut evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[2].address)
+        .unwrap()
+        .nonce;
     let mut evm_tx = generate_evm_domain_call(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
@@ -1499,7 +1547,10 @@ async fn test_domain_block_deriving_from_multiple_bundles() {
 
     let pre_eve_free_balance = alice.free_balance(Eve.to_account_id());
     for caller in [Alice, Bob, Charlie] {
-        let tx = construct_extrinsic_generic::<evm_domain_test_runtime::Runtime, _>(
+        let tx = domain_test_service::construct_extrinsic_generic::<
+            evm_domain_test_runtime::Runtime,
+            _,
+        >(
             &alice.client,
             pallet_balances::Call::transfer_allow_death {
                 dest: Eve.to_account_id(),
@@ -7678,4 +7729,134 @@ async fn test_custom_api_storage_root_match_upstream_root() {
         .collect();
 
     assert_eq!(receipt.execution_trace, roots);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_current_block_number_used_as_new_account_nonce() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    // Run Bob (a auto-id domain authority node)
+    let mut bob = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("bob")),
+    )
+    .build_auto_id_node(Role::Authority, Sr25519Keyring::Bob, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 3, bob).await.unwrap();
+
+    let tx = subspace_test_service::construct_extrinsic_generic::<_>(
+        &ferdie.client,
+        pallet_balances::Call::transfer_all {
+            dest: MultiAddress::Id(Sr25519Keyring::Eve.to_account_id()),
+            keep_alive: false,
+        },
+        Sr25519Keyring::Charlie,
+        false,
+        0,
+        0u128,
+    );
+    ferdie.send_extrinsic(tx).await.unwrap();
+
+    let tx = domain_test_service::construct_extrinsic_generic::<evm_domain_test_runtime::Runtime, _>(
+        &alice.client,
+        pallet_balances::Call::transfer_all {
+            dest: Eve.to_account_id(),
+            keep_alive: false,
+        },
+        Charlie,
+        false,
+        0,
+        0u128,
+    );
+    alice.send_extrinsic(tx).await.unwrap();
+
+    let tx = domain_test_service::construct_extrinsic_generic::<
+        auto_id_domain_test_runtime::Runtime,
+        _,
+    >(
+        &bob.client,
+        pallet_balances::Call::transfer_all {
+            dest: MultiAddress::Id(Sr25519Keyring::Eve.to_account_id()),
+            keep_alive: false,
+        },
+        Sr25519Keyring::Charlie,
+        false,
+        0,
+        0u128,
+    );
+    bob.send_extrinsic(tx).await.unwrap();
+
+    produce_blocks!(ferdie, alice, 5, bob).await.unwrap();
+
+    // Charlie now has 0 balance and is reaped
+    assert_eq!(
+        ferdie.free_balance(Sr25519Keyring::Charlie.to_account_id()),
+        0u128
+    );
+    assert_eq!(alice.free_balance(Charlie.to_account_id()), 0u128);
+    assert_eq!(
+        bob.free_balance(Sr25519Keyring::Charlie.to_account_id()),
+        0u128
+    );
+
+    // Transfer fund back to Charlie
+    let transfer_amount = 1234567890987654321;
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_balances::Call::transfer_allow_death {
+            dest: MultiAddress::Id(Sr25519Keyring::Charlie.to_account_id()),
+            value: transfer_amount,
+        })
+        .await
+        .unwrap();
+    alice
+        .construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
+            dest: Charlie.to_account_id(),
+            value: transfer_amount,
+        })
+        .await
+        .unwrap();
+    bob.construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
+        dest: MultiAddress::Id(Sr25519Keyring::Charlie.to_account_id()),
+        value: transfer_amount,
+    })
+    .await
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
+
+    // Charlie account is recreated with current block number as nonce
+    assert_eq!(
+        ferdie.account_nonce_of(Sr25519Keyring::Charlie.to_account_id()),
+        ferdie.client.info().best_number
+    );
+    assert_eq!(
+        alice.account_nonce_of(Charlie.to_account_id()),
+        alice.client.info().best_number
+    );
+    assert_eq!(
+        bob.account_nonce_of(Sr25519Keyring::Charlie.to_account_id()),
+        bob.client.info().best_number
+    );
 }
