@@ -954,7 +954,7 @@ macro_rules! deposit {
 deposit!(DepositBaseFee, 20 * SSC, 1u32, 88u32);
 
 // Additional storage item size of 32 bytes.
-deposit!(DepositFactor, 20 * SSC, 0u32, 32u32);
+deposit!(DepositFactor, 0u128, 0u32, 32u32);
 
 impl pallet_multisig::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
