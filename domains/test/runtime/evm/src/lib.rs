@@ -90,7 +90,7 @@ use sp_subspace_mmr::domain_mmr_runtime_interface::{
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
-use subspace_runtime_primitives::utility::MaybeIntoUtilityCall;
+use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilityCall};
 use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment, SHANNON, SSC,
 };
@@ -369,18 +369,6 @@ parameter_types! {
     pub RuntimeBlockWeights: BlockWeights = block_weights();
 }
 
-// `DefaultNonceProvider` uses the current block number as the nonce of the new account,
-// this is used to prevent the replay attack see https://wiki.polkadot.network/docs/transaction-attacks#replay-attack
-// for more detail.
-#[derive(Debug, TypeInfo)]
-pub struct DefaultNonceProvider;
-
-impl Get<Nonce> for DefaultNonceProvider {
-    fn get() -> Nonce {
-        System::block_number()
-    }
-}
-
 impl frame_system::Config for Runtime {
     /// The ubiquitous event type.
     type RuntimeEvent = RuntimeEvent;
@@ -397,7 +385,7 @@ impl frame_system::Config for Runtime {
     /// The aggregated `RuntimeTask` type.
     type RuntimeTask = RuntimeTask;
     /// The type for storing how many extrinsics an account has signed.
-    type Nonce = TypeWithDefault<Nonce, DefaultNonceProvider>;
+    type Nonce = TypeWithDefault<Nonce, DefaultNonceProvider<System, Nonce>>;
     /// The type for hashing blocks and tries.
     type Hash = Hash;
     /// The hashing algorithm used.
