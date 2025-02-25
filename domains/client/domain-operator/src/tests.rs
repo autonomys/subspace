@@ -304,6 +304,61 @@ async fn setup_evm_test_accounts(
     (directory, ferdie, alice, account_infos)
 }
 
+// Open XDM channel between the consensus chain and the EVM domain
+async fn open_xdm_channel(ferdie: &mut MockConsensusNode, alice: &mut EvmDomainNode) {
+    // add domain to consensus chain allowlist
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::update_consensus_chain_allowlist {
+                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain allowlist update");
+
+    // produce another block so allowlist on consensus is updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // add consensus chain to domain chain allow list
+    ferdie
+        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: EVM_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
+            },
+        ))
+        .await
+        .expect("Failed to construct and send domain chain allowlist update");
+
+    // produce another block so allowlist on domain are updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Open channel between the Consensus chain and EVM domains
+    alice
+        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_channel {
+                dst_chain_id: ChainId::Consensus,
+            },
+        ))
+        .await
+        .expect("Failed to construct and send extrinsic");
+
+    // Wait until channel opens
+    produce_blocks_until!(ferdie, alice, {
+        alice
+            .get_open_channel_for_chain(ChainId::Consensus)
+            .is_some()
+    })
+    .timeout()
+    .await
+    .unwrap()
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
     let (_directory, mut ferdie, mut alice, account_infos) =
@@ -5139,57 +5194,8 @@ async fn test_domain_sudo_calls() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
-    // add domain to consensus chain allowlist
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
-                pallet_messenger::Call::update_consensus_chain_allowlist {
-                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain allowlist update");
-
-    // produce another block so allowlist on consensus is updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // add consensus chain to domain chain allow list
-    ferdie
-        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
-                domain_id: EVM_DOMAIN_ID,
-                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
-            },
-        ))
-        .await
-        .expect("Failed to construct and send domain chain allowlist update");
-
-    // produce another block so allowlist on domain are updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // Open channel between the Consensus chain and EVM domains
-    alice
-        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_channel {
-                dst_chain_id: ChainId::Consensus,
-            },
-        ))
-        .await
-        .expect("Failed to construct and send extrinsic");
-
-    // Wait until channel opens
-    produce_blocks_until!(ferdie, alice, {
-        alice
-            .get_open_channel_for_chain(ChainId::Consensus)
-            .is_some()
-    })
-    .timeout()
-    .await
-    .unwrap()
-    .unwrap();
-
-    produce_blocks!(ferdie, alice, 3).await.unwrap();
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
 
     // check initial contract allow list
     assert_eq!(
@@ -5625,73 +5631,8 @@ async fn test_xdm_between_consensus_and_domain_should_work() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
-    // add domain to consensus chain allowlist
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
-                pallet_messenger::Call::update_consensus_chain_allowlist {
-                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain allowlist update");
-
-    // produce another block so allowlist on consensus is updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // add consensus chain to domain chain allow list
-    ferdie
-        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
-                domain_id: EVM_DOMAIN_ID,
-                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
-            },
-        ))
-        .await
-        .expect("Failed to construct and send domain chain allowlist update");
-
-    // produce another block so allowlist on  domain are updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // there should be zero channel updates on both consensus and domain chain
-    assert!(get_channel_state(
-        &*ferdie.client,
-        ChainId::Consensus,
-        EVM_DOMAIN_ID.into(),
-        ChannelId::zero()
-    )
-    .unwrap()
-    .is_none());
-
-    assert!(get_channel_state(
-        &*ferdie.client,
-        EVM_DOMAIN_ID.into(),
-        ChainId::Consensus,
-        ChannelId::zero(),
-    )
-    .unwrap()
-    .is_none());
-
-    // Open channel between the Consensus chain and EVM domains
-    alice
-        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_channel {
-                dst_chain_id: ChainId::Consensus,
-            },
-        ))
-        .await
-        .expect("Failed to construct and send extrinsic");
-    // Wait until channel open
-    produce_blocks_until!(ferdie, alice, {
-        alice
-            .get_open_channel_for_chain(ChainId::Consensus)
-            .is_some()
-    })
-    .await
-    .unwrap();
-
-    produce_blocks!(ferdie, alice, 20).await.unwrap();
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
 
     // there should be channel updates on both consensus and domain chain
 
@@ -6005,53 +5946,8 @@ async fn test_unordered_cross_domains_message_should_work() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
-    // add domain to consensus chain allowlist
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
-                pallet_messenger::Call::update_consensus_chain_allowlist {
-                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain allowlist update");
-
-    // produce another block so allowlist on consensus is updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // add consensus chain to domain chain allow list
-    ferdie
-        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
-                domain_id: EVM_DOMAIN_ID,
-                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
-            },
-        ))
-        .await
-        .expect("Failed to construct and send domain chain allowlist update");
-
-    // produce another block so allowlist on  domain are updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // Open channel between the evm domain and the auto-id domain
-    alice
-        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_channel {
-                dst_chain_id: ChainId::Consensus,
-            },
-        ))
-        .await
-        .expect("Failed to construct and send extrinsic");
-
-    // Wait until channel open
-    produce_blocks_until!(ferdie, alice, {
-        alice
-            .get_open_channel_for_chain(ChainId::Consensus)
-            .is_some()
-    })
-    .await
-    .unwrap();
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
 
     // Transfer balance cross the system domain and the core payments domain
     let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
@@ -7142,52 +7038,8 @@ async fn test_xdm_false_invalid_fraud_proof() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
-    // add domain to consensus chain allowlist
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
-                pallet_messenger::Call::update_consensus_chain_allowlist {
-                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain allowlist update");
-
-    // produce another block so allowlist on consensus is updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // add consensus chain to domain chain allow list
-    ferdie
-        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
-                domain_id: EVM_DOMAIN_ID,
-                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
-            },
-        ))
-        .await
-        .expect("Failed to construct and send domain chain allowlist update");
-
-    // produce another block so allowlist on  domain are updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // Open channel between the Consensus chain and EVM domains
-    alice
-        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_channel {
-                dst_chain_id: ChainId::Consensus,
-            },
-        ))
-        .await
-        .expect("Failed to construct and send extrinsic");
-    // Wait until channel open
-    produce_blocks_until!(ferdie, alice, {
-        alice
-            .get_open_channel_for_chain(ChainId::Consensus)
-            .is_some()
-    })
-    .await
-    .unwrap();
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
 
     // Transfer balance through XDM
     ferdie
@@ -7337,52 +7189,8 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
-    // add domain to consensus chain allowlist
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
-                pallet_messenger::Call::update_consensus_chain_allowlist {
-                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain allowlist update");
-
-    // produce another block so allowlist on consensus is updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // add consensus chain to domain chain allow list
-    ferdie
-        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
-                domain_id: EVM_DOMAIN_ID,
-                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
-            },
-        ))
-        .await
-        .expect("Failed to construct and send domain chain allowlist update");
-
-    // produce another block so allowlist on  domain are updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // Open channel between the Consensus chain and EVM domains
-    alice
-        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_channel {
-                dst_chain_id: ChainId::Consensus,
-            },
-        ))
-        .await
-        .expect("Failed to construct and send extrinsic");
-    // Wait until channel open
-    produce_blocks_until!(ferdie, alice, {
-        alice
-            .get_open_channel_for_chain(ChainId::Consensus)
-            .is_some()
-    })
-    .await
-    .unwrap();
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
 
     // Transfer balance through XDM
     ferdie
