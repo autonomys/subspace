@@ -14,6 +14,7 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+pub mod extensions;
 pub mod weights;
 
 #[cfg(not(feature = "std"))]
