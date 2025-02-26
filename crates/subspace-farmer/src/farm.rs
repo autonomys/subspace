@@ -524,30 +524,22 @@ impl HandlerId for event_listener_primitives::HandlerId {
 
 /// An identifier for a farmer, can be used for in logs, thread names, etc.
 #[derive(
-    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
+    Debug,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Display,
+    From,
+    Encode,
+    Decode,
 )]
 pub struct FarmerId(FarmId);
-
-impl Encode for FarmerId {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        self.0.size_hint()
-    }
-
-    #[inline]
-    fn encode_to<O: Output + ?Sized>(&self, output: &mut O) {
-        self.0.encode_to(output);
-    }
-}
-
-impl EncodeLike for FarmerId {}
-
-impl Decode for FarmerId {
-    #[inline]
-    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
-        FarmId::decode(input).map(FarmerId)
-    }
-}
 
 #[allow(clippy::new_without_default)]
 impl FarmerId {
