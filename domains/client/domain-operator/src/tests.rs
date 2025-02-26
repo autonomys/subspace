@@ -16,7 +16,7 @@ use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{
     Header, Runtime as TestRuntime, RuntimeCall, UncheckedExtrinsic as EvmUncheckedExtrinsic,
 };
-use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Dave, Eve};
+use domain_test_service::EcdsaKeyring::{self, Alice, Bob, Charlie, Dave, Eve};
 use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
 use domain_test_service::{
     construct_extrinsic_generic, EvmDomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID,
@@ -302,6 +302,61 @@ async fn setup_evm_test_accounts(
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     (directory, ferdie, alice, account_infos)
+}
+
+// Open XDM channel between the consensus chain and the EVM domain
+async fn open_xdm_channel(ferdie: &mut MockConsensusNode, alice: &mut EvmDomainNode) {
+    // add domain to consensus chain allowlist
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::update_consensus_chain_allowlist {
+                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain allowlist update");
+
+    // produce another block so allowlist on consensus is updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // add consensus chain to domain chain allow list
+    ferdie
+        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: EVM_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
+            },
+        ))
+        .await
+        .expect("Failed to construct and send domain chain allowlist update");
+
+    // produce another block so allowlist on domain are updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Open channel between the Consensus chain and EVM domains
+    alice
+        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_channel {
+                dst_chain_id: ChainId::Consensus,
+            },
+        ))
+        .await
+        .expect("Failed to construct and send extrinsic");
+
+    // Wait until channel opens
+    produce_blocks_until!(ferdie, alice, {
+        alice
+            .get_open_channel_for_chain(ChainId::Consensus)
+            .is_some()
+    })
+    .timeout()
+    .await
+    .unwrap()
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -5139,57 +5194,8 @@ async fn test_domain_sudo_calls() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
-    // add domain to consensus chain allowlist
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
-                pallet_messenger::Call::update_consensus_chain_allowlist {
-                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain allowlist update");
-
-    // produce another block so allowlist on consensus is updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // add consensus chain to domain chain allow list
-    ferdie
-        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
-                domain_id: EVM_DOMAIN_ID,
-                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
-            },
-        ))
-        .await
-        .expect("Failed to construct and send domain chain allowlist update");
-
-    // produce another block so allowlist on domain are updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // Open channel between the Consensus chain and EVM domains
-    alice
-        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_channel {
-                dst_chain_id: ChainId::Consensus,
-            },
-        ))
-        .await
-        .expect("Failed to construct and send extrinsic");
-
-    // Wait until channel opens
-    produce_blocks_until!(ferdie, alice, {
-        alice
-            .get_open_channel_for_chain(ChainId::Consensus)
-            .is_some()
-    })
-    .timeout()
-    .await
-    .unwrap()
-    .unwrap();
-
-    produce_blocks!(ferdie, alice, 3).await.unwrap();
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
 
     // check initial contract allow list
     assert_eq!(
@@ -5625,73 +5631,8 @@ async fn test_xdm_between_consensus_and_domain_should_work() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
-    // add domain to consensus chain allowlist
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
-                pallet_messenger::Call::update_consensus_chain_allowlist {
-                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain allowlist update");
-
-    // produce another block so allowlist on consensus is updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // add consensus chain to domain chain allow list
-    ferdie
-        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
-                domain_id: EVM_DOMAIN_ID,
-                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
-            },
-        ))
-        .await
-        .expect("Failed to construct and send domain chain allowlist update");
-
-    // produce another block so allowlist on  domain are updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // there should be zero channel updates on both consensus and domain chain
-    assert!(get_channel_state(
-        &*ferdie.client,
-        ChainId::Consensus,
-        EVM_DOMAIN_ID.into(),
-        ChannelId::zero()
-    )
-    .unwrap()
-    .is_none());
-
-    assert!(get_channel_state(
-        &*ferdie.client,
-        EVM_DOMAIN_ID.into(),
-        ChainId::Consensus,
-        ChannelId::zero(),
-    )
-    .unwrap()
-    .is_none());
-
-    // Open channel between the Consensus chain and EVM domains
-    alice
-        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_channel {
-                dst_chain_id: ChainId::Consensus,
-            },
-        ))
-        .await
-        .expect("Failed to construct and send extrinsic");
-    // Wait until channel open
-    produce_blocks_until!(ferdie, alice, {
-        alice
-            .get_open_channel_for_chain(ChainId::Consensus)
-            .is_some()
-    })
-    .await
-    .unwrap();
-
-    produce_blocks!(ferdie, alice, 20).await.unwrap();
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
 
     // there should be channel updates on both consensus and domain chain
 
@@ -6005,53 +5946,8 @@ async fn test_unordered_cross_domains_message_should_work() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
-    // add domain to consensus chain allowlist
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
-                pallet_messenger::Call::update_consensus_chain_allowlist {
-                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain allowlist update");
-
-    // produce another block so allowlist on consensus is updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // add consensus chain to domain chain allow list
-    ferdie
-        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
-                domain_id: EVM_DOMAIN_ID,
-                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
-            },
-        ))
-        .await
-        .expect("Failed to construct and send domain chain allowlist update");
-
-    // produce another block so allowlist on  domain are updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // Open channel between the evm domain and the auto-id domain
-    alice
-        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_channel {
-                dst_chain_id: ChainId::Consensus,
-            },
-        ))
-        .await
-        .expect("Failed to construct and send extrinsic");
-
-    // Wait until channel open
-    produce_blocks_until!(ferdie, alice, {
-        alice
-            .get_open_channel_for_chain(ChainId::Consensus)
-            .is_some()
-    })
-    .await
-    .unwrap();
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
 
     // Transfer balance cross the system domain and the core payments domain
     let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
@@ -7142,52 +7038,8 @@ async fn test_xdm_false_invalid_fraud_proof() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
-    // add domain to consensus chain allowlist
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
-                pallet_messenger::Call::update_consensus_chain_allowlist {
-                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain allowlist update");
-
-    // produce another block so allowlist on consensus is updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // add consensus chain to domain chain allow list
-    ferdie
-        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
-                domain_id: EVM_DOMAIN_ID,
-                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
-            },
-        ))
-        .await
-        .expect("Failed to construct and send domain chain allowlist update");
-
-    // produce another block so allowlist on  domain are updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // Open channel between the Consensus chain and EVM domains
-    alice
-        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_channel {
-                dst_chain_id: ChainId::Consensus,
-            },
-        ))
-        .await
-        .expect("Failed to construct and send extrinsic");
-    // Wait until channel open
-    produce_blocks_until!(ferdie, alice, {
-        alice
-            .get_open_channel_for_chain(ChainId::Consensus)
-            .is_some()
-    })
-    .await
-    .unwrap();
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
 
     // Transfer balance through XDM
     ferdie
@@ -7337,52 +7189,8 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
-    // add domain to consensus chain allowlist
-    ferdie
-        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
-            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
-                pallet_messenger::Call::update_consensus_chain_allowlist {
-                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
-                },
-            )),
-        })
-        .await
-        .expect("Failed to construct and send consensus chain allowlist update");
-
-    // produce another block so allowlist on consensus is updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // add consensus chain to domain chain allow list
-    ferdie
-        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
-                domain_id: EVM_DOMAIN_ID,
-                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
-            },
-        ))
-        .await
-        .expect("Failed to construct and send domain chain allowlist update");
-
-    // produce another block so allowlist on  domain are updated
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    // Open channel between the Consensus chain and EVM domains
-    alice
-        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_channel {
-                dst_chain_id: ChainId::Consensus,
-            },
-        ))
-        .await
-        .expect("Failed to construct and send extrinsic");
-    // Wait until channel open
-    produce_blocks_until!(ferdie, alice, {
-        alice
-            .get_open_channel_for_chain(ChainId::Consensus)
-            .is_some()
-    })
-    .await
-    .unwrap();
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
 
     // Transfer balance through XDM
     ferdie
@@ -7678,4 +7486,445 @@ async fn test_custom_api_storage_root_match_upstream_root() {
         .collect();
 
     assert_eq!(receipt.execution_trace, roots);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_xdm_channel_allowlist_removed_after_xdm_initiated() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
+
+    // Transfer balance through XDM
+    let transfer_amount = 1234567890987654321;
+    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Domain(EVM_DOMAIN_ID),
+                account_id: AccountId20Converter::convert(Alice.to_account_id()),
+            },
+            amount: transfer_amount,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Remove the consensus chain from EVM domain's channel allowlist
+    let tx = ferdie.construct_extrinsic(
+        ferdie.account_nonce(),
+        subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: EVM_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Remove(ChainId::Consensus),
+            },
+        ),
+    );
+    ferdie
+        .produce_block_with_extrinsics(vec![tx.into()])
+        .await
+        .unwrap();
+
+    // The XDM should be failed to executed and the XDM response should return the fund
+    // to the sender (after XDM fees deducted) while the receiver's balance unchanged
+    let ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+    produce_blocks_until!(ferdie, alice, {
+        let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+        let post_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+
+        post_alice_free_balance == pre_alice_free_balance
+            && post_ferdie_free_balance == ferdie_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
+
+    // Transfer balance through XDM
+    let transfer_amount = 1234567890987654321;
+    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Domain(EVM_DOMAIN_ID),
+                account_id: AccountId20Converter::convert(Alice.to_account_id()),
+            },
+            amount: transfer_amount,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Wait until a bundle that cantains the XDM
+    let mut maybe_opaque_bundle = None;
+    produce_blocks_until!(ferdie, alice, {
+        let alice_best_hash = alice.client.info().best_hash;
+        let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        for tx in opaque_bundle.extrinsics.iter() {
+            if alice
+                .client
+                .runtime_api()
+                .extract_xdm_mmr_proof(alice_best_hash, tx)
+                .unwrap()
+                .is_some()
+            {
+                maybe_opaque_bundle.replace(opaque_bundle);
+                break;
+            }
+        }
+        maybe_opaque_bundle.is_some()
+    })
+    .await
+    .unwrap();
+    let opaque_bundle = maybe_opaque_bundle.unwrap();
+
+    // Remove the consensus chain from EVM domain's channel allowlist
+    let tx = ferdie.construct_extrinsic(
+        ferdie.account_nonce(),
+        subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: EVM_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Remove(ChainId::Consensus),
+            },
+        ),
+    );
+    ferdie
+        .produce_block_with_extrinsics(vec![tx.into()])
+        .await
+        .unwrap();
+
+    // Submit the XDM after the consensus chain is removed from the allowlist
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+    produce_block_with!(
+        ferdie.produce_block_with_extrinsics(vec![bundle_to_tx(opaque_bundle)]),
+        alice
+    )
+    .await
+    .unwrap();
+
+    // The XDM should be failed to executed and the XDM response should return the fund
+    // to the sender (after XDM fees deducted) while the receiver's balance unchanged
+    let ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+    produce_blocks_until!(ferdie, alice, {
+        let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+        let post_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+
+        post_alice_free_balance == pre_alice_free_balance
+            && post_ferdie_free_balance == ferdie_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_xdm_channel_allowlist_removed_after_xdm_resp_relaying() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
+
+    // Transfer balance through XDM
+    let transfer_amount = 1234567890987654321;
+    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    let pre_bob_free_balance = ferdie.free_balance(Sr25519Keyring::Bob.to_account_id());
+    alice
+        .construct_and_send_extrinsic(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Consensus,
+                account_id: AccountIdConverter::convert(Sr25519Keyring::Bob.to_account_id()),
+            },
+            amount: transfer_amount,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+
+    // XDM is send from domain to consensus, so wait for a bundle that cantains the XDM response
+    let mut maybe_opaque_bundle = None;
+    produce_blocks_until!(ferdie, alice, {
+        let alice_best_hash = alice.client.info().best_hash;
+        let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        for tx in opaque_bundle.extrinsics.iter() {
+            if alice
+                .client
+                .runtime_api()
+                .extract_xdm_mmr_proof(alice_best_hash, tx)
+                .unwrap()
+                .is_some()
+            {
+                maybe_opaque_bundle.replace(opaque_bundle);
+                break;
+            }
+        }
+        maybe_opaque_bundle.is_some()
+    })
+    .await
+    .unwrap();
+    let opaque_bundle = maybe_opaque_bundle.unwrap();
+
+    // Remove the consensus chain from EVM domain's channel allowlist
+    let tx = ferdie.construct_extrinsic(
+        ferdie.account_nonce(),
+        subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: EVM_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Remove(ChainId::Consensus),
+            },
+        ),
+    );
+    ferdie
+        .produce_block_with_extrinsics(vec![tx.into()])
+        .await
+        .unwrap();
+
+    // Submit the XDM response after the consensus chain is removed from the allowlist
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_bare(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+    produce_block_with!(
+        ferdie.produce_block_with_extrinsics(vec![bundle_to_tx(opaque_bundle)]),
+        alice
+    )
+    .await
+    .unwrap();
+
+    // The XDM should be success
+    produce_blocks_until!(ferdie, alice, {
+        let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+        let post_bob_free_balance = ferdie.free_balance(Sr25519Keyring::Bob.to_account_id());
+
+        post_alice_free_balance < pre_alice_free_balance - transfer_amount
+            && post_bob_free_balance == pre_bob_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_xdm_transfer_below_existential_deposit() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
+
+    // Transfer fund that below `ExistentialDeposit` to an non-exist account in the EVM domain
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Domain(EVM_DOMAIN_ID),
+                account_id: AccountId20Converter::convert(EcdsaKeyring::One.to_account_id()),
+            },
+            amount: 1,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // The XDM should success but the receiver's balance is still 0 since the fund is below `ExistentialDeposit`
+    // the receiver account can't be created
+    let pre_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+    produce_blocks_until!(ferdie, alice, {
+        let channel_nonce = ferdie
+            .client
+            .runtime_api()
+            .channel_nonce(
+                ferdie.client.info().best_hash,
+                ChainId::Domain(EVM_DOMAIN_ID),
+                ChannelId::zero(),
+            )
+            .unwrap()
+            .unwrap();
+        if channel_nonce.relay_response_msg_nonce == Some(U256::from(0)) {
+            let post_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+            assert!(alice
+                .free_balance(EcdsaKeyring::One.to_account_id())
+                .is_zero());
+            assert_eq!(post_ferdie_free_balance, pre_ferdie_free_balance);
+            true
+        } else {
+            false
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_xdm_transfer_to_wrong_format_address() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
+
+    // Transfer funds to a substrate address in the EVM domain
+    let transfer_amount = 1234567890987654321;
+    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Domain(EVM_DOMAIN_ID),
+                // A substrate address
+                account_id: AccountIdConverter::convert(Sr25519Alice.into()),
+            },
+            amount: transfer_amount,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // The XDM should be failed to executed and the XDM response should return the fund
+    // to the sender (after XDM fees deducted) while the receiver's balance unchanged
+    let ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+    produce_blocks_until!(ferdie, alice, {
+        let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+        let post_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+
+        post_alice_free_balance == pre_alice_free_balance
+            && post_ferdie_free_balance == ferdie_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
 }
