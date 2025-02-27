@@ -302,6 +302,7 @@ impl pallet_subspace::Config for Runtime {
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type BlockSlotCount = BlockSlotCount;
     type WeightInfo = pallet_subspace::weights::SubstrateWeight<Runtime>;
+    type ExtensionWeightInfo = pallet_subspace::extensions::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_timestamp::Config for Runtime {

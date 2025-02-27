@@ -17,6 +17,7 @@ mod benchmarking;
 pub mod extensions;
 pub mod weights;
 
+use crate::extensions::weights::WeightInfo as ExtensionWeightInfo;
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
@@ -41,6 +42,7 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
 };
+use sp_runtime::Weight;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::pieces::PieceOffset;
@@ -87,7 +89,7 @@ struct VoteVerificationData {
 
 #[frame_support::pallet]
 pub mod pallet {
-    use super::{EraChangeTrigger, VoteVerificationData};
+    use super::{EraChangeTrigger, ExtensionWeightInfo, VoteVerificationData};
     use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
@@ -225,6 +227,9 @@ pub mod pallet {
         /// Maximum number of block number to block slot mappings to keep (oldest pruned first).
         #[pallet::constant]
         type BlockSlotCount: Get<u32>;
+
+        /// Extension weight information for the pallet's extensions.
+        type ExtensionWeightInfo: ExtensionWeightInfo;
     }
 
     #[derive(Debug, Default, Encode, Decode, TypeInfo)]
@@ -1251,7 +1256,7 @@ impl<T: Config> Pallet<T> {
 
     fn validate_vote(
         signed_vote: &SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>,
-    ) -> TransactionValidity {
+    ) -> Result<(ValidTransaction, Weight), TransactionValidityError> {
         check_vote::<T>(signed_vote, false)?;
 
         ValidTransaction::with_tag_prefix("SubspaceVote")
@@ -1261,16 +1266,17 @@ impl<T: Config> Pallet<T> {
             .longevity(2)
             .and_provides(signed_vote.signature)
             .build()
+            .map(|validity| (validity, T::ExtensionWeightInfo::vote()))
     }
 
     fn pre_dispatch_vote(
         signed_vote: &SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>,
-    ) -> Result<(), TransactionValidityError> {
+    ) -> Result<Weight, TransactionValidityError> {
         match check_vote::<T>(signed_vote, true) {
-            Ok(()) => Ok(()),
+            Ok(()) => Ok(T::ExtensionWeightInfo::vote()),
             Err(CheckVoteError::Equivocated { .. }) => {
                 // Return Ok such that changes from this pre-dispatch are persisted
-                Ok(())
+                Ok(T::ExtensionWeightInfo::vote_with_equivocation())
             }
             Err(error) => Err(error.into()),
         }

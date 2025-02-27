@@ -4,21 +4,23 @@
 pub mod benchmarking;
 pub mod weights;
 
+use crate::extensions::weights::WeightInfo;
 use crate::pallet::Call as SubspaceCall;
 use crate::{Config, Pallet as Subspace};
 use codec::{Decode, Encode};
 use frame_support::pallet_prelude::{PhantomData, TypeInfo, Weight};
+use frame_support::RuntimeDebugNoBound;
 use frame_system::pallet_prelude::{BlockNumberFor, RuntimeCallFor};
 use scale_info::prelude::fmt;
 use sp_consensus_subspace::SignedVote;
-use sp_runtime::impl_tx_ext_default;
 use sp_runtime::traits::{
     AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, Dispatchable, Implication,
-    TransactionExtension, ValidateResult,
+    PostDispatchInfoOf, TransactionExtension, ValidateResult,
 };
 use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionSource, TransactionValidity, ValidTransaction,
+    InvalidTransaction, TransactionSource, TransactionValidityError, ValidTransaction,
 };
+use sp_runtime::DispatchResult;
 
 /// Trait to convert Runtime call to possible Subspace call.
 pub trait MaybeSubspaceCall<Runtime>
@@ -26,6 +28,15 @@ where
     Runtime: Config,
 {
     fn maybe_subspace_call(&self) -> Option<&SubspaceCall<Runtime>>;
+}
+
+/// Weight info used by this extension
+#[derive(RuntimeDebugNoBound)]
+pub enum ExtensionWeightData {
+    /// Represents the validated call's used weight
+    Validated(Weight),
+    /// Skipped validation
+    Skipped,
 }
 
 /// Extensions for pallet-subspace unsigned extrinsics.
@@ -63,13 +74,19 @@ where
     fn do_check_vote(
         signed_vote: &SignedVote<BlockNumberFor<Runtime>, Runtime::Hash, Runtime::AccountId>,
         source: TransactionSource,
-    ) -> TransactionValidity {
+    ) -> Result<(ValidTransaction, Weight), TransactionValidityError> {
         let pre_dispatch = source == TransactionSource::InBlock;
         if pre_dispatch {
-            Subspace::<Runtime>::pre_dispatch_vote(signed_vote).map(|_| ValidTransaction::default())
+            Subspace::<Runtime>::pre_dispatch_vote(signed_vote)
+                .map(|weight| (ValidTransaction::default(), weight))
         } else {
             Subspace::<Runtime>::validate_vote(signed_vote)
         }
+    }
+
+    fn max_weight() -> Weight {
+        <Runtime as Config>::ExtensionWeightInfo::vote()
+            .max(<Runtime as Config>::ExtensionWeightInfo::vote_with_equivocation())
     }
 }
 
@@ -82,12 +99,19 @@ where
 {
     const IDENTIFIER: &'static str = "SubspaceExtension";
     type Implicit = ();
-    type Val = ();
-    type Pre = ();
+    type Val = ExtensionWeightData;
+    type Pre = ExtensionWeightData;
 
-    // TODO: return correct weights
-    fn weight(&self, _call: &RuntimeCallFor<Runtime>) -> Weight {
-        Weight::zero()
+    fn weight(&self, call: &RuntimeCallFor<Runtime>) -> Weight {
+        let subspace_call = match call.maybe_subspace_call() {
+            Some(subspace_call) => subspace_call,
+            None => return Weight::zero(),
+        };
+
+        match subspace_call {
+            SubspaceCall::vote { .. } => Self::max_weight(),
+            _ => Weight::zero(),
+        }
     }
 
     fn validate(
@@ -102,22 +126,61 @@ where
     ) -> ValidateResult<Self::Val, RuntimeCallFor<Runtime>> {
         // we only care about unsigned calls
         if origin.as_system_origin_signer().is_some() {
-            return Ok((ValidTransaction::default(), (), origin));
+            return Ok((
+                ValidTransaction::default(),
+                ExtensionWeightData::Skipped,
+                origin,
+            ));
         };
 
         let subspace_call = match call.maybe_subspace_call() {
             Some(subspace_call) => subspace_call,
-            None => return Ok((ValidTransaction::default(), (), origin)),
+            None => {
+                return Ok((
+                    ValidTransaction::default(),
+                    ExtensionWeightData::Skipped,
+                    origin,
+                ))
+            }
         };
 
-        let validity = match subspace_call {
+        let (validity, weight_used) = match subspace_call {
             SubspaceCall::vote { signed_vote } => Self::do_check_vote(signed_vote, source)?,
             _ => return Err(InvalidTransaction::Call.into()),
         };
 
-        Ok((validity, (), origin))
+        Ok((
+            validity,
+            ExtensionWeightData::Validated(weight_used),
+            origin,
+        ))
     }
 
-    // nothing to prepare since vote is already checked
-    impl_tx_ext_default!(RuntimeCallFor<Runtime>; prepare);
+    fn prepare(
+        self,
+        val: Self::Val,
+        _origin: &DispatchOriginOf<RuntimeCallFor<Runtime>>,
+        _call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+    ) -> Result<Self::Pre, TransactionValidityError> {
+        Ok(val)
+    }
+
+    fn post_dispatch_details(
+        pre: Self::Pre,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _post_info: &PostDispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+        _result: &DispatchResult,
+    ) -> Result<Weight, TransactionValidityError> {
+        match pre {
+            // return the unused weight for a validated call.
+            ExtensionWeightData::Validated(used_weight) => {
+                Ok(Self::max_weight().saturating_sub(used_weight))
+            }
+            // return no weight since this call is not validated and took no weight.
+            ExtensionWeightData::Skipped => Ok(Weight::zero()),
+        }
+    }
 }
