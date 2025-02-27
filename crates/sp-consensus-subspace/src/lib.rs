@@ -552,7 +552,7 @@ sp_api::decl_runtime_apis! {
         /// Solution ranges.
         fn solution_ranges() -> SolutionRanges;
 
-        /// Submit farmer vote vote that is essentially a header with bigger solution range than
+        /// Submit farmer vote that is essentially a header with bigger solution range than
         /// acceptable for block authoring. Only useful in an offchain context.
         fn submit_vote_extrinsic(
             signed_vote: SignedVote<

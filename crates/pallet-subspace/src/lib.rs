@@ -23,7 +23,7 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use frame_support::dispatch::DispatchResult;
 use frame_support::traits::Get;
-use frame_system::offchain::{CreateInherent, SubmitTransaction};
+use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
 use log::{debug, error, warn};
 pub use pallet::*;
@@ -52,6 +52,7 @@ use subspace_core_primitives::solutions::{RewardSignature, SolutionRange};
 use subspace_core_primitives::{
     BlockHash, PublicKey, ScalarBytes, SlotNumber, REWARD_SIGNING_CONTEXT,
 };
+use subspace_runtime_primitives::CreateUnsigned;
 use subspace_verification::{
     check_reward_signature, derive_next_solution_range, derive_pot_entropy, PieceCheckParams,
     VerifySolutionParams,
@@ -683,7 +684,6 @@ pub mod pallet {
                 Call::store_segment_headers { segment_headers } => {
                     Self::validate_segment_header(source, segment_headers)
                 }
-                Call::vote { signed_vote } => Self::validate_vote(signed_vote),
                 _ => InvalidTransaction::Call.into(),
             }
         }
@@ -693,7 +693,6 @@ pub mod pallet {
                 Call::store_segment_headers { segment_headers } => {
                     Self::pre_dispatch_segment_header(segment_headers)
                 }
-                Call::vote { signed_vote } => Self::pre_dispatch_vote(signed_vote),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -1188,16 +1187,16 @@ impl<T: Config> Pallet<T> {
 
 impl<T> Pallet<T>
 where
-    T: Config + CreateInherent<Call<T>>,
+    T: Config + CreateUnsigned<Call<T>>,
 {
-    /// Submit farmer vote vote that is essentially a header with bigger solution range than
+    /// Submit farmer vote that is essentially a header with bigger solution range than
     /// acceptable for block authoring.
     pub fn submit_vote(signed_vote: SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>) {
         let call = Call::vote {
             signed_vote: Box::new(signed_vote),
         };
 
-        let ext = T::create_inherent(call.into());
+        let ext = T::create_unsigned(call.into());
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
                 debug!(target: "runtime::subspace", "Submitted Subspace vote");

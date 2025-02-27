@@ -27,6 +27,7 @@ pallet-transaction-payment = { git = "https://github.com/subspace/polkadot-sdk",
 mmr-gadget = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
 rand = "0.8.5"
 pallet-domains = { version = "0.1.0", path = "../../crates/pallet-domains" }
+pallet-subspace = { version = "0.1.0", path = "../../crates/pallet-subspace" }
 parking_lot = "0.12.2"
 sc-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }

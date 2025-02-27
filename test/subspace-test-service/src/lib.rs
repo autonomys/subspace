@@ -1370,6 +1370,7 @@ where
         frame_system::CheckNonce::<Runtime>::from(nonce),
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+        pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         subspace_runtime_primitives::extensions::DisableGeneralExtrinsics::<Runtime>::new(),
     );
     (
@@ -1379,7 +1380,7 @@ where
         >::from_raw(
             function,
             extra.clone(),
-            ((), 100, 1, genesis_block, current_block_hash, (), (), (), ()),
+            ((), 100, 1, genesis_block, current_block_hash, (), (), (), (), ()),
         ),
         extra,
     )
