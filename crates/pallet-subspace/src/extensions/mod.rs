@@ -1,4 +1,9 @@
 //! Extensions for unsigned general extrinsics
+
+#[cfg(feature = "runtime-benchmarks")]
+pub mod benchmarking;
+pub mod weights;
+
 use crate::pallet::Call as SubspaceCall;
 use crate::{Config, Pallet as Subspace};
 use codec::{Decode, Encode};

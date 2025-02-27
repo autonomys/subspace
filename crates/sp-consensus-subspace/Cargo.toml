@@ -61,3 +61,5 @@ std = [
     "subspace-verification/std",
     "thiserror/std",
 ]
+
+runtime-benchmarks = []

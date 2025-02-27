@@ -34,8 +34,6 @@ use subspace_core_primitives::{BlockHash, BlockNumber, PublicKey, SlotNumber};
 #[cfg(feature = "std")]
 use subspace_kzg::Kzg;
 #[cfg(feature = "std")]
-use subspace_proof_of_space::chia::ChiaTable;
-#[cfg(feature = "std")]
 use subspace_proof_of_space::shim::ShimTable;
 #[cfg(feature = "std")]
 use subspace_proof_of_space::PosTableType;
@@ -460,34 +458,53 @@ pub trait Consensus {
         slot: SlotNumber,
         params: WrappedVerifySolutionParams<'_>,
     ) -> Result<SolutionRange, String> {
-        use sp_externalities::ExternalitiesExt;
-        use subspace_proof_of_space::PosTableType;
-
-        let pos_table_type = self
-            .extension::<PosExtension>()
-            .expect("No `PosExtension` associated for the current context!")
-            .0;
-
-        let kzg = &self
-            .extension::<KzgExtension>()
-            .expect("No `KzgExtension` associated for the current context!")
-            .0;
-
-        match pos_table_type {
-            PosTableType::Chia => subspace_verification::verify_solution::<ChiaTable, _>(
+        // TODO: we need to conditional compile for benchmarks here since
+        //  benchmark externalities does not provide custom extensions.
+        //  Remove this once the issue is resolved: https://github.com/paritytech/polkadot-sdk/issues/137
+        #[cfg(feature = "runtime-benchmarks")]
+        {
+            subspace_verification::verify_solution::<ShimTable, _>(
                 &solution.0,
                 slot,
                 &params.0,
-                kzg,
+                kzg_instance(),
             )
-            .map_err(|error| error.to_string()),
-            PosTableType::Shim => subspace_verification::verify_solution::<ShimTable, _>(
-                &solution.0,
-                slot,
-                &params.0,
-                kzg,
-            )
-            .map_err(|error| error.to_string()),
+            .map_err(|error| error.to_string())
+        }
+
+        #[cfg(not(feature = "runtime-benchmarks"))]
+        {
+            use sp_externalities::ExternalitiesExt;
+            #[cfg(feature = "std")]
+            use subspace_proof_of_space::chia::ChiaTable;
+            use subspace_proof_of_space::PosTableType;
+
+            let pos_table_type = self
+                .extension::<PosExtension>()
+                .expect("No `PosExtension` associated for the current context!")
+                .0;
+
+            let kzg = &self
+                .extension::<KzgExtension>()
+                .expect("No `KzgExtension` associated for the current context!")
+                .0;
+
+            match pos_table_type {
+                PosTableType::Chia => subspace_verification::verify_solution::<ChiaTable, _>(
+                    &solution.0,
+                    slot,
+                    &params.0,
+                    kzg,
+                )
+                .map_err(|error| error.to_string()),
+                PosTableType::Shim => subspace_verification::verify_solution::<ShimTable, _>(
+                    &solution.0,
+                    slot,
+                    &params.0,
+                    kzg,
+                )
+                .map_err(|error| error.to_string()),
+            }
         }
     }
 
@@ -500,14 +517,26 @@ pub trait Consensus {
         proof_of_time: WrappedPotOutput,
         quick_verification: bool,
     ) -> bool {
-        use sp_externalities::ExternalitiesExt;
+        // TODO: we need to conditional compile for benchmarks here since
+        //  benchmark externalities does not provide custom extensions.
+        //  Remove this once the issue is resolved: https://github.com/paritytech/polkadot-sdk/issues/137
+        #[cfg(feature = "runtime-benchmarks")]
+        {
+            let _ = (slot, parent_hash, proof_of_time, quick_verification);
+            true
+        }
 
-        let verifier = &self
-            .extension::<PotExtension>()
-            .expect("No `PotExtension` associated for the current context!")
-            .0;
+        #[cfg(not(feature = "runtime-benchmarks"))]
+        {
+            use sp_externalities::ExternalitiesExt;
 
-        verifier(parent_hash, slot, proof_of_time.0, quick_verification)
+            let verifier = &self
+                .extension::<PotExtension>()
+                .expect("No `PotExtension` associated for the current context!")
+                .0;
+
+            verifier(parent_hash, slot, proof_of_time.0, quick_verification)
+        }
     }
 }
 
@@ -586,4 +615,12 @@ sp_api::decl_runtime_apis! {
         /// Get Subspace blockchain constants
         fn chain_constants() -> ChainConstants;
     }
+}
+
+#[cfg(all(feature = "std", feature = "runtime-benchmarks"))]
+fn kzg_instance() -> &'static Kzg {
+    use std::sync::OnceLock;
+    static KZG: OnceLock<Kzg> = OnceLock::new();
+
+    KZG.get_or_init(Kzg::new)
 }
