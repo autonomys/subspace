@@ -1371,7 +1371,7 @@ where
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
-        subspace_runtime_primitives::extensions::DisableGeneralExtrinsics::<Runtime>::new(),
+        subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics::<Runtime>::new(),
     );
     (
         generic::SignedPayload::<

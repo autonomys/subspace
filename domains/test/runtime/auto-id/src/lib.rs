@@ -91,8 +91,7 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
-    // TODO: remove or adapt after or during migration to General extrinsic respectively
-    subspace_runtime_primitives::extensions::DisableGeneralExtrinsics<Runtime>,
+    subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -515,6 +514,15 @@ construct_runtime!(
         StorageOverlayChecks: pallet_storage_overlay_checks = 200,
     }
 );
+
+// List of allowed general unsigned extrinsics.
+// New unsigned general extrinsics must be included here.
+impl subspace_runtime_primitives::AllowedUnsignedExtrinsics for RuntimeCall {
+    fn is_allowed_unsigned(&self) -> bool {
+        // TODO: update once we start migration for domains
+        false
+    }
+}
 
 fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
     match &ext.function {

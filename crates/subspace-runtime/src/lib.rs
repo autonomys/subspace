@@ -1035,8 +1035,7 @@ pub type SignedExtra = (
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     DisablePallets,
     pallet_subspace::extensions::SubspaceExtension<Runtime>,
-    // TODO: remove or adapt after or during migration to General extrinsic respectively
-    subspace_runtime_primitives::extensions::DisableGeneralExtrinsics<Runtime>,
+    subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
@@ -1056,6 +1055,17 @@ pub type Executive = frame_executive::Executive<
         pallet_domains::migration_v2_to_v3::VersionCheckedMigrateDomainsV2ToV3<Runtime>,
     ),
 >;
+
+// List of allowed general unsigned extrinsics.
+// New unsigned general extrinsics must be included here.
+impl subspace_runtime_primitives::AllowedUnsignedExtrinsics for RuntimeCall {
+    fn is_allowed_unsigned(&self) -> bool {
+        matches!(
+            self,
+            RuntimeCall::Subspace(pallet_subspace::Call::vote { .. })
+        )
+    }
+}
 
 impl pallet_subspace::extensions::MaybeSubspaceCall<Runtime> for RuntimeCall {
     fn maybe_subspace_call(&self) -> Option<&pallet_subspace::Call<Runtime>> {
@@ -1126,7 +1136,7 @@ fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
         DisablePallets,
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
-        subspace_runtime_primitives::extensions::DisableGeneralExtrinsics::<Runtime>::new(),
+        subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics::<Runtime>::new(),
     );
 
     UncheckedExtrinsic::new_transaction(call, extra)

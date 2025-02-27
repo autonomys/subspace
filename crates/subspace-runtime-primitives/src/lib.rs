@@ -261,6 +261,11 @@ pub trait CreateUnsigned<LocalCall>: CreateTransactionBase<LocalCall> {
     fn create_unsigned(call: Self::RuntimeCall) -> Self::Extrinsic;
 }
 
+/// Interface for checking allowed unsigned general extrinsics
+pub trait AllowedUnsignedExtrinsics {
+    fn is_allowed_unsigned(&self) -> bool;
+}
+
 #[cfg(feature = "testing")]
 pub mod tests_utils {
     use frame_support::dispatch::DispatchClass;
