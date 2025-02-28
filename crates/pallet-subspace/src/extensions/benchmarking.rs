@@ -22,6 +22,7 @@ use subspace_core_primitives::segments::{SegmentCommitment, SegmentIndex};
 use subspace_core_primitives::solutions::RewardSignature;
 use subspace_core_primitives::{PublicKey, ScalarBytes};
 
+/// Hard-coded data used to benchmark check_vote
 #[derive(Encode, Decode)]
 struct VoteData<T: frame_system::Config> {
     pub segment_index: SegmentIndex,
