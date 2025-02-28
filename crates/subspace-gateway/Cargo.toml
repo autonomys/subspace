@@ -34,7 +34,6 @@ reqwest = { version = "0.12.9", features = ["json", "rustls-tls"], default-featu
 serde = { version = "1.0.216", features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-data-retrieval = { version = "0.1.0", path = "../../shared/subspace-data-retrieval" }
-subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-gateway-rpc = { version = "0.1.0", path = "../subspace-gateway-rpc" }
 subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
 subspace-logging = { version = "0.0.1", path = "../../shared/subspace-logging" }
