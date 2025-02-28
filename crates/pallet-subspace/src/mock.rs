@@ -146,6 +146,7 @@ impl Config for Test {
     type BlockSlotCount = BlockSlotCount;
 
     type WeightInfo = ();
+    type ExtensionWeightInfo = crate::extensions::weights::SubstrateWeight<Test>;
 }
 
 pub fn go_to_block(

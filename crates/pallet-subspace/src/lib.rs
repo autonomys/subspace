@@ -14,15 +14,17 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+pub mod extensions;
 pub mod weights;
 
+use crate::extensions::weights::WeightInfo as ExtensionWeightInfo;
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use frame_support::dispatch::DispatchResult;
 use frame_support::traits::Get;
-use frame_system::offchain::{CreateInherent, SubmitTransaction};
+use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
 use log::{debug, error, warn};
 pub use pallet::*;
@@ -40,6 +42,7 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
 };
+use sp_runtime::Weight;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::pieces::PieceOffset;
@@ -51,6 +54,7 @@ use subspace_core_primitives::solutions::{RewardSignature, SolutionRange};
 use subspace_core_primitives::{
     BlockHash, PublicKey, ScalarBytes, SlotNumber, REWARD_SIGNING_CONTEXT,
 };
+use subspace_runtime_primitives::CreateUnsigned;
 use subspace_verification::{
     check_reward_signature, derive_next_solution_range, derive_pot_entropy, PieceCheckParams,
     VerifySolutionParams,
@@ -85,7 +89,7 @@ struct VoteVerificationData {
 
 #[frame_support::pallet]
 pub mod pallet {
-    use super::{EraChangeTrigger, VoteVerificationData};
+    use super::{EraChangeTrigger, ExtensionWeightInfo, VoteVerificationData};
     use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
@@ -223,6 +227,9 @@ pub mod pallet {
         /// Maximum number of block number to block slot mappings to keep (oldest pruned first).
         #[pallet::constant]
         type BlockSlotCount: Get<u32>;
+
+        /// Extension weight information for the pallet's extensions.
+        type ExtensionWeightInfo: ExtensionWeightInfo;
     }
 
     #[derive(Debug, Default, Encode, Decode, TypeInfo)]
@@ -682,7 +689,6 @@ pub mod pallet {
                 Call::store_segment_headers { segment_headers } => {
                     Self::validate_segment_header(source, segment_headers)
                 }
-                Call::vote { signed_vote } => Self::validate_vote(signed_vote),
                 _ => InvalidTransaction::Call.into(),
             }
         }
@@ -692,7 +698,6 @@ pub mod pallet {
                 Call::store_segment_headers { segment_headers } => {
                     Self::pre_dispatch_segment_header(segment_headers)
                 }
-                Call::vote { signed_vote } => Self::pre_dispatch_vote(signed_vote),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -1187,16 +1192,16 @@ impl<T: Config> Pallet<T> {
 
 impl<T> Pallet<T>
 where
-    T: Config + CreateInherent<Call<T>>,
+    T: Config + CreateUnsigned<Call<T>>,
 {
-    /// Submit farmer vote vote that is essentially a header with bigger solution range than
+    /// Submit farmer vote that is essentially a header with bigger solution range than
     /// acceptable for block authoring.
     pub fn submit_vote(signed_vote: SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>) {
         let call = Call::vote {
             signed_vote: Box::new(signed_vote),
         };
 
-        let ext = T::create_inherent(call.into());
+        let ext = T::create_unsigned(call.into());
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
                 debug!(target: "runtime::subspace", "Submitted Subspace vote");
@@ -1251,7 +1256,7 @@ impl<T: Config> Pallet<T> {
 
     fn validate_vote(
         signed_vote: &SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>,
-    ) -> TransactionValidity {
+    ) -> Result<(ValidTransaction, Weight), TransactionValidityError> {
         check_vote::<T>(signed_vote, false)?;
 
         ValidTransaction::with_tag_prefix("SubspaceVote")
@@ -1261,16 +1266,17 @@ impl<T: Config> Pallet<T> {
             .longevity(2)
             .and_provides(signed_vote.signature)
             .build()
+            .map(|validity| (validity, T::ExtensionWeightInfo::vote()))
     }
 
     fn pre_dispatch_vote(
         signed_vote: &SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>,
-    ) -> Result<(), TransactionValidityError> {
+    ) -> Result<Weight, TransactionValidityError> {
         match check_vote::<T>(signed_vote, true) {
-            Ok(()) => Ok(()),
+            Ok(()) => Ok(T::ExtensionWeightInfo::vote()),
             Err(CheckVoteError::Equivocated { .. }) => {
                 // Return Ok such that changes from this pre-dispatch are persisted
-                Ok(())
+                Ok(T::ExtensionWeightInfo::vote_with_equivocation())
             }
             Err(error) => Err(error.into()),
         }

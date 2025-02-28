@@ -1,5 +1,6 @@
 //! Extensions for Runtimes
 
+use crate::AllowedUnsignedExtrinsics;
 use codec::{Decode, Encode};
 use frame_support::pallet_prelude::{PhantomData, TypeInfo};
 use frame_system::pallet_prelude::RuntimeCallFor;
@@ -12,28 +13,26 @@ use sp_runtime::traits::{
 };
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionSource, ValidTransaction};
 
-/// Disable General Extrinsics until we migrate from Bare to General.
-// TODO: Should either adapt or remove use of this extension during and after migration to
-//  General Extrinsics from bare extrinsics
+/// Checks allowed General Extrinsics
 #[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct DisableGeneralExtrinsics<Runtime>(PhantomData<Runtime>);
+pub struct CheckAllowedGeneralExtrinsics<Runtime>(PhantomData<Runtime>);
 
-impl<Runtime> DisableGeneralExtrinsics<Runtime> {
+impl<Runtime> CheckAllowedGeneralExtrinsics<Runtime> {
     pub fn new() -> Self {
         Self(PhantomData)
     }
 }
 
-impl<Runtime> Default for DisableGeneralExtrinsics<Runtime> {
+impl<Runtime> Default for CheckAllowedGeneralExtrinsics<Runtime> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Config> fmt::Debug for DisableGeneralExtrinsics<T> {
+impl<T: Config> fmt::Debug for CheckAllowedGeneralExtrinsics<T> {
     #[cfg(feature = "std")]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "DisableGeneralExtrinsics",)
+        write!(f, "CheckAllowedGeneralExtrinsics",)
     }
 
     #[cfg(not(feature = "std"))]
@@ -42,13 +41,15 @@ impl<T: Config> fmt::Debug for DisableGeneralExtrinsics<T> {
     }
 }
 
-impl<Runtime> TransactionExtension<RuntimeCallFor<Runtime>> for DisableGeneralExtrinsics<Runtime>
+impl<Runtime> TransactionExtension<RuntimeCallFor<Runtime>>
+    for CheckAllowedGeneralExtrinsics<Runtime>
 where
     Runtime: Config + scale_info::TypeInfo + fmt::Debug + Send + Sync,
     <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
         AsSystemOriginSigner<<Runtime as Config>::AccountId> + Clone,
+    RuntimeCallFor<Runtime>: AllowedUnsignedExtrinsics,
 {
-    const IDENTIFIER: &'static str = "DisableGeneralExtrinsics";
+    const IDENTIFIER: &'static str = "CheckAllowedGeneralExtrinsics";
     type Implicit = ();
     type Val = ();
     type Pre = ();
@@ -56,14 +57,14 @@ where
     fn validate(
         &self,
         origin: DispatchOriginOf<RuntimeCallFor<Runtime>>,
-        _call: &RuntimeCallFor<Runtime>,
+        call: &RuntimeCallFor<Runtime>,
         _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
         _len: usize,
         _self_implicit: Self::Implicit,
         _inherited_implication: &impl Implication,
         _source: TransactionSource,
     ) -> ValidateResult<Self::Val, RuntimeCallFor<Runtime>> {
-        if origin.as_system_origin_signer().is_none() {
+        if origin.as_system_origin_signer().is_none() && !call.is_allowed_unsigned() {
             Err(InvalidTransaction::Call.into())
         } else {
             Ok((ValidTransaction::default(), (), origin))

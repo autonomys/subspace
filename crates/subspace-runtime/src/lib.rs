@@ -80,7 +80,10 @@ use sp_runtime::traits::{
     NumberFor,
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
-use sp_runtime::{generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill};
+use sp_runtime::{
+    generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill,
+    SaturatedConversion,
+};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
@@ -299,6 +302,7 @@ impl pallet_subspace::Config for Runtime {
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type BlockSlotCount = BlockSlotCount;
     type WeightInfo = pallet_subspace::weights::SubstrateWeight<Runtime>;
+    type ExtensionWeightInfo = pallet_subspace::extensions::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -728,6 +732,15 @@ where
     }
 }
 
+impl<C> subspace_runtime_primitives::CreateUnsigned<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    fn create_unsigned(call: Self::RuntimeCall) -> Self::Extrinsic {
+        create_unsigned_general_extrinsic(call)
+    }
+}
+
 parameter_types! {
     pub const TransporterEndpointId: EndpointId = 1;
 }
@@ -1022,8 +1035,8 @@ pub type SignedExtra = (
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     DisablePallets,
-    // TODO: remove or adapt after or during migration to General extrinsic respectively
-    subspace_runtime_primitives::extensions::DisableGeneralExtrinsics<Runtime>,
+    pallet_subspace::extensions::SubspaceExtension<Runtime>,
+    subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
@@ -1043,6 +1056,26 @@ pub type Executive = frame_executive::Executive<
         pallet_domains::migration_v2_to_v3::VersionCheckedMigrateDomainsV2ToV3<Runtime>,
     ),
 >;
+
+// List of allowed general unsigned extrinsics.
+// New unsigned general extrinsics must be included here.
+impl subspace_runtime_primitives::AllowedUnsignedExtrinsics for RuntimeCall {
+    fn is_allowed_unsigned(&self) -> bool {
+        matches!(
+            self,
+            RuntimeCall::Subspace(pallet_subspace::Call::vote { .. })
+        )
+    }
+}
+
+impl pallet_subspace::extensions::MaybeSubspaceCall<Runtime> for RuntimeCall {
+    fn maybe_subspace_call(&self) -> Option<&pallet_subspace::Call<Runtime>> {
+        match self {
+            RuntimeCall::Subspace(call) => Some(call),
+            _ => None,
+        }
+    }
+}
 
 fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader>> {
     match &ext.function {
@@ -1079,6 +1112,35 @@ fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
         }
         _ => None,
     }
+}
+
+fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
+    let period = BlockHashCount::get()
+        .checked_next_power_of_two()
+        .map(|c| c / 2)
+        .unwrap_or(2) as u64;
+
+    let current_block = System::block_number().saturated_into::<u64>();
+
+    let extra: SignedExtra = (
+        frame_system::CheckNonZeroSender::<Runtime>::new(),
+        frame_system::CheckSpecVersion::<Runtime>::new(),
+        frame_system::CheckTxVersion::<Runtime>::new(),
+        frame_system::CheckGenesis::<Runtime>::new(),
+        frame_system::CheckMortality::<Runtime>::from(generic::Era::mortal(period, current_block)),
+        // for unsigned extrinsic, nonce check will be skipped
+        // so set a default value
+        frame_system::CheckNonce::<Runtime>::from(0),
+        frame_system::CheckWeight::<Runtime>::new(),
+        // for unsigned extrinsic, transaction fee check will be skipped
+        // so set a default value
+        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
+        DisablePallets,
+        pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
+        subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics::<Runtime>::new(),
+    );
+
+    UncheckedExtrinsic::new_transaction(call, extra)
 }
 
 struct RewardAddress([u8; 32]);
@@ -1145,6 +1207,7 @@ mod benches {
         [pallet_timestamp, Timestamp]
         [pallet_messenger, Messenger]
         [pallet_transporter, Transporter]
+        [pallet_subspace_extension, SubspaceExtensionBench::<Runtime>]
     );
 }
 
@@ -1653,6 +1716,7 @@ impl_runtime_apis! {
             use frame_support::traits::StorageInfoTrait;
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
+            use pallet_subspace::extensions::benchmarking::Pallet as SubspaceExtensionBench;
 
             let mut list = Vec::<BenchmarkList>::new();
             list_benchmarks!(list, extra);
@@ -1670,6 +1734,7 @@ impl_runtime_apis! {
 
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
+            use pallet_subspace::extensions::benchmarking::Pallet as SubspaceExtensionBench;
 
             use frame_support::traits::WhitelistedStorageKeys;
             let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
