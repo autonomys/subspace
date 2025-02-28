@@ -103,13 +103,8 @@ where
     type Pre = ExtensionWeightData;
 
     fn weight(&self, call: &RuntimeCallFor<Runtime>) -> Weight {
-        let subspace_call = match call.maybe_subspace_call() {
-            Some(subspace_call) => subspace_call,
-            None => return Weight::zero(),
-        };
-
-        match subspace_call {
-            SubspaceCall::vote { .. } => Self::max_weight(),
+        match call.maybe_subspace_call() {
+            Some(SubspaceCall::vote { .. }) => Self::max_weight(),
             _ => Weight::zero(),
         }
     }
