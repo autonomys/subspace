@@ -67,7 +67,7 @@ subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-co
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
 substrate-frame-rpc-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-thiserror = "1.0.64"
+thiserror = "2.0.0"
 tokio = "1.40.0"
 tracing = "0.1.40"
 
