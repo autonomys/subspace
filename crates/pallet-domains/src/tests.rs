@@ -34,13 +34,15 @@ use sp_domains::{
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::generic::{Preamble, EXTRINSIC_FORMAT_VERSION};
 use sp_runtime::traits::{
-    AccountIdConversion, BlakeTwo256, BlockNumberProvider, Hash as HashT, IdentityLookup, One, Zero,
+    AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, Hash as HashT, IdentityLookup,
+    One, Zero,
 };
 use sp_runtime::transaction_validity::TransactionValidityError;
+use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::U256 as P256;
-use subspace_runtime_primitives::{HoldIdentifier, Moment, StorageFee, SSC};
+use subspace_runtime_primitives::{HoldIdentifier, Moment, Nonce, StorageFee, SSC};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -1013,4 +1015,34 @@ fn test_domain_runtime_upgrade_with_bundle() {
             3
         );
     });
+}
+
+#[test]
+fn test_type_with_default_nonce_encode() {
+    #[derive(Debug, TypeInfo)]
+    pub struct DefaultNonceProvider;
+
+    impl Get<Nonce> for DefaultNonceProvider {
+        fn get() -> Nonce {
+            13452234
+        }
+    }
+
+    let nonce_1_default = 0;
+    let nonce_2_default = TypeWithDefault::<Nonce, DefaultNonceProvider>::min_value();
+    let encode_1 = nonce_1_default.encode();
+    let encode_2 = nonce_2_default.encode();
+    assert_eq!(encode_1, encode_2);
+
+    let nonce_1_default = 13452234;
+    let nonce_2_default = TypeWithDefault::<Nonce, DefaultNonceProvider>::default();
+    let encode_1 = nonce_1_default.encode();
+    let encode_2 = nonce_2_default.encode();
+    assert_eq!(encode_1, encode_2);
+
+    let nonce_1 = Nonce::MAX;
+    let nonce_2 = TypeWithDefault::<Nonce, DefaultNonceProvider>::max_value();
+    let encode_1 = nonce_1.encode();
+    let encode_2 = nonce_2.encode();
+    assert_eq!(encode_1, encode_2);
 }

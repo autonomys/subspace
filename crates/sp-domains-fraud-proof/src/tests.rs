@@ -89,11 +89,17 @@ async fn benchmark_bundle_with_evm_tx(
             tx_type_to_use <= TX_TYPES,
             "random tx_type is out of bounds"
         );
+        let nonce = alice
+            .client
+            .runtime_api()
+            .account_basic(alice.client.info().best_hash, account_info.address)
+            .unwrap()
+            .nonce;
         let extrinsic = match tx_type_to_use {
             0 => {
                 let evm_tx = generate_eip1559_tx::<TestRuntime>(
                     account_info.clone(),
-                    U256::zero(),
+                    nonce,
                     ethereum::TransactionAction::Create,
                     vec![1u8; 100],
                     gas_price,
@@ -103,7 +109,7 @@ async fn benchmark_bundle_with_evm_tx(
             1 => {
                 let evm_tx = generate_eip2930_tx::<TestRuntime>(
                     account_info.clone(),
-                    U256::zero(),
+                    nonce,
                     ethereum::TransactionAction::Create,
                     vec![1u8; 100],
                     gas_price,
@@ -113,7 +119,7 @@ async fn benchmark_bundle_with_evm_tx(
             2 => {
                 let evm_tx = generate_legacy_tx::<TestRuntime>(
                     account_info.clone(),
-                    U256::zero(),
+                    nonce,
                     ethereum::TransactionAction::Create,
                     vec![1u8; 100],
                     gas_price,
@@ -138,7 +144,7 @@ async fn benchmark_bundle_with_evm_tx(
                     genesis_block_hash,
                     function.clone(),
                     false,
-                    0,
+                    nonce.try_into().unwrap(),
                     1,
                 );
                 let signature = raw_payload.using_encoded(|e| {
@@ -656,9 +662,15 @@ async fn test_evm_domain_block_fee() {
         .zip(tx_generators.into_iter())
         .enumerate()
     {
+        let nonce = alice
+            .client
+            .runtime_api()
+            .account_basic(alice.client.info().best_hash, acc.address)
+            .unwrap()
+            .nonce;
         let tx = generate_eth_domain_sc_extrinsic(tx_generator(
             acc.clone(),
-            U256::zero(),
+            nonce,
             ethereum::TransactionAction::Create,
             vec![(i + 1) as u8; 100],
             gas_price,

@@ -74,6 +74,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
+use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{
     generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
     ExtrinsicInclusionMode, SaturatedConversion,
@@ -89,7 +90,7 @@ use sp_subspace_mmr::domain_mmr_runtime_interface::{
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
-use subspace_runtime_primitives::utility::MaybeIntoUtilityCall;
+use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilityCall};
 use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment, SHANNON, SSC,
 };
@@ -175,7 +176,7 @@ pub fn construct_extrinsic_raw_payload(
         } else {
             generic::Era::mortal(period, current_block)
         }),
-        frame_system::CheckNonce::<Runtime>::from(nonce),
+        frame_system::CheckNonce::<Runtime>::from(nonce.into()),
         domain_check_weight::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
         pallet_evm_tracker::create_contract::CheckContractCreation::<Runtime>::new(),
@@ -382,7 +383,7 @@ impl frame_system::Config for Runtime {
     /// The aggregated `RuntimeTask` type.
     type RuntimeTask = RuntimeTask;
     /// The type for storing how many extrinsics an account has signed.
-    type Nonce = Nonce;
+    type Nonce = TypeWithDefault<Nonce, DefaultNonceProvider<System, Nonce>>;
     /// The type for hashing blocks and tries.
     type Hash = Hash;
     /// The hashing algorithm used.
@@ -1288,7 +1289,7 @@ impl_runtime_apis! {
 
     impl frame_system_rpc_runtime_api::AccountNonceApi<Block, AccountId, Nonce> for Runtime {
         fn account_nonce(account: AccountId) -> Nonce {
-            System::account_nonce(account)
+            *System::account_nonce(account)
         }
     }
 

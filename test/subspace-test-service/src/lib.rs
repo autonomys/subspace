@@ -1118,6 +1118,14 @@ impl MockConsensusNode {
             .expect("Fail to get account nonce")
     }
 
+    /// Get the nonce of the given account
+    pub fn account_nonce_of(&self, account_id: AccountId) -> u32 {
+        self.client
+            .runtime_api()
+            .account_nonce(self.client.info().best_hash, account_id)
+            .expect("Fail to get account nonce")
+    }
+
     /// Construct an extrinsic.
     pub fn construct_extrinsic(
         &mut self,
@@ -1134,6 +1142,14 @@ impl MockConsensusNode {
     ) -> Result<RpcTransactionOutput, RpcTransactionError> {
         let nonce = self.account_nonce();
         let extrinsic = self.construct_extrinsic(nonce, function);
+        self.rpc_handlers.send_transaction(extrinsic.into()).await
+    }
+
+    /// Get the nonce of the given account
+    pub async fn send_extrinsic(
+        &mut self,
+        extrinsic: impl Into<OpaqueExtrinsic>,
+    ) -> Result<RpcTransactionOutput, RpcTransactionError> {
         self.rpc_handlers.send_transaction(extrinsic.into()).await
     }
 }
@@ -1367,7 +1383,7 @@ where
         } else {
             generic::Era::mortal(period, current_block)
         }),
-        frame_system::CheckNonce::<Runtime>::from(nonce),
+        frame_system::CheckNonce::<Runtime>::from(nonce.into()),
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
@@ -1387,7 +1403,7 @@ where
 }
 
 /// Construct an extrinsic that can be applied to the test runtime.
-fn construct_extrinsic_generic<Client>(
+pub fn construct_extrinsic_generic<Client>(
     client: impl AsRef<Client>,
     function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     caller: Sr25519Keyring,
