@@ -13,18 +13,18 @@ include = [
 ]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
-domain-block-preprocessor = { version = "0.1.0", default-features = false, path = "../../../domains/client/block-preprocessor", optional = true }
-scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
-sc-executor = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", default-features = false, optional = true }
-sp-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", optional = true }
-sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-domains = { version = "0.1.0", default-features = false, path = "../../../crates/sp-domains" }
-sp-externalities = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime-interface = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
+codec = { workspace = true, features = ["derive"] }
+domain-block-preprocessor = { workspace = true, optional = true }
+scale-info = { workspace = true, features = ["derive"] }
+sc-executor = { workspace = true, optional = true }
+sp-api.workspace = true
+sp-blockchain = { workspace = true, optional = true }
+sp-core.workspace = true
+sp-domains.workspace = true
+sp-externalities.workspace = true
+sp-messenger.workspace = true
+sp-runtime.workspace = true
+sp-runtime-interface.workspace = true
 
 [features]
 default = ["std"]

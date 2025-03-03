@@ -13,20 +13,20 @@ include = [
 ]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
-domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime", default-features = false }
-frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-pallet-ethereum = { default-features = false, git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409" }
-pallet-evm = { version = "6.0.0-dev", default-features = false, git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409" }
-pallet-utility = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
-sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-domains = { version = "0.1.0", default-features = false, path = "../../../crates/sp-domains" }
-sp-evm-tracker = { version = "0.1.0", default-features = false, path = "../../primitives/evm-tracker" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-weights = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives", default-features = false }
+codec = { workspace = true, features = ["derive"] }
+domain-runtime-primitives.workspace = true
+frame-support.workspace = true
+frame-system.workspace = true
+pallet-ethereum.workspace = true
+pallet-evm.workspace = true
+pallet-utility.workspace = true
+scale-info = { workspace = true, features = ["derive"] }
+sp-core.workspace = true
+sp-domains.workspace = true
+sp-evm-tracker.workspace = true
+sp-runtime.workspace = true
+sp-weights.workspace = true
+subspace-runtime-primitives.workspace = true
 
 [features]
 default = ["std"]

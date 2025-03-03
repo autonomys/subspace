@@ -13,8 +13,8 @@ include = [
 ]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
+codec = { workspace = true, features = ["derive"] }
+sp-runtime.workspace = true
 
 [features]
 default = ["std"]

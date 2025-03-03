@@ -12,32 +12,32 @@ include = [
 ]
 
 [dependencies]
-clap = { version = "4.5.18", features = ["derive"] }
-domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
-domain-service = { version = "0.1.0", path = "../../service" }
-fc-consensus = { version = "2.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409" }
-fc-db = { version = "2.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
-fc-mapping-sync = { version = "2.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
-fc-rpc = { version = "2.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false, features = ['rpc-binary-search-estimate'] }
-fc-rpc-core = { version = "1.1.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409" }
-fc-storage = { version = "1.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409" }
-fp-rpc = { version = "3.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", features = ['default'] }
-futures = "0.3.31"
-jsonrpsee = { version = "0.24.5", features = ["server-core"] }
-pallet-transaction-payment-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-parity-scale-codec = "3.6.12"
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-rpc-server = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-network-sync = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", default-features = false }
-sc-service = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", default-features = false }
-sc-transaction-pool = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-serde = { version = "1.0.216", features = ["derive"] }
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-inherents = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-substrate-frame-rpc-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
+clap = { workspace = true, features = ["derive"] }
+domain-runtime-primitives.workspace = true
+domain-service.workspace = true
+fc-consensus.workspace = true
+fc-db.workspace = true
+fc-mapping-sync.workspace = true
+fc-rpc = { workspace = true, features = ["rpc-binary-search-estimate"] }
+fc-rpc-core.workspace = true
+fc-storage.workspace = true
+fp-rpc = { workspace = true, features = ["default"] }
+futures.workspace = true
+jsonrpsee = { workspace = true, features = ["server-core"] }
+pallet-transaction-payment-rpc.workspace = true
+parity-scale-codec.workspace = true
+sc-client-api.workspace = true
+sc-rpc.workspace = true
+sc-rpc-server.workspace = true
+sc-network-sync.workspace = true
+sc-service.workspace = true
+sc-transaction-pool.workspace = true
+sc-transaction-pool-api.workspace = true
+serde = { workspace = true, features = ["derive"] }
+sp-api.workspace = true
+sp-block-builder.workspace = true
+sp-blockchain.workspace = true
+sp-core.workspace = true
+sp-inherents.workspace = true
+sp-runtime.workspace = true
+substrate-frame-rpc-system.workspace = true

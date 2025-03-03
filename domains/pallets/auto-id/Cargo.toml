@@ -13,22 +13,22 @@ include = [
 ]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
-frame-benchmarking = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", optional = true }
-frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-pallet-timestamp = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", optional = true }
-scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
-sp-auto-id = { version = "0.1.0", default-features = false, path = "../../primitives/auto-id" }
-sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../../crates/subspace-runtime-primitives" }
+codec = { workspace = true, features = ["derive"] }
+frame-benchmarking = { workspace = true, optional = true }
+frame-support.workspace = true
+frame-system.workspace = true
+pallet-timestamp = { workspace = true, optional = true }
+scale-info = { workspace = true, features = ["derive"] }
+sp-auto-id.workspace = true
+sp-core.workspace = true
+sp-runtime.workspace = true
+subspace-runtime-primitives.workspace = true
 
 [dev-dependencies]
-pem = "3.0.4"
-ring = "0.17.8"
-sp-io = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-x509-parser = { version = "0.16.0" }
+pem.workspace = true
+ring.workspace = true
+sp-io.workspace = true
+x509-parser.workspace = true
 
 [features]
 default = ["std"]

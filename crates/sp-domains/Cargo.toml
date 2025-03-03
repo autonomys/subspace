@@ -12,43 +12,43 @@ description = "Primitives of domains pallet"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-blake2 = { version = "0.10.6", default-features = false }
-domain-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../domains/primitives/runtime" }
-frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-hash-db = { version = "0.16.0", default-features = false }
-memory-db = { version = "0.32.0", default-features = false }
-hexlit = "0.5.5"
-parity-scale-codec = { version = "3.6.12", default-features = false, features = ["derive"] }
-rand = { version = "0.8.5", default-features = false }
-rand_chacha = { version = "0.3.1", default-features = false }
-rs_merkle = { version = "1.4.2", default-features = false }
-scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
-serde = { version = "1.0.216", default-features = false, features = ["alloc", "derive"] }
-sp-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-application-crypto = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime-interface = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-state-machine = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-trie = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-version = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-weights = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
-subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
-trie-db = { version = "0.29.1", default-features = false }
+blake2.workspace = true
+domain-runtime-primitives.workspace = true
+frame-support.workspace = true
+hash-db.workspace = true
+memory-db.workspace = true
+hexlit.workspace = true
+parity-scale-codec = { workspace = true, features = ["derive"] }
+rand.workspace = true
+rand_chacha.workspace = true
+rs_merkle.workspace = true
+scale-info = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["alloc", "derive"] }
+sp-api.workspace = true
+sp-application-crypto.workspace = true
+sp-core.workspace = true
+sp-runtime.workspace = true
+sp-runtime-interface.workspace = true
+sp-state-machine.workspace = true
+sp-std.workspace = true
+sp-trie.workspace = true
+sp-version.workspace = true
+sp-weights.workspace = true
+subspace-core-primitives.workspace = true
+subspace-runtime-primitives.workspace = true
+trie-db.workspace = true
 
 # test-ethereum dependencies
-ethereum = { git = "https://github.com/rust-ethereum/ethereum", rev = "3be0d8fd4c2ad1ba216b69ef65b9382612efc8ba", optional = true }
-fp-self-contained = { version = "1.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", features = ['default'], optional = true }
-frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", optional = true }
-libsecp256k1 = { version = "0.7.1", features = ["static-context", "hmac"], optional = true }
-pallet-evm = { version = "6.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false, optional = true }
-rlp = { version = "0.6", optional = true }
+ethereum = { workspace = true, optional = true }
+fp-self-contained = { workspace = true, features = ["default"], optional = true }
+frame-system = { workspace = true, optional = true }
+libsecp256k1 = { workspace = true, features = ["static-context", "hmac"], optional = true }
+pallet-evm = { workspace = true, optional = true }
+rlp = { workspace = true, optional = true }
 
 [dev-dependencies]
-num-traits = "0.2.18"
-rand = { version = "0.8.5", features = ["min_const_gen"] }
+num-traits.workspace = true
+rand = { workspace = true, features = ["min_const_gen"] }
 
 [features]
 default = ["std"]

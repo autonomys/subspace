@@ -13,21 +13,21 @@ include = [
 ]
 
 [dependencies]
-async-trait = { version = "0.1.83", optional = true }
-codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
-frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-hash-db = { version = "0.16.0", default-features = false }
-log = { version = "0.4.22", default-features = false }
-scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
-serde = { version = "1.0.216", default-features = false, features = ["alloc", "derive"] }
-sp-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-domains = { version = "0.1.0", default-features = false, path = "../../../crates/sp-domains" }
-sp-inherents = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-mmr-primitives = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-trie = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-subspace-mmr = { version = "0.1.0", default-features = false, path = "../../../crates/sp-subspace-mmr" }
+async-trait = { workspace = true, optional = true }
+codec = { workspace = true, features = ["derive"] }
+frame-support.workspace = true
+hash-db.workspace = true
+log.workspace = true
+scale-info = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["alloc", "derive"] }
+sp-api.workspace = true
+sp-core.workspace = true
+sp-domains.workspace = true
+sp-inherents.workspace = true
+sp-mmr-primitives.workspace = true
+sp-runtime.workspace = true
+sp-trie.workspace = true
+sp-subspace-mmr.workspace = true
 
 [features]
 default = ["std"]

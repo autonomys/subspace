@@ -13,9 +13,9 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-sp-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
-subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
+sp-api.workspace = true
+subspace-core-primitives.workspace = true
+subspace-runtime-primitives.workspace = true
 
 [features]
 default = ["std"]

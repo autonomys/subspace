@@ -11,22 +11,22 @@ include = [
 ]
 
 [dependencies]
-async-channel = "1.9.0"
-async-trait = "0.1.83"
-codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
-derive_more = { version = "1.0.0", features = ["full"] }
-futures = "0.3.31"
-parking_lot = "0.12.2"
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-network-common = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-network-sync = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
-sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-strum_macros = "0.26.4"
-subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-thiserror = "2.0.0"
-tracing = "0.1.40"
+async-channel.workspace = true
+async-trait.workspace = true
+codec = { workspace = true, features = ["derive"] }
+derive_more = { workspace = true, features = ["full"] }
+futures.workspace = true
+parking_lot.workspace = true
+sc-client-api.workspace = true
+sc-network.workspace = true
+sc-network-common.workspace = true
+sc-network-sync.workspace = true
+sp-api.workspace = true
+sp-consensus-subspace.workspace = true
+sc-transaction-pool-api.workspace = true
+sp-runtime.workspace = true
+strum_macros.workspace = true
+subspace-core-primitives.workspace = true
+substrate-prometheus-endpoint.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
