@@ -32,13 +32,13 @@ sp-consensus-subspace = { version = "0.1.0", path = "../../crates/sp-consensus-s
 sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
 sp-domains = { version = "0.1.0", path = "../../crates/sp-domains" }
 sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-subspace-archiving = { path = "../../crates/subspace-archiving" }
-subspace-core-primitives = { path = "../../crates/subspace-core-primitives" }
-subspace-erasure-coding = { path = "../../crates/subspace-erasure-coding" }
-subspace-farmer-components = { path = "../../crates/subspace-farmer-components" }
+subspace-archiving = { version = "0.1.0", path = "../../crates/subspace-archiving" }
+subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives" }
+subspace-erasure-coding = { version = "0.1.0", path = "../../crates/subspace-erasure-coding" }
+subspace-farmer-components = { version = "0.1.0", path = "../../crates/subspace-farmer-components" }
 subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
-subspace-proof-of-space = { path = "../../crates/subspace-proof-of-space" }
-subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
-subspace-service = { path = "../../crates/subspace-service" }
+subspace-proof-of-space = { version = "0.1.0", path = "../../crates/subspace-proof-of-space" }
+subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
+subspace-service = { version = "0.1.0", path = "../../crates/subspace-service" }
 subspace-test-runtime = { version = "0.1.0", path = "../subspace-test-runtime" }
 zeroize = "1.8.1"

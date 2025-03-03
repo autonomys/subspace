@@ -13,7 +13,7 @@ include = [
 
 [dependencies]
 async-channel = "1.9.0"
-cross-domain-message-gossip = { path = "../../client/cross-domain-message-gossip" }
+cross-domain-message-gossip = { version = "0.1.0", path = "../../client/cross-domain-message-gossip" }
 futures = "0.3.31"
 parity-scale-codec = { version = "3.6.12", features = ["derive"] }
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }

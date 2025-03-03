@@ -29,7 +29,7 @@ sp-trie = { default-features = false, git = "https://github.com/subspace/polkado
 sp-subspace-mmr = { version = "0.1.0", default-features = false, path = "../../../crates/sp-subspace-mmr" }
 
 [dev-dependencies]
-domain-runtime-primitives = { path = "../../primitives/runtime" }
+domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
 pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
 pallet-transporter = { version = "0.1.0", path = "../transporter" }
 sp-state-machine = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
