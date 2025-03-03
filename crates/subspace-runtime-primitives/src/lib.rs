@@ -17,6 +17,7 @@ use frame_support::traits::tokens;
 use frame_support::weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use frame_support::{Deserialize, Serialize};
 use frame_system::limits::BlockLength;
+use frame_system::offchain::CreateTransactionBase;
 use pallet_transaction_payment::{Multiplier, TargetedFeeAdjustment};
 use scale_info::TypeInfo;
 use sp_core::parameter_types;
@@ -252,6 +253,17 @@ pub enum HoldIdentifier {
     DomainStorageFund,
     MessengerChannel,
     Preimage,
+}
+
+/// Interface for creating an unsigned general extrinsic
+pub trait CreateUnsigned<LocalCall>: CreateTransactionBase<LocalCall> {
+    /// Create an unsigned extrinsic.
+    fn create_unsigned(call: Self::RuntimeCall) -> Self::Extrinsic;
+}
+
+/// Interface for checking allowed unsigned general extrinsics
+pub trait AllowedUnsignedExtrinsics {
+    fn is_allowed_unsigned(&self) -> bool;
 }
 
 #[cfg(feature = "testing")]

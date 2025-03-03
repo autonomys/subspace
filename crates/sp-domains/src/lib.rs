@@ -945,7 +945,7 @@ pub struct AutoIdDomainRuntimeConfig {
     // Currently, there is no specific configuration for AutoId.
 }
 
-/// Configrations for specific domain runtime kinds.
+/// Configurations for specific domain runtime kinds.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DomainRuntimeConfig {
     Evm(EvmDomainRuntimeConfig),

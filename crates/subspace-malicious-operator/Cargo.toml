@@ -38,6 +38,7 @@ mimalloc = "0.1.43"
 pallet-domains = { version = "0.1.0", default-features = false, path = "../pallet-domains" }
 pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
 parity-scale-codec = "3.6.12"
+pallet-subspace = { version = "0.1.0", default-features = false, path = "../pallet-subspace" }
 pallet-sudo = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
 sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
 sc-cli = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", default-features = false }

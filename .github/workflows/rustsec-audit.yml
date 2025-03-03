@@ -21,6 +21,4 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           # TODO: Remove first once Substrate upgrades litep2p and we no longer have rustls 0.20.9 in our dependencies
-          # TODO: Remove second once Substrate upgrades libp2p and we no longer have old idna in our dependencies
-          # TODO: Remove third once Substrate upgrades libp2p and we no longer have old hickory-proto in our dependencies
-          ignore: RUSTSEC-2024-0336,RUSTSEC-2024-0421,RUSTSEC-2025-0006
+          ignore: RUSTSEC-2024-0336

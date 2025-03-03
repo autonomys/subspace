@@ -62,7 +62,7 @@ fn get_genesis_allocations(contents: &str) -> Vec<(AccountId, Balance)> {
 
 pub fn mainnet_compiled() -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
-        WASM_BINARY.ok_or_else(|| "Wasm binary must be built for Taurus".to_string())?,
+        WASM_BINARY.ok_or_else(|| "Wasm binary must be built for Mainnet".to_string())?,
         None,
     )
     .with_name("Autonomys Mainnet")

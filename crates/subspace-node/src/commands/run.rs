@@ -387,46 +387,46 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 }
 
 pub fn ensure_block_and_state_pruning_params(config: &mut Configuration) {
-    let blocks_to_prune =
+    let domains_pruning_depth =
         DOMAINS_BLOCK_PRUNING_DEPTH.saturating_mul(DOMAINS_PRUNING_DEPTH_MULTIPLIER);
 
     if let BlocksPruning::Some(blocks) = config.blocks_pruning {
-        config.blocks_pruning = BlocksPruning::Some(if blocks >= blocks_to_prune {
+        config.blocks_pruning = BlocksPruning::Some(if blocks >= domains_pruning_depth {
             blocks
         } else {
             warn!(
                 "Blocks pruning config needs to be at least {:?}",
-                blocks_to_prune
+                domains_pruning_depth
             );
-            blocks_to_prune
+            domains_pruning_depth
         });
     }
 
     match &config.state_pruning {
         None => {
             config.state_pruning = Some(PruningMode::Constrained(Constraints {
-                max_blocks: Some(blocks_to_prune),
+                max_blocks: Some(domains_pruning_depth),
             }))
         }
         Some(pruning_mode) => {
             if let PruningMode::Constrained(constraints) = pruning_mode {
-                let blocks_to_prune = match constraints.max_blocks {
-                    None => blocks_to_prune,
-                    Some(blocks) => {
-                        if blocks >= blocks_to_prune {
-                            blocks
+                let max_blocks = match constraints.max_blocks {
+                    None => domains_pruning_depth,
+                    Some(max_blocks) => {
+                        if max_blocks >= domains_pruning_depth {
+                            max_blocks
                         } else {
                             warn!(
                                 "State pruning config needs to be at least {:?}",
-                                blocks_to_prune
+                                domains_pruning_depth
                             );
-                            blocks_to_prune
+                            domains_pruning_depth
                         }
                     }
                 };
 
                 config.state_pruning = Some(PruningMode::Constrained(Constraints {
-                    max_blocks: Some(blocks_to_prune),
+                    max_blocks: Some(max_blocks),
                 }))
             }
         }

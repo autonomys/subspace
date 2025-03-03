@@ -189,7 +189,7 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
         .unwrap_or_else(|| Ok(Default::default()))?;
     let max_runtime_instances = 8;
     let is_validator = role.is_authority();
-    // The malicous operator has its own internal keystore
+    // The malicious operator has its own internal keystore
     let keystore = KeystoreConfig::InMemory;
     let telemetry_endpoints = None;
     let runtime_cache_size = 2;

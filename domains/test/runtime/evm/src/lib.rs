@@ -121,8 +121,7 @@ pub type SignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     pallet_evm_tracker::create_contract::CheckContractCreation<Runtime>,
-    // TODO: remove or adapt after or during migration to General extrinsic respectively
-    subspace_runtime_primitives::extensions::DisableGeneralExtrinsics<Runtime>,
+    subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics<Runtime>,
 );
 
 /// Custom signed extra for check_and_pre_dispatch.
@@ -137,8 +136,7 @@ type CustomSignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     pallet_evm_tracker::create_contract::CheckContractCreation<Runtime>,
-    // TODO: remove or adapt after or during migration to General extrinsic respectively
-    subspace_runtime_primitives::extensions::DisableGeneralExtrinsics<Runtime>,
+    subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -182,7 +180,7 @@ pub fn construct_extrinsic_raw_payload(
         domain_check_weight::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
         pallet_evm_tracker::create_contract::CheckContractCreation::<Runtime>::new(),
-        subspace_runtime_primitives::extensions::DisableGeneralExtrinsics::<Runtime>::new(),
+        subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics::<Runtime>::new(),
     );
     (
         generic::SignedPayload::<RuntimeCallFor<Runtime>, SignedExtra>::from_raw(
@@ -938,6 +936,15 @@ impl fp_rpc::ConvertTransaction<opaque::UncheckedExtrinsic> for TransactionConve
         let encoded = extrinsic.encode();
         opaque::UncheckedExtrinsic::decode(&mut &encoded[..])
             .expect("Encoded extrinsic is always valid")
+    }
+}
+
+// List of allowed general unsigned extrinsics.
+// New unsigned general extrinsics must be included here.
+impl subspace_runtime_primitives::AllowedUnsignedExtrinsics for RuntimeCall {
+    fn is_allowed_unsigned(&self) -> bool {
+        // TODO: update once we start migration for domains
+        false
     }
 }
 

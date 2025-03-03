@@ -1317,7 +1317,7 @@ async fn test_evm_domain_block_fee() {
 //         proof_verifier
 //             .verify(&good_invalid_transaction_proof)
 //             .is_ok(),
-//         "Valid proof must be accepeted"
+//         "Valid proof must be accepted"
 //     );
 
 //     ferdie

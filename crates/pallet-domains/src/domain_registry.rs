@@ -9,7 +9,7 @@ use crate::runtime_registry::DomainRuntimeInfo;
 use crate::staking::StakingSummary;
 use crate::{
     into_complete_raw_genesis, BalanceOf, Config, DomainHashingFor, DomainRegistry,
-    DomainSudoCalls, ExecutionReceiptOf, HoldIdentifier, NextDomainId, RuntimeRegistry,
+    DomainSudoCalls, ExecutionReceiptOf, HoldIdentifier, NextDomainId, Pallet, RuntimeRegistry,
 };
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
@@ -368,16 +368,18 @@ pub(crate) fn do_update_domain_allow_list<T: Config>(
     domain_id: DomainId,
     updated_operator_allow_list: OperatorAllowList<T::AccountId>,
 ) -> Result<(), Error> {
-    DomainRegistry::<T>::try_mutate(domain_id, |maybe_domain_object| {
-        let domain_obj = maybe_domain_object.as_mut().ok_or(Error::DomainNotFound)?;
-        ensure!(
-            domain_obj.owner_account_id == domain_owner,
-            Error::NotDomainOwner
-        );
+    let mut domain_obj =
+        Pallet::<T>::domain_registry_fallback(domain_id).ok_or(Error::DomainNotFound)?;
 
-        domain_obj.domain_config.operator_allow_list = updated_operator_allow_list;
-        Ok(())
-    })
+    ensure!(
+        domain_obj.owner_account_id == domain_owner,
+        Error::NotDomainOwner,
+    );
+
+    domain_obj.domain_config.operator_allow_list = updated_operator_allow_list;
+    DomainRegistry::<T>::insert(domain_id, domain_obj);
+
+    Ok(())
 }
 
 #[cfg(test)]
