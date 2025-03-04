@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["DomainRuntimeInfoV2"],"struct":["DomainObjectV2","VersionUncheckedMigrateV2ToV3"],"type":["VersionCheckedMigrateDomainsV2ToV3"]};
