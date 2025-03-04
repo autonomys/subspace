@@ -943,6 +943,7 @@ pub type SignedExtra = (
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     pallet_subspace::extensions::SubspaceExtension<Runtime>,
+    pallet_domains::extensions::DomainsExtension<Runtime>,
     subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
@@ -968,6 +969,15 @@ impl pallet_subspace::extensions::MaybeSubspaceCall<Runtime> for RuntimeCall {
     }
 }
 
+impl pallet_domains::extensions::MaybeDomainsCall<Runtime> for RuntimeCall {
+    fn maybe_domains_call(&self) -> Option<&pallet_domains::Call<Runtime>> {
+        match self {
+            RuntimeCall::Domains(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
 // List of allowed general unsigned extrinsics.
 // New unsigned general extrinsics must be included here.
 impl subspace_runtime_primitives::AllowedUnsignedExtrinsics for RuntimeCall {
@@ -975,6 +985,9 @@ impl subspace_runtime_primitives::AllowedUnsignedExtrinsics for RuntimeCall {
         matches!(
             self,
             RuntimeCall::Subspace(pallet_subspace::Call::vote { .. })
+                | RuntimeCall::Domains(pallet_domains::Call::submit_bundle { .. })
+                | RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { .. })
+                | RuntimeCall::Domains(pallet_domains::Call::submit_receipt { .. })
         )
     }
 }
@@ -1179,6 +1192,7 @@ fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
         // so set a default value
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
+        pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
         subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics::<Runtime>::new(),
     );
 

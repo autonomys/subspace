@@ -43,7 +43,7 @@ use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::traits::{Get, Randomness as RandomnessT, Time};
 use frame_support::weights::Weight;
-use frame_system::offchain::{CreateInherent, SubmitTransaction};
+use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use parity_scale_codec::{Decode, Encode};
@@ -75,7 +75,7 @@ use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrProofVerifier};
 pub use staking::OperatorConfig;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::{BlockHash, SlotNumber, U256};
-use subspace_runtime_primitives::{Balance, Moment, StorageFee};
+use subspace_runtime_primitives::{Balance, CreateUnsigned, Moment, StorageFee};
 
 /// Maximum number of nominators to slash within a give operator at a time.
 pub const MAX_NOMINATORS_TO_SLASH: u32 = 10;
@@ -3105,7 +3105,7 @@ impl<T: Config> sp_domains::DomainOwner<T::AccountId> for Pallet<T> {
 
 impl<T> Pallet<T>
 where
-    T: Config + CreateInherent<Call<T>>,
+    T: Config + CreateUnsigned<Call<T>>,
 {
     /// Submits an unsigned extrinsic [`Call::submit_bundle`].
     pub fn submit_bundle_unsigned(opaque_bundle: OpaqueBundleOf<T>) {
@@ -3113,7 +3113,7 @@ where
         let extrincis_count = opaque_bundle.extrinsics.len();
 
         let call = Call::submit_bundle { opaque_bundle };
-        let ext = T::create_inherent(call.into());
+        let ext = T::create_unsigned(call.into());
 
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
@@ -3134,7 +3134,7 @@ where
         let domain_block_number = singleton_receipt.receipt().domain_block_number;
 
         let call = Call::submit_receipt { singleton_receipt };
-        let ext = T::create_inherent(call.into());
+        let ext = T::create_unsigned(call.into());
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
                 log::info!(
@@ -3154,7 +3154,7 @@ where
             fraud_proof: Box::new(fraud_proof),
         };
 
-        let ext = T::create_inherent(call.into());
+        let ext = T::create_unsigned(call.into());
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
                 log::info!(target: "runtime::domains", "Submitted fraud proof");
