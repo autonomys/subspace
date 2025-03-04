@@ -13,18 +13,18 @@ include = [
 ]
 
 [dependencies]
-async-trait = { version = "0.1.83", optional = true }
-codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
-domain-runtime-primitives = { version = "0.1.0", default-features = false, path = "../runtime" }
-sp-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-domains = { version = "0.1.0", default-features = false, path = "../../../crates/sp-domains" }
-sp-inherents = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
+async-trait = { workspace = true, optional = true }
+parity-scale-codec = { workspace = true, features = ["derive"] }
+domain-runtime-primitives.workspace = true
+sp-api.workspace = true
+sp-domains.workspace = true
+sp-inherents.workspace = true
 
 [features]
 default = ["std"]
 std = [
     "async-trait",
-    "codec/std",
+    "parity-scale-codec/std",
     "domain-runtime-primitives/std",
     "sp-api/std",
     "sp-domains/std",

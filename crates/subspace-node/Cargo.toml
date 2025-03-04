@@ -19,72 +19,72 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-auto-id-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/auto-id" }
-bip39 = { version = "2.0.0", features = ["rand"] }
-clap = { version = "4.5.18", features = ["derive"] }
-cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
-domain-client-message-relayer = { version = "0.1.0", path = "../../domains/client/relayer" }
-domain-client-operator = { version = "0.1.0", path = "../../domains/client/domain-operator" }
-domain-eth-service = { version = "0.1.0", path = "../../domains/client/eth-service" }
-domain-service = { version = "0.1.0", path = "../../domains/service" }
-domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
-evm-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/evm" }
-fdlimit = "0.3.0"
-fp-evm = { version = "3.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409" }
-frame-benchmarking = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", default-features = false, optional = true }
-frame-benchmarking-cli = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", default-features = false, optional = true }
-frame-support = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-futures = "0.3.31"
-hex = "0.4.3"
-hex-literal = "0.4.1"
-mimalloc = "0.1.43"
-parity-scale-codec = "3.6.12"
-prometheus-client = "0.22.3"
-sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-cli = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", default-features = false }
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-consensus-slots = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-consensus-subspace = { version = "0.1.0", path = "../sc-consensus-subspace" }
-sc-domains = { version = "0.1.0", path = "../sc-domains" }
-sc-keystore = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-proof-of-time = { version = "0.1.0", path = "../sc-proof-of-time" }
-sc-subspace-chain-specs = { version = "0.1.0", path = "../sc-subspace-chain-specs" }
-sc-service = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", default-features = false }
-sc-state-db = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-storage-monitor = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", default-features = false }
-sc-telemetry = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-network-sync = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.128"
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-domains = { version = "0.1.0", path = "../sp-domains" }
-sp-domain-digests = { version = "0.1.0", path = "../../domains/primitives/digests" }
-sp-keystore = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-messenger = { version = "0.1.0", path = "../../domains/primitives/messenger" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
-subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
-subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
-subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
-subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
-subspace-service = { version = "0.1.0", path = "../subspace-service" }
-substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-tempfile = "3.13.0"
-thiserror = "2.0.0"
-tokio = { version = "1.40.0", features = ["macros"] }
-tokio-stream = "0.1.16"
-tracing = "0.1.40"
-subspace-logging = { version = "0.0.1", path = "../../shared/subspace-logging" }
+auto-id-domain-runtime.workspace = true
+bip39 = { workspace = true, features = ["rand"] }
+clap = { workspace = true, features = ["derive"] }
+cross-domain-message-gossip.workspace = true
+domain-client-message-relayer.workspace = true
+domain-client-operator.workspace = true
+domain-eth-service.workspace = true
+domain-service.workspace = true
+domain-runtime-primitives.workspace = true
+evm-domain-runtime.workspace = true
+fdlimit.workspace = true
+fp-evm.workspace = true
+frame-benchmarking = { workspace = true, optional = true }
+frame-benchmarking-cli = { workspace = true, optional = true }
+frame-support.workspace = true
+futures.workspace = true
+hex.workspace = true
+hex-literal.workspace = true
+mimalloc.workspace = true
+parity-scale-codec.workspace = true
+prometheus-client.workspace = true
+sc-chain-spec.workspace = true
+sc-cli.workspace = true
+sc-client-api.workspace = true
+sc-consensus-slots.workspace = true
+sc-consensus-subspace.workspace = true
+sc-domains.workspace = true
+sc-keystore.workspace = true
+sc-network.workspace = true
+sc-proof-of-time.workspace = true
+sc-subspace-chain-specs.workspace = true
+sc-service.workspace = true
+sc-state-db.workspace = true
+sc-storage-monitor.workspace = true
+sc-telemetry.workspace = true
+sc-transaction-pool-api.workspace = true
+sc-network-sync.workspace = true
+sc-utils.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sp-api.workspace = true
+sp-blockchain.workspace = true
+sp-consensus-subspace.workspace = true
+sp-core.workspace = true
+sp-domains.workspace = true
+sp-domain-digests.workspace = true
+sp-keystore.workspace = true
+sp-messenger.workspace = true
+sp-runtime.workspace = true
+subspace-core-primitives.workspace = true
+subspace-metrics.workspace = true
+subspace-networking.workspace = true
+subspace-proof-of-space.workspace = true
+subspace-runtime.workspace = true
+subspace-runtime-primitives.workspace = true
+subspace-service.workspace = true
+substrate-prometheus-endpoint.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros"] }
+tokio-stream.workspace = true
+tracing.workspace = true
+subspace-logging.workspace = true
 
 [build-dependencies]
-substrate-build-script-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
+substrate-build-script-utils.workspace = true
 
 [features]
 default = []

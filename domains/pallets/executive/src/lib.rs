@@ -35,7 +35,6 @@ pub mod weights;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use codec::{Codec, Encode};
 use frame_support::defensive_assert;
 use frame_support::dispatch::{
     DispatchClass, DispatchErrorWithPostInfo, DispatchInfo, GetDispatchInfo, Pays, PostDispatchInfo,
@@ -50,6 +49,7 @@ use frame_support::traits::{
 use frame_support::weights::{Weight, WeightToFee};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
+use parity_scale_codec::{Codec, Encode};
 use sp_runtime::traits::{
     Applyable, Block as BlockT, CheckEqual, Checkable, Dispatchable, Header, NumberFor, One,
     ValidateUnsigned, Zero,

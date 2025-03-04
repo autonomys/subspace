@@ -13,40 +13,40 @@ documentation = "https://docs.rs/sc-consensus-subspace"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.83"
-codec = { package = "parity-scale-codec", version = "3.6.12", features = ["derive"] }
-futures = "0.3.31"
-parking_lot = "0.12.2"
-rand = "0.8.5"
-rand_chacha = "0.3.1"
-rayon = "1.10.0"
-schnorrkel = "0.11.4"
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-consensus-slots = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-proof-of-time = { version = "0.1.0", path = "../sc-proof-of-time" }
-sc-telemetry = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
-sp-consensus-slots = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-inherents = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-objects = { version = "0.1.0", path = "../sp-objects" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
-subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
-subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
-subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
-subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
-thiserror = "2.0.0"
-tokio = { version = "1.40.0", features = ["sync", "time"] }
-tracing = "0.1.40"
+async-trait.workspace = true
+parity-scale-codec = { workspace = true, features = ["derive"] }
+futures.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+rayon.workspace = true
+schnorrkel.workspace = true
+sc-client-api.workspace = true
+sc-consensus.workspace = true
+sc-consensus-slots.workspace = true
+sc-proof-of-time.workspace = true
+sc-telemetry.workspace = true
+sc-transaction-pool-api.workspace = true
+sc-utils.workspace = true
+sp-api.workspace = true
+sp-blockchain.workspace = true
+sp-block-builder.workspace = true
+sp-consensus.workspace = true
+sp-consensus-subspace.workspace = true
+sp-consensus-slots.workspace = true
+sp-core.workspace = true
+sp-inherents.workspace = true
+sp-objects.workspace = true
+sp-runtime.workspace = true
+subspace-archiving.workspace = true
+subspace-core-primitives.workspace = true
+subspace-erasure-coding.workspace = true
+subspace-kzg.workspace = true
+subspace-proof-of-space.workspace = true
+subspace-verification.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+tracing.workspace = true
 
 [dev-dependencies]
 # TODO: Restore in the future, currently tests are mostly broken and useless

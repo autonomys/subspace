@@ -30,12 +30,12 @@ pub mod weights;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use codec::{Decode, Encode};
 use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
 use frame_support::dispatch::DispatchResult;
 use frame_support::ensure;
 use frame_support::traits::Currency;
 pub use pallet::*;
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_domains::{DomainId, DomainsTransfersTracker, Transfers};
 use sp_messenger::endpoint::EndpointResponse;
@@ -77,11 +77,11 @@ mod pallet {
     use crate::{BalanceOf, Location, MessageIdOf, MultiAccountId, Transfer, TryConvertBack};
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
-    use codec::{Decode, Encode};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
     use frame_support::weights::Weight;
     use frame_system::pallet_prelude::*;
+    use parity_scale_codec::{Decode, Encode};
     use sp_domains::{DomainId, DomainsTransfersTracker, Transfers};
     use sp_messenger::endpoint::{
         Endpoint, EndpointHandler as EndpointHandlerT, EndpointId, EndpointRequest,

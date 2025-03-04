@@ -13,12 +13,12 @@ use crate::{
     bundle_storage_fund, BalanceOf, Config, DepositOnHold, ElectionVerificationParams, Event,
     HoldIdentifier, OperatorEpochSharePrice, Pallet,
 };
-use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
 use frame_support::traits::tokens::{
     DepositConsequence, Fortitude, Precision, Provenance, Restriction,
 };
 use frame_support::PalletError;
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{DomainId, EpochIndex, OperatorId};

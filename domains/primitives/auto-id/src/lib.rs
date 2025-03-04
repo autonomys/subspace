@@ -27,7 +27,7 @@ extern crate alloc;
 pub use crate::runtime_interface::auto_id_runtime_interface;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_runtime_interface::pass_by;

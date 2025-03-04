@@ -1,7 +1,6 @@
 use crate::Config;
 #[cfg(not(feature = "std"))]
 use alloc::vec;
-use codec::{Decode, Encode};
 use core::cmp::max;
 use core::fmt;
 use core::result::Result;
@@ -12,6 +11,7 @@ use frame_support::pallet_prelude::{
 };
 use frame_support::sp_runtime::traits::{DispatchInfoOf, One, TransactionExtension};
 use frame_support::RuntimeDebugNoBound;
+use parity_scale_codec::{Decode, Encode};
 use sp_runtime::traits::{
     AsSystemOriginSigner, Dispatchable, PostDispatchInfoOf, ValidateResult, Zero,
 };

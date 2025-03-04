@@ -14,12 +14,12 @@ include = [
 ]
 
 [dependencies]
-array-bytes = "6.2.3"
-futures = "0.3.31"
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-network-sync = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-tracing = "0.1.40"
+array-bytes.workspace = true
+futures.workspace = true
+sc-client-api.workspace = true
+sc-consensus.workspace = true
+sc-network.workspace = true
+sc-network-sync.workspace = true
+sp-blockchain.workspace = true
+sp-runtime.workspace = true
+tracing.workspace = true

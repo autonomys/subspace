@@ -5,7 +5,7 @@ extern crate alloc;
 use crate::host_functions::SubspaceMmrExtension;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 #[cfg(feature = "std")]

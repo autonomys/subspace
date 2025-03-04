@@ -19,20 +19,19 @@ name = "kzg"
 harness = false
 
 [dependencies]
-derive_more = { version = "1.0.0", default-features = false, features = ["full"] }
-kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
-parking_lot = { version = "0.12.2", optional = true }
-rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
-# Replacement for `parking_lot` in `no_std` environment
-spin = "0.9.7"
-static_assertions = "1.1.0"
-subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives", default-features = false }
-tracing = { version = "0.1.40", default-features = false }
+derive_more = { workspace = true, features = ["full"] }
+kzg.workspace = true
+parking_lot = { workspace = true, optional = true }
+rust-kzg-blst.workspace = true
+spin.workspace = true
+static_assertions.workspace = true
+subspace-core-primitives.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
-criterion = "0.5.1"
-rand = { version = "0.8.5", features = ["min_const_gen"] }
-rand_core = "0.6.4"
+criterion.workspace = true
+rand = { workspace = true, features = ["min_const_gen"] }
+rand_core.workspace = true
 
 [features]
 default = [
@@ -52,4 +51,3 @@ std = [
     "subspace-core-primitives/std",
     "tracing/std",
 ]
-

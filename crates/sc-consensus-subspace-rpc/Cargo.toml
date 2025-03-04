@@ -13,31 +13,31 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-oneshot = "0.5.9"
-futures = "0.3.31"
-futures-timer = "3.0.3"
-jsonrpsee = { version = "0.24.5", features = ["server-core", "macros"] }
-parking_lot = "0.12.2"
-schnellru = "0.2.4"
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-consensus-subspace = { version = "0.1.0", path = "../sc-consensus-subspace" }
-sc-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-rpc-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-serde = { version = "1.0.216", default-features = false, features = ["alloc", "derive"] }
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-objects = { version = "0.1.0", path = "../sp-objects" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
-subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
-subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
-subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
-subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
-subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
-thiserror = "2.0.0"
-tracing = "0.1.40"
+async-oneshot.workspace = true
+futures.workspace = true
+futures-timer.workspace = true
+jsonrpsee = { workspace = true, features = ["server-core", "macros"] }
+parking_lot.workspace = true
+schnellru.workspace = true
+sc-client-api.workspace = true
+sc-consensus-subspace.workspace = true
+sc-rpc.workspace = true
+sc-rpc-api.workspace = true
+sc-utils.workspace = true
+serde = { workspace = true, features = ["alloc", "derive"] }
+sp-api.workspace = true
+sp-consensus.workspace = true
+sp-consensus-subspace.workspace = true
+sp-blockchain.workspace = true
+sp-core.workspace = true
+sp-objects.workspace = true
+sp-runtime.workspace = true
+subspace-archiving.workspace = true
+subspace-core-primitives.workspace = true
+subspace-erasure-coding.workspace = true
+subspace-farmer-components.workspace = true
+subspace-kzg.workspace = true
+subspace-networking.workspace = true
+subspace-rpc-primitives.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

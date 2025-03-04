@@ -2,10 +2,10 @@ use crate::aux_schema::BundleMismatchType;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
 use crate::ExecutionReceiptFor;
-use codec::Encode;
 use domain_block_builder::{BlockBuilder, BuiltBlock, CollectedStorageChanges};
 use domain_block_preprocessor::inherents::get_inherent_data;
 use domain_block_preprocessor::PreprocessResult;
+use parity_scale_codec::Encode;
 use sc_client_api::{AuxStore, BlockBackend, ExecutorProvider, Finalizer, ProofProvider};
 use sc_consensus::{
     BlockImportParams, BoxBlockImport, ForkChoiceStrategy, ImportResult, StateAction,

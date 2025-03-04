@@ -6,13 +6,13 @@
 
 pub mod weights;
 
-use codec::{Codec, Decode, Encode};
 use frame_support::sp_runtime::traits::Zero;
 use frame_support::sp_runtime::SaturatedConversion;
 use frame_support::traits::{Currency, Get};
 use frame_support::weights::Weight;
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
+use parity_scale_codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
 use subspace_runtime_primitives::FindBlockRewardAddress;
 

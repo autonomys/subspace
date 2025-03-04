@@ -28,10 +28,10 @@ pub use pallet::*;
 mod pallet {
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
-    use codec::{Codec, MaxEncodedLen};
     use frame_support::pallet_prelude::*;
     use frame_support::storage::generator::StorageValue as _;
     use frame_system::pallet_prelude::*;
+    use parity_scale_codec::{Codec, MaxEncodedLen};
     use scale_info::TypeInfo;
     use sp_block_fees::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_domains::{BlockFees, ChainId};

@@ -1,7 +1,7 @@
 //! Custom API that is efficient to collect storage roots.
 
-use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
+use parity_scale_codec::{Codec, Decode, Encode};
 use sc_client_api::{backend, ExecutorProvider, StateBackend};
 use sp_core::offchain::OffchainOverlayedChange;
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode};

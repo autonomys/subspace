@@ -3,7 +3,7 @@ use crate::network::receipt_receiver::LastDomainBlockInfoReceiver;
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{FullBackend, FullClient};
 use cross_domain_message_gossip::ChainMsg;
-use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
+use domain_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_client_operator::snap_sync::ConsensusChainSyncParams;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};

@@ -11,21 +11,21 @@ include = [
 ]
 
 [dependencies]
-blake3 = { version = "1.5.4", default-features = false }
-bytes = { version = "1.7.1", default-features = false }
-derive_more = { version = "1.0.0", default-features = false, features = ["full"] }
-hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
-num-traits = { version = "0.2.18", default-features = false }
-parity-scale-codec = { version = "3.6.12", default-features = false, features = ["bytes", "derive", "max-encoded-len"] }
-rayon = { version = "1.10.0", optional = true }
-scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
-serde = { version = "1.0.216", optional = true, default-features = false, features = ["alloc", "derive"] }
-serde-big-array = "0.5.1"
-static_assertions = "1.1.0"
-uint = { version = "0.10.0", default-features = false }
+blake3.workspace = true
+bytes.workspace = true
+derive_more = { workspace = true, features = ["full"] }
+hex = { workspace = true, features = ["alloc"] }
+num-traits.workspace = true
+parity-scale-codec = { workspace = true, features = ["bytes", "derive", "max-encoded-len"] }
+rayon = { workspace = true, optional = true }
+scale-info = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["alloc", "derive"], optional = true }
+serde-big-array.workspace = true
+static_assertions.workspace = true
+uint.workspace = true
 
 [dev-dependencies]
-rand = { version = "0.8.5", features = ["min_const_gen"] }
+rand = { workspace = true, features = ["min_const_gen"] }
 
 [features]
 default = [

@@ -7,7 +7,7 @@ pub(crate) enum RequestResponseErr {
     #[error("RequestResponseErr::DecodeFailed: {response_len}/{err:?}")]
     DecodeFailed {
         response_len: usize,
-        err: codec::Error,
+        err: parity_scale_codec::Error,
     },
 
     #[error("RequestResponseErr::RequestFailure {0:?}")]

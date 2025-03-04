@@ -6,7 +6,7 @@ extern crate alloc;
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode};
 #[cfg(feature = "std")]
 use sp_inherents::{Error, InherentData};
 use sp_inherents::{InherentIdentifier, IsFatalError};

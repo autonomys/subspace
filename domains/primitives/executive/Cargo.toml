@@ -13,14 +13,14 @@ include = [
 ]
 
 [dependencies]
-async-trait = { version = "0.1.83", optional = true }
-codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
-sp-inherents = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
+async-trait = { workspace = true, optional = true }
+parity-scale-codec = { workspace = true, features = ["derive"] }
+sp-inherents.workspace = true
 
 [features]
 default = ["std"]
 std = [
     "async-trait",
-    "codec/std",
+    "parity-scale-codec/std",
     "sp-inherents/std",
 ]

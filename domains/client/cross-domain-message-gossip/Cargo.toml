@@ -12,24 +12,24 @@ include = [
 ]
 
 [dependencies]
-domain-block-preprocessor = { version = "0.1.0", path = "../../client/block-preprocessor" }
-fp-account = { version = "1.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409" }
-futures = "0.3.31"
-parity-scale-codec = { version = "3.6.12", features = ["derive"] }
-parking_lot = "0.12.2"
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-executor = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-network-gossip = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
-sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
-thiserror = "2.0.0"
-tracing = "0.1.40"
+domain-block-preprocessor.workspace = true
+fp-account.workspace = true
+futures.workspace = true
+parity-scale-codec = { workspace = true, features = ["derive"] }
+parking_lot.workspace = true
+sc-client-api.workspace = true
+sc-executor.workspace = true
+sc-network.workspace = true
+sc-network-gossip.workspace = true
+sc-transaction-pool-api.workspace = true
+sc-utils.workspace = true
+sp-api.workspace = true
+sp-blockchain.workspace = true
+sp-consensus.workspace = true
+sp-core.workspace = true
+sp-domains.workspace = true
+sp-messenger.workspace = true
+sp-runtime.workspace = true
+subspace-runtime-primitives.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

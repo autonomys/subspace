@@ -1,6 +1,6 @@
 use crate::mock::{new_test_ext, Executive, RuntimeOrigin};
-use codec::Encode;
 use frame_support::assert_ok;
+use parity_scale_codec::Encode;
 use sp_version::RuntimeVersion;
 
 struct ReadRuntimeVersion(Vec<u8>);

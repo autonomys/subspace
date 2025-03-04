@@ -12,20 +12,20 @@ include = [
 ]
 
 [dependencies]
-async-channel = "1.9.0"
-cross-domain-message-gossip = { path = "../../client/cross-domain-message-gossip" }
-futures = "0.3.31"
-parity-scale-codec = { version = "3.6.12", features = ["derive"] }
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-state-db = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
-sp-messenger = { version = "0.1.0", path = "../../primitives/messenger" }
-sp-mmr-primitives = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-subspace-mmr = { version = "0.1.0", default-features = false, path = "../../../crates/sp-subspace-mmr" }
-tracing = "0.1.40"
+async-channel.workspace = true
+cross-domain-message-gossip.workspace = true
+futures.workspace = true
+parity-scale-codec = { workspace = true, features = ["derive"] }
+sc-client-api.workspace = true
+sc-state-db.workspace = true
+sc-utils.workspace = true
+sp-api.workspace = true
+sp-blockchain.workspace = true
+sp-consensus.workspace = true
+sp-core.workspace = true
+sp-domains.workspace = true
+sp-messenger.workspace = true
+sp-mmr-primitives.workspace = true
+sp-runtime.workspace = true
+sp-subspace-mmr.workspace = true
+tracing.workspace = true

@@ -1,9 +1,9 @@
 use crate::aux_schema::BundleMismatchType;
 use crate::ExecutionReceiptFor;
-use codec::{Decode, Encode};
 use domain_block_builder::BlockBuilder;
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::CheckExtrinsicsValidityError;
+use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, BlockBackend, ExecutorProvider, ProofProvider};
 use sc_domains::FPStorageKeyProvider;
 use sp_api::{ApiExt, ProvideRuntimeApi};
@@ -63,7 +63,7 @@ pub enum FraudProofError {
     #[error("Unable to decode opaque bundle's extrinsic at index {extrinsic_index}")]
     UnableToDecodeOpaqueBundleExtrinsic {
         extrinsic_index: usize,
-        decoding_error: codec::Error,
+        decoding_error: parity_scale_codec::Error,
     },
     #[error(
         "Invalid extrinsic index for creating illegal tx fraud proof, \

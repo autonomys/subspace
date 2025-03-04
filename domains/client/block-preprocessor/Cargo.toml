@@ -12,34 +12,34 @@ include = [
 ]
 
 [dependencies]
-async-trait = { version = "0.1.57" }
-codec = { package = "parity-scale-codec", version = "3.6.12", features = ["derive"] }
-domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-executor = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-executor-common = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-block-fees = { version = "0.1.0", path = "../../primitives/block-fees" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
-sp-domain-sudo = { version = "0.1.0", path = "../../primitives/domain-sudo" }
-sp-evm-tracker = { version = "0.1.0", path = "../../primitives/evm-tracker" }
-sp-executive = { version = "0.1.0", path = "../../primitives/executive" }
-sp-externalities = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-inherents = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-messenger = { version = "0.1.0", path = "../../primitives/messenger" }
-sp-mmr-primitives = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-state-machine = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-subspace-mmr = { default-features = false, path = "../../../crates/sp-subspace-mmr" }
-sp-timestamp = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-weights = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-version = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
-subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
-tracing = "0.1.40"
+async-trait.workspace = true
+parity-scale-codec = { workspace = true, features = ["derive"] }
+domain-runtime-primitives.workspace = true
+sc-client-api.workspace = true
+sc-executor.workspace = true
+sc-executor-common.workspace = true
+sp-api.workspace = true
+sp-blockchain.workspace = true
+sp-block-fees.workspace = true
+sp-core.workspace = true
+sp-domains.workspace = true
+sp-domain-sudo.workspace = true
+sp-evm-tracker.workspace = true
+sp-executive.workspace = true
+sp-externalities.workspace = true
+sp-inherents.workspace = true
+sp-messenger.workspace = true
+sp-mmr-primitives.workspace = true
+sp-runtime.workspace = true
+sp-state-machine.workspace = true
+sp-subspace-mmr.workspace = true
+sp-timestamp.workspace = true
+sp-weights.workspace = true
+sp-version.workspace = true
+subspace-core-primitives.workspace = true
+subspace-runtime-primitives.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
-sp-keyring = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-state-machine = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
+sp-keyring.workspace = true
+sp-state-machine.workspace = true
