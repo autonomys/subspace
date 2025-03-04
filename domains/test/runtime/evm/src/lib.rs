@@ -211,6 +211,21 @@ pub type Executive = domain_pallet_executive::Executive<
     AllPalletsWithSystem,
 >;
 
+/// Returns the storage fee for `len` bytes, or an overflow error.
+fn consensus_storage_fee(len: impl TryInto<Balance>) -> Result<Balance, TransactionValidityError> {
+    // This should never fail with the current types.
+    // But if converting to Balance would overflow, so would any multiplication.
+    let len = len.try_into().map_err(|_| {
+        TransactionValidityError::Invalid(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW))
+    })?;
+
+    BlockFees::consensus_chain_byte_fee()
+        .checked_mul(Into::<Balance>::into(len))
+        .ok_or(TransactionValidityError::Invalid(
+            InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW),
+        ))
+}
+
 impl fp_self_contained::SelfContainedCall for RuntimeCall {
     type SignedInfo = H160;
 
@@ -246,10 +261,9 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         match self {
             RuntimeCall::Ethereum(call) => {
                 // Ensure the caller can pay for the consensus chain storage fee
-                let Some(consensus_storage_fee) =
-                    BlockFees::consensus_chain_byte_fee().checked_mul(Balance::from(len as u32))
-                else {
-                    return Some(Err(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW).into()));
+                let consensus_storage_fee = match consensus_storage_fee(len) {
+                    Ok(fee) => fee,
+                    Err(err) => return Some(Err(err)),
                 };
                 let withdraw_res = <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
                     Runtime,
@@ -283,10 +297,9 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
             RuntimeCall::Ethereum(call) => {
                 // Withdraw the consensus chain storage fee from the caller and record
                 // it in the `BlockFees`
-                let Some(consensus_storage_fee) =
-                    BlockFees::consensus_chain_byte_fee().checked_mul(Balance::from(len as u32))
-                else {
-                    return Some(Err(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW).into()));
+                let consensus_storage_fee = match consensus_storage_fee(len) {
+                    Ok(fee) => fee,
+                    Err(err) => return Some(Err(err)),
                 };
                 match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
                     info,
@@ -504,9 +517,7 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
         charged_fees: Balance,
         tx_size: u32,
     ) -> Result<(), TransactionValidityError> {
-        let consensus_storage_fee = BlockFees::consensus_chain_byte_fee()
-            .checked_mul(Balance::from(tx_size))
-            .ok_or(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW))?;
+        let consensus_storage_fee = consensus_storage_fee(tx_size)?;
 
         let (paid_consensus_storage_fee, paid_domain_fee) = if charged_fees <= consensus_storage_fee
         {
@@ -1064,9 +1075,8 @@ fn pre_dispatch_evm_transaction(
         RuntimeCall::Ethereum(call) => {
             // Withdraw the consensus chain storage fee from the caller and record
             // it in the `BlockFees`
-            let consensus_storage_fee = BlockFees::consensus_chain_byte_fee()
-                .checked_mul(Balance::from(len as u32))
-                .ok_or(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW))?;
+            let consensus_storage_fee = consensus_storage_fee(len)?;
+
             match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
                 &account_id,
                 consensus_storage_fee.into(),
