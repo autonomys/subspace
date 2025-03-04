@@ -105,7 +105,7 @@ where
     Ok(is_upgraded)
 }
 
-/// Returns new upgraded runtime if upgraded did happen in the provided consensus block.
+/// Returns new upgraded runtime if upgrade happened in the provided consensus block.
 pub fn extract_domain_runtime_upgrade_code<CClient, CBlock, Block>(
     consensus_client: &Arc<CClient>,
     consensus_block_hash: CBlock::Hash,

@@ -37,7 +37,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 use subspace_service::FullClient as CFullClient;
 use tokio::sync::broadcast::Receiver;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
@@ -135,6 +134,7 @@ pub(super) struct DomainOptions {
 #[derive(Debug)]
 pub(super) struct DomainConfiguration {
     pub(super) domain_config: Configuration,
+    pub(super) challenge_period: u32,
     pub(super) domain_id: DomainId,
     pub(super) operator_id: Option<OperatorId>,
     pub(super) additional_args: Vec<String>,
@@ -143,6 +143,7 @@ pub(super) struct DomainConfiguration {
 pub(super) fn create_domain_configuration(
     consensus_chain_configuration: &Configuration,
     dev: bool,
+    challenge_period: u32,
     domain_options: DomainOptions,
 ) -> Result<DomainConfiguration, Error> {
     let DomainOptions {
@@ -156,7 +157,6 @@ pub(super) fn create_domain_configuration(
         keystore_options,
         pool_config,
         additional_args,
-        ..
     } = domain_options;
 
     let domain_id;
@@ -373,6 +373,7 @@ pub(super) fn create_domain_configuration(
 
     Ok(DomainConfiguration {
         domain_config: Configuration::from(domain_config),
+        challenge_period,
         domain_id,
         operator_id,
         additional_args,
@@ -414,6 +415,7 @@ where
 
     let DomainConfiguration {
         mut domain_config,
+        challenge_period,
         domain_id,
         operator_id,
         additional_args,
@@ -514,7 +516,7 @@ where
                 maybe_operator_id: operator_id,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 consensus_chain_sync_params,
-                challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+                challenge_period,
             };
 
             let mut domain_node = domain_service::new_full::<
@@ -555,7 +557,7 @@ where
                 maybe_operator_id: operator_id,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 consensus_chain_sync_params,
-                challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+                challenge_period,
             };
 
             let mut domain_node = domain_service::new_full::<

@@ -1187,6 +1187,57 @@ pub fn self_domain_id_storage_key() -> StorageKey {
     )
 }
 
+/// The storage key of the `BlockTreePruningDepth` storage item in `pallet-domains`
+///
+/// Any change to the storage item name or `pallet-domains` name used in the `construct_runtime`
+/// macro must be reflected here.
+pub fn consensus_block_tree_pruning_depth_storage_key() -> StorageKey {
+    StorageKey(
+        frame_support::storage::storage_prefix(
+            // This is the name used for `pallet-domains` in the `construct_runtime` macro
+            // i.e. `Domains: pallet_domains = 12`
+            "Domains".as_bytes(),
+            // This is the storage item name used inside `pallet-domains`
+            "BlockTreePruningDepth".as_bytes(),
+        )
+        .to_vec(),
+    )
+}
+
+/// The storage key of the `StakeWithdrawalLockingPeriod` storage item in `pallet-domains`
+///
+/// Any change to the storage item name or `pallet-domains` name used in the `construct_runtime`
+/// macro must be reflected here.
+pub fn consensus_stake_withdrawal_locking_period_storage_key() -> StorageKey {
+    StorageKey(
+        frame_support::storage::storage_prefix(
+            // This is the name used for `pallet-domains` in the `construct_runtime` macro
+            // i.e. `Domains: pallet_domains = 12`
+            "Domains".as_bytes(),
+            // This is the storage item name used inside `pallet-domains`
+            "StakeWithdrawalLockingPeriod".as_bytes(),
+        )
+        .to_vec(),
+    )
+}
+
+/// The storage key of the `DomainRuntimeUpgradeDelay` storage item in `pallet-domains`
+///
+/// Any change to the storage item name or `pallet-domains` name used in the `construct_runtime`
+/// macro must be reflected here.
+pub fn consensus_domain_runtime_upgrade_delay_storage_key() -> StorageKey {
+    StorageKey(
+        frame_support::storage::storage_prefix(
+            // This is the name used for `pallet-domains` in the `construct_runtime` macro
+            // i.e. `Domains: pallet_domains = 12`
+            "Domains".as_bytes(),
+            // This is the storage item name used inside `pallet-domains`
+            "DomainRuntimeUpgradeDelay".as_bytes(),
+        )
+        .to_vec(),
+    )
+}
+
 /// `DomainInstanceData` is used to construct the genesis storage of domain instance chain
 #[derive(Debug, PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 pub struct DomainInstanceData {

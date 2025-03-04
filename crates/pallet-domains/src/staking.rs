@@ -11,7 +11,7 @@ use crate::pallet::{
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
     BalanceOf, Config, DepositOnHold, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId,
-    OperatorEpochSharePrice, Pallet, ReceiptHashFor, SlashedReason,
+    OperatorEpochSharePrice, Pallet, ReceiptHashFor, SlashedReason, StakeWithdrawalLockingPeriod,
 };
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, MutateHold};
@@ -669,7 +669,7 @@ pub(crate) fn do_deregister_operator<T: Config>(
 
                 let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
                 let unlock_operator_at_domain_block_number = head_domain_number
-                    .checked_add(&T::StakeWithdrawalLockingPeriod::get())
+                    .checked_add(&StakeWithdrawalLockingPeriod::<T>::get())
                     .ok_or(Error::BlockNumberOverflow)?;
                 let operator_deregister_info = (
                     operator.current_domain_id,
@@ -898,7 +898,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 
             let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
             let unlock_at_confirmed_domain_block_number = head_domain_number
-                .checked_add(&T::StakeWithdrawalLockingPeriod::get())
+                .checked_add(&StakeWithdrawalLockingPeriod::<T>::get())
                 .ok_or(Error::BlockNumberOverflow)?;
 
             Withdrawals::<T>::try_mutate(operator_id, nominator_id, |maybe_withdrawal| {
@@ -1406,7 +1406,8 @@ pub(crate) mod tests {
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
     use crate::{
-        bundle_storage_fund, BalanceOf, Error, NominatorId, SlashedReason, MAX_NOMINATORS_TO_SLASH,
+        bundle_storage_fund, BalanceOf, Error, NominatorId, SlashedReason,
+        StakeWithdrawalLockingPeriod, MAX_NOMINATORS_TO_SLASH,
     };
     use frame_support::traits::fungible::Mutate;
     use frame_support::traits::Currency;
@@ -1800,8 +1801,8 @@ pub(crate) mod tests {
                     (
                         domain_id,
                         domain_stake_summary.current_epoch_index,
-                        // since the Withdrawals locking period is 5 and confirmed domain block is 0
-                        5
+                        // since the confirmed domain block is 0
+                        StakeWithdrawalLockingPeriod::<Test>::get()
                     )
                         .into()
                 )
@@ -1991,8 +1992,7 @@ pub(crate) mod tests {
                 // Update `HeadDomainNumber` to ensure unlock success
                 HeadDomainNumber::<Test>::set(
                     domain_id,
-                    head_domain_number
-                        + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get(),
+                    head_domain_number + StakeWithdrawalLockingPeriod::<Test>::get(),
                 );
                 assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_id));
 
@@ -2618,7 +2618,7 @@ pub(crate) mod tests {
             // Make the first set of withdrawals pass the unlock period then unlock fund
             HeadDomainNumber::<Test>::set(
                 domain_id,
-                head_domain_number + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get(),
+                head_domain_number + StakeWithdrawalLockingPeriod::<Test>::get(),
             );
             let total_balance = Balances::usable_balance(nominator_account);
             assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));
@@ -2634,9 +2634,7 @@ pub(crate) mod tests {
             // Make the second set of withdrawals pass the unlock period then unlock funds
             HeadDomainNumber::<Test>::set(
                 domain_id,
-                head_domain_number
-                    + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get()
-                    + 1,
+                head_domain_number + StakeWithdrawalLockingPeriod::<Test>::get() + 1,
             );
             let total_balance = Balances::usable_balance(nominator_account);
             assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));
