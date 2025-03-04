@@ -3,9 +3,9 @@ use crate::mock::{
     RuntimeOrigin, SelfChainId, SelfEndpointId, System, Transporter, USER_ACCOUNT,
 };
 use crate::{EndpointHandler, Error, Location, Transfer};
-use codec::Encode;
 use frame_support::dispatch::DispatchResult;
 use frame_support::{assert_err, assert_ok};
+use parity_scale_codec::Encode;
 use sp_core::U256;
 use sp_messenger::endpoint::{
     Endpoint, EndpointHandler as EndpointHandlerT, EndpointRequest, EndpointResponse,

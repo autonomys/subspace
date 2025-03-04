@@ -12,7 +12,7 @@ description = "Cirrus executives engine"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 frame-benchmarking = { workspace = true, optional = true }
 frame-executive.workspace = true
 frame-support.workspace = true
@@ -35,7 +35,7 @@ sp-version.workspace = true
 default = ["std"]
 with-tracing = ["sp-tracing/with-tracing"]
 std = [
-    "codec/std",
+    "parity-scale-codec/std",
     "frame-benchmarking?/std",
     "frame-executive/std",
     "frame-support/std",

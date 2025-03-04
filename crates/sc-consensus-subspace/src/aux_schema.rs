@@ -1,6 +1,6 @@
 //! Schema for Subspace block weight in the aux-db.
 
-use codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use subspace_core_primitives::BlockWeight;
@@ -11,9 +11,11 @@ where
     T: Decode,
 {
     match backend.get_aux(key)? {
-        Some(t) => T::decode(&mut &t[..]).map(Some).map_err(|e: codec::Error| {
-            ClientError::Backend(format!("Subspace DB is corrupted. Decode error: {e}"))
-        }),
+        Some(t) => T::decode(&mut &t[..])
+            .map(Some)
+            .map_err(|e: parity_scale_codec::Error| {
+                ClientError::Backend(format!("Subspace DB is corrupted. Decode error: {e}"))
+            }),
         None => Ok(None),
     }
 }

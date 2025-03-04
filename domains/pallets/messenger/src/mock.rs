@@ -20,7 +20,7 @@ macro_rules! impl_runtime {
         #[cfg(not(feature = "runtime-benchmarks"))]
         use crate::mock::MockEndpoint;
         use crate::mock::{AccountId, Balance, MessageId, TestExternalities};
-        use codec::{Decode, Encode};
+        use parity_scale_codec::{Decode, Encode};
         use domain_runtime_primitives::{MultiAccountId, TryConvertBack, HoldIdentifier};
         #[cfg(not(feature = "runtime-benchmarks"))]
         use frame_support::pallet_prelude::*;
@@ -32,7 +32,7 @@ macro_rules! impl_runtime {
         use sp_runtime::traits::Convert;
         use sp_runtime::BuildStorage;
         use scale_info::TypeInfo;
-        use codec::MaxEncodedLen;
+        use parity_scale_codec::MaxEncodedLen;
         use frame_support::traits::VariantCount;
         use core::mem;
         use sp_runtime::Perbill;

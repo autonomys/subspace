@@ -14,7 +14,7 @@ include = [
 
 [dependencies]
 async-trait = { workspace = true, optional = true }
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 sp-api.workspace = true
 sp-inherents.workspace = true
 
@@ -22,7 +22,7 @@ sp-inherents.workspace = true
 default = ["std"]
 std = [
     "async-trait",
-    "codec/std",
+    "parity-scale-codec/std",
     "sp-api/std",
     "sp-inherents/std",
 ]

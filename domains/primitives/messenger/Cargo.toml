@@ -14,7 +14,7 @@ include = [
 
 [dependencies]
 async-trait = { workspace = true, optional = true }
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 frame-support.workspace = true
 hash-db.workspace = true
 log.workspace = true
@@ -33,7 +33,7 @@ sp-subspace-mmr.workspace = true
 default = ["std"]
 std = [
     "async-trait",
-    "codec/std",
+    "parity-scale-codec/std",
     "frame-support/std",
     "hash-db/std",
     "log/std",

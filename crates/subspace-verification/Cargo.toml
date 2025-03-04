@@ -16,7 +16,7 @@ include = [
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-codec.workspace = true
+parity-scale-codec.workspace = true
 schnorrkel.workspace = true
 subspace-core-primitives.workspace = true
 subspace-kzg = { workspace = true, optional = true }
@@ -27,7 +27,7 @@ thiserror.workspace = true
 default = ["std", "kzg"]
 kzg = ["subspace-kzg"]
 std = [
-    "codec/std",
+    "parity-scale-codec/std",
     "schnorrkel/std",
     "subspace-core-primitives/std",
     "subspace-kzg?/std",

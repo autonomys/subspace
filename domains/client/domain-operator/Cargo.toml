@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 async-trait.workspace = true
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 domain-block-builder.workspace = true
 domain-block-preprocessor.workspace = true
 domain-runtime-primitives.workspace = true

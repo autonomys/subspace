@@ -13,7 +13,7 @@ include = [
 ]
 
 [dependencies]
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 frame-support.workspace = true
 frame-system.workspace = true
 scale-info = { workspace = true, features = ["derive"] }
@@ -24,7 +24,7 @@ sp-domain-sudo.workspace = true
 [features]
 default = ["std"]
 std = [
-    "codec/std",
+    "parity-scale-codec/std",
     "frame-support/std",
     "frame-system/std",
     "scale-info/std",

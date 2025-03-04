@@ -1,8 +1,8 @@
 //! Private implementation details of Subspace consensus digests.
 
 use crate::{ConsensusLog, PotParametersChange, SUBSPACE_ENGINE_ID};
-use codec::{Decode, Encode};
 use log::trace;
+use parity_scale_codec::{Decode, Encode};
 use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Header as HeaderT, One, Zero};
 use sp_runtime::DigestItem;
@@ -366,7 +366,7 @@ pub enum Error {
     Missing(ErrorDigestType),
     /// Failed to decode Subspace digest
     #[error("Failed to decode Subspace {0} digest: {1}")]
-    FailedToDecode(ErrorDigestType, codec::Error),
+    FailedToDecode(ErrorDigestType, parity_scale_codec::Error),
     /// Duplicate Subspace digests
     #[error("Duplicate Subspace {0} digests, rejecting!")]
     Duplicate(ErrorDigestType),

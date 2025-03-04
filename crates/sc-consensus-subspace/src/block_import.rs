@@ -91,7 +91,7 @@ pub enum Error<Header: HeaderT> {
     MissingSubspaceJustification,
     /// Invalid Subspace justification
     #[error("Invalid Subspace justification: {0}")]
-    InvalidSubspaceJustification(codec::Error),
+    InvalidSubspaceJustification(parity_scale_codec::Error),
     /// Invalid Subspace justification contents
     #[error("Invalid Subspace justification contents")]
     InvalidSubspaceJustificationContents,

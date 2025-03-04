@@ -13,7 +13,7 @@ include = [
 
 [dependencies]
 async-trait.workspace = true
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 domain-runtime-primitives.workspace = true
 sc-client-api.workspace = true
 sc-executor.workspace = true

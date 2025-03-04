@@ -329,7 +329,7 @@ enum HandleRequestError {
     SendResponse,
 
     #[error("Failed to decode request: {0}.")]
-    Decode(#[from] codec::Error),
+    Decode(#[from] parity_scale_codec::Error),
 
     #[error("Last confirmed domain block acquisition failed: no data.")]
     AbsentLastConfirmedDomainBlockData,

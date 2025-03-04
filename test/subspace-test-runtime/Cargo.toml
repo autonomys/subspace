@@ -16,7 +16,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 domain-runtime-primitives.workspace = true
 frame-executive.workspace = true
 frame-support.workspace = true
@@ -69,7 +69,7 @@ substrate-wasm-builder = { workspace = true, optional = true }
 [features]
 default = ["std"]
 std = [
-    "codec/std",
+    "parity-scale-codec/std",
     "domain-runtime-primitives/std",
     "frame-executive/std",
     "frame-support/std",

@@ -40,7 +40,6 @@ bytesize = "1.3.0"
 cc = "1.1.23"
 chacha20 = { version = "0.9.1", default-features = false }
 clap = "4.5.18"
-codec = { version = "3.6.12", default-features = false }
 core_affinity = "0.8.1"
 criterion = { version = "0.5.1", default-features = false }
 cross-domain-message-gossip = { version = "0.1.0", path = "domains/client/cross-domain-message-gossip" }

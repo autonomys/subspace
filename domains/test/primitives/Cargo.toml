@@ -12,7 +12,7 @@ include = [
 ]
 
 [dependencies]
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 domain-runtime-primitives.workspace = true
 sp-api.workspace = true
 sp-domains.workspace = true

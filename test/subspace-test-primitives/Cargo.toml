@@ -12,7 +12,7 @@ include = [
 ]
 
 [dependencies]
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 sp-api.workspace = true
 sp-domains.workspace = true
 sp-core.workspace = true
@@ -24,7 +24,7 @@ subspace-runtime-primitives.workspace = true
 [features]
 default = ["std"]
 std = [
-    "codec/std",
+    "parity-scale-codec/std",
     "sp-api/std",
     "sp-domains/std",
     "sp-core/std",

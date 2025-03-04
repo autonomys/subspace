@@ -14,7 +14,7 @@ include = [
 ]
 
 [dependencies]
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 domain-runtime-primitives.workspace = true
 frame-benchmarking = { workspace = true, optional = true }
 frame-support.workspace = true
@@ -34,7 +34,7 @@ sp-io.workspace = true
 [features]
 default = ["std"]
 std = [
-    "codec/std",
+    "parity-scale-codec/std",
     "domain-runtime-primitives/std",
     "frame-benchmarking?/std",
     "frame-support/std",

@@ -3,7 +3,7 @@ use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::utils::OperatorSlotInfo;
 use crate::BundleSender;
 use async_trait::async_trait;
-use codec::Decode;
+use parity_scale_codec::Decode;
 use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;

@@ -36,7 +36,6 @@ extern crate alloc;
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use alloc::borrow::Cow;
-use codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
 use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
@@ -60,6 +59,7 @@ use pallet_balances::NegativeImbalance;
 pub use pallet_rewards::RewardPoint;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
 use pallet_transporter::EndpointHandler;
+use parity_scale_codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_api::impl_runtime_apis;
 use sp_consensus_slots::{Slot, SlotDuration};

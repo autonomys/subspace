@@ -15,8 +15,8 @@ pub mod inherents;
 pub mod stateless_runtime;
 
 use crate::inherents::is_runtime_upgraded;
-use codec::Encode;
 use domain_runtime_primitives::opaque::AccountId;
+use parity_scale_codec::Encode;
 use sc_client_api::BlockBackend;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;

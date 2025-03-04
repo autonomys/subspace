@@ -1,11 +1,11 @@
 use crate as pallet_transporter;
 use crate::{Config, TryConvertBack};
-use codec::{Decode, Encode};
 use domain_runtime_primitives::{HoldIdentifier, MultiAccountId};
 use frame_support::pallet_prelude::{MaxEncodedLen, TypeInfo};
 use frame_support::traits::VariantCount;
 use frame_support::{derive_impl, parameter_types};
 use pallet_balances::AccountData;
+use parity_scale_codec::{Decode, Encode};
 use sp_core::U256;
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId, EndpointRequest, Sender};

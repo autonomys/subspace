@@ -14,7 +14,7 @@ pub use runtime_interface::{domain_mmr_runtime_interface, subspace_mmr_runtime_i
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 

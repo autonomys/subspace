@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 //! Test primitive crates that expose necessary extensions that are used in tests.
 
-use codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode};
 use sp_core::H256;
 use sp_messenger::messages::{ChainId, ChannelId};
 use sp_runtime::traits::NumberFor;

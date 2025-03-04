@@ -35,8 +35,8 @@ mod tests;
 
 use crate::slot_worker::SubspaceSyncOracle;
 use crate::{SubspaceLink, SubspaceNotificationSender};
-use codec::{Decode, Encode};
 use futures::StreamExt;
+use parity_scale_codec::{Decode, Encode};
 use parking_lot::RwLock;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -570,7 +570,9 @@ where
 }
 
 /// Symmetrical to [`encode_block()`], used to decode previously encoded blocks
-pub fn decode_block<Block>(mut encoded_block: &[u8]) -> Result<SignedBlock<Block>, codec::Error>
+pub fn decode_block<Block>(
+    mut encoded_block: &[u8],
+) -> Result<SignedBlock<Block>, parity_scale_codec::Error>
 where
     Block: BlockT,
 {

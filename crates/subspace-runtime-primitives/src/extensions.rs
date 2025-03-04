@@ -1,10 +1,10 @@
 //! Extensions for Runtimes
 
 use crate::AllowedUnsignedExtrinsics;
-use codec::{Decode, Encode};
 use frame_support::pallet_prelude::{PhantomData, TypeInfo};
 use frame_system::pallet_prelude::RuntimeCallFor;
 use frame_system::Config;
+use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
 use sp_runtime::impl_tx_ext_default;
 use sp_runtime::traits::{

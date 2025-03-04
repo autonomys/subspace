@@ -14,13 +14,13 @@ include = [
 
 [dependencies]
 async-trait = { workspace = true, optional = true }
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 sp-inherents.workspace = true
 
 [features]
 default = ["std"]
 std = [
     "async-trait",
-    "codec/std",
+    "parity-scale-codec/std",
     "sp-inherents/std",
 ]

@@ -7,12 +7,12 @@ use crate::{
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Codec, Decode, Encode};
 use domain_block_preprocessor::stateless_runtime::StatelessRuntime;
 use domain_runtime_primitives::{
     BlockNumber, CheckExtrinsicsValidityError, CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME,
 };
 use hash_db::{HashDB, Hasher};
+use parity_scale_codec::{Codec, Decode, Encode};
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::BlockBackend;
 use sc_executor::RuntimeVersionOf;

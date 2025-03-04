@@ -13,7 +13,7 @@ include = [
 [dependencies]
 async-channel.workspace = true
 async-trait.workspace = true
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 derive_more = { workspace = true, features = ["full"] }
 futures.workspace = true
 parking_lot.workspace = true

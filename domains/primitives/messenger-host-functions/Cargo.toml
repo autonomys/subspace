@@ -13,7 +13,7 @@ include = [
 ]
 
 [dependencies]
-codec = { workspace = true, features = ["derive"] }
+parity-scale-codec = { workspace = true, features = ["derive"] }
 domain-block-preprocessor = { workspace = true, optional = true }
 scale-info = { workspace = true, features = ["derive"] }
 sc-executor = { workspace = true, optional = true }
@@ -29,7 +29,7 @@ sp-runtime-interface.workspace = true
 [features]
 default = ["std"]
 std = [
-    "codec/std",
+    "parity-scale-codec/std",
     "domain-block-preprocessor",
     "scale-info/std",
     "sc-executor",
