@@ -53,8 +53,8 @@ RUN \
 
 RUN \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION && \
-    /root/.cargo/bin/rustup target add wasm32-unknown-unknown
-
+    /root/.cargo/bin/rustup target add wasm32-unknown-unknown && \
+    /root/.cargo/bin/rustup component add rust-src --toolchain $RUSTC_VERSION
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
 COPY . /code
