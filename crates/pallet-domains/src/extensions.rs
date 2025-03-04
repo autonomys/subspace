@@ -1,7 +1,7 @@
 //! Extensions for unsigned general extrinsics
 
 use crate::pallet::Call as DomainsCall;
-use crate::{BundleError, Config, FraudProofFor, OpaqueBundleOf, Pallet as Domains};
+use crate::{Config, FraudProofFor, OpaqueBundleOf, Pallet as Domains, SingletonReceiptOf};
 use codec::{Decode, Encode};
 use frame_support::pallet_prelude::{PhantomData, TypeInfo};
 use frame_system::pallet_prelude::RuntimeCallFor;
@@ -73,13 +73,7 @@ where
 
             if let Err(e) = Domains::<Runtime>::validate_submit_bundle(opaque_bundle, false) {
                 Domains::<Runtime>::log_bundle_error(&e, domain_id, operator_id);
-                return if BundleError::UnableToPayBundleStorageFee == e {
-                    InvalidTransactionCode::BundleStorageFeePayment.into()
-                } else if let BundleError::Receipt(_) = e {
-                    InvalidTransactionCode::ExecutionReceipt.into()
-                } else {
-                    InvalidTransactionCode::Bundle.into()
-                };
+                return e.into();
             }
 
             ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
@@ -87,7 +81,7 @@ where
                 // fraud proof
                 .priority(1)
                 .longevity(
-                    <Runtime as Config>::ConfirmationDepthK::get()
+                    Runtime::ConfirmationDepthK::get()
                         .try_into()
                         .unwrap_or_else(|_| {
                             panic!("Block number always fits in TransactionLongevity; qed")
@@ -126,6 +120,43 @@ where
                 .and_provides(tag)
                 .longevity(TransactionLongevity::MAX)
                 // We need this extrinsic to be propagated to the farmer nodes.
+                .propagate(true)
+                .build()
+        }
+    }
+
+    fn do_validate_singleton_receipt(
+        singleton_receipt: &SingletonReceiptOf<Runtime>,
+        source: TransactionSource,
+    ) -> TransactionValidity {
+        let pre_dispatch = TransactionSource::InBlock == source;
+        if pre_dispatch {
+            Domains::<Runtime>::validate_singleton_receipt(singleton_receipt, true)
+                .map_err(|_| InvalidTransaction::Call.into())
+                .map(|_| ValidTransaction::default())
+        } else {
+            let domain_id = singleton_receipt.domain_id();
+            let operator_id = singleton_receipt.operator_id();
+            let slot_number = singleton_receipt.slot_number();
+
+            if let Err(e) = Domains::<Runtime>::validate_singleton_receipt(singleton_receipt, false)
+            {
+                Domains::<Runtime>::log_bundle_error(&e, domain_id, operator_id);
+                return e.into();
+            }
+
+            ValidTransaction::with_tag_prefix("SubspaceSubmitReceipt")
+                // Receipt have a bit higher priority than normal extrinsic but must less than
+                // fraud proof
+                .priority(1)
+                .longevity(
+                    Runtime::ConfirmationDepthK::get()
+                        .try_into()
+                        .unwrap_or_else(|_| {
+                            panic!("Block number always fits in TransactionLongevity; qed")
+                        }),
+                )
+                .and_provides((operator_id, slot_number))
                 .propagate(true)
                 .build()
         }
@@ -170,6 +201,9 @@ where
             }
             DomainsCall::submit_fraud_proof { fraud_proof } => {
                 Self::do_validate_fraud_proof(fraud_proof, source)?
+            }
+            DomainsCall::submit_receipt { singleton_receipt } => {
+                Self::do_validate_singleton_receipt(singleton_receipt, source)?
             }
             _ => return Err(InvalidTransaction::Call.into()),
         };

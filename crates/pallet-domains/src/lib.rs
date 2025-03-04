@@ -819,6 +819,18 @@ mod pallet {
         StorageProof(storage_proof::VerificationError),
     }
 
+    impl From<BundleError> for TransactionValidity {
+        fn from(e: BundleError) -> Self {
+            if BundleError::UnableToPayBundleStorageFee == e {
+                InvalidTransactionCode::BundleStorageFeePayment.into()
+            } else if let BundleError::Receipt(_) = e {
+                InvalidTransactionCode::ExecutionReceipt.into()
+            } else {
+                InvalidTransactionCode::Bundle.into()
+            }
+        }
+    }
+
     impl From<storage_proof::VerificationError> for FraudProofError {
         fn from(err: storage_proof::VerificationError) -> Self {
             FraudProofError::StorageProof(err)
