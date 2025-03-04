@@ -25,7 +25,6 @@ use sc_network::{NetworkBackend, PeerId};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, DomainsApi, ExecutionReceiptFor};
-use sp_runtime::codec;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
