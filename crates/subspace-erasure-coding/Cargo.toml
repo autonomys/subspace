@@ -21,7 +21,7 @@ subspace-core-primitives.workspace = true
 subspace-kzg.workspace = true
 
 [dev-dependencies]
-rust-kzg-blst.workspace = true
+rust-kzg-blst = { workspace = true, features = ["rand"] }
 criterion.workspace = true
 rand.workspace = true
 

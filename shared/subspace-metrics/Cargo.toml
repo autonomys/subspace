@@ -15,7 +15,7 @@ include = [
 ]
 
 [dependencies]
-actix-web.workspace = true
+actix-web = { workspace = true, features = ["macros"] }
 prometheus.workspace = true
 prometheus-client.workspace = true
 tracing.workspace = true
