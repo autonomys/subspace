@@ -1,7 +1,7 @@
 //! Extensions for unsigned general extrinsics
 
 use crate::pallet::Call as DomainsCall;
-use crate::{BundleError, Config, OpaqueBundleOf, Pallet as Domains};
+use crate::{BundleError, Config, FraudProofFor, OpaqueBundleOf, Pallet as Domains};
 use codec::{Decode, Encode};
 use frame_support::pallet_prelude::{PhantomData, TypeInfo};
 use frame_system::pallet_prelude::RuntimeCallFor;
@@ -13,7 +13,8 @@ use sp_runtime::traits::{
     TransactionExtension, ValidateResult,
 };
 use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionSource, TransactionValidity, ValidTransaction,
+    InvalidTransaction, TransactionLongevity, TransactionSource, TransactionValidity,
+    ValidTransaction,
 };
 
 /// Trait to convert Runtime call to possible Domains call.
@@ -97,6 +98,38 @@ where
                 .build()
         }
     }
+
+    fn do_validate_fraud_proof(
+        fraud_proof: &FraudProofFor<Runtime>,
+        source: TransactionSource,
+    ) -> TransactionValidity {
+        let pre_dispatch = TransactionSource::InBlock == source;
+        if pre_dispatch {
+            Domains::<Runtime>::validate_fraud_proof(fraud_proof)
+                .map(|_| ())
+                .map_err(|_| InvalidTransaction::Call.into())
+                .map(|_| ValidTransaction::default())
+        } else {
+            let (tag, priority) = match Domains::<Runtime>::validate_fraud_proof(fraud_proof) {
+                Err(e) => {
+                    log::warn!(
+                        target: "runtime::domains",
+                        "Bad fraud proof {fraud_proof:?}, error: {e:?}",
+                    );
+                    return InvalidTransactionCode::FraudProof.into();
+                }
+                Ok(tp) => tp,
+            };
+
+            ValidTransaction::with_tag_prefix("SubspaceSubmitFraudProof")
+                .priority(priority)
+                .and_provides(tag)
+                .longevity(TransactionLongevity::MAX)
+                // We need this extrinsic to be propagated to the farmer nodes.
+                .propagate(true)
+                .build()
+        }
+    }
 }
 
 impl<Runtime> TransactionExtension<RuntimeCallFor<Runtime>> for DomainsExtension<Runtime>
@@ -134,6 +167,9 @@ where
         let validity = match domains_call {
             DomainsCall::submit_bundle { opaque_bundle } => {
                 Self::do_validate_submit_bundle(opaque_bundle, source)?
+            }
+            DomainsCall::submit_fraud_proof { fraud_proof } => {
+                Self::do_validate_fraud_proof(fraud_proof, source)?
             }
             _ => return Err(InvalidTransaction::Call.into()),
         };
