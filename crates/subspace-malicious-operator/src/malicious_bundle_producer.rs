@@ -417,6 +417,7 @@ pub fn construct_signed_extrinsic(
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
         DisablePallets,
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
+        pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
         subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics::<Runtime>::new(),
     );
     let raw_payload = generic::SignedPayload::<RuntimeCall, SignedExtra>::from_raw(
@@ -428,6 +429,7 @@ pub fn construct_signed_extrinsic(
             subspace_runtime::VERSION.transaction_version,
             consensus_chain_info.genesis_hash,
             consensus_chain_info.best_hash,
+            (),
             (),
             (),
             (),
