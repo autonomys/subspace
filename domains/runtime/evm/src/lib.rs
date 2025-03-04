@@ -195,8 +195,11 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         match self {
             RuntimeCall::Ethereum(call) => {
                 // Ensure the caller can pay for the consensus chain storage fee
-                let consensus_storage_fee =
-                    BlockFees::consensus_chain_byte_fee().checked_mul(Balance::from(len as u32))?;
+                let Some(consensus_storage_fee) =
+                    BlockFees::consensus_chain_byte_fee().checked_mul(Balance::from(len as u32))
+                else {
+                    return Some(Err(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW).into()));
+                };
                 let withdraw_res = <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
                     Runtime,
                 >>::withdraw_fee(info, consensus_storage_fee.into());
@@ -229,8 +232,11 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
             RuntimeCall::Ethereum(call) => {
                 // Withdraw the consensus chain storage fee from the caller and record
                 // it in the `BlockFees`
-                let consensus_storage_fee =
-                    BlockFees::consensus_chain_byte_fee().checked_mul(Balance::from(len as u32))?;
+                let Some(consensus_storage_fee) =
+                    BlockFees::consensus_chain_byte_fee().checked_mul(Balance::from(len as u32))
+                else {
+                    return Some(Err(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW).into()));
+                };
                 match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
                     info,
                     consensus_storage_fee.into(),
