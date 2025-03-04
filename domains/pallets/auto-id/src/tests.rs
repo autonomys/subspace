@@ -5,10 +5,10 @@ use crate::{
     RenewAutoId, RenewX509Certificate, Signature, X509Certificate,
 };
 use alloc::collections::BTreeSet;
-use codec::Encode;
 use frame_support::assert_noop;
 use frame_support::dispatch::RawOrigin;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Time};
+use parity_scale_codec::Encode;
 use pem::parse;
 use ring::rand::SystemRandom;
 use ring::signature::RsaKeyPair;

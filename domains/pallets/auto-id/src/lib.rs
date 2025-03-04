@@ -30,12 +30,12 @@ use crate::weights::WeightInfo;
 use alloc::collections::BTreeSet;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode};
 use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo};
 use frame_support::ensure;
 use frame_support::traits::Time;
 use frame_support::weights::Weight;
 pub use pallet::*;
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_auto_id::auto_id_runtime_interface::{decode_tbs_certificate, verify_signature};
 use sp_auto_id::{DerVec, SignatureVerificationRequest, Validity};

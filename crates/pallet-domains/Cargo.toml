@@ -12,38 +12,38 @@ description = "Subspace domains pallet"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
-domain-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../domains/primitives/runtime" }
-frame-benchmarking = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", optional = true }
-frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-log = { version = "0.4.22", default-features = false }
-pallet-balances = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
-sp-consensus-slots = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
-sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domains" }
-sp-domains-fraud-proof = { version = "0.1.0", default-features = false, path = "../sp-domains-fraud-proof" }
-sp-io = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-subspace-mmr = { version = "0.1.0", default-features = false, path = "../sp-subspace-mmr" }
-sp-version = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", features = ["serde"] }
-subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
-subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
+parity-scale-codec = { workspace = true, features = ["derive"] }
+domain-runtime-primitives.workspace = true
+frame-benchmarking = { workspace = true, optional = true }
+frame-support.workspace = true
+frame-system.workspace = true
+log.workspace = true
+pallet-balances.workspace = true
+scale-info = { workspace = true, features = ["derive"] }
+sp-consensus-slots.workspace = true
+sp-consensus-subspace.workspace = true
+sp-core.workspace = true
+sp-domains.workspace = true
+sp-domains-fraud-proof.workspace = true
+sp-io.workspace = true
+sp-runtime.workspace = true
+sp-std.workspace = true
+sp-subspace-mmr.workspace = true
+sp-version = { workspace = true, features = ["serde"] }
+subspace-core-primitives.workspace = true
+subspace-runtime-primitives.workspace = true
 
 [dev-dependencies]
-domain-pallet-executive = { version = "0.1.0", default-features = false, path = "../../domains/pallets/executive" }
-hex-literal = "0.4.1"
-pallet-timestamp = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-pallet-block-fees = { version = "0.1.0", default-features = false, path = "../../domains/pallets/block-fees" }
-sp-externalities = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
+domain-pallet-executive.workspace = true
+hex-literal.workspace = true
+pallet-timestamp.workspace = true
+pallet-block-fees.workspace = true
+sp-externalities.workspace = true
 
 [features]
 default = ["std"]
 std = [
-    "codec/std",
+    "parity-scale-codec/std",
     "domain-runtime-primitives/std",
     "frame-benchmarking?/std",
     "frame-support/std",

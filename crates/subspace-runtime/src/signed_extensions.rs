@@ -1,7 +1,7 @@
 use crate::{Runtime, RuntimeCall, RuntimeConfigs};
-use codec::{Decode, Encode};
 use frame_support::pallet_prelude::Weight;
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::impl_tx_ext_default;
 use sp_runtime::traits::{

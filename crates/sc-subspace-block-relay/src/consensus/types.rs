@@ -14,8 +14,8 @@ use crate::protocol::compact_block::{
 };
 use crate::types::RelayError;
 use crate::utils::{RelayCounter, RelayCounterVec};
-use codec::{Decode, Encode};
 use derive_more::From;
+use parity_scale_codec::{Decode, Encode};
 use sc_network_common::sync::message::{BlockAttributes, BlockData, BlockRequest};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor};

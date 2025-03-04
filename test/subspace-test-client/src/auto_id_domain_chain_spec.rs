@@ -2,8 +2,8 @@
 
 use crate::chain_spec::get_from_seed;
 use auto_id_domain_test_runtime::{BalancesConfig, RuntimeGenesisConfig, SystemConfig};
-use codec::Encode;
 use domain_runtime_primitives::AccountIdConverter;
+use parity_scale_codec::Encode;
 use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension};
 use sp_core::crypto::AccountId32;
 use sp_core::{sr25519, Pair, Public};

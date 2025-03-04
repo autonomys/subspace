@@ -15,7 +15,7 @@ include = [
 ]
 
 [dependencies]
-actix-web = "4.9.0"
-prometheus = { version = "0.13.0", default-features = false }
-prometheus-client = "0.22.3"
-tracing = "0.1.40"
+actix-web = { workspace = true, features = ["macros"] }
+prometheus.workspace = true
+prometheus-client.workspace = true
+tracing.workspace = true

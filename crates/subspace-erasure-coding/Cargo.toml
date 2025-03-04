@@ -15,15 +15,15 @@ include = [
 bench = false
 
 [dependencies]
-kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
-rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
-subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg", default-features = false }
+kzg.workspace = true
+rust-kzg-blst.workspace = true
+subspace-core-primitives.workspace = true
+subspace-kzg.workspace = true
 
 [dev-dependencies]
-rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4" }
-criterion = "0.5.1"
-rand = "0.8.5"
+rust-kzg-blst = { workspace = true, features = ["rand"] }
+criterion.workspace = true
+rand.workspace = true
 
 [features]
 default = ["std", "parallel"]

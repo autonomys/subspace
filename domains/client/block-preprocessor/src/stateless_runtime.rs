@@ -1,8 +1,8 @@
-use codec::{Codec, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::{
     Balance, CheckExtrinsicsValidityError, DecodeExtrinsicError, EthereumAccountId,
 };
+use parity_scale_codec::{Codec, Encode};
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, Core};

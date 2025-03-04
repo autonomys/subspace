@@ -11,26 +11,26 @@ include = [
 ]
 
 [dependencies]
-core_affinity = "0.8.1"
-derive_more = { version = "1.0.0", features = ["full"] }
-futures = "0.3.31"
-parity-scale-codec = { version = "3.6.12", features = ["derive"] }
-parking_lot = "0.12.2"
-rayon = "1.10.0"
-schnellru = "0.2.4"
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-consensus-slots = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sc-network-gossip = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-consensus-slots = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
-sp-inherents = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-subspace-proof-of-time = { version = "0.1.0", path = "../subspace-proof-of-time" }
-thread-priority = "1.1.0"
-tokio = { version = "1.40.0", features = ["sync"] }
-tracing = "0.1.40"
+core_affinity.workspace = true
+derive_more = { workspace = true, features = ["full"] }
+futures.workspace = true
+parity-scale-codec = { workspace = true, features = ["derive"] }
+parking_lot.workspace = true
+rayon.workspace = true
+schnellru.workspace = true
+sc-client-api.workspace = true
+sc-consensus-slots.workspace = true
+sc-network.workspace = true
+sc-network-gossip.workspace = true
+sp-api.workspace = true
+sp-blockchain.workspace = true
+sp-consensus.workspace = true
+sp-consensus-slots.workspace = true
+sp-consensus-subspace.workspace = true
+sp-inherents.workspace = true
+sp-runtime.workspace = true
+subspace-core-primitives.workspace = true
+subspace-proof-of-time.workspace = true
+thread-priority.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true

@@ -14,7 +14,6 @@ extern crate alloc;
 use alloc::borrow::Cow;
 #[cfg(not(feature = "std"))]
 use alloc::format;
-use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
@@ -53,6 +52,7 @@ use pallet_evm::{
 use pallet_evm_tracker::create_contract::is_create_contract_allowed;
 use pallet_evm_tracker::traits::{MaybeIntoEthCall, MaybeIntoEvmCall};
 use pallet_transporter::EndpointHandler;
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};

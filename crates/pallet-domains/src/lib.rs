@@ -35,7 +35,6 @@ use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode};
 use domain_runtime_primitives::EthereumAccountId;
 use frame_support::ensure;
 use frame_support::pallet_prelude::StorageVersion;
@@ -46,6 +45,7 @@ use frame_support::weights::Weight;
 use frame_system::offchain::{CreateInherent, SubmitTransaction};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_consensus_subspace::WrappedPotOutput;
@@ -207,7 +207,6 @@ mod pallet {
     use alloc::vec;
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
-    use codec::FullCodec;
     use domain_runtime_primitives::{EVMChainId, EthereumAccountId};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
@@ -216,6 +215,7 @@ mod pallet {
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
+    use parity_scale_codec::FullCodec;
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{

@@ -14,7 +14,7 @@ use alloc::borrow::Cow;
 use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_core::H256;
@@ -71,7 +71,7 @@ impl SubspaceJustification {
     /// `None` means this is not a Subspace justification.
     pub fn try_from_justification(
         (consensus_engine_id, encoded_justification): &Justification,
-    ) -> Option<Result<Self, codec::Error>> {
+    ) -> Option<Result<Self, parity_scale_codec::Error>> {
         (*consensus_engine_id == SUBSPACE_ENGINE_ID)
             .then(|| Self::decode(&mut encoded_justification.as_slice()))
     }

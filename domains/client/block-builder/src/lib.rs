@@ -30,8 +30,8 @@
 mod custom_api;
 
 use crate::custom_api::{TrieBackendApi, TrieDeltaBackendFor};
-use codec::Encode;
 pub use custom_api::{create_delta_backend, CollectedStorageChanges, DeltaBackend};
+use parity_scale_codec::Encode;
 use sc_client_api::{backend, ExecutorProvider};
 use sp_api::{ProvideRuntimeApi, TransactionOutcome};
 pub use sp_block_builder::BlockBuilder as BlockBuilderApi;

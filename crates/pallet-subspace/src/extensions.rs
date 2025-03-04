@@ -7,10 +7,10 @@ pub mod weights;
 use crate::extensions::weights::WeightInfo;
 use crate::pallet::Call as SubspaceCall;
 use crate::{Config, Pallet as Subspace};
-use codec::{Decode, Encode};
 use frame_support::pallet_prelude::{PhantomData, TypeInfo, Weight};
 use frame_support::RuntimeDebugNoBound;
 use frame_system::pallet_prelude::{BlockNumberFor, RuntimeCallFor};
+use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
 use sp_consensus_subspace::SignedVote;
 use sp_runtime::traits::{

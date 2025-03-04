@@ -12,9 +12,9 @@ use crate::{
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode};
 use domain_runtime_primitives::BlockNumber;
 use hash_db::Hasher;
+use parity_scale_codec::{Decode, Encode};
 use sp_core::storage::StorageKey;
 use sp_core::H256;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;

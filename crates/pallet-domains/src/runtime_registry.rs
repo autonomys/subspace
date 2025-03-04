@@ -11,11 +11,11 @@ use crate::{BalanceOf, Config, Event};
 use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode};
 use domain_runtime_primitives::{AccountId20, EVMChainId, MultiAccountId, TryConvertBack};
 use frame_support::PalletError;
 use frame_system::pallet_prelude::*;
 use frame_system::AccountInfo;
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::crypto::AccountId32;
 use sp_core::Hasher;
@@ -393,10 +393,10 @@ mod tests {
         new_test_ext, DomainRuntimeUpgradeDelay, Domains, ReadRuntimeVersion, System, Test,
     };
     use crate::Error;
-    use codec::Encode;
     use frame_support::assert_ok;
     use frame_support::dispatch::RawOrigin;
     use frame_support::traits::OnInitialize;
+    use parity_scale_codec::Encode;
     use sp_domains::storage::RawGenesis;
     use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeObject, RuntimeType};
     use sp_runtime::traits::BlockNumberProvider;

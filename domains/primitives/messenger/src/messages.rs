@@ -4,7 +4,7 @@ extern crate alloc;
 use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 pub use sp_domains::{ChainId, ChannelId};
 use sp_runtime::app_crypto::sp_core::U256;

@@ -12,17 +12,17 @@ include = [
 ]
 
 [dependencies]
-anyhow = "1.0.89"
-async-trait = "0.1.83"
-futures = "0.3.31"
-hex = "0.4.3"
-parity-scale-codec = { version = "3.6.12", features = ["derive"] }
-subspace-archiving = { version = "0.1.0", path = "../../crates/subspace-archiving" }
-subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives" }
-subspace-erasure-coding = { version = "0.1.0", path = "../../crates/subspace-erasure-coding" }
-thiserror = "2.0.0"
-tokio = { version = "1.40.0", features = ["sync"] }
-tracing = "0.1.40"
+anyhow.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+hex.workspace = true
+parity-scale-codec = { workspace = true, features = ["derive"] }
+subspace-archiving.workspace = true
+subspace-core-primitives.workspace = true
+subspace-erasure-coding.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
 
 [dev-dependencies]
 

@@ -1,11 +1,11 @@
 //! Contract creation allow list implementations
 
 use crate::traits::{AccountIdFor, MaybeIntoEthCall, MaybeIntoEvmCall};
-use codec::{Decode, Encode};
 use domain_runtime_primitives::{EthereumAccountId, ERR_CONTRACT_CREATION_NOT_ALLOWED};
 use frame_support::pallet_prelude::{PhantomData, TypeInfo};
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use pallet_ethereum::{Transaction as EthereumTransaction, TransactionAction};
+use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
 use sp_core::Get;
 use sp_runtime::impl_tx_ext_default;

@@ -19,13 +19,13 @@
 #![feature(trait_upcasting)]
 #![warn(missing_docs, unused_crate_dependencies)]
 
-use codec::{Decode, Encode};
 use cross_domain_message_gossip::{xdm_gossip_peers_set_config, GossipWorkerBuilder};
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 use frame_system::pallet_prelude::BlockNumberFor;
 use futures::channel::mpsc;
 use futures::{Future, StreamExt};
 use jsonrpsee::RpcModule;
+use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderBuilder;
 use sc_client_api::execution_extensions::ExtensionsFactory;

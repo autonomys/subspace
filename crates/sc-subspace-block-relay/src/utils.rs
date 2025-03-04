@@ -1,8 +1,8 @@
 //! Common utils.
 
 use crate::types::RequestResponseErr;
-use codec::{Decode, Encode};
 use futures::channel::oneshot;
+use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_network::request_responses::IfDisconnected;
 use sc_network::types::ProtocolName;

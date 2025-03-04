@@ -15,11 +15,11 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use codec::{Decode, Encode};
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use frame_support::traits::Get;
 use frame_system::limits::BlockWeights;
 use frame_system::{Config, ConsumedWeight};
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::traits::{
     DispatchInfoOf, DispatchOriginOf, Dispatchable, PostDispatchInfoOf, TransactionExtension,

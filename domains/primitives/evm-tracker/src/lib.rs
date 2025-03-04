@@ -1,8 +1,8 @@
 //! Inherents for EVM tracker
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use codec::{Decode, Encode};
 use domain_runtime_primitives::EthereumAccountId;
+use parity_scale_codec::{Decode, Encode};
 use sp_domains::PermissionedActionAllowedBy;
 #[cfg(feature = "std")]
 use sp_inherents::{Error, InherentData};

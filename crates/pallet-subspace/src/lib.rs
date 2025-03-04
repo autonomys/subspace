@@ -20,7 +20,6 @@ pub mod weights;
 use crate::extensions::weights::WeightInfo as ExtensionWeightInfo;
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
-use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use frame_support::dispatch::DispatchResult;
 use frame_support::traits::Get;
@@ -28,6 +27,7 @@ use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
 use log::{debug, error, warn};
 pub use pallet::*;
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use schnorrkel::SignatureError;
 use sp_consensus_slots::Slot;

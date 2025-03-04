@@ -8,7 +8,7 @@
 //     extract_pre_digest, slot_duration, start_subspace, NewSlotNotification, SubspaceLink,
 //     SubspaceParams, SubspaceVerifier,
 // };
-// use codec::Encode;
+// use parity_scale_codec::Encode;
 // use futures::channel::oneshot;
 // use futures::executor::block_on;
 // use futures::{future, SinkExt, StreamExt};

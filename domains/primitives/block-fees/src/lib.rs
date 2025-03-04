@@ -1,8 +1,8 @@
 //! Inherents for block-fees pallet
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use codec::{Decode, Encode};
 use domain_runtime_primitives::Balance;
+use parity_scale_codec::{Decode, Encode};
 use sp_inherents::{InherentIdentifier, IsFatalError};
 
 /// Block-fees inherent identifier.

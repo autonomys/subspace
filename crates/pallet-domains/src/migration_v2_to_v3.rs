@@ -12,12 +12,12 @@ use crate::domain_registry::{DomainConfig, DomainObject as DomainObjectV3};
 use crate::pallet::DomainRegistry as DomainRegistryV3;
 use crate::runtime_registry::DomainRuntimeInfo as DomainRuntimeInfoV3;
 use crate::{Config, Pallet};
-use codec::{Decode, Encode};
 use domain_runtime_primitives::EVMChainId;
 use frame_support::migrations::VersionedMigration;
 use frame_support::pallet_prelude::TypeInfo;
 use frame_support::traits::UncheckedOnRuntimeUpgrade;
 use frame_support::weights::Weight;
+use parity_scale_codec::{Decode, Encode};
 use sp_domains::DomainId;
 use sp_domains::{
     AutoIdDomainRuntimeConfig as AutoIdDomainRuntimeConfigV3,

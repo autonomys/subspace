@@ -11,8 +11,8 @@ use crate::{
 use alloc::boxed::Box;
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeMap;
-use codec::{Decode, Encode};
 use frame_support::ensure;
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_messenger::messages::{

@@ -16,66 +16,39 @@ include = [
 ]
 
 [dependencies]
-async-lock = "3.4.0"
-async-trait = "0.1.83"
-backoff = { version = "0.4.0", features = ["futures", "tokio"] }
-bytes = "1.7.2"
-clap = { version = "4.5.18", features = ["color", "derive"] }
-derive_more = { version = "1.0.0", features = ["full"] }
-event-listener-primitives = "2.0.1"
-# TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved
-fs2 = "0.4.3"
-futures = "0.3.31"
-futures-timer = "3.0.3"
-hex = "0.4.3"
-memmap2 = "0.9.5"
-multihash = { version = "0.19.1", features = ["scale-codec"] }
-nohash-hasher = "0.2.0"
-parity-scale-codec = "3.6.12"
-parking_lot = "0.12.2"
-pin-project = "1.1.5"
-prometheus-client = "0.22.3"
-rand = "0.8.5"
-schnellru = "0.2.4"
-serde = { version = "1.0.216", features = ["derive"] }
-serde_json = "1.0.133"
-subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-subspace-logging = { version = "0.0.1", path = "../../shared/subspace-logging" }
-subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
-thiserror = "2.0.0"
-tokio = { version = "1.40.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
-tokio-stream = "0.1.16"
-tracing = "0.1.40"
-unsigned-varint = { version = "0.8.0", features = ["futures", "asynchronous_codec"] }
-void = "1.0.2"
-
-
-[dependencies.libp2p]
-# TODO: Replace with upstream once https://github.com/libp2p/rust-libp2p/issues/5626 and
-#  https://github.com/libp2p/rust-libp2p/issues/5634 are resolved
-git = "https://github.com/autonomys/rust-libp2p"
-rev = "3f6238a86bda615ee9ec54462147f6a5d7891b6d"
-version = "0.54.1"
-default-features = false
-features = [
-    "autonat",
-    "dns",
-    "gossipsub",
-    "identify",
-    "kad",
-    "macros",
-    "metrics",
-    "noise",
-    "ping",
-    "plaintext",
-    "request-response",
-    "serde",
-    "tcp",
-    "tokio",
-    "yamux",
-]
+async-lock.workspace = true
+async-trait.workspace = true
+backoff = { workspace = true, features = ["futures", "tokio"] }
+bytes.workspace = true
+clap = { workspace = true, features = ["color", "derive"] }
+derive_more = { workspace = true, features = ["full"] }
+event-listener-primitives.workspace = true
+fs2.workspace = true
+futures.workspace = true
+futures-timer.workspace = true
+hex.workspace = true
+memmap2.workspace = true
+multihash = { workspace = true, features = ["scale-codec"] }
+nohash-hasher.workspace = true
+parity-scale-codec.workspace = true
+parking_lot.workspace = true
+pin-project.workspace = true
+prometheus-client.workspace = true
+rand.workspace = true
+schnellru.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+subspace-core-primitives.workspace = true
+subspace-logging.workspace = true
+subspace-metrics.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-stream.workspace = true
+tracing.workspace = true
+unsigned-varint = { workspace = true, features = ["futures", "asynchronous_codec"] }
+void.workspace = true
+libp2p= { workspace = true, features = ["autonat", "dns", "gossipsub", "identify", "kad", "macros", "metrics", "noise", "ping", "plaintext", "request-response", "serde", "tcp", "tokio", "yamux"] }
 
 [dev-dependencies]
-rand = "0.8.5"
-# TODO: Replace with upstream once https://github.com/libp2p/rust-libp2p/issues/5626 is resolved
-libp2p-swarm-test = { version = "0.4.0", git = "https://github.com/autonomys/rust-libp2p", rev = "3f6238a86bda615ee9ec54462147f6a5d7891b6d" }
+rand.workspace = true
+libp2p-swarm-test.workspace = true

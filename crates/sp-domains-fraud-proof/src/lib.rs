@@ -24,12 +24,12 @@ use crate::fraud_proof::FraudProof;
 use crate::storage_proof::FraudProofStorageKeyRequest;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode};
 use domain_runtime_primitives::EthereumAccountId;
 #[cfg(feature = "std")]
 pub use host_functions::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofHostFunctionsImpl,
 };
+use parity_scale_codec::{Decode, Encode};
 pub use runtime_interface::fraud_proof_runtime_interface;
 #[cfg(feature = "std")]
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;

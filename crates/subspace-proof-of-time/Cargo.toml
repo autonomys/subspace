@@ -15,14 +15,14 @@ include = [
 bench = false
 
 [dependencies]
-aes = "0.9.0-pre.2"
-subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-thiserror = { version = "2.0.0", default-features = false }
+aes.workspace = true
+subspace-core-primitives.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
-core_affinity = "0.8.1"
-criterion = "0.5.1"
-rand = "0.8.5"
+core_affinity.workspace = true
+criterion.workspace = true
+rand.workspace = true
 
 [[bench]]
 name = "pot"

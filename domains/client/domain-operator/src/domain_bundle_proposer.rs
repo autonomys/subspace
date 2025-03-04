@@ -1,6 +1,6 @@
 use crate::ExecutionReceiptFor;
-use codec::Encode;
 use futures::{select, FutureExt};
+use parity_scale_codec::Encode;
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{ApiExt, ProvideRuntimeApi};

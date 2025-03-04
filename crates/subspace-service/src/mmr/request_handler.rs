@@ -31,7 +31,6 @@ use sp_blockchain::HeaderBackend;
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::offchain::{DbExternalities, OffchainStorage, StorageKind};
 use sp_mmr_primitives::utils::NodesUtils;
-use sp_runtime::codec;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
@@ -315,5 +314,5 @@ enum HandleRequestError {
     SendResponse,
 
     #[error("Failed to decode request: {0}.")]
-    Decode(#[from] codec::Error),
+    Decode(#[from] parity_scale_codec::Error),
 }

@@ -1,5 +1,5 @@
 use crate::runtime_interface::LeafData;
-use codec::Decode;
+use parity_scale_codec::Decode;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;

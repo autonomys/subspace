@@ -16,62 +16,62 @@ name = "subspace-farmer"
 required-features = ["binary"]
 
 [dependencies]
-anyhow = "1.0.89"
-async-lock = "3.4.0"
-async-nats = { version = "0.37.0", optional = true }
-async-trait = "0.1.83"
-backoff = { version = "0.4.0", features = ["futures", "tokio"] }
-base58 = "0.2.0"
-blake2 = "0.10.6"
-blake3 = { version = "1.5.4", default-features = false }
-bytes = "1.7.2"
-bytesize = "1.3.0"
-clap = { version = "4.5.18", features = ["derive"], optional = true }
-criterion = { version = "0.5.1", default-features = false, features = ["rayon", "async"], optional = true }
-derive_more = { version = "1.0.0", features = ["full"] }
-event-listener = "5.3.1"
-event-listener-primitives = "2.0.1"
-fdlimit = { version = "0.3.0", optional = true }
-fs4 = "0.9.1"
-futures = "0.3.31"
-hex = { version = "0.4.3", features = ["serde"] }
-hwlocality = { version = "1.0.0-alpha.6", features = ["vendored"], optional = true }
-jsonrpsee = { version = "0.24.5", features = ["ws-client"] }
-mimalloc = { version = "0.1.43", optional = true }
-num_cpus = "1.16.0"
-ouroboros = "0.18.4"
-parity-scale-codec = "3.6.12"
-parking_lot = "0.12.2"
-pin-project = "1.1.5"
-prometheus-client = "0.22.3"
-rand = "0.8.5"
-rayon = "1.10.0"
-schnorrkel = "0.11.4"
-serde = { version = "1.0.216", features = ["derive"] }
-serde_json = "1.0.133"
-static_assertions = "1.1.0"
-ss58-registry = "1.51.0"
-subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-subspace-data-retrieval = { version = "0.1.0", path = "../../shared/subspace-data-retrieval" }
-subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
-subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
-subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
-subspace-logging = { version = "0.0.1", path = "../../shared/subspace-logging", optional = true }
-subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics", optional = true }
-subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
-subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
-subspace-proof-of-space-gpu = { version = "0.1.0", path = "../../shared/subspace-proof-of-space-gpu", optional = true }
-subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
-subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
-substrate-bip39 = "0.6.0"
-tempfile = "3.13.0"
-thiserror = "2.0.0"
-thread-priority = "1.1.0"
-tokio = { version = "1.40.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
-tokio-stream = { version = "0.1.16", features = ["sync"] }
-tracing = "0.1.40"
-ulid = { version = "1.1.3", features = ["serde"] }
-zeroize = "1.8.1"
+anyhow.workspace = true
+async-lock.workspace = true
+async-nats = { workspace = true, optional = true }
+async-trait.workspace = true
+backoff = { workspace = true, features = ["futures", "tokio"] }
+base58.workspace = true
+blake2.workspace = true
+blake3.workspace = true
+bytes.workspace = true
+bytesize.workspace = true
+clap = { workspace = true, features = ["derive"], optional = true }
+criterion = { workspace = true, features = ["rayon", "async"], optional = true }
+derive_more = { workspace = true, features = ["full"] }
+event-listener.workspace = true
+event-listener-primitives.workspace = true
+fdlimit = { workspace = true, optional = true }
+fs4.workspace = true
+futures.workspace = true
+hex = { workspace = true, features = ["serde"] }
+hwlocality = { workspace = true, features = ["vendored"], optional = true }
+jsonrpsee = { workspace = true, features = ["ws-client"] }
+mimalloc = { workspace = true, optional = true }
+num_cpus.workspace = true
+ouroboros.workspace = true
+parity-scale-codec.workspace = true
+parking_lot.workspace = true
+pin-project.workspace = true
+prometheus-client.workspace = true
+rand.workspace = true
+rayon.workspace = true
+schnorrkel.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+static_assertions.workspace = true
+ss58-registry.workspace = true
+subspace-core-primitives.workspace = true
+subspace-data-retrieval.workspace = true
+subspace-erasure-coding.workspace = true
+subspace-farmer-components.workspace = true
+subspace-kzg.workspace = true
+subspace-logging = { workspace = true, optional = true }
+subspace-metrics = { workspace = true, optional = true }
+subspace-networking.workspace = true
+subspace-proof-of-space.workspace = true
+subspace-proof-of-space-gpu = { workspace = true, optional = true }
+subspace-rpc-primitives.workspace = true
+subspace-verification.workspace = true
+substrate-bip39.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+thread-priority.workspace = true
+tokio = { workspace = true, features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-stream = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+ulid = { workspace = true, features = ["serde"] }
+zeroize.workspace = true
 
 [features]
 default = ["default-library", "binary"]

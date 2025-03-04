@@ -4,8 +4,8 @@ extern crate alloc;
 use crate::storage_proof::{self, *};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode};
 use core::fmt;
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
@@ -232,17 +232,17 @@ pub enum VerificationError<DomainHash> {
     InvalidProof,
     /// Failed to decode the return value of `initialize_block` and `apply_extrinsic`.
     #[error("Failed to decode the return value of `initialize_block` and `apply_extrinsic`: {0}")]
-    InitializeBlockOrApplyExtrinsicDecode(codec::Error),
+    InitializeBlockOrApplyExtrinsicDecode(parity_scale_codec::Error),
     /// Failed to decode the storage root produced by verifying `initialize_block` or `apply_extrinsic`.
     #[
     error(
     "Failed to decode the storage root from verifying `initialize_block` and `apply_extrinsic`: {0}"
     )
     ]
-    StorageRootDecode(codec::Error),
+    StorageRootDecode(parity_scale_codec::Error),
     /// Failed to decode the header produced by `finalize_block`.
     #[error("Failed to decode the header from verifying `finalize_block`: {0}")]
-    HeaderDecode(codec::Error),
+    HeaderDecode(parity_scale_codec::Error),
     #[error("The receipt's execution_trace have less than 2 traces")]
     InvalidExecutionTrace,
     #[error("Invalid ApplyExtrinsic trace index")]

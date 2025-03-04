@@ -16,10 +16,10 @@ extern crate alloc;
 use alloc::string::String;
 #[cfg(all(feature = "kzg", not(feature = "std")))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 #[cfg(feature = "kzg")]
 use core::simd::Simd;
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use schnorrkel::context::SigningContext;
 use schnorrkel::SignatureError;
 #[cfg(feature = "kzg")]

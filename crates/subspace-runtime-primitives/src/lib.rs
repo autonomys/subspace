@@ -11,7 +11,6 @@ extern crate alloc;
 use crate::time::{BLOCKS_IN_AN_MINUTE, BLOCKS_IN_A_DAY};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Codec, Decode, Encode, MaxEncodedLen};
 use frame_support::pallet_prelude::Weight;
 use frame_support::traits::tokens;
 use frame_support::weights::constants::WEIGHT_REF_TIME_PER_SECOND;
@@ -19,6 +18,7 @@ use frame_support::{Deserialize, Serialize};
 use frame_system::limits::BlockLength;
 use frame_system::offchain::CreateTransactionBase;
 use pallet_transaction_payment::{Multiplier, TargetedFeeAdjustment};
+use parity_scale_codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::parameter_types;
 use sp_runtime::traits::{Bounded, IdentifyAccount, Verify};

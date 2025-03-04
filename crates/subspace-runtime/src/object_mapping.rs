@@ -2,7 +2,7 @@
 //! This code must be kept in sync with `test/subspace-test-runtime/src/lib.rs`.
 
 use crate::{Block, Runtime, RuntimeCall};
-use codec::{Compact, CompactLen, Encode};
+use parity_scale_codec::{Compact, CompactLen, Encode};
 use sp_std::prelude::*;
 use subspace_core_primitives::hashes;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};

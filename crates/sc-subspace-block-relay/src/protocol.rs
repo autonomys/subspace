@@ -42,7 +42,7 @@
 pub(crate) mod compact_block;
 
 use crate::types::RelayError;
-use codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode};
 
 /// The resolved protocol unit related info
 pub(crate) struct Resolved<ProtocolUnitId, ProtocolUnit> {

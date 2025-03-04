@@ -4,8 +4,8 @@ use crate::protocol::{ClientBackend, ProtocolUnitInfo, Resolved, ServerBackend};
 use crate::types::RelayError;
 use crate::utils::NetworkPeerHandle;
 use crate::LOG_TARGET;
-use codec::{Decode, Encode};
 use derive_more::From;
+use parity_scale_codec::{Decode, Encode};
 use std::collections::BTreeMap;
 use tracing::{trace, warn};
 

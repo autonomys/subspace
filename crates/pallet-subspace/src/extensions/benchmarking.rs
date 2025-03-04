@@ -6,10 +6,10 @@ use crate::pallet::{
     SegmentCommitment as SubspaceSegmentCommitment, SolutionRanges,
 };
 use crate::{Config, Pallet as Subspace, VoteVerificationData};
-use codec::{Decode, Encode};
 use frame_benchmarking::v2::*;
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use frame_system::pallet_prelude::RuntimeCallFor;
+use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::SignedVote;

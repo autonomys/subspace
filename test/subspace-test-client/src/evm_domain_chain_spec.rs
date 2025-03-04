@@ -1,11 +1,11 @@
 //! Chain specification for the evm domain.
 
 use crate::chain_spec::get_from_seed;
-use codec::Encode;
 use domain_runtime_primitives::AccountId20Converter;
 use evm_domain_test_runtime::{
     AccountId as AccountId20, Precompiles, RuntimeGenesisConfig, Signature,
 };
+use parity_scale_codec::Encode;
 use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension};
 use sp_core::{ecdsa, Pair, Public};
 use sp_domains::storage::RawGenesis;

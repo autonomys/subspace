@@ -2,8 +2,8 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use codec::{Decode, Encode};
 use domain_runtime_primitives::EthereumAccountId;
+use parity_scale_codec::{Decode, Encode};
 use sp_domains::PermissionedActionAllowedBy;
 use sp_messenger::messages::{ChainId, ChannelId};
 use subspace_runtime_primitives::Moment;

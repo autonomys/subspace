@@ -6,6 +6,6 @@ authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.83"
-sc-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }
+async-trait.workspace = true
+sc-consensus.workspace = true
+sp-runtime.workspace = true

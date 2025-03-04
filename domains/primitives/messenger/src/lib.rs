@@ -28,11 +28,11 @@ use crate::messages::{MessageKey, Nonce};
 use alloc::collections::BTreeSet;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode};
 #[cfg(feature = "std")]
 use frame_support::inherent::InherentData;
 use frame_support::inherent::{InherentIdentifier, IsFatalError};
 use messages::{BlockMessagesWithStorageKey, ChannelId, CrossDomainMessage, MessageId};
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;

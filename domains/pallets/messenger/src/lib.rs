@@ -34,12 +34,12 @@ pub mod weights;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use codec::{Decode, Encode};
 use frame_support::pallet_prelude::StorageVersion;
 use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_system::offchain::CreateInherent;
 use frame_system::pallet_prelude::BlockNumberFor;
 pub use pallet::*;
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::{DomainAllowlistUpdates, DomainId};

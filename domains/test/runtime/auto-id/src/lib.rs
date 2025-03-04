@@ -12,7 +12,6 @@ extern crate alloc;
 use alloc::borrow::Cow;
 #[cfg(not(feature = "std"))]
 use alloc::format;
-use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{
@@ -37,6 +36,7 @@ use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_block_fees::fees::OnChargeDomainTransaction;
 use pallet_transporter::EndpointHandler;
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata};

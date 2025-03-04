@@ -16,41 +16,40 @@ include = [
 bench = false
 
 [dependencies]
-anyhow = "1.0.89"
-async-lock = "3.4.0"
-backoff = { version = "0.4.0", features = ["futures", "tokio"] }
-bitvec = "1.0.1"
-# TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved
-fs2 = "0.4.3"
-futures = "0.3.31"
-hex = "0.4.3"
-libc = "0.2.159"
-parity-scale-codec = "3.6.12"
-parking_lot = "0.12.2"
-rand = "0.8.5"
-rayon = "1.10.0"
-schnorrkel = "0.11.4"
-serde = { version = "1.0.216", features = ["derive"] }
-static_assertions = "1.1.0"
-subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
-subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-subspace-data-retrieval = { version = "0.1.0", path = "../../shared/subspace-data-retrieval" }
-subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
-subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
-subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["parallel"] }
-subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
-thiserror = "2.0.0"
-tokio = { version = "1.40.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync"] }
-tracing = "0.1.40"
+anyhow.workspace = true
+async-lock.workspace = true
+backoff = { workspace = true, features = ["futures", "tokio"] }
+bitvec.workspace = true
+fs2.workspace = true
+futures.workspace = true
+hex.workspace = true
+libc.workspace = true
+parity-scale-codec.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+rayon.workspace = true
+schnorrkel.workspace = true
+serde = { workspace = true, features = ["derive"] }
+static_assertions.workspace = true
+subspace-archiving.workspace = true
+subspace-core-primitives.workspace = true
+subspace-data-retrieval.workspace = true
+subspace-erasure-coding.workspace = true
+subspace-kzg.workspace = true
+subspace-proof-of-space = { workspace = true, features = ["parallel"] }
+subspace-verification.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync"] }
+tracing.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.9"
 
 [dev-dependencies]
-criterion = "0.5.1"
-futures = "0.3.31"
-subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
-subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
+criterion.workspace = true
+futures.workspace = true
+subspace-archiving.workspace = true
+subspace-proof-of-space.workspace = true
 
 [[bench]]
 name = "plotting"
