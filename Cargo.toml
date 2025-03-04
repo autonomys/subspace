@@ -48,7 +48,6 @@ derive_more = { version = "1.0.0", default-features = false }
 domain-block-builder = { version = "0.1.0", path = "domains/client/block-builder", default-features = false }
 domain-block-preprocessor = { version = "0.1.0", path = "domains/client/block-preprocessor", default-features = false }
 domain-check-weight = { version = "0.1.0", path = "domains/pallets/domain-check-weight", default-features = false }
-domain-client-block-preprocessor = { version = "0.1.0", path = "domains/client/block-preprocessor" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "domains/client/consensus-relay-chain" }
 domain-client-message-relayer = { version = "0.1.0", path = "domains/client/relayer" }
 domain-client-operator = { version = "0.1.0", path = "domains/client/domain-operator" }
