@@ -59,6 +59,16 @@ jobs:
               max-parallelism = 1
         if: github.repository_owner != 'autonomys'
 
+      # This is to manage the concurrency of the builds and prevent self-hosted runners from running out of memory
+      - name: Set up Docker Buildx (self-hosted runner)
+        uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349 # v3.7.1
+        with:
+          # Limit concurrency so it can reduce the likelihood of running out of memory
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 3
+        if: github.repository_owner == 'autonomys'
+
       - name: Log into registry
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
         with:
