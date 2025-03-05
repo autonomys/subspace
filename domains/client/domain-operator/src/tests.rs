@@ -36,7 +36,7 @@ use sp_blockchain::ApplyExtrinsicFailed;
 use sp_consensus::SyncOracle;
 use sp_core::storage::StateVersion;
 use sp_core::traits::{FetchRuntimeCode, SpawnEssentialNamed};
-use sp_core::{Pair, H256, U256};
+use sp_core::{Pair, H160, H256, U256};
 use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
@@ -1259,6 +1259,139 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
     assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_evm_domain_gas_estimates() {
+    let (_directory, _ferdie, alice, account_infos) =
+        setup_evm_test_accounts(Sr25519Alice, false, None).await;
+
+    let test_estimate_gas = |evm_call| {
+        let <TestRuntime as frame_system::Config>::RuntimeCall::EVM(evm_call) = evm_call else {
+            panic!("Unexpected RuntimeCall type");
+        };
+
+        match evm_call {
+            pallet_evm::Call::create {
+                source,
+                ref init,
+                value,
+                gas_limit,
+                max_fee_per_gas,
+                max_priority_fee_per_gas,
+                nonce,
+                ref access_list,
+            } => {
+                let create_info = alice
+                    .client
+                    .runtime_api()
+                    .create(
+                        alice.client.info().best_hash,
+                        source,
+                        init.clone(),
+                        value,
+                        gas_limit.into(),
+                        Some(max_fee_per_gas),
+                        max_priority_fee_per_gas,
+                        nonce,
+                        // Estimate gas
+                        true,
+                        Some(access_list.clone()),
+                    )
+                    .expect("test EVM Create runtime call must succeed")
+                    .expect("test EVM Create info must succeed");
+
+                assert_eq!(
+                    (
+                        create_info.used_gas.standard,
+                        create_info.used_gas.effective,
+                    ),
+                    // The exact estimate is not important, but we want to know if it changes
+                    (4_327_174.into(), 4_327_174.into()),
+                    "Incorrect EVM Create gas estimate: {:?} {:?}",
+                    evm_call,
+                    create_info,
+                );
+            }
+            pallet_evm::Call::call {
+                source,
+                target,
+                ref input,
+                value,
+                gas_limit,
+                max_fee_per_gas,
+                max_priority_fee_per_gas,
+                nonce,
+                ref access_list,
+            } => {
+                let call_info = alice
+                    .client
+                    .runtime_api()
+                    .call(
+                        alice.client.info().best_hash,
+                        source,
+                        target,
+                        input.clone(),
+                        value,
+                        gas_limit.into(),
+                        Some(max_fee_per_gas),
+                        max_priority_fee_per_gas,
+                        nonce,
+                        // Estimate gas
+                        true,
+                        Some(access_list.clone()),
+                    )
+                    .expect("test EVM Call runtime call must succeed")
+                    .expect("test EVM Call info must succeed");
+
+                assert_eq!(
+                    (call_info.used_gas.standard, call_info.used_gas.effective),
+                    // The exact estimate is not important, but we want to know if it changes
+                    (22_258.into(), 22_258.into()),
+                    "Incorrect EVM Call gas estimate: {:?} {:?}",
+                    evm_call,
+                    call_info,
+                );
+            }
+            _ => panic!("Unexpected pallet_evm::Call type"),
+        }
+    };
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    let evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
+    let evm_create = generate_evm_domain_call(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    test_estimate_gas(evm_create);
+
+    let evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
+    let evm_call = generate_evm_domain_call(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Call(H160::zero()),
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    test_estimate_gas(evm_call);
 }
 
 #[tokio::test(flavor = "multi_thread")]
