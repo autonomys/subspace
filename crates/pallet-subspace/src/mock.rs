@@ -128,6 +128,7 @@ parameter_types! {
 
 impl Config for Test {
     type RuntimeEvent = RuntimeEvent;
+    type SubspaceOrigin = pallet_subspace::EnsureSubspaceOrigin;
     type BlockAuthoringDelay = BlockAuthoringDelay;
     type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
     type PotEntropyInjectionLookbackDepth = PotEntropyInjectionLookbackDepth;
@@ -143,9 +144,8 @@ impl Config for Test {
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type EraChangeTrigger = NormalEraChange;
-    type BlockSlotCount = BlockSlotCount;
-
     type WeightInfo = ();
+    type BlockSlotCount = BlockSlotCount;
     type ExtensionWeightInfo = crate::extensions::weights::SubstrateWeight<Test>;
 }
 

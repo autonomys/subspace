@@ -123,7 +123,6 @@ pub type SignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     CheckContractCreation<Runtime>,
-    subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics<Runtime>,
 );
 
 /// Custom signed extra for check_and_pre_dispatch.
@@ -138,8 +137,6 @@ type CustomSignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     CheckContractCreation<Runtime>,
-    // TODO: remove or adapt after or during migration to General extrinsic respectively
-    subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -903,15 +900,6 @@ impl fp_rpc::ConvertTransaction<opaque::UncheckedExtrinsic> for TransactionConve
     }
 }
 
-// List of allowed general unsigned extrinsics.
-// New unsigned general extrinsics must be included here.
-impl subspace_runtime_primitives::AllowedUnsignedExtrinsics for RuntimeCall {
-    fn is_allowed_unsigned(&self) -> bool {
-        // TODO: update once we start migration for domains
-        false
-    }
-}
-
 fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
     match &ext.0.function {
         RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
@@ -1137,7 +1125,6 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.6,
                     extra.7.clone(),
                     extra.8,
-                    extra.9,
                 );
 
                 let origin = RuntimeOrigin::none();
@@ -1162,7 +1149,6 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.6,
                     extra.7.clone(),
                     extra.8,
-                    extra.9,
                 );
 
                 let origin = RuntimeOrigin::signed(account_id);

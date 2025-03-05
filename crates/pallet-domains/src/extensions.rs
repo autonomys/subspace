@@ -1,10 +1,10 @@
 //! Extensions for unsigned general extrinsics
 
 use crate::pallet::Call as DomainsCall;
-use crate::{Config, FraudProofFor, OpaqueBundleOf, Pallet as Domains, SingletonReceiptOf};
-use codec::{Decode, Encode};
+use crate::{Config, FraudProofFor, OpaqueBundleOf, Origin, Pallet as Domains, SingletonReceiptOf};
 use frame_support::pallet_prelude::{PhantomData, TypeInfo};
 use frame_system::pallet_prelude::RuntimeCallFor;
+use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_runtime::impl_tx_ext_default;
@@ -167,7 +167,7 @@ impl<Runtime> TransactionExtension<RuntimeCallFor<Runtime>> for DomainsExtension
 where
     Runtime: Config + scale_info::TypeInfo + fmt::Debug + Send + Sync,
     <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
-        AsSystemOriginSigner<<Runtime as frame_system::Config>::AccountId> + Clone,
+        AsSystemOriginSigner<<Runtime as frame_system::Config>::AccountId> + From<Origin> + Clone,
     RuntimeCallFor<Runtime>: MaybeDomainsCall<Runtime>,
 {
     const IDENTIFIER: &'static str = "DomainsExtension";
@@ -208,7 +208,7 @@ where
             _ => return Err(InvalidTransaction::Call.into()),
         };
 
-        Ok((validity, (), origin))
+        Ok((validity, (), Origin::ValidatedUnsigned.into()))
     }
 
     impl_tx_ext_default!(RuntimeCallFor<Runtime>; prepare);

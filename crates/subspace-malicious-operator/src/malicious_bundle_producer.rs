@@ -375,7 +375,11 @@ where
                 self.sudo_account.clone(),
                 nonce,
             )?,
-            None => UncheckedExtrinsic::new_bare(call.clone()),
+            None => {
+                // for general unsigned, nonce does not matter.
+                let extra = get_singed_extra(self.consensus_client.info().best_number.into(), 0);
+                UncheckedExtrinsic::new_transaction(call.clone(), extra)
+            }
         };
 
         self.consensus_offchain_tx_pool_factory
@@ -392,6 +396,26 @@ where
     }
 }
 
+fn get_singed_extra(best_number: u64, nonce: Nonce) -> SignedExtra {
+    let period = u64::from(<<Runtime as frame_system::Config>::BlockHashCount>::get())
+        .checked_next_power_of_two()
+        .map(|c| c / 2)
+        .unwrap_or(2);
+    (
+        frame_system::CheckNonZeroSender::<Runtime>::new(),
+        frame_system::CheckSpecVersion::<Runtime>::new(),
+        frame_system::CheckTxVersion::<Runtime>::new(),
+        frame_system::CheckGenesis::<Runtime>::new(),
+        frame_system::CheckMortality::<Runtime>::from(generic::Era::mortal(period, best_number)),
+        frame_system::CheckNonce::<Runtime>::from(nonce.into()),
+        frame_system::CheckWeight::<Runtime>::new(),
+        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
+        DisablePallets,
+        pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
+        pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
+    )
+}
+
 pub fn construct_signed_extrinsic(
     consensus_keystore: &KeystorePtr,
     consensus_chain_info: Info<CBlock>,
@@ -399,27 +423,7 @@ pub fn construct_signed_extrinsic(
     caller: AccountId,
     nonce: Nonce,
 ) -> Result<UncheckedExtrinsic, Box<dyn Error>> {
-    let period = u64::from(<<Runtime as frame_system::Config>::BlockHashCount>::get())
-        .checked_next_power_of_two()
-        .map(|c| c / 2)
-        .unwrap_or(2);
-    let extra: SignedExtra = (
-        frame_system::CheckNonZeroSender::<Runtime>::new(),
-        frame_system::CheckSpecVersion::<Runtime>::new(),
-        frame_system::CheckTxVersion::<Runtime>::new(),
-        frame_system::CheckGenesis::<Runtime>::new(),
-        frame_system::CheckMortality::<Runtime>::from(generic::Era::mortal(
-            period,
-            consensus_chain_info.best_number.into(),
-        )),
-        frame_system::CheckNonce::<Runtime>::from(nonce.into()),
-        frame_system::CheckWeight::<Runtime>::new(),
-        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
-        DisablePallets,
-        pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
-        pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
-        subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics::<Runtime>::new(),
-    );
+    let extra = get_singed_extra(consensus_chain_info.best_number.into(), nonce);
     let raw_payload = generic::SignedPayload::<RuntimeCall, SignedExtra>::from_raw(
         call.clone(),
         extra.clone(),
@@ -429,7 +433,6 @@ pub fn construct_signed_extrinsic(
             subspace_runtime::VERSION.transaction_version,
             consensus_chain_info.genesis_hash,
             consensus_chain_info.best_hash,
-            (),
             (),
             (),
             (),

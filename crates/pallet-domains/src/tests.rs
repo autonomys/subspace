@@ -243,22 +243,24 @@ impl sp_domains::DomainsTransfersTracker<Balance> for MockDomainsTransfersTracke
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = sp_core::H256;
+    type Balance = Balance;
     type DomainHeader = DomainHeader;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
+    type Share = Balance;
     type HoldIdentifier = HoldIdentifierWrapper;
+    type BlockTreePruningDepth = BlockTreePruningDepth;
+    type ConsensusSlotProbability = SlotProbability;
+    type MaxDomainBlockSize = MaxDomainBlockSize;
+    type MaxDomainBlockWeight = MaxDomainBlockWeight;
+    type MaxDomainNameLength = MaxDomainNameLength;
+    type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type MinOperatorStake = MinOperatorStake;
     type MinNominatorStake = MinNominatorStake;
-    type MaxDomainBlockSize = MaxDomainBlockSize;
-    type MaxDomainBlockWeight = MaxDomainBlockWeight;
-    type DomainInstantiationDeposit = DomainInstantiationDeposit;
-    type MaxDomainNameLength = MaxDomainNameLength;
-    type Share = Balance;
-    type BlockTreePruningDepth = BlockTreePruningDepth;
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
@@ -272,15 +274,14 @@ impl pallet_domains::Config for Test {
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
     type BundleLongevity = BundleLongevity;
-    type ConsensusSlotProbability = SlotProbability;
     type DomainBundleSubmitted = ();
     type OnDomainInstantiated = ();
-    type Balance = Balance;
     type MmrHash = H256;
     type MmrProofVerifier = ();
     type FraudProofStorageKeyProvider = ();
     type OnChainRewards = ();
     type WithdrawalLimit = WithdrawalLimit;
+    type DomainOrigin = crate::EnsureDomainOrigin;
 }
 
 pub struct ExtrinsicStorageFees;

@@ -38,15 +38,15 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::vec::Vec;
 use domain_runtime_primitives::EthereumAccountId;
 use frame_support::ensure;
-use frame_support::pallet_prelude::StorageVersion;
+use frame_support::pallet_prelude::{RuntimeDebug, StorageVersion};
 use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_support::traits::tokens::{Fortitude, Preservation};
-use frame_support::traits::{Get, Randomness as RandomnessT, Time};
+use frame_support::traits::{EnsureOrigin, Get, Randomness as RandomnessT, Time};
 use frame_support::weights::Weight;
 use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_consensus_subspace::WrappedPotOutput;
@@ -149,6 +149,29 @@ pub type BlockTreeNodeFor<T> = crate::block_tree::BlockTreeNode<
     BalanceOf<T>,
 >;
 
+/// Custom origin for validated unsigned extrinsics.
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub enum RawOrigin {
+    ValidatedUnsigned,
+}
+
+/// Ensure the domain origin.
+pub struct EnsureDomainOrigin;
+impl<O: Into<Result<RawOrigin, O>> + From<RawOrigin>> EnsureOrigin<O> for EnsureDomainOrigin {
+    type Success = ();
+
+    fn try_origin(o: O) -> Result<Self::Success, O> {
+        o.into().map(|o| match o {
+            RawOrigin::ValidatedUnsigned => (),
+        })
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn try_successful_origin() -> Result<O, ()> {
+        Ok(O::from(RawOrigin::ValidatedUnsigned))
+    }
+}
+
 /// The current storage version.
 const STORAGE_VERSION: StorageVersion = StorageVersion::new(3);
 
@@ -199,7 +222,7 @@ mod pallet {
     use crate::MAX_NOMINATORS_TO_SLASH;
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
-        ExecutionReceiptOf, FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf,
+        ExecutionReceiptOf, FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf, RawOrigin,
         ReceiptHashFor, SingletonReceiptOf, StateRootOf, MAX_BUNDLE_PER_BLOCK, STORAGE_VERSION,
     };
     #[cfg(not(feature = "std"))]
@@ -244,6 +267,9 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config<Hash: Into<H256> + From<H256>> {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+
+        /// Origin for domain call.
+        type DomainOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = ()>;
 
         // TODO: `DomainHash` can be derived from `DomainHeader`, it is still needed just for
         // converting `DomainHash` to/from `H256` without encode/decode, remove it once we found
@@ -1035,6 +1061,9 @@ mod pallet {
         },
     }
 
+    #[pallet::origin]
+    pub type Origin = RawOrigin;
+
     /// Per-domain state for tx range calculation.
     #[derive(Debug, Default, Decode, Encode, TypeInfo, PartialEq, Eq)]
     pub struct TxRangeState {
@@ -1067,7 +1096,7 @@ mod pallet {
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundleOf<T>,
         ) -> DispatchResultWithPostInfo {
-            ensure_none(origin)?;
+            T::DomainOrigin::ensure_origin(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing bundle: {opaque_bundle:?}");
 
@@ -1253,7 +1282,7 @@ mod pallet {
             origin: OriginFor<T>,
             fraud_proof: Box<FraudProofFor<T>>,
         ) -> DispatchResultWithPostInfo {
-            ensure_none(origin)?;
+            T::DomainOrigin::ensure_origin(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
@@ -1691,7 +1720,7 @@ mod pallet {
             origin: OriginFor<T>,
             singleton_receipt: SingletonReceiptOf<T>,
         ) -> DispatchResultWithPostInfo {
-            ensure_none(origin)?;
+            T::DomainOrigin::ensure_origin(origin)?;
 
             let domain_id = singleton_receipt.domain_id();
             let operator_id = singleton_receipt.operator_id();
