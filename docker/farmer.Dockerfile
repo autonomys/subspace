@@ -1,7 +1,6 @@
 # This Dockerfile supports both native building and cross-compilation to x86-64, aarch64 and riscv64
 FROM --platform=$BUILDPLATFORM ubuntu:22.04
 
-ARG RUSTC_VERSION=nightly-2024-12-24
 ARG PROFILE=production
 ARG RUSTFLAGS
 # Incremental compilation here isn't helpful
@@ -51,10 +50,7 @@ RUN \
           libc6-dev-amd64-cross \
     ; fi
 
-RUN \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION && \
-    /root/.cargo/bin/rustup target add wasm32-unknown-unknown && \
-    /root/.cargo/bin/rustup component add rust-src --toolchain $RUSTC_VERSION
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
 
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
