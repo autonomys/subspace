@@ -623,7 +623,7 @@ mod tests {
         extend_block_tree_from_zero, get_block_tree_node_at, new_test_ext_with_extensions,
         register_genesis_domain, run_to_block, BlockTreePruningDepth, Domains, Test,
     };
-    use crate::FrozenDomains;
+    use crate::{FrozenDomains, RawOrigin as DomainOrigin};
     use frame_support::dispatch::RawOrigin;
     use frame_support::{assert_err, assert_ok};
     use frame_system::Origin;
@@ -711,7 +711,7 @@ mod tests {
                 let bundle_header_hash = bundle.sealed_header.pre_hash();
                 let bundle_size = bundle.size();
                 assert_ok!(crate::Pallet::<Test>::submit_bundle(
-                    RawOrigin::None.into(),
+                    DomainOrigin::ValidatedUnsigned.into(),
                     bundle,
                 ));
                 // `bundle_extrinsics_root` should be tracked in `ExecutionInbox`
@@ -805,7 +805,7 @@ mod tests {
                 next_head_receipt.clone(),
             );
             assert_ok!(crate::Pallet::<Test>::submit_bundle(
-                RawOrigin::None.into(),
+                DomainOrigin::ValidatedUnsigned.into(),
                 bundle,
             ));
 
@@ -836,7 +836,7 @@ mod tests {
                 current_head_receipt,
             );
             assert_ok!(crate::Pallet::<Test>::submit_bundle(
-                RawOrigin::None.into(),
+                DomainOrigin::ValidatedUnsigned.into(),
                 bundle,
             ));
 
@@ -1228,7 +1228,7 @@ mod tests {
                     next_receipt.clone(),
                 );
                 assert_ok!(crate::Pallet::<Test>::submit_bundle(
-                    RawOrigin::None.into(),
+                    DomainOrigin::ValidatedUnsigned.into(),
                     bundle,
                 ));
             }

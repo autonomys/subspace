@@ -377,7 +377,8 @@ where
             )?,
             None => {
                 // for general unsigned, nonce does not matter.
-                let extra = get_singed_extra(self.consensus_client.info().best_number.into(), 0);
+                let extra =
+                    get_singed_extra(self.consensus_client.info().best_number.into(), true, 0);
                 UncheckedExtrinsic::new_transaction(call.clone(), extra)
             }
         };
@@ -396,7 +397,7 @@ where
     }
 }
 
-fn get_singed_extra(best_number: u64, nonce: Nonce) -> SignedExtra {
+fn get_singed_extra(best_number: u64, immortal: bool, nonce: Nonce) -> SignedExtra {
     let period = u64::from(<<Runtime as frame_system::Config>::BlockHashCount>::get())
         .checked_next_power_of_two()
         .map(|c| c / 2)
@@ -406,7 +407,11 @@ fn get_singed_extra(best_number: u64, nonce: Nonce) -> SignedExtra {
         frame_system::CheckSpecVersion::<Runtime>::new(),
         frame_system::CheckTxVersion::<Runtime>::new(),
         frame_system::CheckGenesis::<Runtime>::new(),
-        frame_system::CheckMortality::<Runtime>::from(generic::Era::mortal(period, best_number)),
+        frame_system::CheckMortality::<Runtime>::from(if immortal {
+            generic::Era::Immortal
+        } else {
+            generic::Era::mortal(period, best_number)
+        }),
         frame_system::CheckNonce::<Runtime>::from(nonce.into()),
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
@@ -423,7 +428,7 @@ pub fn construct_signed_extrinsic(
     caller: AccountId,
     nonce: Nonce,
 ) -> Result<UncheckedExtrinsic, Box<dyn Error>> {
-    let extra = get_singed_extra(consensus_chain_info.best_number.into(), nonce);
+    let extra = get_singed_extra(consensus_chain_info.best_number.into(), false, nonce);
     let raw_payload = generic::SignedPayload::<RuntimeCall, SignedExtra>::from_raw(
         call.clone(),
         extra.clone(),

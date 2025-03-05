@@ -1457,6 +1457,6 @@ where
 {
     let function = function.into();
     let current_block = client.as_ref().info().best_number.saturated_into();
-    let extra = get_signed_extra(current_block, false, 0, 0);
+    let extra = get_signed_extra(current_block, true, 0, 0);
     UncheckedExtrinsic::new_transaction(function, extra)
 }

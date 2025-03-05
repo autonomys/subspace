@@ -92,10 +92,7 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
 use sp_runtime::type_with_default::TypeWithDefault;
-use sp_runtime::{
-    generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill,
-    SaturatedConversion,
-};
+use sp_runtime::{generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
@@ -1158,19 +1155,12 @@ fn extract_successful_bundles(
 }
 
 fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
-    let period = BlockHashCount::get()
-        .checked_next_power_of_two()
-        .map(|c| c / 2)
-        .unwrap_or(2) as u64;
-
-    let current_block = System::block_number().saturated_into::<u64>();
-
     let extra: SignedExtra = (
         frame_system::CheckNonZeroSender::<Runtime>::new(),
         frame_system::CheckSpecVersion::<Runtime>::new(),
         frame_system::CheckTxVersion::<Runtime>::new(),
         frame_system::CheckGenesis::<Runtime>::new(),
-        frame_system::CheckMortality::<Runtime>::from(generic::Era::mortal(period, current_block)),
+        frame_system::CheckMortality::<Runtime>::from(generic::Era::Immortal),
         // for unsigned extrinsic, nonce check will be skipped
         // so set a default value
         frame_system::CheckNonce::<Runtime>::from(0u32.into()),
