@@ -60,11 +60,12 @@
 
 #![feature(
     array_windows,
+    assert_matches,
     box_into_inner,
     duration_constructors,
     extract_if,
-    assert_matches,
-    let_chains
+    let_chains,
+    more_qualified_paths
 )]
 
 mod aux_schema;

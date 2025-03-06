@@ -43,7 +43,8 @@ use frame_system::pallet_prelude::{BlockNumberFor, RuntimeCallFor};
 use pallet_block_fees::fees::OnChargeDomainTransaction;
 use pallet_ethereum::Call::transact;
 use pallet_ethereum::{
-    Call, PostLogContent, Transaction as EthereumTransaction, TransactionData, TransactionStatus,
+    Call, PostLogContent, Transaction as EthereumTransaction, TransactionAction, TransactionData,
+    TransactionStatus,
 };
 use pallet_evm::{
     Account as EVMAccount, EnsureAddressNever, EnsureAddressRoot, FeeCalculator,
@@ -76,7 +77,7 @@ use sp_runtime::transaction_validity::{
 };
 use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{
-    generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
+    generic, impl_opaque_keys, ApplyExtrinsicResult, ArithmeticError, ConsensusEngineId, Digest,
     ExtrinsicInclusionMode, SaturatedConversion,
 };
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
@@ -211,6 +212,21 @@ pub type Executive = domain_pallet_executive::Executive<
     AllPalletsWithSystem,
 >;
 
+/// Returns the storage fee for `len` bytes, or an overflow error.
+fn consensus_storage_fee(len: impl TryInto<Balance>) -> Result<Balance, TransactionValidityError> {
+    // This should never fail with the current types.
+    // But if converting to Balance would overflow, so would any multiplication.
+    let len = len.try_into().map_err(|_| {
+        TransactionValidityError::Invalid(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW))
+    })?;
+
+    BlockFees::consensus_chain_byte_fee()
+        .checked_mul(Into::<Balance>::into(len))
+        .ok_or(TransactionValidityError::Invalid(
+            InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW),
+        ))
+}
+
 impl fp_self_contained::SelfContainedCall for RuntimeCall {
     type SignedInfo = H160;
 
@@ -246,8 +262,10 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         match self {
             RuntimeCall::Ethereum(call) => {
                 // Ensure the caller can pay for the consensus chain storage fee
-                let consensus_storage_fee =
-                    BlockFees::consensus_chain_byte_fee().checked_mul(Balance::from(len as u32))?;
+                let consensus_storage_fee = match consensus_storage_fee(len) {
+                    Ok(fee) => fee,
+                    Err(err) => return Some(Err(err)),
+                };
                 let withdraw_res = <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
                     Runtime,
                 >>::withdraw_fee(info, consensus_storage_fee.into());
@@ -280,8 +298,10 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
             RuntimeCall::Ethereum(call) => {
                 // Withdraw the consensus chain storage fee from the caller and record
                 // it in the `BlockFees`
-                let consensus_storage_fee =
-                    BlockFees::consensus_chain_byte_fee().checked_mul(Balance::from(len as u32))?;
+                let consensus_storage_fee = match consensus_storage_fee(len) {
+                    Ok(fee) => fee,
+                    Err(err) => return Some(Err(err)),
+                };
                 match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
                     info,
                     consensus_storage_fee.into(),
@@ -498,9 +518,7 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
         charged_fees: Balance,
         tx_size: u32,
     ) -> Result<(), TransactionValidityError> {
-        let consensus_storage_fee = BlockFees::consensus_chain_byte_fee()
-            .checked_mul(Balance::from(tx_size))
-            .ok_or(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW))?;
+        let consensus_storage_fee = consensus_storage_fee(tx_size)?;
 
         let (paid_consensus_storage_fee, paid_domain_fee) = if charged_fees <= consensus_storage_fee
         {
@@ -1058,9 +1076,8 @@ fn pre_dispatch_evm_transaction(
         RuntimeCall::Ethereum(call) => {
             // Withdraw the consensus chain storage fee from the caller and record
             // it in the `BlockFees`
-            let consensus_storage_fee = BlockFees::consensus_chain_byte_fee()
-                .checked_mul(Balance::from(len as u32))
-                .ok_or(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW))?;
+            let consensus_storage_fee = consensus_storage_fee(len)?;
+
             match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
                 &account_id,
                 consensus_storage_fee.into(),
@@ -1592,25 +1609,75 @@ impl_runtime_apis! {
 
             let is_transactional = false;
             let validate = true;
-            let weight_limit = None;
-            let proof_size_base_cost = None;
             let evm_config = config.as_ref().unwrap_or(<Runtime as pallet_evm::Config>::config());
-            <Runtime as pallet_evm::Config>::Runner::call(
+
+            let gas_limit = gas_limit.min(u64::MAX.into());
+
+            let transaction_data = TransactionData::new(
+                TransactionAction::Call(to),
+                data.clone(),
+                nonce.unwrap_or_default(),
+                gas_limit,
+                None,
+                max_fee_per_gas,
+                max_priority_fee_per_gas,
+                value,
+                Some(<Runtime as pallet_evm::Config>::ChainId::get()),
+                access_list.clone().unwrap_or_default(),
+            );
+
+            let (weight_limit, proof_size_base_cost) = pallet_ethereum::Pallet::<Runtime>::transaction_weight(&transaction_data);
+
+            let mut call_info = <Runtime as pallet_evm::Config>::Runner::call(
                 from,
                 to,
-                data,
+                data.clone(),
                 value,
                 gas_limit.unique_saturated_into(),
                 max_fee_per_gas,
                 max_priority_fee_per_gas,
                 nonce,
-                access_list.unwrap_or_default(),
+                access_list.clone().unwrap_or_default(),
                 is_transactional,
                 validate,
                 weight_limit,
                 proof_size_base_cost,
                 evm_config,
-            ).map_err(|err| err.error.into())
+            ).map_err(|err| err.error)?;
+
+            // Add the storage fee to the estimated gas cost
+            // (in the actual call, this is handled by OnChargeEVMTransaction)
+            if estimate {
+                // It doesn't matter if we use pallet_evm or pallet_ethereum calls here, because
+                // they will be roughly the same size.
+                // TODO: try all possibilities, using all 3 ethereum formats, and choose the
+                // largest as the estimate
+                let xt = UncheckedExtrinsic::new_bare(
+                    pallet_evm::Call::call {
+                        source: from,
+                        target: to,
+                        input: data,
+                        value,
+                        gas_limit: gas_limit.unique_saturated_into(),
+                        // TODO: use the actual default here (but that shouldn't change the
+                        // extrinsic size)
+                        max_fee_per_gas: max_fee_per_gas.unwrap_or_default(),
+                        max_priority_fee_per_gas,
+                        nonce,
+                        access_list: access_list.unwrap_or_default(),
+                    }.into()
+                );
+
+                let len = xt.encoded_size();
+                let consensus_storage_fee = consensus_storage_fee(len).map_err(|_| ArithmeticError::Overflow)?;
+
+                // TODO: handle the effective gas ratio correctly:
+                // <https://docs.chain.t3rn.io/fp_evm/struct.UsedGas.html#structfield.effective>
+                call_info.used_gas.standard += consensus_storage_fee.into();
+                call_info.used_gas.effective += consensus_storage_fee.into();
+            }
+
+            Ok(call_info)
         }
 
         fn create(
@@ -1637,21 +1704,58 @@ impl_runtime_apis! {
             let weight_limit = None;
             let proof_size_base_cost = None;
             let evm_config = config.as_ref().unwrap_or(<Runtime as pallet_evm::Config>::config());
-            <Runtime as pallet_evm::Config>::Runner::create(
+
+            let mut create_info = <Runtime as pallet_evm::Config>::Runner::create(
                 from,
-                data,
+                data.clone(),
                 value,
                 gas_limit.unique_saturated_into(),
                 max_fee_per_gas,
                 max_priority_fee_per_gas,
                 nonce,
-                access_list.unwrap_or_default(),
+                access_list.clone().unwrap_or_default(),
                 is_transactional,
                 validate,
                 weight_limit,
                 proof_size_base_cost,
                 evm_config,
-            ).map_err(|err| err.error.into())
+            ).map_err(|err| err.error)?;
+
+            // Add the storage fee to the estimated gas cost
+            // (in the actual call, this is handled by OnChargeEVMTransaction)
+            if estimate {
+                // It doesn't matter if we use pallet_evm or pallet_ethereum, or create or create2,
+                // because they will be roughly the same size.
+                // TODO: try all possibilities, using create/create2 and all 3 ethereum formats,
+                // and choose the largest as the estimate
+                let xt = UncheckedExtrinsic::new_bare(
+                    pallet_evm::Call::create2 {
+                        source: from,
+                        init: data,
+                        // TODO: use an actual salt here (but that shouldn't change the extrinsic
+                        // size)
+                        salt: H256::zero(),
+                        value,
+                        gas_limit: gas_limit.unique_saturated_into(),
+                        // TODO: use the actual default here (but that shouldn't change the
+                        // extrinsic size)
+                        max_fee_per_gas: max_fee_per_gas.unwrap_or_default(),
+                        max_priority_fee_per_gas,
+                        nonce,
+                        access_list: access_list.unwrap_or_default(),
+                    }.into()
+                );
+
+                let len = xt.encoded_size();
+                let consensus_storage_fee = consensus_storage_fee(len).map_err(|_| ArithmeticError::Overflow)?;
+
+                // TODO: handle the effective gas ratio correctly:
+                // <https://docs.chain.t3rn.io/fp_evm/struct.UsedGas.html#structfield.effective>
+                create_info.used_gas.standard += consensus_storage_fee.into();
+                create_info.used_gas.effective += consensus_storage_fee.into();
+            }
+
+            Ok(create_info)
         }
 
         fn current_transaction_statuses() -> Option<Vec<TransactionStatus>> {
