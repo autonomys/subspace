@@ -81,10 +81,7 @@ use sp_runtime::traits::{
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::type_with_default::TypeWithDefault;
-use sp_runtime::{
-    generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill,
-    SaturatedConversion,
-};
+use sp_runtime::{generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
@@ -286,6 +283,7 @@ impl Get<BlockNumber> for ConfirmationDepthK {
 
 impl pallet_subspace::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
+    type SubspaceOrigin = pallet_subspace::EnsureSubspaceOrigin;
     type BlockAuthoringDelay = BlockAuthoringDelay;
     type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
     type PotEntropyInjectionLookbackDepth = PotEntropyInjectionLookbackDepth;
@@ -301,8 +299,8 @@ impl pallet_subspace::Config for Runtime {
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
-    type BlockSlotCount = BlockSlotCount;
     type WeightInfo = pallet_subspace::weights::SubstrateWeight<Runtime>;
+    type BlockSlotCount = BlockSlotCount;
     type ExtensionWeightInfo = pallet_subspace::extensions::weights::SubstrateWeight<Runtime>;
 }
 
@@ -844,24 +842,26 @@ impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
+    type DomainOrigin = pallet_domains::EnsureDomainOrigin;
     type DomainHash = DomainHash;
+    type Balance = Balance;
     type DomainHeader = sp_runtime::generic::Header<DomainNumber, BlakeTwo256>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
+    type Share = Balance;
     type HoldIdentifier = HoldIdentifierWrapper;
+    type BlockTreePruningDepth = BlockTreePruningDepth;
+    type ConsensusSlotProbability = SlotProbability;
+    type MaxDomainBlockSize = MaxDomainBlockSize;
+    type MaxDomainBlockWeight = MaxDomainBlockWeight;
+    type MaxDomainNameLength = MaxDomainNameLength;
+    type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type MinOperatorStake = MinOperatorStake;
     type MinNominatorStake = MinNominatorStake;
-    type MaxDomainBlockSize = MaxDomainBlockSize;
-    type MaxDomainBlockWeight = MaxDomainBlockWeight;
-    type DomainInstantiationDeposit = DomainInstantiationDeposit;
-    type MaxDomainNameLength = MaxDomainNameLength;
-    type Share = Balance;
-    type BlockTreePruningDepth = BlockTreePruningDepth;
-    type ConsensusSlotProbability = SlotProbability;
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
@@ -871,13 +871,12 @@ impl pallet_domains::Config for Runtime {
     type StorageFee = TransactionFees;
     type BlockTimestamp = pallet_timestamp::Pallet<Runtime>;
     type BlockSlot = BlockSlot;
-    type BundleLongevity = BundleLongevity;
     type DomainsTransfersTracker = Transporter;
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
+    type BundleLongevity = BundleLongevity;
     type DomainBundleSubmitted = Messenger;
     type OnDomainInstantiated = Messenger;
-    type Balance = Balance;
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
     type FraudProofStorageKeyProvider = StorageKeyProvider;
@@ -1037,7 +1036,7 @@ pub type SignedExtra = (
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     DisablePallets,
     pallet_subspace::extensions::SubspaceExtension<Runtime>,
-    subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics<Runtime>,
+    pallet_domains::extensions::DomainsExtension<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
@@ -1058,21 +1057,19 @@ pub type Executive = frame_executive::Executive<
     ),
 >;
 
-// List of allowed general unsigned extrinsics.
-// New unsigned general extrinsics must be included here.
-impl subspace_runtime_primitives::AllowedUnsignedExtrinsics for RuntimeCall {
-    fn is_allowed_unsigned(&self) -> bool {
-        matches!(
-            self,
-            RuntimeCall::Subspace(pallet_subspace::Call::vote { .. })
-        )
-    }
-}
-
 impl pallet_subspace::extensions::MaybeSubspaceCall<Runtime> for RuntimeCall {
     fn maybe_subspace_call(&self) -> Option<&pallet_subspace::Call<Runtime>> {
         match self {
             RuntimeCall::Subspace(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl pallet_domains::extensions::MaybeDomainsCall<Runtime> for RuntimeCall {
+    fn maybe_domains_call(&self) -> Option<&pallet_domains::Call<Runtime>> {
+        match self {
+            RuntimeCall::Domains(call) => Some(call),
             _ => None,
         }
     }
@@ -1116,19 +1113,12 @@ fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
 }
 
 fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
-    let period = BlockHashCount::get()
-        .checked_next_power_of_two()
-        .map(|c| c / 2)
-        .unwrap_or(2) as u64;
-
-    let current_block = System::block_number().saturated_into::<u64>();
-
     let extra: SignedExtra = (
         frame_system::CheckNonZeroSender::<Runtime>::new(),
         frame_system::CheckSpecVersion::<Runtime>::new(),
         frame_system::CheckTxVersion::<Runtime>::new(),
         frame_system::CheckGenesis::<Runtime>::new(),
-        frame_system::CheckMortality::<Runtime>::from(generic::Era::mortal(period, current_block)),
+        frame_system::CheckMortality::<Runtime>::from(generic::Era::Immortal),
         // for unsigned extrinsic, nonce check will be skipped
         // so set a default value
         frame_system::CheckNonce::<Runtime>::from(0u32.into()),
@@ -1138,7 +1128,7 @@ fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
         DisablePallets,
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
-        subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics::<Runtime>::new(),
+        pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
     );
 
     UncheckedExtrinsic::new_transaction(call, extra)

@@ -1135,6 +1135,14 @@ impl MockConsensusNode {
         construct_extrinsic_generic(&self.client, function, self.key, false, nonce, 0)
     }
 
+    /// Construct an unsigned general extrinsic.
+    pub fn construct_unsigned_extrinsic(
+        &self,
+        function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+    ) -> UncheckedExtrinsic {
+        construct_unsigned_extrinsic(&self.client, function)
+    }
+
     /// Construct and send extrinsic through rpc
     pub async fn construct_and_send_extrinsic_with(
         &mut self,
@@ -1351,6 +1359,34 @@ macro_rules! produce_blocks_until {
 
 type BalanceOf<T> = <<T as pallet_transaction_payment::Config>::OnChargeTransaction as pallet_transaction_payment::OnChargeTransaction<T>>::Balance;
 
+fn get_signed_extra(
+    current_block: u64,
+    immortal: bool,
+    nonce: u32,
+    tip: BalanceOf<Runtime>,
+) -> SignedExtra {
+    let period = u64::from(<<Runtime as frame_system::Config>::BlockHashCount>::get())
+        .checked_next_power_of_two()
+        .map(|c| c / 2)
+        .unwrap_or(2);
+    (
+        frame_system::CheckNonZeroSender::<Runtime>::new(),
+        frame_system::CheckSpecVersion::<Runtime>::new(),
+        frame_system::CheckTxVersion::<Runtime>::new(),
+        frame_system::CheckGenesis::<Runtime>::new(),
+        frame_system::CheckMortality::<Runtime>::from(if immortal {
+            generic::Era::Immortal
+        } else {
+            generic::Era::mortal(period, current_block)
+        }),
+        frame_system::CheckNonce::<Runtime>::from(nonce.into()),
+        frame_system::CheckWeight::<Runtime>::new(),
+        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+        pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
+        pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
+    )
+}
+
 fn construct_extrinsic_raw_payload<Client>(
     client: impl AsRef<Client>,
     function: <Runtime as frame_system::Config>::RuntimeCall,
@@ -1369,26 +1405,7 @@ where
     let current_block_hash = client.as_ref().info().best_hash;
     let current_block = client.as_ref().info().best_number.saturated_into();
     let genesis_block = client.as_ref().hash(0).unwrap().unwrap();
-    let period = u64::from(<<Runtime as frame_system::Config>::BlockHashCount>::get())
-        .checked_next_power_of_two()
-        .map(|c| c / 2)
-        .unwrap_or(2);
-    let extra: SignedExtra = (
-        frame_system::CheckNonZeroSender::<Runtime>::new(),
-        frame_system::CheckSpecVersion::<Runtime>::new(),
-        frame_system::CheckTxVersion::<Runtime>::new(),
-        frame_system::CheckGenesis::<Runtime>::new(),
-        frame_system::CheckMortality::<Runtime>::from(if immortal {
-            generic::Era::Immortal
-        } else {
-            generic::Era::mortal(period, current_block)
-        }),
-        frame_system::CheckNonce::<Runtime>::from(nonce.into()),
-        frame_system::CheckWeight::<Runtime>::new(),
-        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
-        pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
-        subspace_runtime_primitives::extensions::CheckAllowedGeneralExtrinsics::<Runtime>::new(),
-    );
+    let extra = get_signed_extra(current_block, immortal, nonce, tip);
     (
         generic::SignedPayload::<
             <Runtime as frame_system::Config>::RuntimeCall,
@@ -1426,4 +1443,20 @@ where
         Signature::Sr25519(signature),
         extra,
     )
+}
+
+/// Construct a general unsigned extrinsic that can be applied to the test runtime.
+fn construct_unsigned_extrinsic<Client>(
+    client: impl AsRef<Client>,
+    function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+) -> UncheckedExtrinsic
+where
+    BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+    u64: From<BlockNumberFor<Runtime>>,
+    Client: HeaderBackend<subspace_runtime_primitives::opaque::Block>,
+{
+    let function = function.into();
+    let current_block = client.as_ref().info().best_number.saturated_into();
+    let extra = get_signed_extra(current_block, true, 0, 0);
+    UncheckedExtrinsic::new_transaction(function, extra)
 }

@@ -8,7 +8,7 @@ use crate::{
     ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry,
     DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptOf,
     FraudProofError, FungibleHoldId, HeadDomainNumber, HeadReceiptNumber, NextDomainId, Operators,
-    RuntimeRegistry, ScheduledRuntimeUpgrades,
+    RawOrigin as DomainOrigin, RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
 use core::mem;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
@@ -243,22 +243,24 @@ impl sp_domains::DomainsTransfersTracker<Balance> for MockDomainsTransfersTracke
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = sp_core::H256;
+    type Balance = Balance;
     type DomainHeader = DomainHeader;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
+    type Share = Balance;
     type HoldIdentifier = HoldIdentifierWrapper;
+    type BlockTreePruningDepth = BlockTreePruningDepth;
+    type ConsensusSlotProbability = SlotProbability;
+    type MaxDomainBlockSize = MaxDomainBlockSize;
+    type MaxDomainBlockWeight = MaxDomainBlockWeight;
+    type MaxDomainNameLength = MaxDomainNameLength;
+    type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type MinOperatorStake = MinOperatorStake;
     type MinNominatorStake = MinNominatorStake;
-    type MaxDomainBlockSize = MaxDomainBlockSize;
-    type MaxDomainBlockWeight = MaxDomainBlockWeight;
-    type DomainInstantiationDeposit = DomainInstantiationDeposit;
-    type MaxDomainNameLength = MaxDomainNameLength;
-    type Share = Balance;
-    type BlockTreePruningDepth = BlockTreePruningDepth;
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
@@ -272,15 +274,14 @@ impl pallet_domains::Config for Test {
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
     type BundleLongevity = BundleLongevity;
-    type ConsensusSlotProbability = SlotProbability;
     type DomainBundleSubmitted = ();
     type OnDomainInstantiated = ();
-    type Balance = Balance;
     type MmrHash = H256;
     type MmrProofVerifier = ();
     type FraudProofStorageKeyProvider = ();
     type OnChainRewards = ();
     type WithdrawalLimit = WithdrawalLimit;
+    type DomainOrigin = crate::EnsureDomainOrigin;
 }
 
 pub struct ExtrinsicStorageFees;
@@ -526,7 +527,7 @@ pub(crate) fn extend_block_tree(
             latest_receipt,
         );
         assert_ok!(crate::Pallet::<Test>::submit_bundle(
-            RawOrigin::None.into(),
+            DomainOrigin::ValidatedUnsigned.into(),
             bundle,
         ));
 
@@ -778,7 +779,7 @@ fn test_basic_fraud_proof_processing() {
             let bad_receipt_hash = bad_receipt.hash::<DomainHashingFor<Test>>();
             let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
             assert_ok!(Domains::submit_fraud_proof(
-                RawOrigin::None.into(),
+                DomainOrigin::ValidatedUnsigned.into(),
                 Box::new(fraud_proof)
             ));
 
@@ -825,7 +826,10 @@ fn test_basic_fraud_proof_processing() {
                 H256::random(),
                 resubmit_receipt,
             );
-            assert_ok!(Domains::submit_bundle(RawOrigin::None.into(), bundle,));
+            assert_ok!(Domains::submit_bundle(
+                DomainOrigin::ValidatedUnsigned.into(),
+                bundle,
+            ));
             assert_eq!(
                 HeadReceiptNumber::<Test>::get(domain_id),
                 head_receipt_number_after_fraud_proof + 1
@@ -845,7 +849,10 @@ fn test_basic_fraud_proof_processing() {
                     H256::random(),
                     receipt.clone(),
                 );
-                assert_ok!(Domains::submit_bundle(RawOrigin::None.into(), bundle));
+                assert_ok!(Domains::submit_bundle(
+                    DomainOrigin::ValidatedUnsigned.into(),
+                    bundle
+                ));
 
                 assert_eq!(
                     HeadReceiptNumber::<Test>::get(domain_id),
@@ -945,7 +952,7 @@ fn test_domain_runtime_upgrade_with_bundle() {
             genesis_receipt.clone(),
         );
         assert_ok!(crate::Pallet::<Test>::submit_bundle(
-            RawOrigin::None.into(),
+            DomainOrigin::ValidatedUnsigned.into(),
             bundle,
         ));
         assert_eq!(HeadReceiptNumber::<Test>::get(domain_id), 0);
@@ -972,7 +979,7 @@ fn test_domain_runtime_upgrade_with_bundle() {
                 next_receipt.clone(),
             );
             assert_ok!(crate::Pallet::<Test>::submit_bundle(
-                RawOrigin::None.into(),
+                DomainOrigin::ValidatedUnsigned.into(),
                 bundle,
             ));
             parent_receipt = next_receipt;
@@ -998,7 +1005,7 @@ fn test_domain_runtime_upgrade_with_bundle() {
         let bundle =
             create_dummy_bundle_with_receipts(domain_id, operator_id, H256::random(), next_receipt);
         assert_ok!(crate::Pallet::<Test>::submit_bundle(
-            RawOrigin::None.into(),
+            DomainOrigin::ValidatedUnsigned.into(),
             bundle,
         ));
 

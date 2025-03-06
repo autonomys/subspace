@@ -5,12 +5,13 @@ extern crate alloc;
 
 use frame_benchmarking::v2::*;
 
-#[benchmarks]
+#[benchmarks(where <RuntimeCallFor<T> as sp_runtime::traits::Dispatchable>::RuntimeOrigin: From<crate::RawOrigin>)]
 mod benchmarks {
     use crate::{
         AllowAuthoringByAnyone, Call, Config, EnableRewards, EnableRewardsAt,
         NextSolutionRangeOverride, Pallet, PotSlotIterations, PotSlotIterationsUpdate,
-        PotSlotIterationsValue, SegmentCommitment, ShouldAdjustSolutionRange, SolutionRanges,
+        PotSlotIterationsValue, RawOrigin as SubspaceOrigin, SegmentCommitment,
+        ShouldAdjustSolutionRange, SolutionRanges,
     };
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
@@ -99,7 +100,7 @@ mod benchmarks {
         };
 
         #[extrinsic_call]
-        _(RawOrigin::None, Box::new(signed_vote));
+        _(SubspaceOrigin::ValidatedUnsigned, Box::new(signed_vote));
     }
 
     #[benchmark]

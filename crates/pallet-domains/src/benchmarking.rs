@@ -14,7 +14,9 @@ use crate::staking_epoch::{
     do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking, do_slash_operator,
     operator_take_reward_tax_and_stake,
 };
-use crate::{DomainBlockNumberFor, Pallet as Domains, MAX_NOMINATORS_TO_SLASH};
+use crate::{
+    DomainBlockNumberFor, Pallet as Domains, RawOrigin as DomainOrigin, MAX_NOMINATORS_TO_SLASH,
+};
 #[cfg(not(feature = "std"))]
 use alloc::borrow::ToOwned;
 #[cfg(not(feature = "std"))]
@@ -37,7 +39,7 @@ use sp_std::collections::btree_set::BTreeSet;
 const SEED: u32 = 0;
 const MAX_NOMINATORS_TO_SLASH_WITHOUT_OPERATOR: u32 = MAX_NOMINATORS_TO_SLASH - 1;
 
-#[benchmarks]
+#[benchmarks(where <RuntimeCallFor<T> as sp_runtime::traits::Dispatchable>::RuntimeOrigin: From<DomainOrigin>)]
 mod benchmarks {
     use super::*;
     use sp_std::vec;
@@ -70,7 +72,10 @@ mod benchmarks {
             if i != block_tree_pruning_depth {
                 // Submit a bundle with the receipt of the last block
                 let bundle = dummy_opaque_bundle(domain_id, operator_id, receipt);
-                assert_ok!(Domains::<T>::submit_bundle(RawOrigin::None.into(), bundle));
+                assert_ok!(Domains::<T>::submit_bundle(
+                    DomainOrigin::ValidatedUnsigned.into(),
+                    bundle
+                ));
             } else {
                 // Since the challenge period is set to 1 day we don't want to fill up all the ERs
                 // (i.e. 14_400 number of ERs) which seems take forever to finish, thus we instead
@@ -119,7 +124,7 @@ mod benchmarks {
         let bundle = dummy_opaque_bundle(domain_id, operator_id, receipt);
 
         #[extrinsic_call]
-        submit_bundle(RawOrigin::None, bundle);
+        submit_bundle(DomainOrigin::ValidatedUnsigned, bundle);
 
         assert_eq!(
             Domains::<T>::head_receipt_number(domain_id),
@@ -155,7 +160,10 @@ mod benchmarks {
 
             // Submit a bundle with the receipt of the last block
             let bundle = dummy_opaque_bundle(domain_id, operator_id, receipt);
-            assert_ok!(Domains::<T>::submit_bundle(RawOrigin::None.into(), bundle));
+            assert_ok!(Domains::<T>::submit_bundle(
+                DomainOrigin::ValidatedUnsigned.into(),
+                bundle
+            ));
 
             // Create ER for the above bundle
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
@@ -177,7 +185,7 @@ mod benchmarks {
         let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, target_receipt_hash.unwrap());
 
         #[extrinsic_call]
-        submit_fraud_proof(RawOrigin::None, Box::new(fraud_proof));
+        submit_fraud_proof(DomainOrigin::ValidatedUnsigned, Box::new(fraud_proof));
 
         assert_eq!(Domains::<T>::head_receipt_number(domain_id), 0u32.into());
         assert_eq!(
@@ -874,7 +882,7 @@ mod benchmarks {
         };
 
         #[extrinsic_call]
-        submit_receipt(RawOrigin::None, sealed_singleton_receipt);
+        submit_receipt(DomainOrigin::ValidatedUnsigned, sealed_singleton_receipt);
 
         assert_eq!(Domains::<T>::head_receipt_number(domain_id), 1u32.into());
     }

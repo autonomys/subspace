@@ -22,6 +22,7 @@ use crate::extensions::weights::WeightInfo as ExtensionWeightInfo;
 use alloc::string::String;
 use core::num::NonZeroU64;
 use frame_support::dispatch::DispatchResult;
+use frame_support::pallet_prelude::{EnsureOrigin, RuntimeDebug};
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
@@ -78,6 +79,29 @@ impl EraChangeTrigger for NormalEraChange {
     }
 }
 
+/// Custom origin for validated unsigned extrinsics.
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub enum RawOrigin {
+    ValidatedUnsigned,
+}
+
+/// Ensure the subspace origin.
+pub struct EnsureSubspaceOrigin;
+impl<O: Into<Result<RawOrigin, O>> + From<RawOrigin>> EnsureOrigin<O> for EnsureSubspaceOrigin {
+    type Success = ();
+
+    fn try_origin(o: O) -> Result<Self::Success, O> {
+        o.into().map(|o| match o {
+            RawOrigin::ValidatedUnsigned => (),
+        })
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn try_successful_origin() -> Result<O, ()> {
+        Ok(O::from(RawOrigin::ValidatedUnsigned))
+    }
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, MaxEncodedLen, TypeInfo)]
 struct VoteVerificationData {
     /// Block solution range, vote must not reach it
@@ -91,6 +115,7 @@ struct VoteVerificationData {
 pub mod pallet {
     use super::{EraChangeTrigger, ExtensionWeightInfo, VoteVerificationData};
     use crate::weights::WeightInfo;
+    use crate::RawOrigin;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_consensus_slots::Slot;
@@ -149,6 +174,9 @@ pub mod pallet {
     pub trait Config: frame_system::Config {
         /// The overarching event type.
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+
+        /// Origin for subspace call.
+        type SubspaceOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = ()>;
 
         /// Number of slots between slot arrival and when corresponding block can be produced.
         ///
@@ -359,6 +387,9 @@ pub mod pallet {
         },
     }
 
+    #[pallet::origin]
+    pub type Origin = RawOrigin;
+
     #[pallet::error]
     pub enum Error<T> {
         /// Solution range adjustment already enabled.
@@ -555,7 +586,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             signed_vote: Box<SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>>,
         ) -> DispatchResult {
-            ensure_none(origin)?;
+            T::SubspaceOrigin::ensure_origin(origin)?;
 
             Self::do_vote(*signed_vote)
         }

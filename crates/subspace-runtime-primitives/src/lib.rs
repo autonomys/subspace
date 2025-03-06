@@ -2,7 +2,6 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub mod extensions;
 pub mod utility;
 
 #[cfg(not(feature = "std"))]
@@ -259,11 +258,6 @@ pub enum HoldIdentifier {
 pub trait CreateUnsigned<LocalCall>: CreateTransactionBase<LocalCall> {
     /// Create an unsigned extrinsic.
     fn create_unsigned(call: Self::RuntimeCall) -> Self::Extrinsic;
-}
-
-/// Interface for checking allowed unsigned general extrinsics
-pub trait AllowedUnsignedExtrinsics {
-    fn is_allowed_unsigned(&self) -> bool;
 }
 
 #[cfg(feature = "testing")]

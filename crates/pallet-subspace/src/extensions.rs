@@ -6,7 +6,7 @@ pub mod weights;
 
 use crate::extensions::weights::WeightInfo;
 use crate::pallet::Call as SubspaceCall;
-use crate::{Config, Pallet as Subspace};
+use crate::{Config, Origin, Pallet as Subspace};
 use frame_support::pallet_prelude::{PhantomData, TypeInfo, Weight};
 use frame_support::RuntimeDebugNoBound;
 use frame_system::pallet_prelude::{BlockNumberFor, RuntimeCallFor};
@@ -94,7 +94,7 @@ impl<Runtime> TransactionExtension<RuntimeCallFor<Runtime>> for SubspaceExtensio
 where
     Runtime: Config + scale_info::TypeInfo + fmt::Debug + Send + Sync,
     <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
-        AsSystemOriginSigner<<Runtime as frame_system::Config>::AccountId> + Clone,
+        AsSystemOriginSigner<<Runtime as frame_system::Config>::AccountId> + From<Origin> + Clone,
     RuntimeCallFor<Runtime>: MaybeSubspaceCall<Runtime>,
 {
     const IDENTIFIER: &'static str = "SubspaceExtension";
@@ -147,7 +147,7 @@ where
         Ok((
             validity,
             ExtensionWeightData::Validated(weight_used),
-            origin,
+            Origin::ValidatedUnsigned.into(),
         ))
     }
 

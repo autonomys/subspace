@@ -12,6 +12,7 @@ mod tests;
 pub mod block_tree;
 mod bundle_storage_fund;
 pub mod domain_registry;
+pub mod extensions;
 pub mod migration_v2_to_v3;
 pub mod runtime_registry;
 mod staking;
@@ -37,15 +38,15 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::vec::Vec;
 use domain_runtime_primitives::EthereumAccountId;
 use frame_support::ensure;
-use frame_support::pallet_prelude::StorageVersion;
+use frame_support::pallet_prelude::{RuntimeDebug, StorageVersion};
 use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_support::traits::tokens::{Fortitude, Preservation};
-use frame_support::traits::{Get, Randomness as RandomnessT, Time};
+use frame_support::traits::{EnsureOrigin, Get, Randomness as RandomnessT, Time};
 use frame_support::weights::Weight;
-use frame_system::offchain::{CreateInherent, SubmitTransaction};
+use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_consensus_subspace::WrappedPotOutput;
@@ -74,7 +75,7 @@ use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrProofVerifier};
 pub use staking::OperatorConfig;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::{BlockHash, SlotNumber, U256};
-use subspace_runtime_primitives::{Balance, Moment, StorageFee};
+use subspace_runtime_primitives::{Balance, CreateUnsigned, Moment, StorageFee};
 
 /// Maximum number of nominators to slash within a give operator at a time.
 pub const MAX_NOMINATORS_TO_SLASH: u32 = 10;
@@ -148,6 +149,29 @@ pub type BlockTreeNodeFor<T> = crate::block_tree::BlockTreeNode<
     BalanceOf<T>,
 >;
 
+/// Custom origin for validated unsigned extrinsics.
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub enum RawOrigin {
+    ValidatedUnsigned,
+}
+
+/// Ensure the domain origin.
+pub struct EnsureDomainOrigin;
+impl<O: Into<Result<RawOrigin, O>> + From<RawOrigin>> EnsureOrigin<O> for EnsureDomainOrigin {
+    type Success = ();
+
+    fn try_origin(o: O) -> Result<Self::Success, O> {
+        o.into().map(|o| match o {
+            RawOrigin::ValidatedUnsigned => (),
+        })
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn try_successful_origin() -> Result<O, ()> {
+        Ok(O::from(RawOrigin::ValidatedUnsigned))
+    }
+}
+
 /// The current storage version.
 const STORAGE_VERSION: StorageVersion = StorageVersion::new(3);
 
@@ -198,7 +222,7 @@ mod pallet {
     use crate::MAX_NOMINATORS_TO_SLASH;
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
-        ExecutionReceiptOf, FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf,
+        ExecutionReceiptOf, FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf, RawOrigin,
         ReceiptHashFor, SingletonReceiptOf, StateRootOf, MAX_BUNDLE_PER_BLOCK, STORAGE_VERSION,
     };
     #[cfg(not(feature = "std"))]
@@ -243,6 +267,9 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config<Hash: Into<H256> + From<H256>> {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+
+        /// Origin for domain call.
+        type DomainOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = ()>;
 
         // TODO: `DomainHash` can be derived from `DomainHeader`, it is still needed just for
         // converting `DomainHash` to/from `H256` without encode/decode, remove it once we found
@@ -818,6 +845,18 @@ mod pallet {
         StorageProof(storage_proof::VerificationError),
     }
 
+    impl From<BundleError> for TransactionValidity {
+        fn from(e: BundleError) -> Self {
+            if BundleError::UnableToPayBundleStorageFee == e {
+                InvalidTransactionCode::BundleStorageFeePayment.into()
+            } else if let BundleError::Receipt(_) = e {
+                InvalidTransactionCode::ExecutionReceipt.into()
+            } else {
+                InvalidTransactionCode::Bundle.into()
+            }
+        }
+    }
+
     impl From<storage_proof::VerificationError> for FraudProofError {
         fn from(err: storage_proof::VerificationError) -> Self {
             FraudProofError::StorageProof(err)
@@ -1022,6 +1061,9 @@ mod pallet {
         },
     }
 
+    #[pallet::origin]
+    pub type Origin = RawOrigin;
+
     /// Per-domain state for tx range calculation.
     #[derive(Debug, Default, Decode, Encode, TypeInfo, PartialEq, Eq)]
     pub struct TxRangeState {
@@ -1054,7 +1096,7 @@ mod pallet {
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundleOf<T>,
         ) -> DispatchResultWithPostInfo {
-            ensure_none(origin)?;
+            T::DomainOrigin::ensure_origin(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing bundle: {opaque_bundle:?}");
 
@@ -1240,7 +1282,7 @@ mod pallet {
             origin: OriginFor<T>,
             fraud_proof: Box<FraudProofFor<T>>,
         ) -> DispatchResultWithPostInfo {
-            ensure_none(origin)?;
+            T::DomainOrigin::ensure_origin(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
@@ -1678,7 +1720,7 @@ mod pallet {
             origin: OriginFor<T>,
             singleton_receipt: SingletonReceiptOf<T>,
         ) -> DispatchResultWithPostInfo {
-            ensure_none(origin)?;
+            T::DomainOrigin::ensure_origin(origin)?;
 
             let domain_id = singleton_receipt.domain_id();
             let operator_id = singleton_receipt.operator_id();
@@ -1992,108 +2034,6 @@ mod pallet {
 
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
             let _ = NewAddedHeadReceipt::<T>::clear(u32::MAX, None);
-        }
-    }
-
-    #[pallet::validate_unsigned]
-    impl<T: Config> ValidateUnsigned for Pallet<T> {
-        type Call = Call<T>;
-        fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
-            match call {
-                Call::submit_bundle { opaque_bundle } => {
-                    Self::validate_submit_bundle(opaque_bundle, true)
-                        .map_err(|_| InvalidTransaction::Call.into())
-                }
-                Call::submit_fraud_proof { fraud_proof } => Self::validate_fraud_proof(fraud_proof)
-                    .map(|_| ())
-                    .map_err(|_| InvalidTransaction::Call.into()),
-                Call::submit_receipt { singleton_receipt } => {
-                    Self::validate_singleton_receipt(singleton_receipt, true)
-                        .map_err(|_| InvalidTransaction::Call.into())
-                }
-                _ => Err(InvalidTransaction::Call.into()),
-            }
-        }
-
-        fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-            match call {
-                Call::submit_bundle { opaque_bundle } => {
-                    let domain_id = opaque_bundle.domain_id();
-                    let operator_id = opaque_bundle.operator_id();
-                    let slot_number = opaque_bundle.slot_number();
-
-                    if let Err(e) = Self::validate_submit_bundle(opaque_bundle, false) {
-                        Self::log_bundle_error(&e, domain_id, operator_id);
-                        if BundleError::UnableToPayBundleStorageFee == e {
-                            return InvalidTransactionCode::BundleStorageFeePayment.into();
-                        } else if let BundleError::Receipt(_) = e {
-                            return InvalidTransactionCode::ExecutionReceipt.into();
-                        } else {
-                            return InvalidTransactionCode::Bundle.into();
-                        }
-                    }
-
-                    ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
-                        // Bundle have a bit higher priority than normal extrinsic but must less than
-                        // fraud proof
-                        .priority(1)
-                        .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
-                            panic!("Block number always fits in TransactionLongevity; qed")
-                        }))
-                        .and_provides((operator_id, slot_number))
-                        .propagate(true)
-                        .build()
-                }
-                Call::submit_fraud_proof { fraud_proof } => {
-                    let (tag, priority) = match Self::validate_fraud_proof(fraud_proof) {
-                        Err(e) => {
-                            log::warn!(
-                                target: "runtime::domains",
-                                "Bad fraud proof {fraud_proof:?}, error: {e:?}",
-                            );
-                            return InvalidTransactionCode::FraudProof.into();
-                        }
-                        Ok(tp) => tp,
-                    };
-
-                    ValidTransaction::with_tag_prefix("SubspaceSubmitFraudProof")
-                        .priority(priority)
-                        .and_provides(tag)
-                        .longevity(TransactionLongevity::MAX)
-                        // We need this extrinsic to be propagated to the farmer nodes.
-                        .propagate(true)
-                        .build()
-                }
-                Call::submit_receipt { singleton_receipt } => {
-                    let domain_id = singleton_receipt.domain_id();
-                    let operator_id = singleton_receipt.operator_id();
-                    let slot_number = singleton_receipt.slot_number();
-
-                    if let Err(e) = Self::validate_singleton_receipt(singleton_receipt, false) {
-                        Self::log_bundle_error(&e, domain_id, operator_id);
-                        if BundleError::UnableToPayBundleStorageFee == e {
-                            return InvalidTransactionCode::BundleStorageFeePayment.into();
-                        } else if let BundleError::Receipt(_) = e {
-                            return InvalidTransactionCode::ExecutionReceipt.into();
-                        } else {
-                            return InvalidTransactionCode::Bundle.into();
-                        }
-                    }
-
-                    ValidTransaction::with_tag_prefix("SubspaceSubmitReceipt")
-                        // Receipt have a bit higher priority than normal extrinsic but must less than
-                        // fraud proof
-                        .priority(1)
-                        .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
-                            panic!("Block number always fits in TransactionLongevity; qed")
-                        }))
-                        .and_provides((operator_id, slot_number))
-                        .propagate(true)
-                        .build()
-                }
-
-                _ => InvalidTransaction::Call.into(),
-            }
         }
     }
 }
@@ -3194,7 +3134,7 @@ impl<T: Config> sp_domains::DomainOwner<T::AccountId> for Pallet<T> {
 
 impl<T> Pallet<T>
 where
-    T: Config + CreateInherent<Call<T>>,
+    T: Config + CreateUnsigned<Call<T>>,
 {
     /// Submits an unsigned extrinsic [`Call::submit_bundle`].
     pub fn submit_bundle_unsigned(opaque_bundle: OpaqueBundleOf<T>) {
@@ -3202,7 +3142,7 @@ where
         let extrincis_count = opaque_bundle.extrinsics.len();
 
         let call = Call::submit_bundle { opaque_bundle };
-        let ext = T::create_inherent(call.into());
+        let ext = T::create_unsigned(call.into());
 
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
@@ -3223,7 +3163,7 @@ where
         let domain_block_number = singleton_receipt.receipt().domain_block_number;
 
         let call = Call::submit_receipt { singleton_receipt };
-        let ext = T::create_inherent(call.into());
+        let ext = T::create_unsigned(call.into());
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
                 log::info!(
@@ -3243,7 +3183,7 @@ where
             fraud_proof: Box::new(fraud_proof),
         };
 
-        let ext = T::create_inherent(call.into());
+        let ext = T::create_unsigned(call.into());
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
                 log::info!(target: "runtime::domains", "Submitted fraud proof");
