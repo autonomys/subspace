@@ -92,8 +92,8 @@ hwlocality = "1.0.0-alpha.6"
 jsonrpsee = "0.24.5"
 kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
 libc = "0.2.159"
-libp2p = { version = "0.54.1", git = "https://github.com/autonomys/rust-libp2p", rev = "3f6238a86bda615ee9ec54462147f6a5d7891b6d", default-features = false }
-libp2p-swarm-test = { version = "0.4.0", git = "https://github.com/autonomys/rust-libp2p", rev = "3f6238a86bda615ee9ec54462147f6a5d7891b6d" }
+libp2p = { version = "0.54.2", git = "https://github.com/autonomys/rust-libp2p", rev = "04c2e649b1f5482b8c3466b0fdbd1815b3126a48", default-features = false }
+libp2p-swarm-test = { version = "0.5.0", git = "https://github.com/autonomys/rust-libp2p", rev = "04c2e649b1f5482b8c3466b0fdbd1815b3126a48" }
 libsecp256k1 = "0.7.1"
 log = { version = "0.4.22", default-features = false }
 memmap2 = "0.9.5"

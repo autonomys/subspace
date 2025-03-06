@@ -1360,15 +1360,18 @@ impl NodeRunner {
                         entry.remove_entry();
 
                         if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut() {
-                            if let Err(error) = gossipsub.unsubscribe(&topic) {
-                                warn!("Failed to unsubscribe from topic {topic}: {error}");
+                            if !gossipsub.unsubscribe(&topic) {
+                                warn!(
+                                    "Can't unsubscribe from topic {topic} because subscription doesn't exist, \
+                                    this is a logic error in the subspace or swarm libraries"
+                                );
                             }
                         }
                     }
                 } else {
                     error!(
                         "Can't unsubscribe from topic {topic} because subscription doesn't exist, \
-                        this is a logic error in the library"
+                        this is a logic error in the subspace library"
                     );
                 }
             }
@@ -1412,8 +1415,7 @@ impl NodeRunner {
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    .find_closest(&KBucketKey::from(key), &source)
-                    .into_iter()
+                    .find_closest_local_peers(&KBucketKey::from(key), &source)
                     .filter(|peer| !peer.multiaddrs.is_empty())
                     .map(|peer| (peer.node_id, peer.multiaddrs))
                     .collect();

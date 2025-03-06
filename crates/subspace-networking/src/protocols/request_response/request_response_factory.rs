@@ -50,6 +50,7 @@ use libp2p::request_response::{
 };
 pub use libp2p::request_response::{InboundFailure, OutboundFailure};
 use libp2p::swarm::behaviour::{ConnectionClosed, DialFailure, FromSwarm, ListenFailure};
+use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::handler::multi::MultiHandler;
 use libp2p::swarm::{
     ConnectionDenied, ConnectionId, NetworkBehaviour, THandlerInEvent, THandlerOutEvent, ToSwarm,
@@ -213,8 +214,8 @@ pub enum Event {
     ///
     /// This event is generated for statistics purposes.
     RequestFinished {
-        /// Peer that we send a request to.
-        peer: PeerId,
+        /// Peer that we sent the request to, if one was chosen.
+        peer: Option<PeerId>,
         /// Name of the protocol in question.
         protocol: Cow<'static, str>,
         /// Duration the request took.
@@ -386,7 +387,8 @@ impl RequestResponseFactoryBehaviour {
     ) {
         if let Some((protocol, _)) = self.protocols.get_mut(protocol_name) {
             if protocol.is_connected(target) || connect.should_connect() {
-                let request_id = protocol.send_request(target, request, addresses);
+                let opts = DialOpts::peer_id(*target).addresses(addresses).build();
+                let request_id = protocol.send_request(opts, request);
                 let prev_req_id = self.pending_requests.insert(
                     (protocol_name.to_string().into(), request_id).into(),
                     (Instant::now(), pending_response),
@@ -810,7 +812,7 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                             };
 
                             let out = Event::RequestFinished {
-                                peer,
+                                peer: Some(peer),
                                 protocol: protocol.clone(),
                                 duration: started.elapsed(),
                                 result: delivered,

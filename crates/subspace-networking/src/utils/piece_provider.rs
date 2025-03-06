@@ -439,8 +439,7 @@ impl KademliaWrapper {
     ) -> impl Iterator<Item = (PeerId, Vec<Multiaddr>)> + 'static {
         let mut closest_peers = self
             .kademlia
-            .find_closest(key, &self.local_peer_id)
-            .into_iter()
+            .find_closest_local_peers(key, &self.local_peer_id)
             .map(|peer| {
                 (
                     KBucketKey::from(peer.node_id).distance(key),
