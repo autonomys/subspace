@@ -115,7 +115,10 @@ use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce,
     Signature, MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
-use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
+use subspace_test_primitives::{
+    TEST_DOMAINS_BLOCK_PRUNING_DEPTH, TEST_DOMAIN_RUNTIME_UPGRADE_DELAY,
+    TEST_STAKE_WITHDRAWAL_LOCKING_PERIOD,
+};
 
 sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
@@ -721,7 +724,7 @@ parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 2;
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
-    pub const DomainRuntimeUpgradeDelay: BlockNumber = 10;
+    pub const DefaultDomainRuntimeUpgradeDelay: BlockNumber = TEST_DOMAIN_RUNTIME_UPGRADE_DELAY;
     pub const MinOperatorStake: Balance = 100 * SSC;
     pub const MinNominatorStake: Balance = SSC;
     /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
@@ -730,8 +733,8 @@ parameter_types! {
     pub MaxDomainBlockWeight: Weight = NORMAL_DISPATCH_RATIO * BLOCK_WEIGHT_FOR_2_SEC;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
-    pub const BlockTreePruningDepth: u32 = DOMAINS_BLOCK_PRUNING_DEPTH;
-    pub const StakeWithdrawalLockingPeriod: BlockNumber = 20;
+    pub const DefaultBlockTreePruningDepth: u32 = TEST_DOMAINS_BLOCK_PRUNING_DEPTH;
+    pub const DefaultStakeWithdrawalLockingPeriod: BlockNumber = TEST_STAKE_WITHDRAWAL_LOCKING_PERIOD;
     pub const StakeEpochDuration: DomainNumber = 5;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 512;
@@ -752,6 +755,9 @@ const_assert!(BlockHashCount::get() > BlockSlotCount::get());
 
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
 const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
+
+// Stake Withdrawal locking period must be >= Block tree pruning depth
+const_assert!(DefaultStakeWithdrawalLockingPeriod::get() >= DefaultBlockTreePruningDepth::get());
 
 pub struct BlockSlot;
 
@@ -798,7 +804,7 @@ impl pallet_domains::Config for Runtime {
     type DomainHash = DomainHash;
     type DomainHeader = DomainHeader;
     type ConfirmationDepthK = ConfirmationDepthK;
-    type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
+    type DefaultDomainRuntimeUpgradeDelay = DefaultDomainRuntimeUpgradeDelay;
     type Currency = Balances;
     type HoldIdentifier = HoldIdentifierWrapper;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
@@ -810,9 +816,9 @@ impl pallet_domains::Config for Runtime {
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
-    type BlockTreePruningDepth = BlockTreePruningDepth;
+    type DefaultBlockTreePruningDepth = DefaultBlockTreePruningDepth;
     type ConsensusSlotProbability = SlotProbability;
-    type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
+    type DefaultStakeWithdrawalLockingPeriod = DefaultStakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
