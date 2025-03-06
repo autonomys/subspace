@@ -409,3 +409,8 @@ xcm-procedural = { git = "https://github.com/subspace/polkadot-sdk", rev = "949b
 # De-duplicate extra copy that comes from Substrate repo
 [patch."https://github.com/subspace/polkadot-sdk.git"]
 substrate-bip39 = "0.6.0"
+
+[patch.crates-io]
+# Reason: We need to patch subxt dependency of substrate to use our fork
+# TODO: Remove if/when we are using upstream substrate instead of fork
+sp-crypto-hashing = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe" }

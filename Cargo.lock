@@ -2242,7 +2242,7 @@ dependencies = [
  "parity-scale-codec",
  "sc-client-api",
  "sp-api",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe)",
+ "sp-crypto-hashing",
  "sp-inherents",
  "sp-runtime",
  "sp-state-machine",
@@ -3813,7 +3813,7 @@ dependencies = [
  "rustc-hex",
  "serde",
  "serde_json",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe)",
+ "sp-crypto-hashing",
 ]
 
 [[package]]
@@ -4153,7 +4153,7 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe)",
+ "sp-crypto-hashing",
  "sp-database",
  "sp-externalities",
  "sp-genesis-builder",
@@ -4286,7 +4286,7 @@ dependencies = [
  "proc-macro-warning",
  "proc-macro2",
  "quote",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe)",
+ "sp-crypto-hashing",
  "syn 2.0.98",
 ]
 
@@ -10712,7 +10712,7 @@ dependencies = [
  "serde_json",
  "sp-blockchain",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe)",
+ "sp-crypto-hashing",
  "sp-genesis-builder",
  "sp-io",
  "sp-runtime",
@@ -11603,7 +11603,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe)",
+ "sp-crypto-hashing",
  "sp-io",
  "sp-std",
 ]
@@ -11688,7 +11688,7 @@ dependencies = [
  "sp-api",
  "sp-blockchain",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe)",
+ "sp-crypto-hashing",
  "sp-runtime",
  "sp-tracing",
  "sp-transaction-pool",
@@ -12705,7 +12705,7 @@ dependencies = [
  "sp-api",
  "sp-application-crypto",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe)",
+ "sp-crypto-hashing",
  "sp-io",
  "sp-keystore",
  "sp-mmr-primitives",
@@ -12801,7 +12801,7 @@ dependencies = [
  "secp256k1 0.28.2",
  "secrecy",
  "serde",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe)",
+ "sp-crypto-hashing",
  "sp-debug-derive",
  "sp-externalities",
  "sp-runtime-interface",
@@ -12813,20 +12813,6 @@ dependencies = [
  "tracing",
  "w3f-bls",
  "zeroize",
-]
-
-[[package]]
-name = "sp-crypto-hashing"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc9927a7f81334ed5b8a98a4a978c81324d12bd9713ec76b5c68fd410174c5eb"
-dependencies = [
- "blake2b_simd",
- "byteorder",
- "digest 0.10.7",
- "sha2 0.10.8",
- "sha3",
- "twox-hash",
 ]
 
 [[package]]
@@ -12848,7 +12834,7 @@ version = "0.1.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe#949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe"
 dependencies = [
  "quote",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe)",
+ "sp-crypto-hashing",
  "syn 2.0.98",
 ]
 
@@ -13050,7 +13036,7 @@ dependencies = [
  "rustversion",
  "secp256k1 0.28.2",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe)",
+ "sp-crypto-hashing",
  "sp-externalities",
  "sp-keystore",
  "sp-runtime-interface",
@@ -13330,7 +13316,7 @@ dependencies = [
  "sp-api",
  "sp-application-crypto",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe)",
+ "sp-crypto-hashing",
  "sp-externalities",
  "sp-runtime",
  "sp-runtime-interface",
@@ -14640,7 +14626,7 @@ dependencies = [
  "scale-value",
  "serde",
  "serde_json",
- "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sp-crypto-hashing",
  "subxt-core",
  "subxt-lightclient",
  "subxt-macro",
@@ -14694,7 +14680,7 @@ dependencies = [
  "scale-value",
  "serde",
  "serde_json",
- "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sp-crypto-hashing",
  "subxt-metadata",
  "tracing",
 ]
@@ -14741,7 +14727,7 @@ dependencies = [
  "hashbrown 0.14.5",
  "parity-scale-codec",
  "scale-info",
- "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sp-crypto-hashing",
 ]
 
 [[package]]
@@ -14763,7 +14749,7 @@ dependencies = [
  "secp256k1 0.28.2",
  "secrecy",
  "sha2 0.10.8",
- "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sp-crypto-hashing",
  "subxt-core",
  "zeroize",
 ]
