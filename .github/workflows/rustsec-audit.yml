@@ -21,4 +21,5 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           # TODO: Remove first once Substrate upgrades litep2p and we no longer have rustls 0.20.9 in our dependencies
-          ignore: RUSTSEC-2024-0336
+          # TODO: Remove second once Substrate upgrades litep2p and sc-network and we no longer have ring 0.16 in our dependencies
+          ignore: RUSTSEC-2024-0336, RUSTSEC-2025-0009
