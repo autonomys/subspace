@@ -1308,7 +1308,7 @@ async fn test_evm_domain_gas_estimates() {
                         create_info.used_gas.effective,
                     ),
                     // The exact estimate is not important, but we want to know if it changes
-                    (4_327_174.into(), 4_327_174.into()),
+                    (4_326_280.into(), 4_326_280.into()),
                     "Incorrect EVM Create gas estimate: {:?} {:?}",
                     evm_call,
                     create_info,
@@ -1348,7 +1348,7 @@ async fn test_evm_domain_gas_estimates() {
                 assert_eq!(
                     (call_info.used_gas.standard, call_info.used_gas.effective),
                     // The exact estimate is not important, but we want to know if it changes
-                    (22_258.into(), 22_258.into()),
+                    (21_400.into(), 21_400.into()),
                     "Incorrect EVM Call gas estimate: {:?} {:?}",
                     evm_call,
                     call_info,
