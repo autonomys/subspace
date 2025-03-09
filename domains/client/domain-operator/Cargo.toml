@@ -80,5 +80,5 @@ sp-state-machine.workspace = true
 subspace-core-primitives.workspace = true
 subspace-test-runtime.workspace = true
 subspace-test-service.workspace = true
-subspace-test-primitives.workspace = true
+subspace-test-primitives = { workspace = true, features = ["std"] }
 tempfile.workspace = true
