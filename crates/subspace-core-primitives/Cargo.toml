@@ -25,7 +25,7 @@ static_assertions.workspace = true
 uint.workspace = true
 
 [dev-dependencies]
-rand = { workspace = true, features = ["min_const_gen"] }
+rand = { workspace = true, features = ["min_const_gen", "std", "std_rng"] }
 
 [features]
 default = [

@@ -30,7 +30,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
-rand = { workspace = true, features = ["min_const_gen"] }
+rand = { workspace = true, features = ["min_const_gen", "std", "std_rng"] }
 rand_core.workspace = true
 
 [features]

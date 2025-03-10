@@ -30,7 +30,7 @@ sp-runtime.workspace = true
 subspace-runtime-primitives.workspace = true
 
 [dev-dependencies]
-pallet-balances.workspace = true
+pallet-balances = { workspace = true, features = ["std"] }
 sp-io.workspace = true
 
 [features]
