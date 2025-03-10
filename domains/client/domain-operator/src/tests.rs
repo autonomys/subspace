@@ -43,8 +43,8 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::test_ethereum::{generate_legacy_tx, max_extrinsic_gas};
 use sp_domains::test_ethereum_tx::{address_build, contract_address, AccountInfo};
 use sp_domains::{
-    Bundle, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor, InboxedBundle,
-    InvalidBundleType, PermissionedActionAllowedBy, Transfers,
+    BlockFees, Bundle, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor,
+    InboxedBundle, InvalidBundleType, PermissionedActionAllowedBy, Transfers,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProofVariant,
@@ -1264,10 +1264,10 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_evm_domain_gas_estimates() {
-    let (_directory, _ferdie, alice, account_infos) =
+    let (_directory, mut ferdie, mut alice, account_infos) =
         setup_evm_test_accounts(Sr25519Alice, false, None).await;
 
-    let test_estimate_gas = |evm_call| {
+    let test_estimate_gas = |evm_call, is_estimate| {
         let <TestRuntime as frame_system::Config>::RuntimeCall::EVM(evm_call) = evm_call else {
             panic!("Unexpected RuntimeCall type");
         };
@@ -1295,8 +1295,8 @@ async fn test_evm_domain_gas_estimates() {
                         Some(max_fee_per_gas),
                         max_priority_fee_per_gas,
                         nonce,
-                        // Estimate gas
-                        true,
+                        // Do we want to estimate gas, or run the call?
+                        is_estimate,
                         Some(access_list.clone()),
                     )
                     .expect("test EVM Create runtime call must succeed")
@@ -1308,7 +1308,7 @@ async fn test_evm_domain_gas_estimates() {
                         create_info.used_gas.effective,
                     ),
                     // The exact estimate is not important, but we want to know if it changes
-                    (4_327_174.into(), 4_327_174.into()),
+                    (4_326_280.into(), 4_326_280.into()),
                     "Incorrect EVM Create gas estimate: {:?} {:?}",
                     evm_call,
                     create_info,
@@ -1338,8 +1338,8 @@ async fn test_evm_domain_gas_estimates() {
                         Some(max_fee_per_gas),
                         max_priority_fee_per_gas,
                         nonce,
-                        // Estimate gas
-                        true,
+                        // Do we want to estimate gas, or run the call?
+                        is_estimate,
                         Some(access_list.clone()),
                     )
                     .expect("test EVM Call runtime call must succeed")
@@ -1348,7 +1348,7 @@ async fn test_evm_domain_gas_estimates() {
                 assert_eq!(
                     (call_info.used_gas.standard, call_info.used_gas.effective),
                     // The exact estimate is not important, but we want to know if it changes
-                    (22_258.into(), 22_258.into()),
+                    (21_400.into(), 21_400.into()),
                     "Incorrect EVM Call gas estimate: {:?} {:?}",
                     evm_call,
                     call_info,
@@ -1364,6 +1364,7 @@ async fn test_evm_domain_gas_estimates() {
         .gas_price(alice.client.info().best_hash)
         .unwrap();
 
+    // Estimates
     let evm_nonce = alice
         .client
         .runtime_api()
@@ -1377,7 +1378,7 @@ async fn test_evm_domain_gas_estimates() {
         evm_nonce,
         gas_price,
     );
-    test_estimate_gas(evm_create);
+    test_estimate_gas(evm_create, true);
 
     let evm_nonce = alice
         .client
@@ -1392,7 +1393,140 @@ async fn test_evm_domain_gas_estimates() {
         evm_nonce,
         gas_price,
     );
-    test_estimate_gas(evm_call);
+    test_estimate_gas(evm_call, true);
+
+    // Really do it, using runtime API calls
+    let evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
+    let evm_create = generate_evm_domain_call(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    test_estimate_gas(evm_create, false);
+
+    let evm_contract_address = contract_address(account_infos[0].address, evm_nonce.as_u64());
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
+    let evm_call = generate_evm_domain_call(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Call(evm_contract_address),
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    test_estimate_gas(evm_call, false);
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Really do it, using construct_and_send_extrinsic()
+    let evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
+    let evm_tx = generate_evm_domain_call(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Create,
+        0,
+        evm_nonce,
+        gas_price,
+    );
+    let evm_contract_address = contract_address(account_infos[0].address, evm_nonce.as_u64());
+
+    // Use alice's account ID, which does the signing in construct_and_send_extrinsic()
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send signed extrinsic"
+    );
+
+    // Produce a bundle that contains just the sent extrinsics
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(
+        receipt.block_fees,
+        // Check the actual block fees for an EVM contract create
+        BlockFees {
+            consensus_storage_fee: 789,
+            domain_execution_fee: 10_815_700_000_631,
+            burned_balance: 0,
+            chain_rewards: [].into(),
+        }
+    );
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
+    let evm_tx = generate_evm_domain_call(
+        account_infos[0].clone(),
+        ethereum::TransactionAction::Call(evm_contract_address),
+        0,
+        evm_nonce,
+        gas_price,
+    );
+
+    // Use alice's account ID, which does the signing in construct_and_send_extrinsic()
+    let result = alice.construct_and_send_extrinsic(evm_tx).await;
+    assert_matches!(
+        result,
+        Ok(_),
+        "Unexpectedly failed to send signed extrinsic"
+    );
+
+    // Produce a bundle that contains just the sent extrinsics
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics.len(), 1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(
+        receipt.block_fees,
+        // Check the actual block fees for an EVM contract call
+        BlockFees {
+            consensus_storage_fee: 849,
+            domain_execution_fee: 10_815_700_000_651,
+            burned_balance: 0,
+            chain_rewards: [].into(),
+        }
+    );
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]
