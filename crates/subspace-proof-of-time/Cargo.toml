@@ -19,6 +19,9 @@ aes.workspace = true
 subspace-core-primitives.workspace = true
 thiserror.workspace = true
 
+# This is required to for benchmark dependency features to work correctly
+rand = { workspace = true, optional = true }
+
 [dev-dependencies]
 core_affinity.workspace = true
 criterion.workspace = true
@@ -37,4 +40,6 @@ default = ["std"]
 std = [
     "subspace-core-primitives/std",
     "thiserror/std",
+    "rand?/std",
+    "rand?/std_rng",
 ]
