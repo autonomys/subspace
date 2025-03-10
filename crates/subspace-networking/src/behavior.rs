@@ -26,6 +26,7 @@ use libp2p::ping::{Behaviour as Ping, Event as PingEvent};
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::PeerId;
+use std::convert::Infallible;
 use void::Void as VoidEvent;
 
 type BlockListBehaviour = AllowBlockListBehaviour<BlockedPeers>;
@@ -114,4 +115,11 @@ pub(crate) enum Event {
     VoidEventStub(VoidEvent),
     ReservedPeers(ReservedPeersEvent),
     Autonat(AutonatEvent),
+}
+
+// Infallible instances can never be created.
+impl From<Infallible> for Event {
+    fn from(_: Infallible) -> Self {
+        unreachable!()
+    }
 }
