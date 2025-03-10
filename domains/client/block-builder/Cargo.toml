@@ -18,7 +18,7 @@ hash-db.workspace = true
 sc-client-api.workspace = true
 sp-api.workspace = true
 sp-blockchain.workspace = true
-sp-block-builder.workspace = true
+sp-block-builder = { workspace = true, features = ["std"] }
 sp-core.workspace = true
 sp-externalities.workspace = true
 sp-inherents.workspace = true
