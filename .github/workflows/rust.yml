@@ -292,3 +292,48 @@ jobs:
       - name: cargo nextest run --locked
         run: |
           cargo -Zgitoxide -Zgit nextest run --locked
+
+  # This job checks all crates individually, including no_std and other featureless builds
+  cargo-check-individually:
+    strategy:
+      matrix:
+        # We only want to run these slower checks on the fastest runner
+        os: ${{ fromJson(github.repository_owner == 'autonomys' &&
+          '[
+            "runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64",
+          ]' ||
+          '["ubuntu-22.04"]') }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure cache
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: cargo check --locked --all-targets all crates
+        run: |
+          for crate in $(grep 'path =' Cargo.toml | sed 's/.*path *= *"\([^"]*\).*/\1/' | sort); do
+              echo "$crate";
+              pushd "$crate";
+              if ! cargo -Zgitoxide -Zgit check --locked --all-targets; then
+                  pwd;
+                  popd;
+                  exit 1;
+              fi;
+              pwd;
+              popd;
+          done
