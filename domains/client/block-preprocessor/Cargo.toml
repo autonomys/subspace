@@ -28,12 +28,12 @@ sp-evm-tracker = { workspace = true, features = ["std"] }
 sp-executive = { workspace = true, features = ["std"] }
 sp-externalities.workspace = true
 sp-inherents.workspace = true
-sp-messenger.workspace = true
+sp-messenger = { workspace = true, features = ["std"] }
 sp-mmr-primitives.workspace = true
 sp-runtime.workspace = true
 sp-state-machine.workspace = true
-sp-subspace-mmr.workspace = true
-sp-timestamp.workspace = true
+sp-subspace-mmr = { workspace = true, features = ["std"] }
+sp-timestamp = { workspace = true, features = ["std"] }
 sp-weights.workspace = true
 sp-version.workspace = true
 subspace-core-primitives.workspace = true
