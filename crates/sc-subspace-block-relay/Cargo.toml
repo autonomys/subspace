@@ -21,12 +21,12 @@ sc-client-api.workspace = true
 sc-network.workspace = true
 sc-network-common.workspace = true
 sc-network-sync.workspace = true
-sp-api.workspace = true
-sp-consensus-subspace.workspace = true
+sp-api = { workspace = true, features = ["std"] }
+sp-consensus-subspace = { workspace = true, features = ["std"] }
 sc-transaction-pool-api.workspace = true
-sp-runtime.workspace = true
+sp-runtime = { workspace = true, features = ["std"] }
 strum_macros.workspace = true
-subspace-core-primitives.workspace = true
+subspace-core-primitives = { workspace = true, features = ["std"] }
 substrate-prometheus-endpoint.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
+tracing = { workspace = true, features = ["std"] }

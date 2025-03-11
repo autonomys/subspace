@@ -20,20 +20,20 @@ sc-executor.workspace = true
 sc-executor-common.workspace = true
 sp-api.workspace = true
 sp-blockchain.workspace = true
-sp-block-fees.workspace = true
+sp-block-fees = { workspace = true, features = ["std"] }
 sp-core.workspace = true
 sp-domains.workspace = true
-sp-domain-sudo.workspace = true
-sp-evm-tracker.workspace = true
-sp-executive.workspace = true
+sp-domain-sudo = { workspace = true, features = ["std"] }
+sp-evm-tracker = { workspace = true, features = ["std"] }
+sp-executive = { workspace = true, features = ["std"] }
 sp-externalities.workspace = true
 sp-inherents.workspace = true
-sp-messenger.workspace = true
+sp-messenger = { workspace = true, features = ["std"] }
 sp-mmr-primitives.workspace = true
 sp-runtime.workspace = true
 sp-state-machine.workspace = true
-sp-subspace-mmr.workspace = true
-sp-timestamp.workspace = true
+sp-subspace-mmr = { workspace = true, features = ["std"] }
+sp-timestamp = { workspace = true, features = ["std"] }
 sp-weights.workspace = true
 sp-version.workspace = true
 subspace-core-primitives.workspace = true
