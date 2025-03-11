@@ -165,10 +165,13 @@ where
     )
 }
 
+type MaybeTrackedDomainHashes<Block, CBlock> =
+    Option<BTreeSet<(<Block as BlockT>::Hash, <CBlock as BlockT>::Hash)>>;
+
 fn get_tracked_domain_hash_keys<Backend, Block, CBlock>(
     backend: &Backend,
     domain_block_number: NumberFor<Block>,
-) -> ClientResult<BTreeSet<(Block::Hash, CBlock::Hash)>>
+) -> ClientResult<MaybeTrackedDomainHashes<Block, CBlock>>
 where
     Backend: AuxStore,
     Block: BlockT,
@@ -180,7 +183,6 @@ where
             .encode()
             .as_slice(),
     )
-    .map(|res| res.unwrap_or_default())
 }
 
 pub(super) fn track_domain_hash_and_consensus_hash<Client, Block, CBlock>(
@@ -201,7 +203,8 @@ where
                 best_domain_hash
             )))?;
     let mut domain_hash_keys =
-        get_tracked_domain_hash_keys::<_, Block, CBlock>(&**domain_client, best_domain_number)?;
+        get_tracked_domain_hash_keys::<_, Block, CBlock>(&**domain_client, best_domain_number)?
+            .unwrap_or_default();
 
     domain_hash_keys.insert((best_domain_hash, latest_consensus_hash));
 
@@ -243,13 +246,15 @@ where
     let mut finalized_domain_number = domain_client.info().finalized_number;
 
     let mut deletions = vec![];
-    while finalized_domain_number > Zero::zero() {
-        let domain_hash_keys = get_tracked_domain_hash_keys::<_, Block, CBlock>(
+    while finalized_domain_number > Zero::zero()
+        // exit early if there are not tracked hashes for this finalized block number.
+        && let Some(domain_hash_keys) = &get_tracked_domain_hash_keys::<_, Block, CBlock>(
             &**domain_client,
             finalized_domain_number,
-        )?;
+        )?
+    {
         domain_hash_keys
-            .into_iter()
+            .iter()
             .for_each(|(domain_hash, consensus_hash)| {
                 deletions.push((LATEST_CONSENSUS_HASH, domain_hash).encode());
                 deletions.push((BEST_DOMAIN_HASH, consensus_hash).encode())
