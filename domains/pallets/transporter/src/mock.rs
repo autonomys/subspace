@@ -12,6 +12,7 @@ use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId, EndpointRequ
 use sp_messenger::messages::{ChainId, FeeModel, MessageId};
 use sp_runtime::traits::{Convert, IdentityLookup};
 use sp_runtime::{BuildStorage, DispatchError, Perbill};
+use subspace_runtime_primitives::DomainEventSegmentSize;
 
 type Block = frame_system::mocking::MockBlock<MockRuntime>;
 pub(crate) type Balance = u64;
@@ -32,6 +33,7 @@ impl frame_system::Config for MockRuntime {
     type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
     type AccountData = AccountData<Balance>;
+    type EventSegmentSize = DomainEventSegmentSize;
 }
 
 parameter_types! {

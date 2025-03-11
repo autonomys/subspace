@@ -2,7 +2,7 @@ use frame_support::derive_impl;
 use frame_support::traits::{ConstU128, ConstU32};
 use sp_runtime::traits::parameter_types;
 use subspace_runtime_primitives::{
-    FindBlockRewardAddress, FindVotingRewardAddresses, RewardsEnabled,
+    ConsensusEventSegmentSize, FindBlockRewardAddress, FindVotingRewardAddresses, RewardsEnabled,
 };
 
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -20,6 +20,7 @@ frame_support::construct_runtime!(
 impl frame_system::Config for Test {
     type Block = Block;
     type AccountData = pallet_balances::AccountData<Balance>;
+    type EventSegmentSize = ConsensusEventSegmentSize;
 }
 
 #[derive_impl(pallet_balances::config_preludes::TestDefaultConfig as pallet_balances::DefaultConfig)]

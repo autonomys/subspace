@@ -42,7 +42,9 @@ use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::U256 as P256;
-use subspace_runtime_primitives::{HoldIdentifier, Moment, Nonce, StorageFee, SSC};
+use subspace_runtime_primitives::{
+    ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee, SSC,
+};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -77,6 +79,7 @@ impl frame_system::Config for Test {
     type Lookup = IdentityLookup<Self::AccountId>;
     type AccountData = pallet_balances::AccountData<Balance>;
     type DbWeight = ParityDbWeight;
+    type EventSegmentSize = ConsensusEventSegmentSize;
 }
 
 parameter_types! {

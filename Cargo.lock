@@ -2949,6 +2949,7 @@ dependencies = [
  "sp-std",
  "sp-tracing",
  "sp-version",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -7890,6 +7891,7 @@ dependencies = [
  "sp-domains",
  "sp-io",
  "sp-runtime",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -8062,6 +8064,7 @@ dependencies = [
  "sp-state-machine",
  "sp-subspace-mmr",
  "sp-trie",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -8324,6 +8327,7 @@ dependencies = [
  "sp-messenger",
  "sp-runtime",
  "sp-std",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]

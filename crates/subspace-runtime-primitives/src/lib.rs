@@ -79,6 +79,13 @@ pub type Hash = sp_core::H256;
 /// Type used for expressing timestamp.
 pub type Moment = u64;
 
+parameter_types! {
+    /// Event segments are disabled on the consensus chain.
+    pub const ConsensusEventSegmentSize: u32 = 0;
+    /// Event segments are enabled on domain chains, this value was derived from benchmarking.
+    pub const DomainEventSegmentSize: u32 = 100;
+}
+
 /// Opaque types.
 ///
 /// These are used by the CLI to instantiate machinery that don't need to know the specifics of the

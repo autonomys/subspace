@@ -38,6 +38,7 @@ use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_kzg::Kzg;
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::{Table, TableGenerator};
+use subspace_runtime_primitives::ConsensusEventSegmentSize;
 use subspace_verification::is_within_solution_range;
 
 type PosTable = ShimTable;
@@ -77,6 +78,7 @@ frame_support::construct_runtime!(
 impl frame_system::Config for Test {
     type Block = Block;
     type AccountData = pallet_balances::AccountData<Balance>;
+    type EventSegmentSize = ConsensusEventSegmentSize;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Test

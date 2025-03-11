@@ -37,6 +37,7 @@ macro_rules! impl_runtime {
         use core::mem;
         use sp_runtime::Perbill;
         use sp_domains::DomainId;
+        use subspace_runtime_primitives::DomainEventSegmentSize;
 
         type Block = frame_system::mocking::MockBlock<Runtime>;
 
@@ -53,6 +54,7 @@ macro_rules! impl_runtime {
         impl frame_system::Config for $runtime {
             type Block = Block;
             type AccountData = AccountData<Balance>;
+            type EventSegmentSize = DomainEventSegmentSize;
         }
 
         parameter_types! {

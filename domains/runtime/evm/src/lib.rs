@@ -93,8 +93,8 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilityCall};
 use subspace_runtime_primitives::{
-    BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment,
-    SlowAdjustingFeeUpdate, SHANNON, SSC,
+    BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, Hash as ConsensusBlockHash,
+    Moment, SlowAdjustingFeeUpdate, SHANNON, SSC,
 };
 
 /// The address format for describing accounts.
@@ -386,6 +386,7 @@ impl frame_system::Config for Runtime {
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
     type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
+    type EventSegmentSize = DomainEventSegmentSize;
 }
 
 impl pallet_timestamp::Config for Runtime {
