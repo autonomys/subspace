@@ -216,15 +216,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: cargo build --locked --package subspace-runtime
+      - name: build subspace-runtime
         run: |
           cargo -Zgitoxide -Zgit build --locked --package subspace-runtime
 
-      - name: cargo build --locked --package evm-domain-runtime
+      - name: build evm-domain-runtime
         run: |
           cargo -Zgitoxide -Zgit build --locked --package evm-domain-runtime
 
-      - name: cargo build --locked --package auto-id-domain-runtime
+      - name: build auto-id-domain-runtime
         run: |
           cargo -Zgitoxide -Zgit build --locked --package auto-id-domain-runtime
 
@@ -293,7 +293,9 @@ jobs:
         run: |
           cargo -Zgitoxide -Zgit nextest run --locked
 
-  # This job checks all crates individually, including no_std and other featureless builds
+  # This job checks all crates individually, including no_std and other featureless builds.
+  # We need to check crates individually for missing features, because cargo does feature
+  # unification, which hides missing features when crates are built together.
   cargo-check-individually:
     strategy:
       matrix:
@@ -324,7 +326,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: cargo check --locked --all-targets all crates
+      - name: check all crates individually
         run: |
           for crate in $(grep 'path =' Cargo.toml | sed 's/.*path *= *"\([^"]*\).*/\1/' | sort); do
               echo "$crate";
