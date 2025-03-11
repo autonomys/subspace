@@ -19,8 +19,8 @@ pub use domain_runtime_primitives::{
     Nonce, Signature, EXISTENTIAL_DEPOSIT, MAX_OUTGOING_MESSAGES,
 };
 use domain_runtime_primitives::{
-    CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier, ERR_BALANCE_OVERFLOW,
-    SLOT_DURATION,
+    CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier, TargetBlockFullness,
+    ERR_BALANCE_OVERFLOW, SLOT_DURATION,
 };
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::genesis_builder_helper::{build_state, get_preset};
@@ -256,7 +256,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = OnChargeDomainTransaction<Balances>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = ConstantMultiplier<Balance, FinalDomainTransactionByteFee>;
-    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime, TargetBlockFullness>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
     type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }

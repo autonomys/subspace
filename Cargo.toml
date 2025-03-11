@@ -108,7 +108,6 @@ num_cpus = "1.16.0"
 ouroboros = "0.18.4"
 pallet-auto-id = { version = "0.1.0", path = "domains/pallets/auto-id", default-features = false }
 pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", default-features = false }
-pallet-base-fee = { version = "1.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
 pallet-block-fees = { version = "0.1.0", path = "domains/pallets/block-fees", default-features = false }
 pallet-collective = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", default-features = false }
 pallet-democracy = { git = "https://github.com/subspace/polkadot-sdk", rev = "949bb3cfb64ab974e4fc49328fb3e81c96bc0fbe", default-features = false }
