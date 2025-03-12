@@ -19,7 +19,7 @@ pub const GAS_PER_SECOND: u64 = 40_000_000;
 
 /// Approximate ratio of the amount of Weight per Gas.
 /// u64 works for approximations because Weight is a very small unit compared to gas.
-pub const WEIGHT_PER_GAS: u64 = WEIGHT_REF_TIME_PER_SECOND.saturating_div(GAS_PER_SECOND);
+pub const WEIGHT_PER_GAS: u64 = WEIGHT_REF_TIME_PER_SECOND.div_ceil(GAS_PER_SECOND);
 
 parameter_types! {
     pub const GasLimitPovSizeRatio: u64 = 4;

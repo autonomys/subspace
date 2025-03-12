@@ -32,7 +32,7 @@ where
     fn min_gas_price() -> (U256, Weight) {
         // spread the storage fee across the gas price based on the Gas Per Byte.
         let storage_fee_per_gas =
-            BlockFees::<T>::final_domain_transaction_byte_fee().saturating_div(GasPerByte::get());
+            BlockFees::<T>::final_domain_transaction_byte_fee().div_ceil(GasPerByte::get());
         // adjust the fee per weight using the multiplier
         let weight_fee = TransactionWeightFee::get().saturating_mul(WEIGHT_PER_GAS.into());
         let adjusted_weight_fee =
