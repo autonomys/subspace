@@ -114,6 +114,7 @@ std = [
     "sp-version/std",
     "subspace-core-primitives/std",
     "subspace-runtime-primitives/std",
+    "subspace-test-primitives/std",
     "substrate-wasm-builder",
 ]
 runtime-benchmarks = [

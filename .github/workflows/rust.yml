@@ -162,6 +162,72 @@ jobs:
           cargo -Zgitoxide -Zgit clippy --locked --all-targets --features rocm -- -D warnings
         if: runner.os == 'Windows'
 
+  cargo-runtime-build:
+    strategy:
+      matrix:
+        os: ${{ fromJson(github.repository_owner == 'autonomys' &&
+          '[
+            "runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64",
+            ["self-hosted", "windows-server-2022-x86-64"],
+            ["self-hosted", "macos-14-arm64"]
+          ]' ||
+          '["ubuntu-22.04", "windows-2022", "macos-14"]') }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      # On macOS, we need a proper Clang version, not Apple's custom version without wasm32 support
+      - name: Install LLVM and Clang for macOS
+        uses: KyleMayes/install-llvm-action@dec985c8d7b46a2f363ea1a78f660c946a3349ea # v2.0.1
+        with:
+          env: true
+          version: 17
+        if: runner.os == 'macOS'
+
+      # Because macOS, see https://andreasfertig.blog/2021/02/clang-and-gcc-on-macos-catalina-finding-the-include-paths/
+      - name: Configure C compiler macOS
+        run: |
+          echo "SDKROOT=$(xcrun --show-sdk-path)" >> $GITHUB_ENV
+        if: runner.os == 'macOS'
+
+      - name: Install glibtoolize (macOS)
+        run: brew install libtool
+        if: runner.os == 'macOS'
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Needed for hwloc
+      - name: Install automake (macOS)
+        run: brew install automake
+        if: runner.os == 'macOS'
+
+      - name: Configure cache
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: build subspace-runtime
+        run: |
+          cargo -Zgitoxide -Zgit build --locked --package subspace-runtime
+
+      - name: build evm-domain-runtime
+        run: |
+          cargo -Zgitoxide -Zgit build --locked --package evm-domain-runtime
+
+      - name: build auto-id-domain-runtime
+        run: |
+          cargo -Zgitoxide -Zgit build --locked --package auto-id-domain-runtime
+
   cargo-test:
     strategy:
       matrix:
@@ -226,3 +292,50 @@ jobs:
       - name: cargo nextest run --locked
         run: |
           cargo -Zgitoxide -Zgit nextest run --locked
+
+  # This job checks all crates individually, including no_std and other featureless builds.
+  # We need to check crates individually for missing features, because cargo does feature
+  # unification, which hides missing features when crates are built together.
+  cargo-check-individually:
+    strategy:
+      matrix:
+        # We only want to run these slower checks on the fastest runner
+        os: ${{ fromJson(github.repository_owner == 'autonomys' &&
+          '[
+            "runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64",
+          ]' ||
+          '["ubuntu-22.04"]') }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure cache
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: check all crates individually
+        run: |
+          for crate in $(grep 'path =' Cargo.toml | sed 's/.*path *= *"\([^"]*\).*/\1/' | sort); do
+              echo "$crate";
+              pushd "$crate";
+              if ! cargo -Zgitoxide -Zgit check --locked --all-targets; then
+                  pwd;
+                  popd;
+                  exit 1;
+              fi;
+              pwd;
+              popd;
+          done

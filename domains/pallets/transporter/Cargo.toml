@@ -27,8 +27,8 @@ sp-runtime.workspace = true
 sp-std.workspace = true
 
 [dev-dependencies]
-pallet-balances.workspace = true
-pallet-messenger.workspace = true
+pallet-balances = { workspace = true, features = ["std"] }
+pallet-messenger = { workspace = true, features = ["std"] }
 sp-io.workspace = true
 subspace-runtime-primitives.workspace = true
 

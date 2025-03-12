@@ -30,8 +30,8 @@ sp-subspace-mmr.workspace = true
 
 [dev-dependencies]
 domain-runtime-primitives.workspace = true
-pallet-balances.workspace = true
-pallet-transporter.workspace = true
+pallet-balances = { workspace = true, features = ["std"] }
+pallet-transporter = { workspace = true, features = ["std"] }
 sp-state-machine.workspace = true
 subspace-runtime-primitives.workspace = true
 

@@ -21,7 +21,7 @@ subspace-archiving.workspace = true
 subspace-core-primitives.workspace = true
 subspace-erasure-coding.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "rt"] }
 tracing.workspace = true
 
 [dev-dependencies]

@@ -22,15 +22,15 @@ sc-client-api.workspace = true
 sc-consensus-slots.workspace = true
 sc-network.workspace = true
 sc-network-gossip.workspace = true
-sp-api.workspace = true
+sp-api = { workspace = true, features = ["std"] }
 sp-blockchain.workspace = true
 sp-consensus.workspace = true
-sp-consensus-slots.workspace = true
-sp-consensus-subspace.workspace = true
-sp-inherents.workspace = true
-sp-runtime.workspace = true
-subspace-core-primitives.workspace = true
+sp-consensus-slots = { workspace = true, features = ["std"] }
+sp-consensus-subspace = { workspace = true, features = ["std"] }
+sp-inherents = { workspace = true, features = ["std"] }
+sp-runtime = { workspace = true, features = ["std"] }
+subspace-core-primitives = { workspace = true, features = ["std"] }
 subspace-proof-of-time.workspace = true
 thread-priority.workspace = true
 tokio = { workspace = true, features = ["sync"] }
-tracing.workspace = true
+tracing = { workspace = true, features = ["std"] }
