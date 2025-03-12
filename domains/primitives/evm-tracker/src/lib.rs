@@ -1,12 +1,40 @@
 //! Inherents for EVM tracker
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use domain_runtime_primitives::EthereumAccountId;
+use domain_runtime_primitives::{maximum_domain_block_weight, Balance, EthereumAccountId};
+use frame_support::parameter_types;
+use frame_support::sp_runtime::app_crypto::sp_core::U256;
+use frame_support::sp_runtime::Perbill;
 use parity_scale_codec::{Decode, Encode};
 use sp_domains::PermissionedActionAllowedBy;
 #[cfg(feature = "std")]
 use sp_inherents::{Error, InherentData};
 use sp_inherents::{InherentIdentifier, IsFatalError};
+use sp_weights::constants::WEIGHT_REF_TIME_PER_SECOND;
+use sp_weights::Weight;
+
+/// Current approximation of the gas/s consumption considering
+/// EVM execution over compiled WASM (on 4.4Ghz CPU).
+pub const GAS_PER_SECOND: u64 = 40_000_000;
+
+/// Approximate ratio of the amount of Weight per Gas.
+/// u64 works for approximations because Weight is a very small unit compared to gas.
+pub const WEIGHT_PER_GAS: u64 = WEIGHT_REF_TIME_PER_SECOND.div_ceil(GAS_PER_SECOND);
+
+parameter_types! {
+    pub const GasLimitPovSizeRatio: u64 = 4;
+    /// Gas per byte
+    /// Ethereum’s Yellow Paper states that it costs 20,000 gas to store one 256-bit word.
+    /// 1 Byte costs 20_000/32 = 625
+    pub const GasPerByte: Balance = 625;
+    /// Proportion of final (gas_price * gas_used) given as storage fee.
+    pub const StorageFeeRatio: Perbill = Perbill::from_percent(30);
+    /// EVM block gas limit is set to maximum to allow all the transaction stored on Consensus chain.
+    pub BlockGasLimit: U256 = U256::from(
+        maximum_domain_block_weight().ref_time() / WEIGHT_PER_GAS
+    );
+    pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
+}
 
 /// Executive inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"dmnevmtr";

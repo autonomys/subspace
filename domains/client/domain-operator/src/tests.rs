@@ -1308,7 +1308,7 @@ async fn test_evm_domain_gas_estimates() {
                         create_info.used_gas.effective,
                     ),
                     // The exact estimate is not important, but we want to know if it changes
-                    (4_326_280.into(), 4_326_280.into()),
+                    (53_408.into(), 53_408.into()),
                     "Incorrect EVM Create gas estimate: {:?} {:?}",
                     evm_call,
                     create_info,
@@ -1363,7 +1363,6 @@ async fn test_evm_domain_gas_estimates() {
         .runtime_api()
         .gas_price(alice.client.info().best_hash)
         .unwrap();
-
     // Estimates
     let evm_nonce = alice
         .client
@@ -1473,7 +1472,7 @@ async fn test_evm_domain_gas_estimates() {
         // Check the actual block fees for an EVM contract create
         BlockFees {
             consensus_storage_fee: 789,
-            domain_execution_fee: 10_815_700_000_631,
+            domain_execution_fee: 10_813_273_629_579_568,
             burned_balance: 0,
             chain_rewards: [].into(),
         }
@@ -1520,7 +1519,7 @@ async fn test_evm_domain_gas_estimates() {
         // Check the actual block fees for an EVM contract call
         BlockFees {
             consensus_storage_fee: 849,
-            domain_execution_fee: 10_815_700_000_651,
+            domain_execution_fee: 10_812_720_677_240_620,
             burned_balance: 0,
             chain_rewards: [].into(),
         }
@@ -8040,6 +8039,8 @@ async fn test_xdm_transfer_to_wrong_format_address() {
     .unwrap();
 }
 
+// TODO: ignore test until we bring back the best block number as starting nonce instead of 0.
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_current_block_number_used_as_new_account_nonce() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");

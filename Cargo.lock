@@ -3482,7 +3482,6 @@ dependencies = [
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
  "pallet-balances",
- "pallet-base-fee",
  "pallet-block-fees",
  "pallet-domain-id",
  "pallet-domain-sudo",
@@ -3540,7 +3539,6 @@ dependencies = [
  "frame-system",
  "frame-system-rpc-runtime-api",
  "pallet-balances",
- "pallet-base-fee",
  "pallet-block-fees",
  "pallet-domain-id",
  "pallet-domain-sudo",
@@ -8234,20 +8232,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-base-fee"
-version = "1.0.0"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
-dependencies = [
- "fp-evm",
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-runtime",
-]
-
-[[package]]
 name = "pallet-block-fees"
 version = "0.1.0"
 dependencies = [
@@ -8447,8 +8431,10 @@ dependencies = [
  "domain-runtime-primitives",
  "frame-support",
  "frame-system",
+ "pallet-block-fees",
  "pallet-ethereum",
  "pallet-evm",
+ "pallet-transaction-payment",
  "pallet-utility",
  "parity-scale-codec",
  "scale-info",
@@ -12975,10 +12961,12 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "domain-runtime-primitives",
+ "frame-support",
  "parity-scale-codec",
  "sp-api",
  "sp-domains",
  "sp-inherents",
+ "sp-weights",
 ]
 
 [[package]]

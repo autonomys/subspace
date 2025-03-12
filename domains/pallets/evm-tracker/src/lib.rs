@@ -22,6 +22,7 @@ extern crate alloc;
 
 pub mod check_nonce;
 pub mod create_contract;
+pub mod fees;
 pub mod traits;
 
 pub use check_nonce::CheckNonce;
