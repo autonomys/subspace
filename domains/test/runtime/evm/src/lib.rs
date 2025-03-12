@@ -17,10 +17,9 @@ use alloc::format;
 use core::mem;
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
-    block_weights, maximum_block_length, maximum_domain_block_weight, AccountId20,
-    EthereumAccountId, DEFAULT_EXTENSION_VERSION, ERR_BALANCE_OVERFLOW,
-    ERR_CONTRACT_CREATION_NOT_ALLOWED, ERR_NONCE_OVERFLOW, EXISTENTIAL_DEPOSIT,
-    MAX_OUTGOING_MESSAGES, SLOT_DURATION,
+    block_weights, maximum_block_length, AccountId20, EthereumAccountId, TargetBlockFullness,
+    DEFAULT_EXTENSION_VERSION, ERR_BALANCE_OVERFLOW, ERR_CONTRACT_CREATION_NOT_ALLOWED,
+    ERR_NONCE_OVERFLOW, EXISTENTIAL_DEPOSIT, MAX_OUTGOING_MESSAGES, SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError,
@@ -32,10 +31,9 @@ use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::inherent::ProvideInherent;
 use frame_support::pallet_prelude::TypeInfo;
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize, Time,
-    VariantCount,
+    ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, OnFinalize, Time, VariantCount,
 };
-use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
+use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
@@ -57,6 +55,9 @@ use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
 use sp_domains::{DomainAllowlistUpdates, DomainId, PermissionedActionAllowedBy, Transfers};
+use sp_evm_tracker::{
+    BlockGasLimit, GasLimitPovSizeRatio, GasPerByte, StorageFeeRatio, WeightPerGas,
+};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, FeeModel, MessageId,
@@ -74,7 +75,6 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
-use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{
     generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
     ExtrinsicInclusionMode, SaturatedConversion,
@@ -90,10 +90,10 @@ use sp_subspace_mmr::domain_mmr_runtime_interface::{
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
-use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilityCall};
+use subspace_runtime_primitives::utility::MaybeIntoUtilityCall;
 use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, Hash as ConsensusBlockHash,
-    Moment, SHANNON, SSC,
+    Moment, SlowAdjustingFeeUpdate, SHANNON, SSC,
 };
 
 /// The address format for describing accounts.
@@ -175,7 +175,7 @@ pub fn construct_extrinsic_raw_payload(
         } else {
             generic::Era::mortal(period, current_block)
         }),
-        frame_system::CheckNonce::<Runtime>::from(nonce.into()),
+        frame_system::CheckNonce::<Runtime>::from(nonce),
         domain_check_weight::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
         pallet_evm_tracker::create_contract::CheckContractCreation::<Runtime>::new(),
@@ -253,24 +253,8 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
             .into()));
         }
 
-        // TODO: move this code into pallet-block-fees, so it can be used from the production and
-        // test runtimes.
         match self {
-            RuntimeCall::Ethereum(call) => {
-                // Ensure the caller can pay for the consensus chain storage fee
-                let consensus_storage_fee = match consensus_storage_fee(len) {
-                    Ok(fee) => fee,
-                    Err(err) => return Some(Err(err)),
-                };
-                let withdraw_res = <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
-                    Runtime,
-                >>::withdraw_fee(info, consensus_storage_fee.into());
-                if withdraw_res.is_err() {
-                    return Some(Err(InvalidTransaction::Payment.into()));
-                }
-
-                call.validate_self_contained(info, dispatch_info, len)
-            }
+            RuntimeCall::Ethereum(call) => call.validate_self_contained(info, dispatch_info, len),
             _ => None,
         }
     }
@@ -292,23 +276,6 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         // test runtimes.
         match self {
             RuntimeCall::Ethereum(call) => {
-                // Withdraw the consensus chain storage fee from the caller and record
-                // it in the `BlockFees`
-                let consensus_storage_fee = match consensus_storage_fee(len) {
-                    Ok(fee) => fee,
-                    Err(err) => return Some(Err(err)),
-                };
-                match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
-                    info,
-                    consensus_storage_fee.into(),
-                ) {
-                    Ok(None) => {}
-                    Ok(Some(paid_consensus_storage_fee)) => {
-                        BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee.peek())
-                    }
-                    Err(_) => return Some(Err(InvalidTransaction::Payment.into())),
-                }
-
                 // Copied from [`pallet_ethereum::Call::pre_dispatch_self_contained`] with `frame_system::CheckWeight`
                 // replaced with `domain_check_weight::CheckWeight`
                 if let pallet_ethereum::Call::transact { transaction } = call {
@@ -399,7 +366,7 @@ impl frame_system::Config for Runtime {
     /// The aggregated `RuntimeTask` type.
     type RuntimeTask = RuntimeTask;
     /// The type for storing how many extrinsics an account has signed.
-    type Nonce = TypeWithDefault<Nonce, DefaultNonceProvider<System, Nonce>>;
+    type Nonce = Nonce;
     /// The type for hashing blocks and tries.
     type Hash = Hash;
     /// The hashing algorithm used.
@@ -474,7 +441,7 @@ impl pallet_balances::Config for Runtime {
 
 parameter_types! {
     pub const OperationalFeeMultiplier: u8 = 5;
-    pub const DomainChainByteFee: Balance = 1;
+    pub const DomainChainByteFee: Balance = 100_000 * SHANNON;
     pub TransactionWeightFee: Balance = 100_000 * SHANNON;
 }
 
@@ -496,7 +463,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = OnChargeDomainTransaction<Balances>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type LengthToFee = ConstantMultiplier<Balance, FinalDomainTransactionByteFee>;
-    type FeeMultiplierUpdate = ();
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime, TargetBlockFullness>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
     type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
@@ -704,21 +671,8 @@ impl FindAuthor<H160> for FindAuthorTruncated {
     }
 }
 
-/// Current approximation of the gas/s consumption considering
-/// EVM execution over compiled WASM (on 4.4Ghz CPU).
-pub const GAS_PER_SECOND: u64 = 40_000_000;
-
-/// Approximate ratio of the amount of Weight per Gas.
-/// u64 works for approximations because Weight is a very small unit compared to gas.
-pub const WEIGHT_PER_GAS: u64 = WEIGHT_REF_TIME_PER_SECOND.saturating_div(GAS_PER_SECOND);
-
 parameter_types! {
-    /// EVM block gas limit is set to maximum to allow all the transaction stored on Consensus chain.
-    pub BlockGasLimit: U256 = U256::from(
-        maximum_domain_block_weight().ref_time() / WEIGHT_PER_GAS
-    );
     pub PrecompilesValue: Precompiles = Precompiles::default();
-    pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
 }
 
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
@@ -747,8 +701,13 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
         already_withdrawn: Self::LiquidityInfo,
     ) -> Self::LiquidityInfo {
         if already_withdrawn.is_some() {
-            // Record the evm actual transaction fee
-            BlockFees::note_domain_execution_fee(corrected_fee.as_u128());
+            // Record the evm actual transaction fee and storage fee
+            let (storage_fee, execution_fee) =
+                EvmGasPriceCalculator::split_fee_into_storage_and_execution(
+                    corrected_fee.as_u128(),
+                );
+            BlockFees::note_consensus_storage_fee(storage_fee);
+            BlockFees::note_domain_execution_fee(execution_fee);
         }
 
         <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
@@ -765,9 +724,16 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
 
 impl pallet_evm_tracker::Config for Runtime {}
 
+pub type EvmGasPriceCalculator = pallet_evm_tracker::fees::EvmGasPriceCalculator<
+    Runtime,
+    TransactionWeightFee,
+    GasPerByte,
+    StorageFeeRatio,
+>;
+
 impl pallet_evm::Config for Runtime {
     type AccountProvider = pallet_evm::FrameSystemAccountProvider<Self>;
-    type FeeCalculator = BaseFee;
+    type FeeCalculator = EvmGasPriceCalculator;
     type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
     type WeightPerGas = WeightPerGas;
     type BlockHashMapping = pallet_ethereum::EthereumBlockHashMapping<Self>;
@@ -784,7 +750,7 @@ impl pallet_evm::Config for Runtime {
     type OnChargeTransaction = EVMCurrencyAdapter;
     type OnCreate = ();
     type FindAuthor = FindAuthorTruncated;
-    type GasLimitPovSizeRatio = ();
+    type GasLimitPovSizeRatio = GasLimitPovSizeRatio;
     type GasLimitStorageGrowthRatio = ();
     type Timestamp = Timestamp;
     type WeightInfo = pallet_evm::weights::SubstrateWeight<Self>;
@@ -819,37 +785,6 @@ impl MaybeIntoEthCall<Runtime> for RuntimeCall {
             _ => None,
         }
     }
-}
-
-parameter_types! {
-    pub BoundDivision: U256 = U256::from(1024);
-}
-
-parameter_types! {
-    pub DefaultBaseFeePerGas: U256 = U256::from(1_000_000_000);
-    // mark it to 5% increments on beyond target weight.
-    pub DefaultElasticity: Permill = Permill::from_parts(50_000);
-}
-
-pub struct BaseFeeThreshold;
-
-impl pallet_base_fee::BaseFeeThreshold for BaseFeeThreshold {
-    fn lower() -> Permill {
-        Permill::zero()
-    }
-    fn ideal() -> Permill {
-        Permill::from_parts(500_000)
-    }
-    fn upper() -> Permill {
-        Permill::from_parts(1_000_000)
-    }
-}
-
-impl pallet_base_fee::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Threshold = BaseFeeThreshold;
-    type DefaultBaseFeePerGas = DefaultBaseFeePerGas;
-    type DefaultElasticity = DefaultElasticity;
 }
 
 impl pallet_domain_id::Config for Runtime {}
@@ -914,7 +849,6 @@ construct_runtime!(
         Ethereum: pallet_ethereum = 80,
         EVM: pallet_evm = 81,
         EVMChainId: pallet_evm_chain_id = 82,
-        BaseFee: pallet_base_fee = 83,
         EVMNoncetracker: pallet_evm_tracker = 84,
 
         // domain instance stuff
@@ -1062,21 +996,6 @@ fn pre_dispatch_evm_transaction(
 ) -> Result<(), TransactionValidityError> {
     match call {
         RuntimeCall::Ethereum(call) => {
-            // Withdraw the consensus chain storage fee from the caller and record
-            // it in the `BlockFees`
-            let consensus_storage_fee = consensus_storage_fee(len)?;
-
-            match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
-                &account_id,
-                consensus_storage_fee.into(),
-            ) {
-                Ok(None) => {}
-                Ok(Some(paid_consensus_storage_fee)) => {
-                    BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee.peek())
-                }
-                Err(_) => return Err(InvalidTransaction::Payment.into()),
-            }
-
             if let Some(transaction_validity) =
                 call.validate_self_contained(&account_id, dispatch_info, len)
             {
@@ -1292,7 +1211,7 @@ impl_runtime_apis! {
 
     impl frame_system_rpc_runtime_api::AccountNonceApi<Block, AccountId, Nonce> for Runtime {
         fn account_nonce(account: AccountId) -> Nonce {
-            *System::account_nonce(account)
+            System::account_nonce(account)
         }
     }
 
@@ -1691,7 +1610,7 @@ impl_runtime_apis! {
         }
 
         fn elasticity() -> Option<Permill> {
-            Some(pallet_base_fee::Elasticity::<Runtime>::get())
+            None
         }
 
         fn gas_limit_multiplier_support() {}

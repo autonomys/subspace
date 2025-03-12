@@ -31,11 +31,12 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
+use sp_core::parameter_types;
 use sp_runtime::generic::{ExtensionVersion, Preamble, UncheckedExtrinsic};
 use sp_runtime::traits::transaction_extension::TransactionExtension;
 use sp_runtime::traits::{Convert, Dispatchable, IdentifyAccount, Verify};
 use sp_runtime::transaction_validity::TransactionValidityError;
-use sp_runtime::{MultiAddress, MultiSignature, Perbill};
+use sp_runtime::{MultiAddress, MultiSignature, Perbill, Perquintill};
 use sp_weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use sp_weights::Weight;
 pub use subspace_runtime_primitives::HoldIdentifier;
@@ -128,6 +129,12 @@ pub const DEFAULT_EXTENSION_VERSION: ExtensionVersion = 0;
 /// Storage duration (1 year) - It is theoretically unlimited, accounts will stay around while the chain is alive.
 /// Storage cost per year of (12 * 1e-9 * 0.1 ) - SSD storage on cloud hosting costs about 0.1 USD per Gb per month
 pub const EXISTENTIAL_DEPOSIT: Balance = 1_000_000_000_000 * SHANNON;
+
+parameter_types! {
+    /// The portion of the `NORMAL_DISPATCH_RATIO` that we adjust the fees with. Blocks filled less
+    /// than this will decrease the weight and more will increase.
+    pub const TargetBlockFullness: Perquintill = Perquintill::from_percent(25);
+}
 
 /// We assume that ~5% of the block weight is consumed by `on_initialize` handlers. This is
 /// used to limit the maximal weight of a single extrinsic.

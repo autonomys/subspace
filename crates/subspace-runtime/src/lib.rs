@@ -103,8 +103,8 @@ use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilit
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, ConsensusEventSegmentSize,
     FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate,
-    BLOCK_WEIGHT_FOR_2_SEC, DOMAINS_BLOCK_PRUNING_DEPTH, MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR,
-    NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY, SSC,
+    TargetBlockFullness, BLOCK_WEIGHT_FOR_2_SEC, DOMAINS_BLOCK_PRUNING_DEPTH, MAX_BLOCK_LENGTH,
+    MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY, SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -400,7 +400,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
-    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime, TargetBlockFullness>;
     type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
 
