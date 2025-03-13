@@ -109,7 +109,10 @@ pub type Executive = domain_pallet_executive::Executive<
     Runtime,
     AllPalletsWithSystem,
     // TODO: remove once migrations are done
-    pallet_messenger::migrations::VersionCheckedMigrateDomainsV0ToV1<Runtime>,
+    (
+        pallet_messenger::migrations::VersionCheckedMigrateDomainsV0ToV1<Runtime>,
+        domain_pallet_executive::migrations::StorageCheckedMigrateToEventSegments<Runtime>,
+    ),
 >;
 
 impl_opaque_keys! {
