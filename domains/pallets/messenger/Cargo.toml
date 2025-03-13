@@ -33,6 +33,7 @@ domain-runtime-primitives.workspace = true
 pallet-balances = { workspace = true, features = ["std"] }
 pallet-transporter = { workspace = true, features = ["std"] }
 sp-state-machine.workspace = true
+subspace-runtime-primitives.workspace = true
 
 [features]
 default = ["std"]

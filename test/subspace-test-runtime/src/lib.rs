@@ -109,8 +109,8 @@ use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{hashes, PublicKey, Randomness, SlotNumber, U256};
 use subspace_runtime_primitives::utility::DefaultNonceProvider;
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce,
-    Signature, MIN_REPLICATION_FACTOR, SHANNON, SSC,
+    AccountId, Balance, BlockNumber, ConsensusEventSegmentSize, FindBlockRewardAddress, Hash,
+    HoldIdentifier, Moment, Nonce, Signature, MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 
@@ -275,6 +275,7 @@ impl frame_system::Config for Runtime {
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
     type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
+    type EventSegmentSize = ConsensusEventSegmentSize;
 }
 
 parameter_types! {

@@ -30,6 +30,7 @@ sp-std.workspace = true
 pallet-balances = { workspace = true, features = ["std"] }
 pallet-messenger = { workspace = true, features = ["std"] }
 sp-io.workspace = true
+subspace-runtime-primitives.workspace = true
 
 [features]
 default = ["std"]

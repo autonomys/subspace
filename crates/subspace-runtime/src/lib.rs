@@ -101,10 +101,10 @@ use subspace_core_primitives::solutions::{
 use subspace_core_primitives::{PublicKey, Randomness, SlotNumber, U256};
 use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilityCall};
 use subspace_runtime_primitives::{
-    maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
-    HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, TargetBlockFullness,
-    BLOCK_WEIGHT_FOR_2_SEC, DOMAINS_BLOCK_PRUNING_DEPTH, MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR,
-    NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY, SSC,
+    maximum_normal_block_length, AccountId, Balance, BlockNumber, ConsensusEventSegmentSize,
+    FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate,
+    TargetBlockFullness, BLOCK_WEIGHT_FOR_2_SEC, DOMAINS_BLOCK_PRUNING_DEPTH, MAX_BLOCK_LENGTH,
+    MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY, SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -254,6 +254,7 @@ impl frame_system::Config for Runtime {
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
     type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
+    type EventSegmentSize = ConsensusEventSegmentSize;
 }
 
 parameter_types! {

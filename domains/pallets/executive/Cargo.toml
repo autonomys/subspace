@@ -30,6 +30,7 @@ pallet-balances = { workspace = true, features = ["std"] }
 sp-core.workspace = true
 sp-externalities.workspace = true
 sp-version.workspace = true
+subspace-runtime-primitives = { workspace = true, features = ["std"] }
 
 [features]
 default = ["std"]

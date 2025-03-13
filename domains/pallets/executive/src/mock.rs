@@ -13,6 +13,7 @@ use frame_system::mocking::MockUncheckedExtrinsic;
 use pallet_balances::AccountData;
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::BuildStorage;
+use subspace_runtime_primitives::DomainEventSegmentSize;
 
 type Block = frame_system::mocking::MockBlock<MockRuntime>;
 pub(crate) type Balance = u64;
@@ -30,6 +31,7 @@ frame_support::construct_runtime!(
 impl frame_system::Config for MockRuntime {
     type Block = Block;
     type AccountData = AccountData<Balance>;
+    type EventSegmentSize = DomainEventSegmentSize;
 }
 
 parameter_types! {

@@ -95,8 +95,8 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_runtime_primitives::utility::MaybeIntoUtilityCall;
 use subspace_runtime_primitives::{
-    BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment,
-    SlowAdjustingFeeUpdate, SHANNON, SSC,
+    BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, Hash as ConsensusBlockHash,
+    Moment, SlowAdjustingFeeUpdate, SHANNON, SSC,
 };
 
 /// The address format for describing accounts.
@@ -156,7 +156,10 @@ pub type Executive = domain_pallet_executive::Executive<
     Runtime,
     AllPalletsWithSystem,
     // TODO: remove once migrations are done
-    pallet_messenger::migrations::VersionCheckedMigrateDomainsV0ToV1<Runtime>,
+    (
+        pallet_messenger::migrations::VersionCheckedMigrateDomainsV0ToV1<Runtime>,
+        domain_pallet_executive::migrations::StorageCheckedMigrateToEventSegments<Runtime>,
+    ),
 >;
 
 /// Returns the storage fee for `len` bytes, or an overflow error.
@@ -355,6 +358,7 @@ impl frame_system::Config for Runtime {
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
     type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
+    type EventSegmentSize = DomainEventSegmentSize;
 }
 
 impl pallet_timestamp::Config for Runtime {

@@ -1,6 +1,7 @@
 use crate::{self as pallet_domain_id};
 use frame_support::derive_impl;
 use sp_runtime::BuildStorage;
+use subspace_runtime_primitives::DomainEventSegmentSize;
 
 type Block = frame_system::mocking::MockBlock<Test>;
 
@@ -16,6 +17,7 @@ impl pallet_domain_id::Config for Test {}
 #[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for Test {
     type Block = Block;
+    type EventSegmentSize = DomainEventSegmentSize;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
