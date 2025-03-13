@@ -36,6 +36,7 @@ hex-literal.workspace = true
 log.workspace = true
 mimalloc.workspace = true
 pallet-domains.workspace = true
+pallet-messenger.workspace = true
 pallet-transaction-payment.workspace = true
 parity-scale-codec.workspace = true
 pallet-subspace.workspace = true

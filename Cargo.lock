@@ -8467,6 +8467,7 @@ dependencies = [
  "sp-state-machine",
  "sp-subspace-mmr",
  "sp-trie",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -13923,6 +13924,7 @@ dependencies = [
  "log",
  "mimalloc",
  "pallet-domains",
+ "pallet-messenger",
  "pallet-subspace",
  "pallet-sudo",
  "pallet-transaction-payment",
@@ -14423,6 +14425,7 @@ dependencies = [
  "jsonrpsee 0.24.8",
  "mmr-gadget",
  "pallet-domains",
+ "pallet-messenger",
  "pallet-subspace",
  "pallet-transaction-payment",
  "parity-scale-codec",

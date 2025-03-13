@@ -673,6 +673,7 @@ impl pallet_messenger::Config for Runtime {
     type DomainRegistration = DomainRegistration;
     type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
+    type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -681,15 +682,6 @@ where
 {
     type Extrinsic = UncheckedExtrinsic;
     type RuntimeCall = RuntimeCall;
-}
-
-impl<C> frame_system::offchain::CreateInherent<C> for Runtime
-where
-    RuntimeCall: From<C>,
-{
-    fn create_inherent(call: Self::RuntimeCall) -> Self::Extrinsic {
-        UncheckedExtrinsic::new_bare(call)
-    }
 }
 
 impl<C> subspace_runtime_primitives::CreateUnsigned<C> for Runtime
@@ -943,6 +935,7 @@ pub type SignedExtra = (
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     pallet_subspace::extensions::SubspaceExtension<Runtime>,
     pallet_domains::extensions::DomainsExtension<Runtime>,
+    pallet_messenger::extensions::MessengerExtension<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
@@ -971,6 +964,15 @@ impl pallet_domains::extensions::MaybeDomainsCall<Runtime> for RuntimeCall {
     fn maybe_domains_call(&self) -> Option<&pallet_domains::Call<Runtime>> {
         match self {
             RuntimeCall::Domains(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl pallet_messenger::extensions::MaybeMessengerCall<Runtime> for RuntimeCall {
+    fn maybe_messenger_call(&self) -> Option<&pallet_messenger::Call<Runtime>> {
+        match self {
+            RuntimeCall::Messenger(call) => Some(call),
             _ => None,
         }
     }
@@ -1170,6 +1172,7 @@ fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
+        pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
     );
 
     UncheckedExtrinsic::new_transaction(call, extra)

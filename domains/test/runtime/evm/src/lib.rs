@@ -122,6 +122,7 @@ pub type SignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     pallet_evm_tracker::create_contract::CheckContractCreation<Runtime>,
+    pallet_messenger::extensions::MessengerExtension<Runtime>,
 );
 
 /// Custom signed extra for check_and_pre_dispatch.
@@ -136,6 +137,8 @@ type CustomSignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     pallet_evm_tracker::create_contract::CheckContractCreation<Runtime>,
+    // TODO: update this in the following commit
+    pallet_messenger::extensions::MessengerExtension<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -179,6 +182,7 @@ pub fn construct_extrinsic_raw_payload(
         domain_check_weight::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
         pallet_evm_tracker::create_contract::CheckContractCreation::<Runtime>::new(),
+        pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
     );
     (
         generic::SignedPayload::<RuntimeCallFor<Runtime>, SignedExtra>::from_raw(
@@ -190,6 +194,7 @@ pub fn construct_extrinsic_raw_payload(
                 0,
                 genesis_block_hash,
                 current_block_hash,
+                (),
                 (),
                 (),
                 (),
@@ -623,6 +628,7 @@ impl pallet_messenger::Config for Runtime {
     type DomainRegistration = ();
     type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
+    type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -631,15 +637,6 @@ where
 {
     type Extrinsic = UncheckedExtrinsic;
     type RuntimeCall = RuntimeCall;
-}
-
-impl<C> frame_system::offchain::CreateInherent<C> for Runtime
-where
-    RuntimeCall: From<C>,
-{
-    fn create_inherent(call: Self::RuntimeCall) -> Self::Extrinsic {
-        UncheckedExtrinsic::new_bare(call)
-    }
 }
 
 parameter_types! {
@@ -822,6 +819,45 @@ impl MaybeIntoUtilityCall<Runtime> for RuntimeCall {
             _ => None,
         }
     }
+}
+
+impl pallet_messenger::extensions::MaybeMessengerCall<Runtime> for RuntimeCall {
+    fn maybe_messenger_call(&self) -> Option<&pallet_messenger::Call<Runtime>> {
+        match self {
+            RuntimeCall::Messenger(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl<C> subspace_runtime_primitives::CreateUnsigned<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    fn create_unsigned(call: Self::RuntimeCall) -> Self::Extrinsic {
+        create_unsigned_general_extrinsic(call)
+    }
+}
+
+fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
+    let extra: SignedExtra = (
+        frame_system::CheckNonZeroSender::<Runtime>::new(),
+        frame_system::CheckSpecVersion::<Runtime>::new(),
+        frame_system::CheckTxVersion::<Runtime>::new(),
+        frame_system::CheckGenesis::<Runtime>::new(),
+        frame_system::CheckMortality::<Runtime>::from(generic::Era::Immortal),
+        // for unsigned extrinsic, nonce check will be skipped
+        // so set a default value
+        frame_system::CheckNonce::<Runtime>::from(0u32),
+        domain_check_weight::CheckWeight::<Runtime>::new(),
+        // for unsigned extrinsic, transaction fee check will be skipped
+        // so set a default value
+        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
+        pallet_evm_tracker::create_contract::CheckContractCreation::<Runtime>::new(),
+        pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
+    );
+
+    UncheckedExtrinsic::from(generic::UncheckedExtrinsic::new_transaction(call, extra))
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -1086,6 +1122,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.6,
                     extra.7.clone(),
                     extra.8,
+                    extra.9,
                 );
 
                 let origin = RuntimeOrigin::none();
@@ -1110,6 +1147,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.6,
                     extra.7.clone(),
                     extra.8,
+                    extra.9,
                 );
 
                 let origin = RuntimeOrigin::signed(account_id);

@@ -22,6 +22,7 @@
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
+pub mod extensions;
 mod fees;
 mod messages;
 pub mod migrations;
@@ -34,9 +35,9 @@ pub mod weights;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use frame_support::pallet_prelude::StorageVersion;
+use frame_support::__private::RuntimeDebug;
+use frame_support::pallet_prelude::{EnsureOrigin, MaxEncodedLen, StorageVersion};
 use frame_support::traits::fungible::{Inspect, InspectHold};
-use frame_system::offchain::CreateInherent;
 use frame_system::pallet_prelude::BlockNumberFor;
 pub use pallet::*;
 use parity_scale_codec::{Decode, Encode};
@@ -49,6 +50,7 @@ use sp_messenger::messages::{
 };
 use sp_runtime::traits::Hash;
 use sp_runtime::DispatchError;
+use subspace_runtime_primitives::CreateUnsigned;
 
 /// Transaction validity for a given validated XDM extrinsic.
 /// If the extrinsic is not included in the bundle, extrinsic is removed from the TxPool.
@@ -71,6 +73,29 @@ pub enum OutboxMessageResult {
     Ok,
     /// Message response handler failed with Err.
     Err(DispatchError),
+}
+
+/// Custom origin for validated unsigned extrinsics.
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub enum RawOrigin {
+    ValidatedUnsigned,
+}
+
+/// Ensure the messenger origin.
+pub struct EnsureMessengerOrigin;
+impl<O: Into<Result<RawOrigin, O>> + From<RawOrigin>> EnsureOrigin<O> for EnsureMessengerOrigin {
+    type Success = ();
+
+    fn try_origin(o: O) -> Result<Self::Success, O> {
+        o.into().map(|o| match o {
+            RawOrigin::ValidatedUnsigned => (),
+        })
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn try_successful_origin() -> Result<O, ()> {
+        Ok(O::from(RawOrigin::ValidatedUnsigned))
+    }
 }
 
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
@@ -122,8 +147,8 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
-        FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage,
-        STORAGE_VERSION, U256, XDM_TRANSACTION_LONGEVITY,
+        FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, RawOrigin, StateRootOf,
+        ValidatedRelayMessage, STORAGE_VERSION, U256,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -148,7 +173,7 @@ mod pallet {
     };
     use sp_messenger::{
         ChannelNonce, DomainRegistration, InherentError, InherentType, OnXDMRewards, StorageKeys,
-        INHERENT_IDENTIFIER, MAX_FUTURE_ALLOWED_NONCES,
+        INHERENT_IDENTIFIER,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{ArithmeticError, Perbill, Saturating};
@@ -201,6 +226,8 @@ mod pallet {
         type ChannelFeeModel: Get<FeeModel<BalanceOf<Self>>>;
         /// Maximum outgoing messages from a given channel
         type MaxOutgoingMessages: Get<u32>;
+        /// Origin for messenger call.
+        type MessengerOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = ()>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -302,6 +329,9 @@ mod pallet {
     pub(super) type UpdatedChannels<T: Config> =
         StorageValue<_, BTreeSet<(ChainId, ChannelId)>, ValueQuery>;
 
+    #[pallet::origin]
+    pub type Origin = RawOrigin;
+
     /// `pallet-messenger` events
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
@@ -385,50 +415,6 @@ mod pallet {
 
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::relay_message { msg: xdm } => {
-                    let consensus_state_root = T::MmrProofVerifier::verify_proof_and_extract_leaf(
-                        xdm.proof.consensus_mmr_proof(),
-                    )
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
-                    let ValidatedRelayMessage {
-                        message,
-                        should_init_channel,
-                        next_nonce,
-                    } = Self::validate_relay_message(xdm, consensus_state_root)?;
-
-                    // Reject in future message
-                    if message.nonce.cmp(&next_nonce) == Ordering::Greater {
-                        return Err(InvalidTransaction::Future.into());
-                    }
-
-                    Self::pre_dispatch_relay_message(message, should_init_channel)?;
-
-                    Ok(())
-                }
-                Call::relay_message_response { msg: xdm } => {
-                    let consensus_state_root = T::MmrProofVerifier::verify_proof_and_extract_leaf(
-                        xdm.proof.consensus_mmr_proof(),
-                    )
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
-                    let ValidatedRelayMessage {
-                        message,
-                        should_init_channel: _,
-                        next_nonce,
-                    } = Self::validate_relay_message_response(xdm, consensus_state_root)?;
-
-                    // Reject in future message
-                    if message.nonce.cmp(&next_nonce) == Ordering::Greater {
-                        return Err(InvalidTransaction::Future.into());
-                    }
-
-                    Self::pre_dispatch_relay_message_response(message)?;
-
-                    Ok(())
-                }
                 // always accept inherent extrinsic
                 Call::update_domain_allowlist { .. } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
@@ -436,105 +422,11 @@ mod pallet {
         }
 
         /// Validate unsigned call to this module.
-        fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-            match call {
-                Call::relay_message { msg: xdm } => {
-                    let consensus_state_root = T::MmrProofVerifier::verify_proof_and_extract_leaf(
-                        xdm.proof.consensus_mmr_proof(),
-                    )
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
-                    let ValidatedRelayMessage {
-                        message,
-                        next_nonce,
-                        ..
-                    } = Self::validate_relay_message(xdm, consensus_state_root)?;
-
-                    let Message {
-                        dst_chain_id,
-                        channel_id,
-                        nonce: msg_nonce,
-                        ..
-                    } = message;
-
-                    let mut valid_tx_builder = ValidTransaction::with_tag_prefix("MessengerInbox");
-                    // Only add the requires tag if the msg nonce is in future
-                    if msg_nonce > next_nonce {
-                        let max_future_nonce =
-                            next_nonce.saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
-                        if msg_nonce > max_future_nonce {
-                            return Err(InvalidTransaction::Custom(
-                                crate::verification_errors::IN_FUTURE_NONCE,
-                            )
-                            .into());
-                        }
-
-                        valid_tx_builder = valid_tx_builder.and_requires((
-                            dst_chain_id,
-                            channel_id,
-                            msg_nonce - Nonce::one(),
-                        ));
-                    };
-                    valid_tx_builder
-                        // XDM have a bit higher priority than normal extrinsic but must less than
-                        // fraud proof
-                        .priority(1)
-                        .longevity(XDM_TRANSACTION_LONGEVITY)
-                        .and_provides((dst_chain_id, channel_id, msg_nonce))
-                        .propagate(true)
-                        .build()
-                }
-                Call::relay_message_response { msg: xdm } => {
-                    let consensus_state_root = T::MmrProofVerifier::verify_proof_and_extract_leaf(
-                        xdm.proof.consensus_mmr_proof(),
-                    )
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
-                    let ValidatedRelayMessage {
-                        message,
-                        next_nonce,
-                        ..
-                    } = Self::validate_relay_message_response(xdm, consensus_state_root)?;
-
-                    let Message {
-                        dst_chain_id,
-                        channel_id,
-                        nonce: msg_nonce,
-                        ..
-                    } = message;
-
-                    let mut valid_tx_builder =
-                        ValidTransaction::with_tag_prefix("MessengerOutboxResponse");
-                    // Only add the requires tag if the msg nonce is in future
-                    if msg_nonce > next_nonce {
-                        let max_future_nonce =
-                            next_nonce.saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
-                        if msg_nonce > max_future_nonce {
-                            return Err(InvalidTransaction::Custom(
-                                crate::verification_errors::IN_FUTURE_NONCE,
-                            )
-                            .into());
-                        }
-
-                        valid_tx_builder = valid_tx_builder.and_requires((
-                            dst_chain_id,
-                            channel_id,
-                            msg_nonce - Nonce::one(),
-                        ));
-                    };
-                    valid_tx_builder
-                        // XDM have a bit higher priority than normal extrinsic but must less than
-                        // fraud proof
-                        .priority(1)
-                        .longevity(XDM_TRANSACTION_LONGEVITY)
-                        .and_provides((dst_chain_id, channel_id, msg_nonce))
-                        .propagate(true)
-                        .build()
-                }
-                _ => InvalidTransaction::Call.into(),
-            }
+        fn validate_unsigned(
+            _source: TransactionSource,
+            _call: &Self::Call,
+        ) -> TransactionValidity {
+            InvalidTransaction::Call.into()
         }
     }
 
@@ -698,7 +590,7 @@ mod pallet {
             origin: OriginFor<T>,
             msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> DispatchResult {
-            ensure_none(origin)?;
+            T::MessengerOrigin::ensure_origin(origin)?;
             let inbox_msg = Inbox::<T>::take().ok_or(Error::<T>::MissingMessage)?;
             Self::process_inbox_messages(inbox_msg, msg.weight_tag)?;
             Ok(())
@@ -711,7 +603,7 @@ mod pallet {
             origin: OriginFor<T>,
             msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> DispatchResult {
-            ensure_none(origin)?;
+            T::MessengerOrigin::ensure_origin(origin)?;
             let outbox_resp_msg = OutboxResponses::<T>::take().ok_or(Error::<T>::MissingMessage)?;
             Self::process_outbox_message_responses(outbox_resp_msg, msg.weight_tag)?;
             Ok(())
@@ -1486,20 +1378,20 @@ mod pallet {
 
 impl<T> Pallet<T>
 where
-    T: Config + CreateInherent<Call<T>>,
+    T: Config + CreateUnsigned<Call<T>>,
 {
     pub fn outbox_message_unsigned(
         msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message { msg };
-        Some(T::create_inherent(call.into()))
+        Some(T::create_unsigned(call.into()))
     }
 
     pub fn inbox_response_message_unsigned(
         msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message_response { msg };
-        Some(T::create_inherent(call.into()))
+        Some(T::create_unsigned(call.into()))
     }
 
     /// Returns true if the outbox message has not received the response yet.

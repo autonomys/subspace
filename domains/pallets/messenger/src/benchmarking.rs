@@ -25,9 +25,11 @@ use sp_trie::StorageProof;
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
 
-#[benchmarks]
+#[benchmarks(where <RuntimeCallFor<T> as sp_runtime::traits::Dispatchable>::RuntimeOrigin: From<crate::RawOrigin>)]
 mod benchmarks {
     use super::*;
+    use crate::RawOrigin as MessengerOrigin;
+    use frame_system::pallet_prelude::RuntimeCallFor;
 
     #[benchmark]
     fn initiate_channel() {
@@ -152,7 +154,7 @@ mod benchmarks {
         };
 
         #[extrinsic_call]
-        _(RawOrigin::None, xdm);
+        _(MessengerOrigin::ValidatedUnsigned, xdm);
 
         let post_channel =
             Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
@@ -222,7 +224,7 @@ mod benchmarks {
         };
 
         #[extrinsic_call]
-        _(RawOrigin::None, xdm);
+        _(MessengerOrigin::ValidatedUnsigned, xdm);
 
         let post_channel =
             Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");

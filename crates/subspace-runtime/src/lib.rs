@@ -712,6 +712,7 @@ impl pallet_messenger::Config for Runtime {
     type DomainRegistration = DomainRegistration;
     type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
+    type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -1037,6 +1038,7 @@ pub type SignedExtra = (
     DisablePallets,
     pallet_subspace::extensions::SubspaceExtension<Runtime>,
     pallet_domains::extensions::DomainsExtension<Runtime>,
+    pallet_messenger::extensions::MessengerExtension<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
@@ -1070,6 +1072,15 @@ impl pallet_domains::extensions::MaybeDomainsCall<Runtime> for RuntimeCall {
     fn maybe_domains_call(&self) -> Option<&pallet_domains::Call<Runtime>> {
         match self {
             RuntimeCall::Domains(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl pallet_messenger::extensions::MaybeMessengerCall<Runtime> for RuntimeCall {
+    fn maybe_messenger_call(&self) -> Option<&pallet_messenger::Call<Runtime>> {
+        match self {
+            RuntimeCall::Messenger(call) => Some(call),
             _ => None,
         }
     }
@@ -1129,6 +1140,7 @@ fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
         DisablePallets,
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
+        pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
     );
 
     UncheckedExtrinsic::new_transaction(call, extra)

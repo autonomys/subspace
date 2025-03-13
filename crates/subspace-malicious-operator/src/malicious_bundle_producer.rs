@@ -418,6 +418,7 @@ fn get_singed_extra(best_number: u64, immortal: bool, nonce: Nonce) -> SignedExt
         DisablePallets,
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
+        pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
     )
 }
 
@@ -438,6 +439,7 @@ pub fn construct_signed_extrinsic(
             subspace_runtime::VERSION.transaction_version,
             consensus_chain_info.genesis_hash,
             consensus_chain_info.best_hash,
+            (),
             (),
             (),
             (),

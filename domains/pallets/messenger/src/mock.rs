@@ -104,6 +104,7 @@ macro_rules! impl_runtime {
             type DomainRegistration = DomainRegistration;
             type ChannelFeeModel = ChannelFeeModel;
             type MaxOutgoingMessages = MaxOutgoingMessages;
+            type MessengerOrigin = crate::EnsureMessengerOrigin;
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 #[allow(unused_variables)] endpoint: &Endpoint,
