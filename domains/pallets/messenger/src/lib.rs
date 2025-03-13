@@ -1321,58 +1321,6 @@ mod pallet {
                 }
             })
         }
-
-        pub fn pre_dispatch_with_trusted_mmr_proof(
-            call: &Call<T>,
-        ) -> Result<(), TransactionValidityError> {
-            match call {
-                Call::relay_message { msg: xdm } => {
-                    let consensus_state_root = T::MmrProofVerifier::extract_leaf_without_verifying(
-                        xdm.proof.consensus_mmr_proof(),
-                    )
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
-                    let ValidatedRelayMessage {
-                        message,
-                        should_init_channel,
-                        next_nonce,
-                    } = Self::validate_relay_message(xdm, consensus_state_root)?;
-
-                    // Reject in future message
-                    if message.nonce.cmp(&next_nonce) == Ordering::Greater {
-                        return Err(InvalidTransaction::Future.into());
-                    }
-
-                    Self::pre_dispatch_relay_message(message, should_init_channel)?;
-
-                    Ok(())
-                }
-                Call::relay_message_response { msg: xdm } => {
-                    let consensus_state_root = T::MmrProofVerifier::extract_leaf_without_verifying(
-                        xdm.proof.consensus_mmr_proof(),
-                    )
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
-                    let ValidatedRelayMessage {
-                        message,
-                        should_init_channel: _,
-                        next_nonce,
-                    } = Self::validate_relay_message_response(xdm, consensus_state_root)?;
-
-                    // Reject in future message
-                    if message.nonce.cmp(&next_nonce) == Ordering::Greater {
-                        return Err(InvalidTransaction::Future.into());
-                    }
-
-                    Self::pre_dispatch_relay_message_response(message)?;
-
-                    Ok(())
-                }
-                call => Self::pre_dispatch(call),
-            }
-        }
     }
 }
 

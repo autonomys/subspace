@@ -267,3 +267,136 @@ where
     // TODO: need benchmarking for this extension.
     impl_tx_ext_default!(RuntimeCallFor<Runtime>; weight);
 }
+
+/// Extensions for pallet-messenger unsigned extrinsics with trusted MMR verification.
+#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub struct MessengerTrustedMmrExtension<Runtime>(PhantomData<Runtime>);
+
+impl<Runtime> MessengerTrustedMmrExtension<Runtime> {
+    pub fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<Runtime> Default for MessengerTrustedMmrExtension<Runtime> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: Config> fmt::Debug for MessengerTrustedMmrExtension<T> {
+    #[cfg(feature = "std")]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MessengerTrustedMmrExtension",)
+    }
+
+    #[cfg(not(feature = "std"))]
+    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Ok(())
+    }
+}
+
+impl<Runtime> MessengerTrustedMmrExtension<Runtime>
+where
+    Runtime: Config + scale_info::TypeInfo + fmt::Debug + Send + Sync,
+{
+    fn do_validate(
+        call: &MessengerCall<Runtime>,
+    ) -> Result<(ValidTransaction, ValidatedRelayMessage<Runtime>), TransactionValidityError> {
+        match call {
+            Call::relay_message { msg: xdm } => {
+                let consensus_state_root =
+                    Runtime::MmrProofVerifier::extract_leaf_without_verifying(
+                        xdm.proof.consensus_mmr_proof(),
+                    )
+                    .ok_or(InvalidTransaction::BadProof)?
+                    .state_root();
+
+                let validated_relay_message =
+                    Messenger::<Runtime>::validate_relay_message(xdm, consensus_state_root)?;
+
+                Ok((ValidTransaction::default(), validated_relay_message))
+            }
+            Call::relay_message_response { msg: xdm } => {
+                let consensus_state_root =
+                    Runtime::MmrProofVerifier::extract_leaf_without_verifying(
+                        xdm.proof.consensus_mmr_proof(),
+                    )
+                    .ok_or(InvalidTransaction::BadProof)?
+                    .state_root();
+
+                let validated_relay_message =
+                    Messenger::<Runtime>::validate_relay_message_response(
+                        xdm,
+                        consensus_state_root,
+                    )?;
+
+                Ok((ValidTransaction::default(), validated_relay_message))
+            }
+            _ => Err(InvalidTransaction::Call.into()),
+        }
+    }
+}
+
+impl<Runtime> TransactionExtension<RuntimeCallFor<Runtime>>
+    for MessengerTrustedMmrExtension<Runtime>
+where
+    Runtime: Config + scale_info::TypeInfo + fmt::Debug + Send + Sync,
+    <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
+        AsSystemOriginSigner<<Runtime as frame_system::Config>::AccountId> + From<Origin> + Clone,
+    RuntimeCallFor<Runtime>: MaybeMessengerCall<Runtime>,
+{
+    const IDENTIFIER: &'static str = "MessengerTrustedMmrExtension";
+    type Implicit = ();
+    type Val = Val<Runtime>;
+    type Pre = ();
+
+    // TODO: need benchmarking for this extension.
+    impl_tx_ext_default!(RuntimeCallFor<Runtime>; weight);
+
+    fn validate(
+        &self,
+        origin: DispatchOriginOf<RuntimeCallFor<Runtime>>,
+        call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+        _self_implicit: Self::Implicit,
+        _inherited_implication: &impl Implication,
+        _source: TransactionSource,
+    ) -> ValidateResult<Self::Val, RuntimeCallFor<Runtime>> {
+        // we only care about unsigned calls
+        if origin.as_system_origin_signer().is_some() {
+            return Ok((ValidTransaction::default(), Val::None, origin));
+        };
+
+        let messenger_call = match call.maybe_messenger_call() {
+            Some(messenger_call) => messenger_call,
+            None => return Ok((ValidTransaction::default(), Val::None, origin)),
+        };
+
+        let (validity, validated_relay_message) = Self::do_validate(messenger_call)?;
+        Ok((
+            validity,
+            Val::ValidatedRelayMessage(validated_relay_message),
+            Origin::ValidatedUnsigned.into(),
+        ))
+    }
+
+    fn prepare(
+        self,
+        val: Self::Val,
+        _origin: &DispatchOriginOf<RuntimeCallFor<Runtime>>,
+        call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+    ) -> Result<Self::Pre, TransactionValidityError> {
+        match (call.maybe_messenger_call(), val) {
+            // prepare if this is a messenger call and has been validated
+            (Some(messenger_call), Val::ValidatedRelayMessage(validated_relay_message)) => {
+                MessengerExtension::<Runtime>::do_prepare(messenger_call, validated_relay_message)
+            }
+            // return Ok for the rest of the call types
+            (_, _) => Ok(()),
+        }
+    }
+}

@@ -96,6 +96,19 @@ pub type SignedExtra = (
     pallet_messenger::extensions::MessengerExtension<Runtime>,
 );
 
+/// The Custom SignedExtension used for pre_dispatch checks for bundle extrinsic verification
+pub type CustomSignedExtra = (
+    frame_system::CheckNonZeroSender<Runtime>,
+    frame_system::CheckSpecVersion<Runtime>,
+    frame_system::CheckTxVersion<Runtime>,
+    frame_system::CheckGenesis<Runtime>,
+    frame_system::CheckMortality<Runtime>,
+    frame_system::CheckNonce<Runtime>,
+    domain_check_weight::CheckWeight<Runtime>,
+    pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    pallet_messenger::extensions::MessengerTrustedMmrExtension<Runtime>,
+);
+
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
     generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
@@ -669,9 +682,20 @@ fn check_transaction_and_do_pre_dispatch_inner(
         }
         // signed transaction
         ExtrinsicFormat::Signed(account_id, extra) => {
+            let custom_extra: CustomSignedExtra = (
+                extra.0,
+                extra.1,
+                extra.2,
+                extra.3,
+                extra.4,
+                extra.5,
+                extra.6.clone(),
+                extra.7,
+                pallet_messenger::extensions::MessengerTrustedMmrExtension::<Runtime>::new(),
+            );
             let origin = RuntimeOrigin::signed(account_id);
-            <SignedExtra as DispatchTransaction<RuntimeCall>>::validate_and_prepare(
-                extra,
+            <CustomSignedExtra as DispatchTransaction<RuntimeCall>>::validate_and_prepare(
+                custom_extra,
                 origin,
                 &xt.function,
                 &dispatch_info,
@@ -684,11 +708,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
         }
         // unsigned transaction
         ExtrinsicFormat::Bare => {
-            if let RuntimeCall::Messenger(call) = &xt.function {
-                Messenger::pre_dispatch_with_trusted_mmr_proof(call)?;
-            } else {
-                Runtime::pre_dispatch(&xt.function).map(|_| ())?;
-            }
+            Runtime::pre_dispatch(&xt.function).map(|_| ())?;
             <SignedExtra as TransactionExtension<RuntimeCall>>::bare_validate_and_prepare(
                 &xt.function,
                 &dispatch_info,

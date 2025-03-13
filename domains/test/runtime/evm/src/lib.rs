@@ -137,8 +137,7 @@ type CustomSignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     pallet_evm_tracker::create_contract::CheckContractCreation<Runtime>,
-    // TODO: update this in the following commit
-    pallet_messenger::extensions::MessengerExtension<Runtime>,
+    pallet_messenger::extensions::MessengerTrustedMmrExtension<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -1099,11 +1098,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
     match xt.signed {
         CheckedSignature::GenericDelegated(format) => match format {
             ExtrinsicFormat::Bare => {
-                if let RuntimeCall::Messenger(call) = &xt.function {
-                    Messenger::pre_dispatch_with_trusted_mmr_proof(call)?;
-                } else {
-                    Runtime::pre_dispatch(&xt.function).map(|_| ())?;
-                }
+                Runtime::pre_dispatch(&xt.function).map(|_| ())?;
                 <SignedExtra as TransactionExtension<RuntimeCall>>::bare_validate_and_prepare(
                     &xt.function,
                     &dispatch_info,
@@ -1122,7 +1117,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.6,
                     extra.7.clone(),
                     extra.8,
-                    extra.9,
+                    pallet_messenger::extensions::MessengerTrustedMmrExtension::<Runtime>::new(),
                 );
 
                 let origin = RuntimeOrigin::none();
@@ -1147,7 +1142,9 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.6,
                     extra.7.clone(),
                     extra.8,
-                    extra.9,
+                    // trusted MMR extension here does not matter since this extension
+                    // will only affect unsigned extrinsics but not signed extrinsics
+                    pallet_messenger::extensions::MessengerTrustedMmrExtension::<Runtime>::new(),
                 );
 
                 let origin = RuntimeOrigin::signed(account_id);
