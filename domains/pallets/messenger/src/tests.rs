@@ -592,7 +592,8 @@ fn channel_relay_request_and_response(
         Inbox::<chain_b::Runtime>::set(Some(msg));
 
         // process inbox message
-        let result = chain_b::Messenger::relay_message(chain_b::RuntimeOrigin::none(), xdm);
+        let result =
+            chain_b::Messenger::relay_message(crate::RawOrigin::ValidatedUnsigned.into(), xdm);
         assert_ok!(result);
 
         chain_b::System::assert_has_event(chain_b::RuntimeEvent::Messenger(crate::Event::<
@@ -649,8 +650,10 @@ fn channel_relay_request_and_response(
         OutboxResponses::<chain_a::Runtime>::set(Some(msg));
 
         // process outbox message response
-        let result =
-            chain_a::Messenger::relay_message_response(chain_a::RuntimeOrigin::none(), xdm);
+        let result = chain_a::Messenger::relay_message_response(
+            crate::RawOrigin::ValidatedUnsigned.into(),
+            xdm,
+        );
         assert_ok!(result);
 
         // outbox message and message response should not exists

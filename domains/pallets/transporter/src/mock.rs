@@ -111,6 +111,8 @@ impl pallet_messenger::Config for MockRuntime {
         #[cfg(not(feature = "runtime-benchmarks"))]
         None
     }
+
+    type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
 }
 
 #[derive(Debug)]

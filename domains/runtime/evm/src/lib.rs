@@ -125,6 +125,7 @@ pub type SignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     CheckContractCreation<Runtime>,
+    pallet_messenger::extensions::MessengerExtension<Runtime>,
 );
 
 /// Custom signed extra for check_and_pre_dispatch.
@@ -139,6 +140,7 @@ type CustomSignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     CheckContractCreation<Runtime>,
+    pallet_messenger::extensions::MessengerTrustedMmrExtension<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -592,6 +594,7 @@ impl pallet_messenger::Config for Runtime {
     type DomainRegistration = ();
     type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
+    type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -600,15 +603,6 @@ where
 {
     type Extrinsic = UncheckedExtrinsic;
     type RuntimeCall = RuntimeCall;
-}
-
-impl<C> frame_system::offchain::CreateInherent<C> for Runtime
-where
-    RuntimeCall: From<C>,
-{
-    fn create_inherent(call: Self::RuntimeCall) -> Self::Extrinsic {
-        UncheckedExtrinsic::new_bare(call)
-    }
 }
 
 parameter_types! {
@@ -1039,11 +1033,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
     match xt.signed {
         CheckedSignature::GenericDelegated(format) => match format {
             ExtrinsicFormat::Bare => {
-                if let RuntimeCall::Messenger(call) = &xt.function {
-                    Messenger::pre_dispatch_with_trusted_mmr_proof(call)?;
-                } else {
-                    Runtime::pre_dispatch(&xt.function).map(|_| ())?;
-                }
+                Runtime::pre_dispatch(&xt.function).map(|_| ())?;
                 <SignedExtra as TransactionExtension<RuntimeCall>>::bare_validate_and_prepare(
                     &xt.function,
                     &dispatch_info,
@@ -1062,6 +1052,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.6,
                     extra.7.clone(),
                     extra.8,
+                    pallet_messenger::extensions::MessengerTrustedMmrExtension::<Runtime>::new(),
                 );
 
                 let origin = RuntimeOrigin::none();
@@ -1086,6 +1077,9 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.6,
                     extra.7.clone(),
                     extra.8,
+                    // trusted MMR extension here does not matter since this extension
+                    // will only affect unsigned extrinsics but not signed extrinsics
+                    pallet_messenger::extensions::MessengerTrustedMmrExtension::<Runtime>::new(),
                 );
 
                 let origin = RuntimeOrigin::signed(account_id);
@@ -1104,6 +1098,45 @@ fn check_transaction_and_do_pre_dispatch_inner(
             pre_dispatch_evm_transaction(account_id, xt.function, &dispatch_info, encoded_len)
         }
     }
+}
+
+impl pallet_messenger::extensions::MaybeMessengerCall<Runtime> for RuntimeCall {
+    fn maybe_messenger_call(&self) -> Option<&pallet_messenger::Call<Runtime>> {
+        match self {
+            RuntimeCall::Messenger(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl<C> subspace_runtime_primitives::CreateUnsigned<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    fn create_unsigned(call: Self::RuntimeCall) -> Self::Extrinsic {
+        create_unsigned_general_extrinsic(call)
+    }
+}
+
+fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
+    let extra: SignedExtra = (
+        frame_system::CheckNonZeroSender::<Runtime>::new(),
+        frame_system::CheckSpecVersion::<Runtime>::new(),
+        frame_system::CheckTxVersion::<Runtime>::new(),
+        frame_system::CheckGenesis::<Runtime>::new(),
+        frame_system::CheckMortality::<Runtime>::from(generic::Era::Immortal),
+        // for unsigned extrinsic, nonce check will be skipped
+        // so set a default value
+        frame_system::CheckNonce::<Runtime>::from(0u32),
+        domain_check_weight::CheckWeight::<Runtime>::new(),
+        // for unsigned extrinsic, transaction fee check will be skipped
+        // so set a default value
+        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
+        CheckContractCreation::<Runtime>::new(),
+        pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
+    );
+
+    UncheckedExtrinsic::from(generic::UncheckedExtrinsic::new_transaction(call, extra))
 }
 
 #[cfg(feature = "runtime-benchmarks")]
