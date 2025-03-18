@@ -16,7 +16,6 @@ use crate::farmer_cache::FarmerCache;
 use anyhow::anyhow;
 use futures::channel::oneshot;
 use futures::future::FusedFuture;
-use futures::stream::FuturesUnordered;
 use futures::{select, FutureExt, StreamExt};
 use parking_lot::Mutex;
 use std::future::{ready, Future};
@@ -24,6 +23,7 @@ use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::MissedTickBehavior;
+use tokio_stream::StreamMap;
 use tracing::{debug, info, trace, warn};
 
 const SCHEDULE_REINITIALIZATION_DELAY: Duration = Duration::from_secs(3);
@@ -75,8 +75,16 @@ impl KnownCaches {
     }
 
     /// Return `true` if cluster cache reinitialization is required
-    fn add_cache(&mut self, known_cache: KnownCache) {
-        self.known_caches.push(known_cache);
+    fn add_cache(
+        &mut self,
+        cluster_cache_id: ClusterCacheId,
+        piece_caches: Vec<Arc<ClusterPieceCache>>,
+    ) {
+        self.known_caches.push(KnownCache {
+            cluster_cache_id,
+            last_identification: Instant::now(),
+            piece_caches,
+        });
     }
 
     fn remove_expired(&mut self) -> impl Iterator<Item = KnownCache> + '_ {
@@ -95,7 +103,7 @@ pub async fn maintain_caches(
 ) -> anyhow::Result<()> {
     let mut known_caches = KnownCaches::new(identification_broadcast_interval);
 
-    let mut piece_caches_to_add = FuturesUnordered::new();
+    let mut piece_caches_to_add = StreamMap::<ClusterCacheId, _>::new().fuse();
 
     let mut scheduled_reinitialization_for = None;
     let mut cache_reinitialization =
@@ -168,29 +176,43 @@ pub async fn maintain_caches(
                         %cluster_cache_id,
                         "Received identification for already known cache"
                     );
+                } else if piece_caches_to_add.get_ref().contains_key(&cluster_cache_id) {
+                    debug!(
+                        %cluster_cache_id,
+                        "Received identification for new cache, which is already in progress"
+                    );
                 } else {
                     debug!(
                         %cluster_cache_id,
-                        "Received identification for new cache, collecting"
+                        "Received identification for new cache, collecting piece caches"
                     );
-                    piece_caches_to_add.push(
-                        Box::pin(collect_piece_caches(cluster_cache_id, nats_client)),
+                    piece_caches_to_add.get_mut().insert(
+                        cluster_cache_id,
+                        Box::pin(collect_piece_caches(cluster_cache_id, nats_client).into_stream()),
                     );
                 }
             }
-            maybe_new_cache = piece_caches_to_add.select_next_some() => {
-                let Ok(new_cache) = maybe_new_cache else {
-                    // Collecting new cache failed, continue
-                    continue;
+            piece_caches_result = piece_caches_to_add.select_next_some() => {
+                let (cluster_cache_id, maybe_piece_caches) = piece_caches_result;
+                let piece_caches = match maybe_piece_caches {
+                    Ok(piece_caches) => piece_caches,
+                    Err(error) => {
+                        info!(
+                            %cluster_cache_id,
+                            %error,
+                            "Failed to collect piece caches to add, may retry later"
+                        );
+                        continue;
+                    }
                 };
 
                 info!(
-                    cluster_cache_id = %new_cache.cluster_cache_id,
+                    %cluster_cache_id,
                     "New cache discovered, scheduling reinitialization"
                 );
                 scheduled_reinitialization_for.replace(Instant::now() + SCHEDULE_REINITIALIZATION_DELAY);
 
-                known_caches.add_cache(new_cache);
+                known_caches.add_cache(cluster_cache_id, piece_caches);
             }
             _ = cache_pruning_interval.tick().fuse() => {
                 let mut reinit = false;
@@ -221,7 +243,7 @@ pub async fn maintain_caches(
 async fn collect_piece_caches(
     cluster_cache_id: ClusterCacheId,
     nats_client: &NatsClient,
-) -> anyhow::Result<KnownCache> {
+) -> anyhow::Result<Vec<Arc<ClusterPieceCache>>> {
     let piece_caches = nats_client
         .stream_request(
             &ClusterCacheDetailsRequest,
@@ -256,9 +278,5 @@ async fn collect_piece_caches(
         .collect()
         .await;
 
-    Ok(KnownCache {
-        cluster_cache_id,
-        last_identification: Instant::now(),
-        piece_caches,
-    })
+    Ok(piece_caches)
 }
