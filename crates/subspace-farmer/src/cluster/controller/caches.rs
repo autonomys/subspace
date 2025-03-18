@@ -66,6 +66,7 @@ impl KnownCaches {
     fn refresh(&mut self, cluster_cache_id: ClusterCacheId) -> bool {
         self.known_caches.iter_mut().any(|known_cache| {
             if known_cache.cluster_cache_id == cluster_cache_id {
+                trace!(%cluster_cache_id, "Updating last identification for cache");
                 known_cache.last_identification = Instant::now();
                 true
             } else {
@@ -197,7 +198,7 @@ pub async fn maintain_caches(
                 let piece_caches = match maybe_piece_caches {
                     Ok(piece_caches) => piece_caches,
                     Err(error) => {
-                        info!(
+                        warn!(
                             %cluster_cache_id,
                             %error,
                             "Failed to collect piece caches to add, may retry later"

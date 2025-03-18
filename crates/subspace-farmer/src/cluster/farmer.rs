@@ -23,47 +23,69 @@ use event_listener_primitives::Bag;
 use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Stream, StreamExt};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode, EncodeLike, Input, Output};
 use std::future::Future;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::hashes::{blake3_hash_list, Blake3Hash};
 use subspace_core_primitives::pieces::{Piece, PieceOffset};
 use subspace_core_primitives::sectors::SectorIndex;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_rpc_primitives::SolutionResponse;
 use tokio::time::MissedTickBehavior;
 use tracing::{debug, error, info_span, trace, warn, Instrument};
+use ulid::Ulid;
 
 const BROADCAST_NOTIFICATIONS_BUFFER: usize = 1000;
 const MIN_FARMER_IDENTIFICATION_INTERVAL: Duration = Duration::from_secs(1);
 
 type Handler<A> = Bag<HandlerFn<A>, A>;
 
-/// An identifier for a cluster farmer farmer, can be used for in logs, thread names, etc.
-#[derive(
-    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Display, From, Encode, Decode,
-)]
-pub struct ClusterFarmerId(FarmId);
+/// An identifier for a cluster farmer, can be used for in logs, thread names, etc.
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Display, From)]
+pub struct ClusterFarmerId(Ulid);
+
+impl Encode for ClusterFarmerId {
+    #[inline]
+    fn size_hint(&self) -> usize {
+        Encode::size_hint(&self.0 .0)
+    }
+
+    #[inline]
+    fn encode_to<O: Output + ?Sized>(&self, output: &mut O) {
+        Encode::encode_to(&self.0 .0, output)
+    }
+}
+
+impl EncodeLike for ClusterFarmerId {}
+
+impl Decode for ClusterFarmerId {
+    #[inline]
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        u128::decode(input)
+            .map(|ulid| Self(Ulid(ulid)))
+            .map_err(|e| e.chain("Could not decode `ClusterFarmerId.0.0`"))
+    }
+}
 
 #[allow(clippy::new_without_default)]
 impl ClusterFarmerId {
-    // Creates new ID
-    #[inline]
-    fn new() -> Self {
-        Self(FarmId::new())
-    }
-
-    /// Use the smallest FarmId as the FarmerId, create one if it doesn't exist.
-    pub fn from_farms<F: Farm>(farms: &[F]) -> Self {
-        farms
-            .iter()
-            .map(Farm::id)
-            .copied()
-            .min()
-            .map(ClusterFarmerId)
-            .unwrap_or_else(Self::new)
+    /// Create a new cluster farmer ID for a given list of farms
+    pub fn new<F>(farms: &[F]) -> Self
+    where
+        F: Farm,
+    {
+        Self({
+            let mut hasher = blake3::Hasher::new();
+            for farm in farms {
+                hasher.update(&farm.id().encode());
+                hasher.update(&farm.total_sectors_count().to_le_bytes());
+            }
+            Ulid::from_bytes(
+                *<&[u8; 16]>::try_from(&hasher.finalize().as_bytes()[..16])
+                    .expect("Correct length; qed"),
+            )
+        })
     }
 }
 
@@ -72,8 +94,6 @@ impl ClusterFarmerId {
 pub struct ClusterFarmerIdentifyBroadcast {
     /// Cluster farmer ID
     pub farmer_id: ClusterFarmerId,
-    /// Farmer fingerprint changes when something about internal farm changes (like allocated space)
-    pub fingerprint: Blake3Hash,
 }
 
 impl GenericBroadcast for ClusterFarmerIdentifyBroadcast {
@@ -98,8 +118,6 @@ pub struct ClusterFarmerFarmDetails {
     pub farm_id: FarmId,
     /// Total number of sectors in the farm
     pub total_sectors_count: SectorIndex,
-    /// Farm fingerprint changes when something about farm changes (like allocated space)
-    pub fingerprint: Blake3Hash,
 }
 
 /// Broadcast with sector updates by farmers
@@ -410,7 +428,7 @@ pub fn farmer_service<F>(
 where
     F: Farm,
 {
-    let farmer_id = ClusterFarmerId::from_farms(farms);
+    let farmer_id = ClusterFarmerId::new(farms);
     let farmer_id_string = farmer_id.to_string();
 
     // For each farm start forwarding notifications as broadcast messages and create farm details
@@ -538,7 +556,6 @@ where
                     &nats_client,
                     farmer_id,
                     &farmer_id_string,
-                    &farms_details,
                     identification_broadcast_interval
                 ).fuse() => {
                     result
@@ -576,7 +593,6 @@ async fn identify_responder(
     nats_client: &NatsClient,
     farmer_id: ClusterFarmerId,
     farmer_id_string: &str,
-    farms_details: &[FarmDetails],
     identification_broadcast_interval: Duration,
 ) -> anyhow::Result<()> {
     let mut subscription = nats_client
@@ -609,14 +625,14 @@ async fn identify_responder(
                 }
 
                 last_identification = Instant::now();
-                send_identify_broadcast(nats_client, farmer_id, farmer_id_string, farms_details).await;
+                send_identify_broadcast(nats_client, farmer_id, farmer_id_string).await;
                 interval.reset();
             }
             _ = interval.tick().fuse() => {
                 last_identification = Instant::now();
                 trace!("Farmer self-identification");
 
-                send_identify_broadcast(nats_client, farmer_id, farmer_id_string, farms_details).await;
+                send_identify_broadcast(nats_client, farmer_id, farmer_id_string).await;
             }
         }
     }
@@ -628,39 +644,17 @@ async fn send_identify_broadcast(
     nats_client: &NatsClient,
     farmer_id: ClusterFarmerId,
     farmer_id_string: &str,
-    farms_details: &[FarmDetails],
 ) {
     if let Err(error) = nats_client
-        .broadcast(
-            &new_identify_message(farmer_id, farms_details),
-            farmer_id_string,
-        )
+        .broadcast(&new_identify_message(farmer_id), farmer_id_string)
         .await
     {
         warn!(%farmer_id, %error, "Failed to send farmer identify notification");
     }
 }
 
-fn new_identify_message(
-    farmer_id: ClusterFarmerId,
-    farms_details: &[FarmDetails],
-) -> ClusterFarmerIdentifyBroadcast {
-    let farmer_id_bytes = farmer_id.encode();
-    let farms_sectors_counts = farms_details
-        .iter()
-        .map(|farm_details| farm_details.total_sectors_count.to_le_bytes())
-        .collect::<Vec<_>>();
-    let mut farms_sectors_counts = farms_sectors_counts
-        .iter()
-        .map(AsRef::as_ref)
-        .collect::<Vec<_>>();
-    farms_sectors_counts.push(farmer_id_bytes.as_slice());
-    let fingerprint = blake3_hash_list(farms_sectors_counts.as_slice());
-
-    ClusterFarmerIdentifyBroadcast {
-        farmer_id,
-        fingerprint,
-    }
+fn new_identify_message(farmer_id: ClusterFarmerId) -> ClusterFarmerIdentifyBroadcast {
+    ClusterFarmerIdentifyBroadcast { farmer_id }
 }
 
 async fn farms_details_responder(
@@ -677,10 +671,6 @@ async fn farms_details_responder(
                     ClusterFarmerFarmDetails {
                         farm_id: farm_details.farm_id,
                         total_sectors_count: farm_details.total_sectors_count,
-                        fingerprint: blake3_hash_list(&[
-                            &farm_details.farm_id.encode(),
-                            &farm_details.total_sectors_count.to_le_bytes(),
-                        ]),
                     }
                 })))
             },
