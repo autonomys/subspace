@@ -156,11 +156,24 @@ impl KnownFarmInsertResult {
         } = self;
 
         if remove {
-            remove_farm(
-                farm_id,
+            let plotted_pieces = Arc::clone(&plotted_pieces);
+            farms_to_add_remove.push(
                 farm_index,
-                farms_to_add_remove,
-                plotted_pieces.clone(),
+                Box::pin(async move {
+                    let delete_farm_fut = task::spawn_blocking(move || {
+                        plotted_pieces.write_blocking().delete_farm(farm_index);
+                    });
+                    if let Err(error) = delete_farm_fut.await {
+                        error!(
+                            %farm_index,
+                            %farm_id,
+                            %error,
+                            "Failed to delete farm that was replaced",
+                        );
+                    }
+
+                    None
+                }),
             );
         }
 
@@ -234,7 +247,7 @@ impl KnownFarmerInsertResult {
         farms: Vec<ClusterFarmerFarmDetails>,
         known_farmers: &mut KnownFarmers,
     ) -> Vec<KnownFarmInsertResult> {
-        let farm_indices = known_farmers.pick_farmer_index(farms.len());
+        let farm_indices = known_farmers.pick_farm_indices(farms.len());
 
         match self {
             KnownFarmerInsertResult::Inserted {
@@ -419,7 +432,7 @@ impl KnownFarmers {
             .find(|known_farmer| known_farmer.farmer_id == farmer_id)
     }
 
-    fn pick_farmer_index(&self, len: usize) -> Vec<u16> {
+    fn pick_farm_indices(&self, len: usize) -> Vec<u16> {
         let used_indices = self
             .known_farmers
             .iter()
@@ -632,32 +645,6 @@ fn collect_farmer_farms(
                 .await,
         ))
     })
-}
-
-fn remove_farm(
-    farm_id: FarmId,
-    farm_index: FarmIndex,
-    farms_to_add_remove: &mut FarmsAddRemoveStreamMap<'_, AddRemoveResult>,
-    plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
-) {
-    farms_to_add_remove.push(
-        farm_index,
-        Box::pin(async move {
-            let delete_farm_fut = task::spawn_blocking(move || {
-                plotted_pieces.write_blocking().delete_farm(farm_index);
-            });
-            if let Err(error) = delete_farm_fut.await {
-                error!(
-                    %farm_index,
-                    %farm_id,
-                    %error,
-                    "Failed to delete farm that was replaced",
-                );
-            }
-
-            None
-        }),
-    );
 }
 
 async fn initialize_farm(

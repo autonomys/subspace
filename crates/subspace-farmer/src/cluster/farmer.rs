@@ -396,23 +396,6 @@ struct FarmDetails {
     _background_tasks: Option<AsyncJoinOnDrop<()>>,
 }
 
-impl FarmDetails {
-    fn derive_identification(&self) -> ClusterFarmerFarmDetails {
-        ClusterFarmerFarmDetails {
-            farm_id: self.farm_id,
-            total_sectors_count: self.total_sectors_count,
-            fingerprint: self.derive_fingerprint(),
-        }
-    }
-
-    fn derive_fingerprint(&self) -> Blake3Hash {
-        blake3_hash_list(&[
-            &self.farm_id.encode(),
-            &self.total_sectors_count.to_le_bytes(),
-        ])
-    }
-}
-
 /// Create farmer service for specified farms that will be processing incoming requests and send
 /// periodic identify notifications.
 ///
@@ -690,9 +673,16 @@ async fn farms_details_responder(
             Some(farmer_id_string),
             Some(farmer_id_string.to_string()),
             |_request: ClusterFarmerFarmDetailsRequest| async {
-                Some(stream::iter(
-                    farms_details.iter().map(FarmDetails::derive_identification),
-                ))
+                Some(stream::iter(farms_details.iter().map(|farm_details| {
+                    ClusterFarmerFarmDetails {
+                        farm_id: farm_details.farm_id,
+                        total_sectors_count: farm_details.total_sectors_count,
+                        fingerprint: blake3_hash_list(&[
+                            &farm_details.farm_id.encode(),
+                            &farm_details.total_sectors_count.to_le_bytes(),
+                        ]),
+                    }
+                })))
             },
         )
         .await
