@@ -57,6 +57,13 @@ pub fn maximum_normal_block_length() -> BlockLength {
     BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO)
 }
 
+/// The maximum recursion depth we allow when parsing calls.
+/// This is a safety measure to avoid stack overflows.
+///
+/// Deeper nested calls can result in an error, or, if it is secure, the call is skipped.
+/// (Some code does unlimited heap-based recursion via `nested_utility_call_iter()`.)
+pub const MAX_CALL_RECURSION_DEPTH: u32 = 5;
+
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
 

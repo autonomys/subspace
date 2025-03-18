@@ -110,7 +110,8 @@ use subspace_core_primitives::{hashes, PublicKey, Randomness, SlotNumber, U256};
 use subspace_runtime_primitives::utility::DefaultNonceProvider;
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, ConsensusEventSegmentSize, FindBlockRewardAddress, Hash,
-    HoldIdentifier, Moment, Nonce, Signature, MIN_REPLICATION_FACTOR, SHANNON, SSC,
+    HoldIdentifier, Moment, Nonce, Signature, MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR,
+    SHANNON, SSC,
 };
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 
@@ -203,8 +204,6 @@ const BLOCK_WEIGHT_FOR_2_SEC: Weight =
 
 /// Maximum block length for non-`Normal` extrinsic is 5 MiB.
 const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
-
-const MAX_OBJECT_MAPPING_RECURSION_DEPTH: u16 = 5;
 
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
@@ -1129,7 +1128,7 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
             base_extrinsic_offset as u32,
             block_object_mapping.objects_mut(),
             &extrinsic.function,
-            MAX_OBJECT_MAPPING_RECURSION_DEPTH,
+            MAX_CALL_RECURSION_DEPTH as u16,
         );
 
         base_offset += extrinsic.encoded_size();
