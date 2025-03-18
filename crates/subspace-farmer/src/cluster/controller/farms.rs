@@ -338,18 +338,15 @@ pub async fn maintain_farms(
                     );
                 }
             }
-            farms_result = farms_to_add.select_next_some() => {
-                let (farmer_id, maybe_farms) = farms_result;
-                let farms = match maybe_farms {
-                    Ok(farms) => farms,
-                    Err(error) => {
-                        warn!(
-                            %farmer_id,
-                            %error,
-                            "Failed to collect farms to add, may retry later"
-                        );
-                        continue;
-                    }
+            (farmer_id, maybe_farms) = farms_to_add.select_next_some() => {
+                let Ok(farms) = maybe_farms.inspect_err(|error| {
+                    warn!(
+                        %farmer_id,
+                        %error,
+                        "Failed to collect farms to add, may retry later"
+                    );
+                }) else {
+                    continue;
                 };
 
                 let Some(farm_add_result) = known_farmers.try_add(farmer_id, farms) else {

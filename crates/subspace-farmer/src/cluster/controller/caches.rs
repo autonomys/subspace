@@ -193,18 +193,15 @@ pub async fn maintain_caches(
                     );
                 }
             }
-            piece_caches_result = piece_caches_to_add.select_next_some() => {
-                let (cluster_cache_id, maybe_piece_caches) = piece_caches_result;
-                let piece_caches = match maybe_piece_caches {
-                    Ok(piece_caches) => piece_caches,
-                    Err(error) => {
-                        warn!(
-                            %cluster_cache_id,
-                            %error,
-                            "Failed to collect piece caches to add, may retry later"
-                        );
-                        continue;
-                    }
+            (cluster_cache_id, maybe_piece_caches) = piece_caches_to_add.select_next_some() => {
+                let Ok(piece_caches) = maybe_piece_caches.inspect_err(|error| {
+                    warn!(
+                        %cluster_cache_id,
+                        %error,
+                        "Failed to collect piece caches to add, may retry later"
+                    )
+                }) else {
+                    continue;
                 };
 
                 info!(
