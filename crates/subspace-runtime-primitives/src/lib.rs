@@ -62,7 +62,7 @@ pub fn maximum_normal_block_length() -> BlockLength {
 ///
 /// Deeper nested calls can result in an error, or, if it is secure, the call is skipped.
 /// (Some code does unlimited heap-based recursion via `nested_utility_call_iter()`.)
-pub const MAX_CALL_RECURSION_DEPTH: u32 = 5;
+pub const MAX_CALL_RECURSION_DEPTH: u32 = 10;
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
