@@ -99,7 +99,9 @@ use subspace_core_primitives::solutions::{
     pieces_to_solution_range, solution_range_to_pieces, SolutionRange,
 };
 use subspace_core_primitives::{PublicKey, Randomness, SlotNumber, U256};
-use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilityCall};
+use subspace_runtime_primitives::utility::{
+    DefaultNonceProvider, MaybeIntoUtilityCall, MaybeMultisigCall,
+};
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, ConsensusEventSegmentSize,
     FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate,
@@ -416,6 +418,15 @@ impl MaybeIntoUtilityCall<Runtime> for RuntimeCall {
     fn maybe_into_utility_call(&self) -> Option<&pallet_utility::Call<Runtime>> {
         match self {
             RuntimeCall::Utility(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl MaybeMultisigCall<Runtime> for RuntimeCall {
+    fn maybe_multisig_call(&self) -> Option<&pallet_multisig::Call<Runtime>> {
+        match self {
+            RuntimeCall::Multisig(call) => Some(call),
             _ => None,
         }
     }
