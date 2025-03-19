@@ -62,7 +62,7 @@ subspace-networking.workspace = true
 subspace-proof-of-space.workspace = true
 subspace-proof-of-space-gpu = { workspace = true, optional = true }
 subspace-rpc-primitives.workspace = true
-subspace-verification.workspace = true
+subspace-verification = { workspace = true, features = ["kzg"] }
 substrate-bip39.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
