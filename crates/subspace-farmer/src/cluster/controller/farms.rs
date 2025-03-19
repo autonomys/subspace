@@ -79,27 +79,25 @@ impl KnownFarmers {
         &mut self,
         farmer_id: ClusterFarmerId,
         farms: Vec<ClusterFarmerFarmDetails>,
-    ) -> Option<FarmAddResult<impl Iterator<Item = (FarmIndex, ClusterFarmerFarmDetails)> + 'static>>
-    {
+    ) -> FarmAddResult<impl Iterator<Item = (FarmIndex, ClusterFarmerFarmDetails)> + 'static> {
         trace!(%farmer_id, "Trying to add farms");
+        let farm_indices = self.pick_farm_indices(farms.len());
         let farm_ids_to_add = farms
             .iter()
             .map(|farm_details| farm_details.farm_id)
             .collect::<HashSet<FarmId>>();
         // Check if farms are already known. If so, skip adding them until farms are removed.
-        if self
-            .known_farmers
-            .iter()
-            .flat_map(|known_farmer| known_farmer.known_farms.iter())
-            .any(|(_farm_index, farm_id)| farm_ids_to_add.contains(farm_id))
-        {
-            trace!(%farmer_id, "Some farms are already known, skipping");
-            return None;
+        for old_farmer in self.known_farmers.extract_if(.., |known_farmer| {
+            let farms_iter = known_farmer.known_farms.values().copied();
+            !farms_iter
+                .collect::<HashSet<_>>()
+                .is_disjoint(&farm_ids_to_add)
+        }) {
+            warn!(old_farmer_id = %old_farmer.farmer_id, "Some farms are already known, removing them first");
+            let _ = old_farmer.expired_sender.send(());
         }
 
         let (expired_sender, expired_receiver) = broadcast::channel(1);
-        let farm_indices = self.pick_farm_indices(farms.len());
-
         self.known_farmers.push(KnownFarmer {
             farmer_id,
             last_identification: Instant::now(),
@@ -111,10 +109,10 @@ impl KnownFarmers {
             expired_sender,
         });
 
-        Some(FarmAddResult {
+        FarmAddResult {
             expired_receiver,
             added_farms: farm_indices.into_iter().zip(farms),
-        })
+        }
     }
 
     fn pick_farm_indices(&self, len: usize) -> Vec<u16> {
@@ -264,13 +262,7 @@ pub async fn maintain_farms(
                     continue;
                 };
 
-                let Some(farm_add_result) = known_farmers.try_add(farmer_id, farms) else {
-                    info!(
-                        %farmer_id,
-                        "Farmer wasn't added due to overlapping farms, will retry later"
-                    );
-                    continue;
-                };
+                let farm_add_result = known_farmers.try_add(farmer_id, farms);
                 let FarmAddResult {
                     expired_receiver,
                     added_farms,
