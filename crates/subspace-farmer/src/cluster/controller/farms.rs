@@ -143,8 +143,9 @@ impl KnownFarmers {
     ) -> impl Iterator<Item = (ClusterFarmerId, FarmIndex, FarmId)> + '_ {
         self.known_farmers
             .extract_if(.., |known_farmer| {
-                known_farmer.last_identification.elapsed()
-                    > self.identification_broadcast_interval * 2
+                known_farmer.known_farms.is_empty()
+                    || known_farmer.last_identification.elapsed()
+                        > self.identification_broadcast_interval * 2
             })
             .flat_map(|known_farmer| {
                 let _ = known_farmer.expired_sender.send(());
