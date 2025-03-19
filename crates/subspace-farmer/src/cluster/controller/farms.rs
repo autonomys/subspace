@@ -34,8 +34,18 @@ use tracing::{debug, error, info, trace, warn};
 /// Number of farms in a cluster is currently limited to 2^16
 pub type FarmIndex = u16;
 
-struct FarmAddResult<I> {
-    expired_receiver: broadcast::Receiver<()>,
+enum FarmAddRemoveResult {
+    Add {
+        close_receiver: broadcast::Receiver<()>,
+        farm: ClusterFarm,
+    },
+    Remove {
+        farm_index: FarmIndex,
+    },
+}
+
+struct FarmerAddResult<I> {
+    close_receiver: broadcast::Receiver<()>,
     added_farms: I,
 }
 
@@ -44,7 +54,17 @@ struct KnownFarmer {
     farmer_id: ClusterFarmerId,
     last_identification: Instant,
     known_farms: HashMap<FarmIndex, FarmId>,
-    expired_sender: broadcast::Sender<()>,
+    close_sender: Option<broadcast::Sender<()>>,
+}
+
+impl KnownFarmer {
+    fn notify_cleanup(&mut self) -> bool {
+        let Some(close_sender) = self.close_sender.take() else {
+            return false;
+        };
+        let _ = close_sender.send(());
+        true
+    }
 }
 
 #[derive(Debug)]
@@ -74,32 +94,28 @@ impl KnownFarmers {
         })
     }
 
-    /// Returns `None` if some farms are already known
-    fn try_add(
+    fn add(
         &mut self,
         farmer_id: ClusterFarmerId,
         farms: Vec<ClusterFarmerFarmDetails>,
-    ) -> Option<FarmAddResult<impl Iterator<Item = (FarmIndex, ClusterFarmerFarmDetails)> + 'static>>
-    {
-        trace!(%farmer_id, "Trying to add farms");
+    ) -> FarmerAddResult<impl Iterator<Item = (FarmIndex, ClusterFarmerFarmDetails)>> {
+        let farm_indices = self.pick_farm_indices(farms.len());
         let farm_ids_to_add = farms
             .iter()
             .map(|farm_details| farm_details.farm_id)
             .collect::<HashSet<FarmId>>();
-        // Check if farms are already known. If so, skip adding them until farms are removed.
-        if self
-            .known_farmers
-            .iter()
-            .flat_map(|known_farmer| known_farmer.known_farms.iter())
-            .any(|(_farm_index, farm_id)| farm_ids_to_add.contains(farm_id))
-        {
-            trace!(%farmer_id, "Some farms are already known, skipping");
-            return None;
+
+        if let Some(old_farmer) = self.known_farmers.iter_mut().find(|known_farmer| {
+            known_farmer
+                .known_farms
+                .values()
+                .any(|farm_id| farm_ids_to_add.contains(farm_id))
+        }) {
+            warn!(old_farmer_id = %old_farmer.farmer_id, "Some farms are already known, notify for cleanup them first");
+            old_farmer.notify_cleanup();
         }
 
-        let (expired_sender, expired_receiver) = broadcast::channel(1);
-        let farm_indices = self.pick_farm_indices(farms.len());
-
+        let (close_sender, close_receiver) = broadcast::channel(1);
         self.known_farmers.push(KnownFarmer {
             farmer_id,
             last_identification: Instant::now(),
@@ -108,13 +124,13 @@ impl KnownFarmers {
                 .copied()
                 .zip(farms.iter().map(|farm_details| farm_details.farm_id))
                 .collect(),
-            expired_sender,
+            close_sender: Some(close_sender),
         });
 
-        Some(FarmAddResult {
-            expired_receiver,
+        FarmerAddResult {
+            close_receiver,
             added_farms: farm_indices.into_iter().zip(farms),
-        })
+        }
     }
 
     fn pick_farm_indices(&self, len: usize) -> Vec<u16> {
@@ -140,26 +156,37 @@ impl KnownFarmers {
         available_indices
     }
 
-    fn remove_expired(
-        &mut self,
-    ) -> impl Iterator<Item = (ClusterFarmerId, FarmIndex, FarmId)> + '_ {
+    fn remove_expired(&mut self) -> impl Iterator<Item = (ClusterFarmerId, &FarmIndex, &FarmId)> {
         self.known_farmers
-            .extract_if(.., |known_farmer| {
-                known_farmer.last_identification.elapsed()
+            .iter_mut()
+            .filter_map(|known_farmer| {
+                if known_farmer.last_identification.elapsed()
                     > self.identification_broadcast_interval * 2
+                    && known_farmer.notify_cleanup()
+                {
+                    Some(
+                        known_farmer
+                            .known_farms
+                            .iter()
+                            .map(|(farm_index, farm_id)| {
+                                (known_farmer.farmer_id, farm_index, farm_id)
+                            }),
+                    )
+                } else {
+                    None
+                }
             })
-            .flat_map(|known_farmer| {
-                let _ = known_farmer.expired_sender.send(());
-                known_farmer
-                    .known_farms
-                    .into_iter()
-                    .map(move |(farm_index, farm_id)| (known_farmer.farmer_id, farm_index, farm_id))
-            })
+            .flatten()
     }
 
     fn remove_farm(&mut self, farm_index: FarmIndex) {
-        self.known_farmers.iter_mut().for_each(|known_farmer| {
-            known_farmer.known_farms.remove(&farm_index);
+        self.known_farmers.retain_mut(|known_farmer| {
+            if known_farmer.known_farms.contains_key(&farm_index) {
+                known_farmer.known_farms.remove(&farm_index);
+                !known_farmer.known_farms.is_empty()
+            } else {
+                true
+            }
         });
     }
 }
@@ -173,7 +200,7 @@ pub async fn maintain_farms(
 ) -> anyhow::Result<()> {
     let mut known_farmers = KnownFarmers::new(identification_broadcast_interval);
 
-    let mut farms_to_add = StreamMap::default();
+    let mut farmers_to_add = StreamMap::default();
     // Stream map for adding/removing farms
     let mut farms_to_add_remove = StreamMap::default();
     let mut farms = FuturesUnordered::new();
@@ -201,7 +228,6 @@ pub async fn maintain_farms(
     loop {
         select! {
             (farm_index, result) = farms.select_next_some() => {
-                known_farmers.remove_farm(farm_index);
                 farms_to_add_remove.push(farm_index, Box::pin(async move {
                     let plotted_pieces = Arc::clone(plotted_pieces);
 
@@ -216,7 +242,7 @@ pub async fn maintain_farms(
                         );
                     }
 
-                    None
+                    FarmAddRemoveResult::Remove { farm_index }
                 }));
 
                 match result {
@@ -241,19 +267,19 @@ pub async fn maintain_farms(
                         %farmer_id,
                         "Received identification for already known farmer"
                     );
-                } else if !farms_to_add.drop_if_in_progress(farmer_id, Box::pin(collect_farmer_farms(farmer_id, nats_client))) {
-                    debug!(
-                        %farmer_id,
-                        "Received identification for new farmer, which is already in progress"
-                    );
-                } else {
+                } else if farmers_to_add.add_if_not_in_progress(farmer_id, Box::pin(collect_farmer_farms(farmer_id, nats_client))) {
                     debug!(
                         %farmer_id,
                         "Received identification for new farmer, collecting farms"
                     );
+                } else {
+                    debug!(
+                        %farmer_id,
+                        "Received identification for new farmer, which is already in progress"
+                    );
                 }
             }
-            (farmer_id, maybe_farms) = farms_to_add.select_next_some() => {
+            (farmer_id, maybe_farms) = farmers_to_add.select_next_some() => {
                 let Ok(farms) = maybe_farms.inspect_err(|error| {
                     warn!(
                         %farmer_id,
@@ -264,15 +290,9 @@ pub async fn maintain_farms(
                     continue;
                 };
 
-                let Some(farm_add_result) = known_farmers.try_add(farmer_id, farms) else {
-                    info!(
-                        %farmer_id,
-                        "Farmer wasn't added due to overlapping farms, will retry later"
-                    );
-                    continue;
-                };
-                let FarmAddResult {
-                    expired_receiver,
+                let farm_add_result = known_farmers.add(farmer_id, farms);
+                let FarmerAddResult {
+                    close_receiver,
                     added_farms,
                 } = farm_add_result;
                 for (farm_index, farm_details) in added_farms {
@@ -282,7 +302,7 @@ pub async fn maintain_farms(
                     } = farm_details;
 
                     let plotted_pieces = Arc::clone(plotted_pieces);
-                    let expired_receiver = expired_receiver.resubscribe();
+                    let close_receiver = close_receiver.resubscribe();
                     farms_to_add_remove.push(
                         farm_index,
                         Box::pin(async move {
@@ -303,7 +323,10 @@ pub async fn maintain_farms(
                                         "Farm initialized successfully"
                                     );
 
-                                    Some((expired_receiver, farm))
+                                    FarmAddRemoveResult::Add {
+                                        close_receiver,
+                                        farm,
+                                    }
                                 }
                                 Err(error) => {
                                     warn!(
@@ -313,7 +336,8 @@ pub async fn maintain_farms(
                                         %error,
                                         "Failed to initialize farm"
                                     );
-                                    None
+                                    // We should remove the farm if it failed to initialize
+                                    FarmAddRemoveResult::Remove { farm_index }
                                 }
                             }
                         }),
@@ -326,41 +350,31 @@ pub async fn maintain_farms(
                         %farmer_id,
                         %farm_index,
                         %farm_id,
-                        "Farm expired, removing"
+                        "Farm expired, notify for cleanup"
                     );
-
-                    farms_to_add_remove.push(farm_index, Box::pin(async move {
-                        let plotted_pieces = Arc::clone(plotted_pieces);
-
-                        let delete_farm_fut = task::spawn_blocking(move || {
-                            plotted_pieces.write_blocking().delete_farm(farm_index);
-                        });
-                        if let Err(error) = delete_farm_fut.await {
-                            error!(
-                                %farm_index,
-                                %farm_id,
-                                %error,
-                                "Failed to delete farm that expired"
-                            );
-                        }
-
-                        None
-                    }));
                 }
             }
             (farm_index, result) = farms_to_add_remove.select_next_some() => {
-                if let Some((mut expired_receiver, farm)) = result {
-                    farms.push(async move {
-                        select! {
-                            result = farm.run().fuse() => {
-                                (farm_index, result)
+                match result {
+                    FarmAddRemoveResult::Add {
+                        mut close_receiver,
+                        farm,
+                    } => {
+                        farms.push(async move {
+                            select! {
+                                result = farm.run().fuse() => {
+                                    (farm_index, result)
+                                }
+                                _ = close_receiver.recv().fuse() => {
+                                    // Nothing to do
+                                    (farm_index, Ok(()))
+                                }
                             }
-                            _ = expired_receiver.recv().fuse() => {
-                                // Nothing to do
-                                (farm_index, Ok(()))
-                            }
-                        }
-                    });
+                        });
+                    }
+                    FarmAddRemoveResult::Remove { farm_index } => {
+                        known_farmers.remove_farm(farm_index);
+                    }
                 }
             }
         }

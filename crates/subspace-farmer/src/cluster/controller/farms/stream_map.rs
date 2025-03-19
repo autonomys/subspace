@@ -45,9 +45,9 @@ where
         }
     }
 
-    /// Drops the task if there is already a future for the given `index` in `in_progress`.
+    /// Skip the task if there is already a future for the given `index` in `in_progress`.
     /// Returns `true` if the task is added to `in_progress`, `false` otherwise.
-    pub(super) fn drop_if_in_progress(&mut self, index: Index, fut: TaskFuture<'a, R>) -> bool {
+    pub(super) fn add_if_not_in_progress(&mut self, index: Index, fut: TaskFuture<'a, R>) -> bool {
         if self.in_progress.contains_key(&index) {
             false
         } else {
@@ -142,14 +142,14 @@ mod tests {
     }
 
     #[test]
-    fn test_stream_map_drop_if_in_progress() {
+    fn test_stream_map_add_if_not_in_progress() {
         let mut stream_map = StreamMap::default();
 
         let index = 1;
         let fut1 = Box::pin(async {});
         let fut2 = Box::pin(async {});
-        assert!(stream_map.drop_if_in_progress(index, fut1));
-        assert!(!stream_map.drop_if_in_progress(index, fut2));
+        assert!(stream_map.add_if_not_in_progress(index, fut1));
+        assert!(!stream_map.add_if_not_in_progress(index, fut2));
     }
 
     #[test]
