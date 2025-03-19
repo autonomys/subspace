@@ -4,9 +4,9 @@
 //! about which pieces are plotted in which sectors of which farm up to date. Implementation
 //! automatically handles dynamic farm addition and removal, etc.
 
-#[cfg(test)]
-mod tests;
+mod stream_map;
 
+use crate::cluster::controller::farms::stream_map::StreamMap;
 use crate::cluster::controller::ClusterControllerFarmerIdentifyBroadcast;
 use crate::cluster::farmer::{
     ClusterFarm, ClusterFarmerFarmDetails, ClusterFarmerFarmDetailsRequest, ClusterFarmerId,
@@ -17,105 +17,23 @@ use crate::farm::plotted_pieces::PlottedPieces;
 use crate::farm::{Farm, FarmId, SectorPlottingDetails, SectorUpdate};
 use anyhow::anyhow;
 use async_lock::RwLock as AsyncRwLock;
-use futures::stream::{FusedStream, FuturesUnordered};
-use futures::{select, FutureExt, Stream, StreamExt};
+use futures::stream::FuturesUnordered;
+use futures::{select, FutureExt, StreamExt};
 use parking_lot::Mutex;
-use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::future::Future;
+use std::collections::{HashMap, HashSet};
 use std::mem;
-use std::pin::{pin, Pin};
+use std::pin::pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use subspace_core_primitives::sectors::SectorIndex;
 use tokio::sync::broadcast;
 use tokio::task;
 use tokio::time::MissedTickBehavior;
-use tokio_stream::StreamMap;
+use tokio_stream::StreamMap as TokioStreamMap;
 use tracing::{debug, error, info, trace, warn};
 
 /// Number of farms in a cluster is currently limited to 2^16
 pub type FarmIndex = u16;
-
-type AddRemoveFuture<'a, R> = Pin<Box<dyn Future<Output = R> + 'a>>;
-type AddRemoveStream<'a, R> = Pin<Box<dyn Stream<Item = R> + Unpin + 'a>>;
-
-/// A FarmsAddRemoveStreamMap that keeps track of futures that are currently being processed for each `FarmIndex`.
-struct FarmsAddRemoveStreamMap<'a, R> {
-    in_progress: StreamMap<FarmIndex, AddRemoveStream<'a, R>>,
-    farms_to_add_remove: HashMap<FarmIndex, VecDeque<AddRemoveFuture<'a, R>>>,
-}
-
-impl<R> Default for FarmsAddRemoveStreamMap<'_, R> {
-    fn default() -> Self {
-        Self {
-            in_progress: StreamMap::default(),
-            farms_to_add_remove: HashMap::default(),
-        }
-    }
-}
-
-impl<'a, R: 'a> FarmsAddRemoveStreamMap<'a, R> {
-    /// When pushing a new task, it first checks if there is already a future for the given `FarmIndex` in `in_progress`.
-    ///   - If there is, the task is added to `farms_to_add_remove`.
-    ///   - If not, the task is directly added to `in_progress`.
-    fn push(&mut self, farm_index: FarmIndex, fut: AddRemoveFuture<'a, R>) {
-        if self.in_progress.contains_key(&farm_index) {
-            let queue = self.farms_to_add_remove.entry(farm_index).or_default();
-            queue.push_back(fut);
-        } else {
-            self.in_progress
-                .insert(farm_index, Box::pin(fut.into_stream()) as _);
-        }
-    }
-
-    /// Polls the next entry in `in_progress` and moves the next task from `farms_to_add_remove` to `in_progress` if there is any.
-    /// If there are no more tasks to execute, returns `None`.
-    fn poll_next_entry(&mut self, cx: &mut Context<'_>) -> Poll<Option<R>> {
-        if let Some((farm_index, res)) = std::task::ready!(self.in_progress.poll_next_unpin(cx)) {
-            // Current task completed, remove from in_progress queue and check for more tasks
-            self.in_progress.remove(&farm_index);
-            self.process_farm_queue(farm_index);
-            Poll::Ready(Some(res))
-        } else {
-            // No more tasks to execute
-            assert!(self.farms_to_add_remove.is_empty());
-            Poll::Ready(None)
-        }
-    }
-
-    /// Process the next task from the farm queue for the given `farm_index`
-    fn process_farm_queue(&mut self, farm_index: FarmIndex) {
-        if let Entry::Occupied(mut next_entry) = self.farms_to_add_remove.entry(farm_index) {
-            let task_queue = next_entry.get_mut();
-            if let Some(fut) = task_queue.pop_front() {
-                self.in_progress
-                    .insert(farm_index, Box::pin(fut.into_stream()) as _);
-            }
-
-            // Remove the farm index from the map if there are no more tasks
-            if task_queue.is_empty() {
-                next_entry.remove();
-            }
-        }
-    }
-}
-
-impl<'a, R: 'a> Stream for FarmsAddRemoveStreamMap<'a, R> {
-    type Item = R;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-        this.poll_next_entry(cx)
-    }
-}
-
-impl<'a, R: 'a> FusedStream for FarmsAddRemoveStreamMap<'a, R> {
-    fn is_terminated(&self) -> bool {
-        self.in_progress.is_empty() && self.farms_to_add_remove.is_empty()
-    }
-}
 
 struct FarmAddResult<I> {
     expired_receiver: broadcast::Receiver<()>,
@@ -256,9 +174,9 @@ pub async fn maintain_farms(
 ) -> anyhow::Result<()> {
     let mut known_farmers = KnownFarmers::new(identification_broadcast_interval);
 
-    let mut farms_to_add = StreamMap::<ClusterFarmerId, _>::new().fuse();
+    let mut farms_to_add = TokioStreamMap::<ClusterFarmerId, _>::new().fuse();
     // Stream map for adding/removing farms
-    let mut farms_to_add_remove = FarmsAddRemoveStreamMap::default();
+    let mut farms_to_add_remove = StreamMap::default();
     let mut farms = FuturesUnordered::new();
 
     let farmer_identify_subscription = pin!(nats_client
