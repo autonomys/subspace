@@ -164,6 +164,7 @@ impl KnownFarmers {
         farms: Vec<ClusterFarmerFarmDetails>,
     ) -> Option<FarmAddResult<impl Iterator<Item = (FarmIndex, ClusterFarmerFarmDetails)> + 'static>>
     {
+        trace!(%farmer_id, "Trying to add farms");
         let farm_ids_to_add = farms
             .iter()
             .map(|farm_details| farm_details.farm_id)
@@ -175,6 +176,7 @@ impl KnownFarmers {
             .flat_map(|known_farmer| known_farmer.known_farms.iter())
             .any(|(_farm_index, farm_id)| farm_ids_to_add.contains(farm_id))
         {
+            trace!(%farmer_id, "Some farms are already known, skipping");
             return None;
         }
 
@@ -457,6 +459,7 @@ async fn collect_farmer_farms(
     farmer_id: ClusterFarmerId,
     nats_client: &NatsClient,
 ) -> anyhow::Result<Vec<ClusterFarmerFarmDetails>> {
+    trace!(%farmer_id, "Requesting farmer farm details");
     Ok(nats_client
         .stream_request(
             &ClusterFarmerFarmDetailsRequest,
