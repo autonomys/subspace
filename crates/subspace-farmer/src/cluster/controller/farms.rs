@@ -29,7 +29,6 @@ use subspace_core_primitives::sectors::SectorIndex;
 use tokio::sync::broadcast;
 use tokio::task;
 use tokio::time::MissedTickBehavior;
-use tokio_stream::StreamMap as TokioStreamMap;
 use tracing::{debug, error, info, trace, warn};
 
 /// Number of farms in a cluster is currently limited to 2^16
@@ -174,7 +173,7 @@ pub async fn maintain_farms(
 ) -> anyhow::Result<()> {
     let mut known_farmers = KnownFarmers::new(identification_broadcast_interval);
 
-    let mut farms_to_add = TokioStreamMap::<ClusterFarmerId, _>::new().fuse();
+    let mut farms_to_add = StreamMap::default();
     // Stream map for adding/removing farms
     let mut farms_to_add_remove = StreamMap::default();
     let mut farms = FuturesUnordered::new();
@@ -242,7 +241,7 @@ pub async fn maintain_farms(
                         %farmer_id,
                         "Received identification for already known farmer"
                     );
-                } else if farms_to_add.get_ref().contains_key(&farmer_id) {
+                } else if !farms_to_add.drop_if_in_progress(farmer_id, Box::pin(collect_farmer_farms(farmer_id, nats_client))) {
                     debug!(
                         %farmer_id,
                         "Received identification for new farmer, which is already in progress"
@@ -251,10 +250,6 @@ pub async fn maintain_farms(
                     debug!(
                         %farmer_id,
                         "Received identification for new farmer, collecting farms"
-                    );
-                    farms_to_add.get_mut().insert(
-                        farmer_id,
-                        Box::pin(collect_farmer_farms(farmer_id, nats_client).into_stream()),
                     );
                 }
             }
@@ -308,7 +303,7 @@ pub async fn maintain_farms(
                                         "Farm initialized successfully"
                                     );
 
-                                    Some((farm_index, expired_receiver, farm))
+                                    Some((expired_receiver, farm))
                                 }
                                 Err(error) => {
                                     warn!(
@@ -353,8 +348,8 @@ pub async fn maintain_farms(
                     }));
                 }
             }
-            result = farms_to_add_remove.select_next_some() => {
-                if let Some((farm_index, mut expired_receiver, farm)) = result {
+            (farm_index, result) = farms_to_add_remove.select_next_some() => {
+                if let Some((mut expired_receiver, farm)) = result {
                     farms.push(async move {
                         select! {
                             result = farm.run().fuse() => {
