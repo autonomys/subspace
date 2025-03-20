@@ -13932,6 +13932,7 @@ dependencies = [
  "pallet-domains",
  "pallet-messenger",
  "pallet-mmr",
+ "pallet-multisig",
  "pallet-rewards",
  "pallet-runtime-configs",
  "pallet-subspace",
