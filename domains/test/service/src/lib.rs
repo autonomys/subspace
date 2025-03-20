@@ -16,8 +16,6 @@
 
 //! Crate used for testing with Domain.
 
-#![feature(trait_upcasting)]
-
 pub mod chain_spec;
 pub mod domain;
 pub mod keyring;
@@ -64,6 +62,7 @@ pub const AUTO_ID_DOMAIN_ID: DomainId = DomainId::new(1u32);
 /// node to be connected to other nodes. If `nodes_exclusive` is `true`, the node will only connect
 /// to the given `nodes` and not to any other node.
 #[allow(clippy::too_many_arguments)]
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub fn node_config(
     domain_id: DomainId,
     tokio_handle: tokio::runtime::Handle,

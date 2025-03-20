@@ -507,6 +507,7 @@ pub(super) struct ConsensusChainConfiguration {
     pub(super) prometheus_configuration: Option<PrometheusConfiguration>,
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub(super) fn create_consensus_chain_configuration(
     consensus_node_options: ConsensusChainOptions,
     domains_enabled: bool,

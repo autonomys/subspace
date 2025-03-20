@@ -770,11 +770,10 @@ impl NodeRunner {
             }
 
             let kademlia = &mut self.swarm.behaviour_mut().kademlia;
-            let full_kademlia_support = kademlia.protocol_names().iter().all(|local_protocol| {
-                info.protocols
-                    .iter()
-                    .any(|remote_protocol| *remote_protocol == *local_protocol)
-            });
+            let full_kademlia_support = kademlia
+                .protocol_names()
+                .iter()
+                .all(|local_protocol| info.protocols.contains(local_protocol));
 
             if full_kademlia_support {
                 let received_addresses = info

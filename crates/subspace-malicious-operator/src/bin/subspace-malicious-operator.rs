@@ -1,7 +1,5 @@
 //! Subspace malicious operator node.
 
-#![feature(trait_upcasting)]
-
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::fetch_domain_bootstrap_info;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -77,6 +75,7 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
     }
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 fn main() -> Result<(), Error> {
     let cli = Cli::from_args();
 

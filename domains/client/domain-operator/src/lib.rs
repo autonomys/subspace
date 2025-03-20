@@ -63,7 +63,6 @@
     assert_matches,
     box_into_inner,
     duration_constructors,
-    extract_if,
     let_chains,
     more_qualified_paths
 )]

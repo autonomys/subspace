@@ -171,6 +171,7 @@ pub(crate) const DEFAULT_NETWORK_CONFIG_PATH: &str = "network";
 
 /// Create a Configuration object from the current object, port from `sc_cli::create_configuration`
 /// and changed to take `chain_spec` as argument instead of construct one internally.
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
     domain_id: DomainId,
     base_path: BasePath,

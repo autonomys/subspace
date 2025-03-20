@@ -89,6 +89,7 @@ impl DomainCli {
     }
 
     /// Creates domain configuration from domain cli.
+    #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
     pub fn create_domain_configuration(
         &self,
         cmd: &impl CliConfiguration,
@@ -321,6 +322,7 @@ pub struct BuildGenesisStorageCmd {
 
 impl BuildGenesisStorageCmd {
     /// Run the build-genesis-storage command
+    #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
     pub fn run(&self) -> sc_cli::Result<()> {
         let is_dev = self.shared_params.is_dev();
         let chain_id = self.shared_params.chain_id(is_dev);
@@ -386,6 +388,7 @@ impl CliConfiguration for ExportExecutionReceiptCmd {
 
 impl ExportExecutionReceiptCmd {
     /// Run the export-execution-receipt command
+    #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
     pub fn run<Backend, Client>(
         &self,
         domain_client: &Client,

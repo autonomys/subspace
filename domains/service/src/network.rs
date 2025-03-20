@@ -26,6 +26,7 @@ pub mod receipt_receiver;
 
 /// Build the network service, the network status sinks and an RPC sender.
 #[allow(clippy::type_complexity)]
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub fn build_network<Block, Net, TxPool, IQ, Client, CBlock, CClient, DomainHeader>(
     params: BuildNetworkParams<Block, Net, TxPool, IQ, Client>,
     consensus_client: Arc<CClient>,

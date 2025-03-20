@@ -58,6 +58,7 @@ where
 {
     type Deps: Clone;
 
+    #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
     fn deps(
         &self,
         full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
@@ -119,6 +120,6 @@ where
     where
         SE: SpawnEssentialNamed + Clone,
     {
-        crate::rpc::create_full::<_, _, _, _, AccountId, BE, CIDP>(deps).map_err(Into::into)
+        crate::rpc::create_full::<_, _, _, _, AccountId, BE, CIDP>(deps)
     }
 }

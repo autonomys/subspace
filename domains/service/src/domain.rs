@@ -124,6 +124,7 @@ pub type FullPool<RuntimeApi> =
 
 /// Constructs a partial domain node.
 #[allow(clippy::type_complexity)]
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
     config: &ServiceConfiguration,
     consensus_client: Arc<CClient>,
