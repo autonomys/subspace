@@ -57,6 +57,7 @@ parameter_types! {
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: 1};
     pub TransactionWeightFee: Balance = 100_000;
     pub const MaxOutgoingMessages: u32 = 25;
+    pub const FeeMultiplier: u32 = 1;
 }
 
 #[derive(
@@ -113,6 +114,9 @@ impl pallet_messenger::Config for MockRuntime {
     }
 
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
+    type AdjustedWeightToFee =
+        frame_support::weights::ConstantMultiplier<u64, TransactionWeightFee>;
+    type FeeMultiplier = FeeMultiplier;
 }
 
 #[derive(Debug)]

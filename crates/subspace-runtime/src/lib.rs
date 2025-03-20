@@ -103,8 +103,9 @@ use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilit
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, ConsensusEventSegmentSize,
     FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate,
-    TargetBlockFullness, BLOCK_WEIGHT_FOR_2_SEC, DOMAINS_BLOCK_PRUNING_DEPTH, MAX_BLOCK_LENGTH,
-    MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY, SSC,
+    TargetBlockFullness, XdmAdjustedWeightToFee, XdmFeeMultipler, BLOCK_WEIGHT_FOR_2_SEC,
+    DOMAINS_BLOCK_PRUNING_DEPTH, MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO,
+    SHANNON, SLOT_PROBABILITY, SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -702,6 +703,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
+    type AdjustedWeightToFee = XdmAdjustedWeightToFee<Runtime>;
+    type FeeMultiplier = XdmFeeMultipler;
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;

@@ -110,7 +110,8 @@ use subspace_core_primitives::{hashes, PublicKey, Randomness, SlotNumber, U256};
 use subspace_runtime_primitives::utility::DefaultNonceProvider;
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, ConsensusEventSegmentSize, FindBlockRewardAddress, Hash,
-    HoldIdentifier, Moment, Nonce, Signature, MIN_REPLICATION_FACTOR, SHANNON, SSC,
+    HoldIdentifier, Moment, Nonce, Signature, XdmAdjustedWeightToFee, XdmFeeMultipler,
+    MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 
@@ -663,6 +664,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
+    type AdjustedWeightToFee = XdmAdjustedWeightToFee<Runtime>;
+    type FeeMultiplier = XdmFeeMultipler;
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;

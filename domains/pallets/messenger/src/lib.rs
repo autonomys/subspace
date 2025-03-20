@@ -197,6 +197,12 @@ mod pallet {
         type WeightInfo: WeightInfo;
         /// Weight to fee conversion.
         type WeightToFee: WeightToFee<Balance = BalanceOf<Self>>;
+        /// Adjusted Weight to fee conversion.
+        /// This includes the TransactionPayment Multiper at the time of fee deduction.
+        type AdjustedWeightToFee: WeightToFee<Balance = BalanceOf<Self>>;
+        /// Fee Multiper for XDM
+        /// Final fee calculated will fee_multiplier * adjusted_weight_to_fee.
+        type FeeMultiplier: Get<u32>;
         /// Handle XDM rewards.
         type OnXDMRewards: OnXDMRewards<BalanceOf<Self>>;
         /// Hash type of MMR

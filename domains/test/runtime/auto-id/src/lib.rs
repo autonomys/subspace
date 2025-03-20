@@ -71,7 +71,7 @@ use static_assertions::const_assert;
 use subspace_runtime_primitives::utility::DefaultNonceProvider;
 use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, Hash as ConsensusBlockHash,
-    Moment, SlowAdjustingFeeUpdate, SSC,
+    Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee, XdmFeeMultipler, SSC,
 };
 
 /// Block type as expected by this runtime.
@@ -430,6 +430,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = IdentityFee<Balance>;
+    type AdjustedWeightToFee = XdmAdjustedWeightToFee<Runtime>;
+    type FeeMultiplier = XdmFeeMultipler;
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = MmrHash;
     type MmrProofVerifier = MmrProofVerifier;
