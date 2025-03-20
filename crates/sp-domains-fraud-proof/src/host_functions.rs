@@ -364,6 +364,8 @@ where
             domain_runtime_code.into(),
         );
 
+        // These decodes change the opaque extrinsic type to another opaque type, so they don't
+        // need depth limits. (Only runtime code can correctly decode runtime calls.)
         match call {
             StatelessDomainRuntimeCall::IsTxInRange {
                 opaque_extrinsic,
