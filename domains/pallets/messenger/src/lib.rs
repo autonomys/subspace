@@ -212,6 +212,7 @@ mod pallet {
         type AdjustedWeightToFee: WeightToFee<Balance = BalanceOf<Self>>;
         /// Fee Multiper for XDM
         /// Final fee calculated will fee_multiplier * adjusted_weight_to_fee.
+        #[pallet::constant]
         type FeeMultiplier: Get<u32>;
         /// Handle XDM rewards.
         type OnXDMRewards: OnXDMRewards<BalanceOf<Self>>;
@@ -241,10 +242,12 @@ mod pallet {
         /// Channels fee model
         type ChannelFeeModel: Get<FeeModel<BalanceOf<Self>>>;
         /// Maximum outgoing messages from a given channel
+        #[pallet::constant]
         type MaxOutgoingMessages: Get<u32>;
         /// Origin for messenger call.
         type MessengerOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = ()>;
         /// Message version to use.
+        #[pallet::constant]
         type MessageVersion: Get<crate::MessageVersion>;
     }
 
