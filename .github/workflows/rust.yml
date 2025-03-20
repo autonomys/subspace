@@ -313,9 +313,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # Pruning the target directory is only required if we're using a build cache or running locally
       - name: check all crates individually
         run: |
-          for crate in $(grep 'path =' Cargo.toml | sed 's/.*path *= *"\([^"]*\).*/\1/' | sort); do
+          for crate in $(find . -name Cargo.toml -o -path ./target -prune | xargs -n 1 dirname | grep -v '^[.]$' | sort); do
               echo "$crate";
               pushd "$crate";
               if ! cargo -Zgitoxide -Zgit check --locked --all-targets; then
