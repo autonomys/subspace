@@ -168,8 +168,9 @@ mod pallet {
     use sp_domains::{DomainAllowlistUpdates, DomainId, DomainOwner};
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        ChainId, ChannelOpenParams, CrossDomainMessage, Message, MessageId, MessageKey,
-        MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        ChainId, ChannelOpenParams, ConvertedPayload, CrossDomainMessage, Message, MessageId,
+        MessageKey, MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse,
+        VersionedPayload,
     };
     use sp_messenger::{
         ChannelNonce, DomainRegistration, InherentError, InherentType, OnXDMRewards, StorageKeys,
@@ -1059,35 +1060,34 @@ mod pallet {
             // verify and decode message
             let msg = Self::do_verify_xdm(next_nonce, key, consensus_state_root, xdm)?;
 
-            let is_valid_call = match &msg.payload {
-                VersionedPayload::V0(payload) => match payload {
-                    Payload::Protocol(RequestResponse::Request(req)) => match req {
-                        // channel open should ensure there is no Channel present already
-                        ProtocolMessageRequest::ChannelOpen(_) => maybe_channel.is_none(),
-                        // we allow channel close only if it is init or open state
-                        ProtocolMessageRequest::ChannelClose => {
-                            if let Some(ref channel) = maybe_channel {
-                                !(channel.state == ChannelState::Closed)
-                            } else {
-                                false
-                            }
-                        }
-                    },
-                    // endpoint request messages are only allowed when
-                    // channel is open, or
-                    // channel is closed. Channel can be closed by dst_chain simultaneously
-                    // while src_chain already sent a message. We allow the message but return an
-                    // error in the response so that src_chain can revert any necessary actions
-                    Payload::Endpoint(RequestResponse::Request(_)) => {
+            let ConvertedPayload { payload, is_v1: _ } = msg.payload.clone().into_payload_v0();
+            let is_valid_call = match &payload {
+                Payload::Protocol(RequestResponse::Request(req)) => match req {
+                    // channel open should ensure there is no Channel present already
+                    ProtocolMessageRequest::ChannelOpen(_) => maybe_channel.is_none(),
+                    // we allow channel close only if it is init or open state
+                    ProtocolMessageRequest::ChannelClose => {
                         if let Some(ref channel) = maybe_channel {
-                            !(channel.state == ChannelState::Initiated)
+                            !(channel.state == ChannelState::Closed)
                         } else {
                             false
                         }
                     }
-                    // any other message variants are not allowed
-                    _ => false,
                 },
+                // endpoint request messages are only allowed when
+                // channel is open, or
+                // channel is closed. Channel can be closed by dst_chain simultaneously
+                // while src_chain already sent a message. We allow the message but return an
+                // error in the response so that src_chain can revert any necessary actions
+                Payload::Endpoint(RequestResponse::Request(_)) => {
+                    if let Some(ref channel) = maybe_channel {
+                        !(channel.state == ChannelState::Initiated)
+                    } else {
+                        false
+                    }
+                }
+                // any other message variants are not allowed
+                _ => false,
             };
 
             if !is_valid_call {
