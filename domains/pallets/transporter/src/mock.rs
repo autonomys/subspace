@@ -58,6 +58,7 @@ parameter_types! {
     pub TransactionWeightFee: Balance = 100_000;
     pub const MaxOutgoingMessages: u32 = 25;
     pub const FeeMultiplier: u32 = 1;
+    pub const MessageVersion: pallet_messenger::MessageVersion = pallet_messenger::MessageVersion::V0;
 }
 
 #[derive(
@@ -117,6 +118,7 @@ impl pallet_messenger::Config for MockRuntime {
     type AdjustedWeightToFee =
         frame_support::weights::ConstantMultiplier<u64, TransactionWeightFee>;
     type FeeMultiplier = FeeMultiplier;
+    type MessageVersion = MessageVersion;
 }
 
 #[derive(Debug)]

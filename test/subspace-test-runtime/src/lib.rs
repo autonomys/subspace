@@ -626,6 +626,7 @@ parameter_types! {
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
+    pub const MessageVersion: pallet_messenger::MessageVersion = pallet_messenger::MessageVersion::V0;
 }
 
 // ensure the max outgoing messages is not 0.
@@ -678,6 +679,7 @@ impl pallet_messenger::Config for Runtime {
     type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
+    type MessageVersion = MessageVersion;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime

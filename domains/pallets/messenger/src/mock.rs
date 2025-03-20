@@ -64,6 +64,7 @@ macro_rules! impl_runtime {
             pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: 1};
             pub const MaxOutgoingMessages: u32 = 25;
             pub const FeeMultiplier: u32 = 1;
+            pub const MessageVersion: crate::MessageVersion = crate::MessageVersion::V0;
         }
 
         #[derive(
@@ -110,6 +111,7 @@ macro_rules! impl_runtime {
             type MessengerOrigin = crate::EnsureMessengerOrigin;
             type AdjustedWeightToFee = frame_support::weights::IdentityFee<u64>;
             type FeeMultiplier = FeeMultiplier;
+            type MessageVersion = MessageVersion;
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 #[allow(unused_variables)] endpoint: &Endpoint,
