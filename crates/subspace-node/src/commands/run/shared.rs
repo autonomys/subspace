@@ -24,8 +24,8 @@ pub(super) struct RpcOptions<const DEFAULT_PORT: u16> {
     /// RPC methods to expose.
     /// - `unsafe`: Exposes every RPC method.
     /// - `safe`: Exposes only a safe subset of RPC methods, denying unsafe RPC methods.
-    /// - `auto`: Acts as `safe` if non-localhost `--rpc-listen-on` is passed, otherwise
-    ///           acts as `unsafe`.
+    /// - `auto`: Acts as `safe` if non-localhost `--rpc-listen-on` is passed, otherwise acts as
+    ///   `unsafe`.
     #[arg(
         long,
         value_enum,
