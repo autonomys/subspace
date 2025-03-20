@@ -68,14 +68,18 @@ const MAX_CONCURRENT_STREAMS_PER_CONNECTION: usize = 10;
 const ENABLE_GOSSIP_PROTOCOL: bool = false;
 
 const TEMPORARY_BANS_CACHE_SIZE: u32 = 10_000;
-const TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
+/// The initial temporary ban delay, before attempting a reconnection.
+/// This is also effectively the fixed reconnection delay for reserved peers disconnected by the
+/// remote end.
+const TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL: Duration = Duration::from_secs(10);
 const TEMPORARY_BANS_DEFAULT_BACKOFF_RANDOMIZATION_FACTOR: f64 = 0.1;
 const TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER: f64 = 1.5;
 const TEMPORARY_BANS_DEFAULT_MAX_INTERVAL: Duration = Duration::from_secs(30 * 60);
 
 /// We pause between reserved peers dialing otherwise we could do multiple dials to offline peers
 /// wasting resources and producing a ton of log records.
-const DIALING_INTERVAL_IN_SECS: Duration = Duration::from_secs(1);
+// TODO: replace this with a capped exponential backoff, like temporary bans.
+const DIALING_INTERVAL_IN_SECS: Duration = Duration::from_secs(5);
 
 /// Specific YAMUX settings for Subspace applications: additional buffer space for pieces and
 /// substream's limit.
