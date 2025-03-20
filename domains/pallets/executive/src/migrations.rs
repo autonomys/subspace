@@ -5,8 +5,6 @@ use frame_support::traits::{Get, OnRuntimeUpgrade};
 use frame_support::weights::Weight;
 use frame_system::pallet::Config;
 use frame_system::{EventRecord, Pallet as System};
-#[cfg(not(feature = "std"))]
-use sp_std::vec::Vec;
 
 pub struct StorageCheckedMigrateToEventSegments<T>(sp_std::marker::PhantomData<T>);
 
