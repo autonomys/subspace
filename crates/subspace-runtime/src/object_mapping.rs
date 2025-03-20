@@ -11,9 +11,10 @@ const MAX_OBJECT_MAPPING_RECURSION_DEPTH: u16 = 5;
 
 /// Extract the nested object mappings from `call`.
 // TODO:
-// - add start and end nesting closures to nested_utility_call_iter(), so we can modify and restore
+// - add start and end nesting closures to nested_call_iter(), so we can modify and restore
 //   the base offset
-// - convert this code to use nested_utility_call_iter(), and remove the recursion depth limit
+// - convert this code to use nested_call_iter(), and remove the recursion depth limit
+// - extract other nested calls: sudo, collective, multisig, scheduler, democracy (BoundedCall)
 pub(crate) fn extract_utility_block_object_mapping(
     mut base_offset: u32,
     objects: &mut Vec<BlockObject>,

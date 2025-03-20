@@ -19,6 +19,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 parity-scale-codec = { workspace = true, features = ["derive"] }
 frame-support.workspace = true
 frame-system.workspace = true
+pallet-multisig.workspace = true
 pallet-transaction-payment.workspace = true
 pallet-utility.workspace = true
 scale-info = { workspace = true, features = ["derive"] }
@@ -34,6 +35,7 @@ std = [
     "parity-scale-codec/std",
     "frame-support/std",
     "frame-system/std",
+    "pallet-multisig/std",
     "pallet-transaction-payment/std",
     "pallet-utility/std",
     "scale-info/std",

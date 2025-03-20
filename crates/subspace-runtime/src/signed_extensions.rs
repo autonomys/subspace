@@ -12,7 +12,7 @@ use sp_runtime::transaction_validity::{
     ValidTransaction,
 };
 use sp_std::prelude::*;
-use subspace_runtime_primitives::utility::nested_utility_call_iter;
+use subspace_runtime_primitives::utility::nested_call_iter;
 
 /// Disable balance transfers, if configured in the runtime.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
@@ -89,8 +89,9 @@ impl TransactionExtension<RuntimeCall> for DisablePallets {
 }
 
 fn contains_balance_transfer(call: &RuntimeCall) -> bool {
-    for call in nested_utility_call_iter::<Runtime>(call) {
-        // Other calls are inconclusive, they might contain nested calls
+    for call in nested_call_iter::<Runtime>(call) {
+        // Any other calls might contain nested calls, so we can only return early if we find a
+        // balance transfer call.
         if let RuntimeCall::Balances(
             pallet_balances::Call::transfer_allow_death { .. }
             | pallet_balances::Call::transfer_keep_alive { .. }
