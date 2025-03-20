@@ -319,7 +319,7 @@ jobs:
           for crate in $(find . -name Cargo.toml -o -path ./target -prune | xargs -n 1 dirname | grep -v '^[.]$' | sort); do
               echo "$crate";
               pushd "$crate";
-              if ! cargo -Zgitoxide -Zgit check --locked --all-targets; then
+              if ! cargo -Zgitoxide -Zgit clippy --locked --all-targets -- -D warnings; then
                   pwd;
                   popd;
                   exit 1;
