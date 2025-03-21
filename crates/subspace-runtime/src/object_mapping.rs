@@ -6,8 +6,7 @@ use parity_scale_codec::{Compact, CompactLen, Encode};
 use sp_std::prelude::*;
 use subspace_core_primitives::hashes;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
-
-const MAX_OBJECT_MAPPING_RECURSION_DEPTH: u16 = 5;
+use subspace_runtime_primitives::MAX_CALL_RECURSION_DEPTH;
 
 /// Extract the nested object mappings from `call`.
 // TODO:
@@ -128,7 +127,7 @@ pub(crate) fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
             base_extrinsic_offset as u32,
             block_object_mapping.objects_mut(),
             &extrinsic.function,
-            MAX_OBJECT_MAPPING_RECURSION_DEPTH,
+            MAX_CALL_RECURSION_DEPTH as u16,
         );
 
         base_offset += extrinsic.encoded_size();
