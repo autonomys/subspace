@@ -46,6 +46,7 @@ use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
+use frame_system::pallet_prelude::RuntimeCallFor;
 use frame_system::EnsureRoot;
 use pallet_collective::{EnsureMember, EnsureProportionAtLeast};
 pub use pallet_rewards::RewardPoint;
@@ -99,7 +100,9 @@ use subspace_core_primitives::solutions::{
     pieces_to_solution_range, solution_range_to_pieces, SolutionRange,
 };
 use subspace_core_primitives::{PublicKey, Randomness, SlotNumber, U256};
-use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilityCall};
+use subspace_runtime_primitives::utility::{
+    DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
+};
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, ConsensusEventSegmentSize,
     FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate,
@@ -411,13 +414,48 @@ impl pallet_utility::Config for Runtime {
     type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
 }
 
-impl MaybeIntoUtilityCall<Runtime> for RuntimeCall {
+impl MaybeMultisigCall<Runtime> for RuntimeCall {
+    /// If this call is a `pallet_multisig::Call<Runtime>` call, returns the inner call.
+    fn maybe_multisig_call(&self) -> Option<&pallet_multisig::Call<Runtime>> {
+        match self {
+            RuntimeCall::Multisig(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl MaybeUtilityCall<Runtime> for RuntimeCall {
     /// If this call is a `pallet_utility::Call<Runtime>` call, returns the inner call.
-    fn maybe_into_utility_call(&self) -> Option<&pallet_utility::Call<Runtime>> {
+    fn maybe_utility_call(&self) -> Option<&pallet_utility::Call<Runtime>> {
         match self {
             RuntimeCall::Utility(call) => Some(call),
             _ => None,
         }
+    }
+}
+
+impl MaybeNestedCall<Runtime> for RuntimeCall {
+    /// If this call is a nested runtime call, returns the inner call(s).
+    ///
+    /// Ignored calls (such as `pallet_utility::Call::__Ignore`) should be yielded themsevles, but
+    /// their contents should not be yielded.
+    fn maybe_nested_call(&self) -> Option<Vec<&RuntimeCallFor<Runtime>>> {
+        // We currently ignore privileged calls, because privileged users can already change
+        // runtime code. This includes sudo, collective, and scheduler nested `RuntimeCall`s,
+        // and democracy nested `BoundedCall`s.
+
+        // It is ok to return early, because each call can only belong to one pallet.
+        let calls = self.maybe_nested_utility_calls();
+        if calls.is_some() {
+            return calls;
+        }
+
+        let calls = self.maybe_nested_multisig_calls();
+        if calls.is_some() {
+            return calls;
+        }
+
+        None
     }
 }
 

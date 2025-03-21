@@ -17,7 +17,7 @@ use sp_runtime::transaction_validity::{
     ValidTransaction,
 };
 use sp_weights::Weight;
-use subspace_runtime_primitives::utility::{nested_utility_call_iter, MaybeIntoUtilityCall};
+use subspace_runtime_primitives::utility::{nested_call_iter, MaybeNestedCall};
 
 /// Rejects contracts that can't be created under the current allow list.
 /// Returns false if the call is a contract call, and the account is *not* allowed to call it.
@@ -30,12 +30,9 @@ where
     Runtime: frame_system::Config<AccountId = EthereumAccountId>
         + pallet_ethereum::Config
         + pallet_evm::Config
-        + pallet_utility::Config
         + crate::Config,
     RuntimeCallFor<Runtime>:
-        MaybeIntoEthCall<Runtime> + MaybeIntoEvmCall<Runtime> + MaybeIntoUtilityCall<Runtime>,
-    for<'block> &'block RuntimeCallFor<Runtime>:
-        From<&'block <Runtime as pallet_utility::Config>::RuntimeCall>,
+        MaybeIntoEthCall<Runtime> + MaybeIntoEvmCall<Runtime> + MaybeNestedCall<Runtime>,
     Result<pallet_ethereum::RawOrigin, OriginFor<Runtime>>: From<OriginFor<Runtime>>,
 {
     // If the account is allowed to create contracts, or it's not a contract call, return true.
@@ -49,15 +46,9 @@ where
 /// list. Otherwise, returns true.
 pub fn is_create_unsigned_contract_allowed<Runtime>(call: &RuntimeCallFor<Runtime>) -> bool
 where
-    Runtime: frame_system::Config
-        + pallet_ethereum::Config
-        + pallet_evm::Config
-        + pallet_utility::Config
-        + crate::Config,
+    Runtime: frame_system::Config + pallet_ethereum::Config + pallet_evm::Config + crate::Config,
     RuntimeCallFor<Runtime>:
-        MaybeIntoEthCall<Runtime> + MaybeIntoEvmCall<Runtime> + MaybeIntoUtilityCall<Runtime>,
-    for<'block> &'block RuntimeCallFor<Runtime>:
-        From<&'block <Runtime as pallet_utility::Config>::RuntimeCall>,
+        MaybeIntoEthCall<Runtime> + MaybeIntoEvmCall<Runtime> + MaybeNestedCall<Runtime>,
     Result<pallet_ethereum::RawOrigin, OriginFor<Runtime>>: From<OriginFor<Runtime>>,
 {
     // If any account is allowed to create contracts, or it's not a contract call, return true.
@@ -69,17 +60,12 @@ where
 /// Returns true if the call is a contract creation call.
 pub fn is_create_contract<Runtime>(call: &RuntimeCallFor<Runtime>) -> bool
 where
-    Runtime: frame_system::Config
-        + pallet_ethereum::Config
-        + pallet_evm::Config
-        + pallet_utility::Config,
+    Runtime: frame_system::Config + pallet_ethereum::Config + pallet_evm::Config,
     RuntimeCallFor<Runtime>:
-        MaybeIntoEthCall<Runtime> + MaybeIntoEvmCall<Runtime> + MaybeIntoUtilityCall<Runtime>,
-    for<'block> &'block RuntimeCallFor<Runtime>:
-        From<&'block <Runtime as pallet_utility::Config>::RuntimeCall>,
+        MaybeIntoEthCall<Runtime> + MaybeIntoEvmCall<Runtime> + MaybeNestedCall<Runtime>,
     Result<pallet_ethereum::RawOrigin, OriginFor<Runtime>>: From<OriginFor<Runtime>>,
 {
-    for call in nested_utility_call_iter::<Runtime>(call) {
+    for call in nested_call_iter::<Runtime>(call) {
         if let Some(call) = call.maybe_into_eth_call() {
             match call {
                 pallet_ethereum::Call::transact {
@@ -142,16 +128,13 @@ where
     Runtime: frame_system::Config<AccountId = EthereumAccountId>
         + pallet_ethereum::Config
         + pallet_evm::Config
-        + pallet_utility::Config
         + crate::Config
         + scale_info::TypeInfo
         + fmt::Debug
         + Send
         + Sync,
     RuntimeCallFor<Runtime>:
-        MaybeIntoEthCall<Runtime> + MaybeIntoEvmCall<Runtime> + MaybeIntoUtilityCall<Runtime>,
-    for<'block> &'block RuntimeCallFor<Runtime>:
-        From<&'block <Runtime as pallet_utility::Config>::RuntimeCall>,
+        MaybeIntoEthCall<Runtime> + MaybeIntoEvmCall<Runtime> + MaybeNestedCall<Runtime>,
     Result<pallet_ethereum::RawOrigin, OriginFor<Runtime>>: From<OriginFor<Runtime>>,
     <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
         AsSystemOriginSigner<AccountIdFor<Runtime>> + Clone,
@@ -189,16 +172,13 @@ where
     Runtime: frame_system::Config<AccountId = EthereumAccountId>
         + pallet_ethereum::Config
         + pallet_evm::Config
-        + pallet_utility::Config
         + crate::Config
         + scale_info::TypeInfo
         + fmt::Debug
         + Send
         + Sync,
     RuntimeCallFor<Runtime>:
-        MaybeIntoEthCall<Runtime> + MaybeIntoEvmCall<Runtime> + MaybeIntoUtilityCall<Runtime>,
-    for<'block> &'block RuntimeCallFor<Runtime>:
-        From<&'block <Runtime as pallet_utility::Config>::RuntimeCall>,
+        MaybeIntoEthCall<Runtime> + MaybeIntoEvmCall<Runtime> + MaybeNestedCall<Runtime>,
     Result<pallet_ethereum::RawOrigin, OriginFor<Runtime>>: From<OriginFor<Runtime>>,
     <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
         AsSystemOriginSigner<AccountIdFor<Runtime>> + Clone,
