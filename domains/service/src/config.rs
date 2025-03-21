@@ -211,7 +211,7 @@ impl From<SubstrateConfiguration> for Configuration {
             executor: ExecutorConfiguration {
                 wasm_method: Default::default(),
                 // Substrate's default
-                max_runtime_instances: 8,
+                max_runtime_instances: 32,
                 default_heap_pages: None,
                 // Substrate's default
                 runtime_cache_size: 2,
