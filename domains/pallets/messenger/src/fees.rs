@@ -3,11 +3,12 @@ use crate::{BalanceOf, Config, Error, Pallet};
 use frame_support::traits::fungible::Mutate;
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::weights::WeightToFee;
-use sp_messenger::endpoint::Endpoint;
+use sp_core::Get;
+use sp_messenger::endpoint::{CollectedFee, Endpoint};
 use sp_messenger::messages::{ChainId, ChannelId, FeeModel, MessageId, Nonce};
 use sp_messenger::OnXDMRewards;
-use sp_runtime::traits::CheckedAdd;
-use sp_runtime::{DispatchResult, Saturating};
+use sp_runtime::traits::{CheckedAdd, CheckedMul};
+use sp_runtime::{DispatchError, DispatchResult, Saturating};
 
 impl<T: Config> Pallet<T> {
     /// Ensures the fees from the sender per FeeModel provided for a single request for a response.
@@ -50,6 +51,54 @@ impl<T: Config> Pallet<T> {
         )?;
 
         Ok(())
+    }
+
+    /// Ensures the fees from the sender to complete the XDM request and response.
+    #[inline]
+    pub(crate) fn collect_fees_for_message_v1(
+        sender: &T::AccountId,
+        endpoint: &Endpoint,
+    ) -> Result<CollectedFee<BalanceOf<T>>, DispatchError> {
+        let handler = T::get_endpoint_handler(endpoint).ok_or(Error::<T>::NoMessageHandler)?;
+
+        let fee_multiplier = BalanceOf::<T>::from(T::FeeMultiplier::get());
+
+        // fees need to be paid for following
+        // - Execution on dst_chain. This is burned here and minted on dst_chain
+        let dst_chain_inbox_execution_fee =
+            T::AdjustedWeightToFee::weight_to_fee(&handler.message_weight());
+
+        // adjust the dst_chain fee with xdm multiplier
+        let dst_chain_fee = dst_chain_inbox_execution_fee
+            .checked_mul(&fee_multiplier)
+            .ok_or(Error::<T>::BalanceOverflow)?;
+
+        // - Execution of response on src_chain.
+        // - This is collected and given to operators once response is received.
+        let src_chain_outbox_response_execution_fee =
+            T::AdjustedWeightToFee::weight_to_fee(&handler.message_response_weight());
+
+        // adjust the src_chain fee with xdm multiplier
+        let src_chain_fee = src_chain_outbox_response_execution_fee
+            .checked_mul(&fee_multiplier)
+            .ok_or(Error::<T>::BalanceOverflow)?;
+
+        // burn the total fees
+        let total_fees = dst_chain_fee
+            .checked_add(&src_chain_fee)
+            .ok_or(Error::<T>::BalanceOverflow)?;
+        T::Currency::burn_from(
+            sender,
+            total_fees,
+            Preservation::Preserve,
+            Precision::Exact,
+            Fortitude::Polite,
+        )?;
+
+        Ok(CollectedFee {
+            src_chain_fee,
+            dst_chain_fee,
+        })
     }
 
     /// Ensures the fee paid by the sender on the src_chain for execution on this chain are stored as operator rewards
