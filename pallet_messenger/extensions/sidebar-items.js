@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Val"],"struct":["MessengerExtension","MessengerTrustedMmrExtension"],"trait":["MaybeMessengerCall"]};
