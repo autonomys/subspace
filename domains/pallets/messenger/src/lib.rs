@@ -526,6 +526,9 @@ mod pallet {
 
         /// Message count underflow
         MessageCountUnderflow,
+
+        /// Incorrect message version
+        MessageVersionMismatch,
     }
 
     #[pallet::call]

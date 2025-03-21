@@ -385,10 +385,7 @@ impl<T: Config> Pallet<T> {
             is_v1: is_v1_resp,
         } = resp_msg.payload.into_payload_v0();
 
-        assert_eq!(
-            is_v1_req, is_v1_resp,
-            "Both the request and response will always be of same type"
-        );
+        ensure!(is_v1_req == is_v1_resp, Error::<T>::MessageVersionMismatch);
 
         let resp = match (req, resp) {
             // process incoming protocol outbox message response.
