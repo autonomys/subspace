@@ -210,8 +210,8 @@ impl From<SubstrateConfiguration> for Configuration {
                 path: configuration.base_path.join("db"),
             },
             data_path: configuration.base_path.clone(),
-            // Substrate's default
-            trie_cache_maximum_size: Some(64 * 1024 * 1024),
+            // 1GB trie cache
+            trie_cache_maximum_size: Some(1024 * 1024 * 1024),
             state_pruning: Some(configuration.state_pruning),
             blocks_pruning: configuration.blocks_pruning,
             executor: ExecutorConfiguration {
