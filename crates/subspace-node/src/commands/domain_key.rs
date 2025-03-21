@@ -24,6 +24,7 @@ pub struct CreateDomainKeyOptions {
     keystore_options: KeystoreOptions,
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub fn create_domain_key(options: CreateDomainKeyOptions) -> Result<(), Error> {
     init_logger();
     let CreateDomainKeyOptions {
@@ -91,6 +92,7 @@ pub struct InsertDomainKeyOptions {
     keystore_options: KeystoreOptions,
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub fn insert_domain_key(options: InsertDomainKeyOptions) -> Result<(), Error> {
     init_logger();
     let InsertDomainKeyOptions {

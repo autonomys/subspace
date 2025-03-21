@@ -53,6 +53,7 @@ pub(crate) struct FrontierPartialComponents {
     pub(crate) fee_history_cache_limit: FeeHistoryCacheLimit,
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub(crate) fn new_frontier_partial(
     fee_history_cache_limit: u64,
 ) -> Result<FrontierPartialComponents, ServiceError> {
