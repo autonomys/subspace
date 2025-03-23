@@ -48,13 +48,14 @@ use frame_support::inherent::ProvideInherent;
 use frame_support::traits::fungible::Inspect;
 use frame_support::traits::tokens::WithdrawConsequence;
 use frame_support::traits::{
-    ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
-    Imbalance, Time, VariantCount, WithdrawReasons,
+    ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, ExistenceRequirement,
+    Get, Imbalance, Time, VariantCount, WithdrawReasons,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
+use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use pallet_balances::NegativeImbalance;
 pub use pallet_rewards::RewardPoint;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
@@ -85,14 +86,19 @@ use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::traits::{
-    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, ConstBool, DispatchInfoOf,
-    Keccak256, NumberFor, PostDispatchInfoOf, Zero,
+    AccountIdConversion, AccountIdLookup, AsSystemOriginSigner, BlakeTwo256, Block as BlockT,
+    ConstBool, DispatchInfoOf, Keccak256, NumberFor, PostDispatchInfoOf, TransactionExtension,
+    ValidateResult, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+    ValidTransaction,
 };
 use sp_runtime::type_with_default::TypeWithDefault;
-use sp_runtime::{generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill};
+use sp_runtime::{
+    generic, impl_tx_ext_default, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode,
+    Perbill,
+};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
@@ -107,11 +113,13 @@ use subspace_core_primitives::segments::{
 };
 use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{hashes, PublicKey, Randomness, SlotNumber, U256};
-use subspace_runtime_primitives::utility::DefaultNonceProvider;
+use subspace_runtime_primitives::utility::{
+    nested_call_iter, DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
+};
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, ConsensusEventSegmentSize, FindBlockRewardAddress, Hash,
-    HoldIdentifier, Moment, Nonce, Signature, MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR,
-    SHANNON, SSC,
+    HoldIdentifier, Moment, Nonce, Signature, XdmAdjustedWeightToFee, XdmFeeMultipler,
+    MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 
@@ -220,7 +228,10 @@ pub type SS58Prefix = ConstU16<6094>;
 
 impl frame_system::Config for Runtime {
     /// The basic call filter to use in dispatchable.
-    type BaseCallFilter = frame_support::traits::Everything;
+    ///
+    /// `Everything` is used here as we use the signed extension
+    /// `DisablePallets` as the actual call filter.
+    type BaseCallFilter = Everything;
     /// Block & extrinsics weights: base values and limits.
     type BlockWeights = SubspaceBlockWeights;
     /// The maximum length of a block (in bytes).
@@ -545,6 +556,51 @@ impl pallet_utility::Config for Runtime {
     type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
 }
 
+impl MaybeMultisigCall<Runtime> for RuntimeCall {
+    /// If this call is a `pallet_multisig::Call<Runtime>` call, returns the inner call.
+    fn maybe_multisig_call(&self) -> Option<&pallet_multisig::Call<Runtime>> {
+        match self {
+            RuntimeCall::Multisig(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl MaybeUtilityCall<Runtime> for RuntimeCall {
+    /// If this call is a `pallet_utility::Call<Runtime>` call, returns the inner call.
+    fn maybe_utility_call(&self) -> Option<&pallet_utility::Call<Runtime>> {
+        match self {
+            RuntimeCall::Utility(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl MaybeNestedCall<Runtime> for RuntimeCall {
+    /// If this call is a nested runtime call, returns the inner call(s).
+    ///
+    /// Ignored calls (such as `pallet_utility::Call::__Ignore`) should be yielded themsevles, but
+    /// their contents should not be yielded.
+    fn maybe_nested_call(&self) -> Option<Vec<&RuntimeCallFor<Runtime>>> {
+        // We currently ignore privileged calls, because privileged users can already change
+        // runtime code. This includes sudo, collective, and scheduler nested `RuntimeCall`s,
+        // and democracy nested `BoundedCall`s.
+
+        // It is ok to return early, because each call can only belong to one pallet.
+        let calls = self.maybe_nested_utility_calls();
+        if calls.is_some() {
+            return calls;
+        }
+
+        let calls = self.maybe_nested_multisig_calls();
+        if calls.is_some() {
+            return calls;
+        }
+
+        None
+    }
+}
+
 impl pallet_sudo::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
@@ -624,6 +680,7 @@ parameter_types! {
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
+    pub const MessageVersion: pallet_messenger::MessageVersion = pallet_messenger::MessageVersion::V0;
 }
 
 // ensure the max outgoing messages is not 0.
@@ -662,6 +719,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
+    type AdjustedWeightToFee = XdmAdjustedWeightToFee<Runtime>;
+    type FeeMultiplier = XdmFeeMultipler;
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
@@ -674,6 +733,7 @@ impl pallet_messenger::Config for Runtime {
     type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
+    type MessageVersion = MessageVersion;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -888,6 +948,41 @@ impl pallet_runtime_configs::Config for Runtime {
     type WeightInfo = pallet_runtime_configs::weights::SubstrateWeight<Runtime>;
 }
 
+parameter_types! {
+    pub const MaxSignatories: u32 = 100;
+}
+
+macro_rules! deposit {
+    ($name:ident, $item_fee:expr, $items:expr, $bytes:expr) => {
+        pub struct $name;
+
+        impl Get<Balance> for $name {
+            fn get() -> Balance {
+                $item_fee.saturating_mul($items.into()).saturating_add(
+                    TransactionFees::transaction_byte_fee().saturating_mul($bytes.into()),
+                )
+            }
+        }
+    };
+}
+
+// One storage item; key size is 32; value is size 4+4+16+32 bytes = 56 bytes.
+// Each multisig costs 20 SSC + bytes_of_storge * TransactionByteFee
+deposit!(DepositBaseFee, 20 * SSC, 1u32, 88u32);
+
+// Additional storage item size of 32 bytes.
+deposit!(DepositFactor, 0u128, 0u32, 32u32);
+
+impl pallet_multisig::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
+    type Currency = Balances;
+    type DepositBase = DepositBaseFee;
+    type DepositFactor = DepositFactor;
+    type MaxSignatories = MaxSignatories;
+    type WeightInfo = pallet_multisig::weights::SubstrateWeight<Runtime>;
+}
+
 construct_runtime!(
     pub struct Runtime {
         System: frame_system = 0,
@@ -912,6 +1007,9 @@ construct_runtime!(
         Messenger: pallet_messenger exclude_parts { Inherent } = 60,
         Transporter: pallet_transporter = 61,
 
+        // Multisig
+        Multisig: pallet_multisig = 90,
+
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,
     }
@@ -933,6 +1031,7 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    DisablePallets,
     pallet_subspace::extensions::SubspaceExtension<Runtime>,
     pallet_domains::extensions::DomainsExtension<Runtime>,
     pallet_messenger::extensions::MessengerExtension<Runtime>,
@@ -1170,6 +1269,7 @@ fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
         // for unsigned extrinsic, transaction fee check will be skipped
         // so set a default value
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
+        DisablePallets,
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
         pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
@@ -1728,4 +1828,95 @@ impl_runtime_apis! {
             vec![]
         }
     }
+}
+
+/// Disable balance transfers, if configured in the runtime.
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
+pub struct DisablePallets;
+
+impl DisablePallets {
+    fn do_validate_unsigned(call: &RuntimeCall) -> TransactionValidity {
+        if matches!(call, RuntimeCall::Domains(_)) && !RuntimeConfigs::enable_domains() {
+            InvalidTransaction::Call.into()
+        } else {
+            Ok(ValidTransaction::default())
+        }
+    }
+
+    fn do_validate_signed(call: &RuntimeCall) -> TransactionValidity {
+        // Disable normal balance transfers.
+        if !RuntimeConfigs::enable_balance_transfers() && contains_balance_transfer(call) {
+            Err(InvalidTransaction::Call.into())
+        } else {
+            Ok(ValidTransaction::default())
+        }
+    }
+}
+
+impl TransactionExtension<RuntimeCall> for DisablePallets {
+    const IDENTIFIER: &'static str = "DisablePallets";
+    type Implicit = ();
+    type Val = ();
+    type Pre = ();
+
+    // TODO: calculate weight for extension
+    fn weight(&self, _call: &RuntimeCall) -> Weight {
+        // there is always one storage read
+        <Runtime as frame_system::Config>::DbWeight::get().reads(1)
+    }
+
+    fn validate(
+        &self,
+        origin: OriginFor<Runtime>,
+        call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+        _self_implicit: Self::Implicit,
+        _inherited_implication: &impl Encode,
+        _source: TransactionSource,
+    ) -> ValidateResult<Self::Val, RuntimeCallFor<Runtime>> {
+        let validity = if origin.as_system_origin_signer().is_some() {
+            Self::do_validate_signed(call)?
+        } else {
+            ValidTransaction::default()
+        };
+
+        Ok((validity, (), origin))
+    }
+
+    impl_tx_ext_default!(RuntimeCallFor<Runtime>; prepare);
+
+    fn bare_validate(
+        call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+    ) -> TransactionValidity {
+        Self::do_validate_unsigned(call)
+    }
+
+    fn bare_validate_and_prepare(
+        call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+    ) -> Result<(), TransactionValidityError> {
+        Self::do_validate_unsigned(call)?;
+        Ok(())
+    }
+}
+
+fn contains_balance_transfer(call: &RuntimeCall) -> bool {
+    for call in nested_call_iter::<Runtime>(call) {
+        // Any other calls might contain nested calls, so we can only return early if we find a
+        // balance transfer call.
+        if let RuntimeCall::Balances(
+            pallet_balances::Call::transfer_allow_death { .. }
+            | pallet_balances::Call::transfer_keep_alive { .. }
+            | pallet_balances::Call::transfer_all { .. },
+        ) = call
+        {
+            return true;
+        }
+    }
+
+    false
 }

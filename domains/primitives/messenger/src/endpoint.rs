@@ -25,12 +25,43 @@ pub enum Endpoint {
 /// Endpoint request or response payload.
 pub type EndpointPayload = Vec<u8>;
 
+/// Fee collected on src_chain for execution of XDM on both the src and dst chains.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub struct CollectedFee<Balance> {
+    /// Collected execution fee for src_chain.
+    pub src_chain_fee: Balance,
+    /// Collected execution fee for dst_chain.
+    pub dst_chain_fee: Balance,
+}
+
 /// Request sent by src_endpoint to dst_endpoint.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct EndpointRequest {
     pub src_endpoint: Endpoint,
     pub dst_endpoint: Endpoint,
     pub payload: EndpointPayload,
+}
+
+/// Request sent by src_endpoint to dst_endpoint with collected Fee
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub struct EndpointRequestWithCollectedFee<Balance> {
+    pub req: EndpointRequest,
+    pub collected_fee: CollectedFee<Balance>,
+}
+
+impl<Balance> From<EndpointRequestWithCollectedFee<Balance>> for EndpointRequest {
+    fn from(value: EndpointRequestWithCollectedFee<Balance>) -> Self {
+        value.req
+    }
+}
+
+impl<Balance: Default> From<EndpointRequest> for EndpointRequestWithCollectedFee<Balance> {
+    fn from(value: EndpointRequest) -> Self {
+        EndpointRequestWithCollectedFee {
+            req: value,
+            collected_fee: CollectedFee::default(),
+        }
+    }
 }
 
 /// Response for the message request.

@@ -8018,7 +8018,6 @@ dependencies = [
  "pallet-ethereum",
  "pallet-evm",
  "pallet-transaction-payment",
- "pallet-utility",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -13773,6 +13772,7 @@ version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
+ "pallet-multisig",
  "pallet-transaction-payment",
  "pallet-utility",
  "parity-scale-codec",
@@ -13932,6 +13932,7 @@ dependencies = [
  "pallet-domains",
  "pallet-messenger",
  "pallet-mmr",
+ "pallet-multisig",
  "pallet-rewards",
  "pallet-runtime-configs",
  "pallet-subspace",

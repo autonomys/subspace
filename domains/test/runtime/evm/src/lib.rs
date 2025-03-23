@@ -90,10 +90,11 @@ use sp_subspace_mmr::domain_mmr_runtime_interface::{
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
-use subspace_runtime_primitives::utility::MaybeIntoUtilityCall;
+use subspace_runtime_primitives::utility::{MaybeNestedCall, MaybeUtilityCall};
 use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, Hash as ConsensusBlockHash,
-    Moment, SlowAdjustingFeeUpdate, MAX_CALL_RECURSION_DEPTH, SHANNON, SSC,
+    Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee, XdmFeeMultipler,
+    MAX_CALL_RECURSION_DEPTH, SHANNON, SSC,
 };
 
 /// The address format for describing accounts.
@@ -575,6 +576,7 @@ parameter_types! {
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
+    pub const MessageVersion: pallet_messenger::MessageVersion = pallet_messenger::MessageVersion::V0;
 }
 
 // ensure the max outgoing messages is not 0.
@@ -617,6 +619,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
+    type AdjustedWeightToFee = XdmAdjustedWeightToFee<Runtime>;
+    type FeeMultiplier = XdmFeeMultipler;
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = MmrHash;
     type MmrProofVerifier = MmrProofVerifier;
@@ -629,6 +633,7 @@ impl pallet_messenger::Config for Runtime {
     type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
+    type MessageVersion = MessageVersion;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -811,13 +816,25 @@ impl pallet_utility::Config for Runtime {
     type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
 }
 
-impl MaybeIntoUtilityCall<Runtime> for RuntimeCall {
+impl MaybeUtilityCall<Runtime> for RuntimeCall {
     /// If this call is a `pallet_utility::Call<Runtime>` call, returns the inner call.
-    fn maybe_into_utility_call(&self) -> Option<&pallet_utility::Call<Runtime>> {
+    fn maybe_utility_call(&self) -> Option<&pallet_utility::Call<Runtime>> {
         match self {
             RuntimeCall::Utility(call) => Some(call),
             _ => None,
         }
+    }
+}
+
+impl MaybeNestedCall<Runtime> for RuntimeCall {
+    /// If this call is a nested runtime call, returns the inner call(s).
+    ///
+    /// Ignored calls (such as `pallet_utility::Call::__Ignore`) should be yielded themsevles, but
+    /// their contents should not be yielded.
+    fn maybe_nested_call(&self) -> Option<Vec<&RuntimeCallFor<Runtime>>> {
+        // We currently ignore privileged calls, because privileged users can already change
+        // runtime code. Domain sudo `RuntimeCall`s also have to pass inherent validation.
+        self.maybe_nested_utility_calls()
     }
 }
 

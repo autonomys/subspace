@@ -10,13 +10,17 @@ extern crate alloc;
 use crate::time::{BLOCKS_IN_AN_MINUTE, BLOCKS_IN_A_DAY};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use core::marker::PhantomData;
 use frame_support::pallet_prelude::Weight;
 use frame_support::traits::tokens;
 use frame_support::weights::constants::WEIGHT_REF_TIME_PER_SECOND;
+use frame_support::weights::WeightToFee;
 use frame_support::{Deserialize, Serialize};
 use frame_system::limits::BlockLength;
 use frame_system::offchain::CreateTransactionBase;
-use pallet_transaction_payment::{Multiplier, TargetedFeeAdjustment};
+use pallet_transaction_payment::{
+    Multiplier, NextFeeMultiplier, OnChargeTransaction, TargetedFeeAdjustment,
+};
 use parity_scale_codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::parameter_types;
@@ -254,6 +258,29 @@ impl<Balance: Codec + tokens::Balance> Default for BlockTransactionByteFee<Balan
             current: Balance::max_value(),
             next: Balance::max_value(),
         }
+    }
+}
+
+parameter_types! {
+    pub const XdmFeeMultipler: u32 = 5;
+}
+
+/// Balance type pointing to the OnChargeTransaction trait.
+pub type OnChargeTransactionBalance<T> = <<T as pallet_transaction_payment::Config>::OnChargeTransaction as OnChargeTransaction<
+    T,
+>>::Balance;
+
+/// Adjusted XDM Weight to fee Conversion.
+pub struct XdmAdjustedWeightToFee<T>(PhantomData<T>);
+impl<T: pallet_transaction_payment::Config> WeightToFee for XdmAdjustedWeightToFee<T> {
+    type Balance = OnChargeTransactionBalance<T>;
+
+    fn weight_to_fee(weight: &Weight) -> Self::Balance {
+        // the adjustable part of the fee.
+        let unadjusted_weight_fee = pallet_transaction_payment::Pallet::<T>::weight_to_fee(*weight);
+        let multiplier = NextFeeMultiplier::<T>::get();
+        // final adjusted weight fee.
+        multiplier.saturating_mul_int(unadjusted_weight_fee)
     }
 }
 

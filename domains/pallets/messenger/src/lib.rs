@@ -120,6 +120,13 @@ impl ChainAllowlistUpdate {
     }
 }
 
+/// Type enum for XDM message version to use.
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
+pub enum MessageVersion {
+    V0,
+    V1,
+}
+
 #[derive(Debug, Encode, Decode, TypeInfo)]
 pub struct ValidatedRelayMessage<T: Config> {
     pub message: Message<BalanceOf<T>>,
@@ -166,10 +173,13 @@ mod pallet {
     use sp_core::storage::StorageKey;
     use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
     use sp_domains::{DomainAllowlistUpdates, DomainId, DomainOwner};
-    use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
+    use sp_messenger::endpoint::{
+        Endpoint, EndpointHandler, EndpointRequest, EndpointRequestWithCollectedFee, Sender,
+    };
     use sp_messenger::messages::{
-        ChainId, ChannelOpenParams, CrossDomainMessage, Message, MessageId, MessageKey,
-        MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        ChainId, ChannelOpenParams, ChannelOpenParamsV1, ConvertedPayload, CrossDomainMessage,
+        Message, MessageId, MessageKey, MessageWeightTag, Payload, PayloadV1,
+        ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
         ChannelNonce, DomainRegistration, InherentError, InherentType, OnXDMRewards, StorageKeys,
@@ -197,6 +207,13 @@ mod pallet {
         type WeightInfo: WeightInfo;
         /// Weight to fee conversion.
         type WeightToFee: WeightToFee<Balance = BalanceOf<Self>>;
+        /// Adjusted Weight to fee conversion.
+        /// This includes the TransactionPayment Multiper at the time of fee deduction.
+        type AdjustedWeightToFee: WeightToFee<Balance = BalanceOf<Self>>;
+        /// Fee Multiper for XDM
+        /// Final fee calculated will fee_multiplier * adjusted_weight_to_fee.
+        #[pallet::constant]
+        type FeeMultiplier: Get<u32>;
         /// Handle XDM rewards.
         type OnXDMRewards: OnXDMRewards<BalanceOf<Self>>;
         /// Hash type of MMR
@@ -225,9 +242,13 @@ mod pallet {
         /// Channels fee model
         type ChannelFeeModel: Get<FeeModel<BalanceOf<Self>>>;
         /// Maximum outgoing messages from a given channel
+        #[pallet::constant]
         type MaxOutgoingMessages: Get<u32>;
         /// Origin for messenger call.
         type MessengerOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = ()>;
+        /// Message version to use.
+        #[pallet::constant]
+        type MessageVersion: Get<crate::MessageVersion>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -505,6 +526,9 @@ mod pallet {
 
         /// Message count underflow
         MessageCountUnderflow,
+
+        /// Incorrect message version
+        MessageVersionMismatch,
     }
 
     #[pallet::call]
@@ -542,15 +566,23 @@ mod pallet {
                 amount,
             )?;
 
+            let payload = match T::MessageVersion::get() {
+                crate::MessageVersion::V0 => {
+                    VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
+                        ProtocolMessageRequest::ChannelOpen(channel_open_params),
+                    )))
+                }
+                crate::MessageVersion::V1 => {
+                    VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(
+                        ProtocolMessageRequest::ChannelOpen(ChannelOpenParamsV1 {
+                            max_outgoing_messages: channel_open_params.max_outgoing_messages,
+                        }),
+                    )))
+                }
+            };
+
             // send message to dst_chain
-            Self::new_outbox_message(
-                T::SelfChainId::get(),
-                dst_chain_id,
-                channel_id,
-                VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-                    ProtocolMessageRequest::ChannelOpen(channel_open_params),
-                ))),
-            )?;
+            Self::new_outbox_message(T::SelfChainId::get(), dst_chain_id, channel_id, payload)?;
 
             Ok(())
         }
@@ -571,14 +603,17 @@ mod pallet {
                 None => CloseChannelBy::Sudo,
             };
             Self::do_close_channel(chain_id, channel_id, close_channel_by)?;
-            Self::new_outbox_message(
-                T::SelfChainId::get(),
-                chain_id,
-                channel_id,
-                VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-                    ProtocolMessageRequest::ChannelClose,
-                ))),
-            )?;
+
+            let payload = match T::MessageVersion::get() {
+                crate::MessageVersion::V0 => VersionedPayload::V0(Payload::Protocol(
+                    RequestResponse::Request(ProtocolMessageRequest::ChannelClose),
+                )),
+                crate::MessageVersion::V1 => VersionedPayload::V1(PayloadV1::Protocol(
+                    RequestResponse::Request(ProtocolMessageRequest::ChannelClose),
+                )),
+            };
+
+            Self::new_outbox_message(T::SelfChainId::get(), chain_id, channel_id, payload)?;
 
             Ok(())
         }
@@ -795,22 +830,46 @@ mod pallet {
                 Self::get_open_channel_for_chain(dst_chain_id).ok_or(Error::<T>::NoOpenChannel)?;
 
             let src_endpoint = req.src_endpoint.clone();
-            let nonce = Self::new_outbox_message(
-                T::SelfChainId::get(),
-                dst_chain_id,
-                channel_id,
-                VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
-            )?;
 
-            // ensure fees are paid by the sender
-            Self::collect_fees_for_message(
-                sender,
-                (dst_chain_id, (channel_id, nonce)),
-                &fee_model,
-                &src_endpoint,
-            )?;
+            let message_id = match T::MessageVersion::get() {
+                crate::MessageVersion::V0 => {
+                    let nonce = Self::new_outbox_message(
+                        T::SelfChainId::get(),
+                        dst_chain_id,
+                        channel_id,
+                        VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
+                    )?;
 
-            Ok((channel_id, nonce))
+                    // ensure fees are paid by the sender
+                    Self::collect_fees_for_message(
+                        sender,
+                        (dst_chain_id, (channel_id, nonce)),
+                        &fee_model,
+                        &src_endpoint,
+                    )?;
+                    (channel_id, nonce)
+                }
+                crate::MessageVersion::V1 => {
+                    // collect the fees from the sender
+                    let collected_fee = Self::collect_fees_for_message_v1(sender, &src_endpoint)?;
+                    let src_chain_fee = collected_fee.src_chain_fee;
+                    let nonce = Self::new_outbox_message(
+                        T::SelfChainId::get(),
+                        dst_chain_id,
+                        channel_id,
+                        VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Request(
+                            EndpointRequestWithCollectedFee { req, collected_fee },
+                        ))),
+                    )?;
+
+                    // store src_chain, this chain, fee to OutboxFee
+                    let message_id = (channel_id, nonce);
+                    OutboxFee::<T>::insert((dst_chain_id, message_id), src_chain_fee);
+                    message_id
+                }
+            };
+
+            Ok(message_id)
         }
 
         /// Only used in benchmark to prepare for a upcoming `send_message` call to
@@ -1053,35 +1112,34 @@ mod pallet {
             // verify and decode message
             let msg = Self::do_verify_xdm(next_nonce, key, consensus_state_root, xdm)?;
 
-            let is_valid_call = match &msg.payload {
-                VersionedPayload::V0(payload) => match payload {
-                    Payload::Protocol(RequestResponse::Request(req)) => match req {
-                        // channel open should ensure there is no Channel present already
-                        ProtocolMessageRequest::ChannelOpen(_) => maybe_channel.is_none(),
-                        // we allow channel close only if it is init or open state
-                        ProtocolMessageRequest::ChannelClose => {
-                            if let Some(ref channel) = maybe_channel {
-                                !(channel.state == ChannelState::Closed)
-                            } else {
-                                false
-                            }
-                        }
-                    },
-                    // endpoint request messages are only allowed when
-                    // channel is open, or
-                    // channel is closed. Channel can be closed by dst_chain simultaneously
-                    // while src_chain already sent a message. We allow the message but return an
-                    // error in the response so that src_chain can revert any necessary actions
-                    Payload::Endpoint(RequestResponse::Request(_)) => {
+            let ConvertedPayload { payload, is_v1: _ } = msg.payload.clone().into_payload_v0();
+            let is_valid_call = match &payload {
+                Payload::Protocol(RequestResponse::Request(req)) => match req {
+                    // channel open should ensure there is no Channel present already
+                    ProtocolMessageRequest::ChannelOpen(_) => maybe_channel.is_none(),
+                    // we allow channel close only if it is init or open state
+                    ProtocolMessageRequest::ChannelClose => {
                         if let Some(ref channel) = maybe_channel {
-                            !(channel.state == ChannelState::Initiated)
+                            !(channel.state == ChannelState::Closed)
                         } else {
                             false
                         }
                     }
-                    // any other message variants are not allowed
-                    _ => false,
                 },
+                // endpoint request messages are only allowed when
+                // channel is open, or
+                // channel is closed. Channel can be closed by dst_chain simultaneously
+                // while src_chain already sent a message. We allow the message but return an
+                // error in the response so that src_chain can revert any necessary actions
+                Payload::Endpoint(RequestResponse::Request(_)) => {
+                    if let Some(ref channel) = maybe_channel {
+                        !(channel.state == ChannelState::Initiated)
+                    } else {
+                        false
+                    }
+                }
+                // any other message variants are not allowed
+                _ => false,
             };
 
             if !is_valid_call {
