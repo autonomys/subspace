@@ -1459,9 +1459,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "bytes"
-version = "1.7.2"
+version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "428d9aa8fbc0670b7b8d6030a7fadd0f86151cae55e4dbbece15f3780a3dfaf3"
+checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 dependencies = [
  "serde",
 ]
@@ -2124,7 +2124,7 @@ dependencies = [
  "sp-messenger",
  "sp-runtime",
  "subspace-runtime-primitives",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tracing",
 ]
 
@@ -2889,7 +2889,7 @@ dependencies = [
  "subspace-test-runtime",
  "subspace-test-service",
  "tempfile",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
 ]
@@ -3029,7 +3029,7 @@ dependencies = [
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
 ]
@@ -3675,7 +3675,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb42427514b063d97ce21d5199f36c0c307d981434a6be32582bc79fe5bd2303"
 dependencies = [
  "expander",
- "indexmap 2.5.0",
+ "indexmap 2.8.0",
  "proc-macro-crate 3.2.0",
  "proc-macro2",
  "quote",
@@ -4725,7 +4725,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "http 0.2.12",
- "indexmap 2.5.0",
+ "indexmap 2.8.0",
  "slab",
  "tokio",
  "tokio-util",
@@ -4744,7 +4744,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "http 1.1.0",
- "indexmap 2.5.0",
+ "indexmap 2.8.0",
  "slab",
  "tokio",
  "tokio-util",
@@ -4815,6 +4815,12 @@ dependencies = [
  "allocator-api2",
  "serde",
 ]
+
+[[package]]
+name = "hashbrown"
+version = "0.15.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
 
 [[package]]
 name = "hashlink"
@@ -5530,12 +5536,12 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.5.0"
+version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68b900aa2f7301e21c36462b170ee99994de34dff39a4a6a528e80e7376d07e5"
+checksum = "3954d50fe15b02142bf25d3b8bdadb634ec3948f103d04ffe3031bc8fe9d7058"
 dependencies = [
  "equivalent",
- "hashbrown 0.14.5",
+ "hashbrown 0.15.2",
 ]
 
 [[package]]
@@ -6158,7 +6164,7 @@ dependencies = [
  "multiaddr 0.18.2",
  "pin-project",
  "rw-stream-sink",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -6191,7 +6197,7 @@ dependencies = [
  "quick-protobuf-codec",
  "rand",
  "rand_core",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tracing",
  "web-time",
 ]
@@ -6227,7 +6233,7 @@ dependencies = [
  "rw-stream-sink",
  "serde",
  "smallvec",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tracing",
  "unsigned-varint 0.8.0",
  "web-time",
@@ -6296,7 +6302,7 @@ dependencies = [
  "quick-protobuf",
  "quick-protobuf-codec",
  "smallvec",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tracing",
 ]
 
@@ -6313,7 +6319,7 @@ dependencies = [
  "rand",
  "serde",
  "sha2 0.10.8",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tracing",
  "zeroize",
 ]
@@ -6340,7 +6346,7 @@ dependencies = [
  "serde",
  "sha2 0.10.8",
  "smallvec",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tracing",
  "uint 0.9.5",
  "web-time",
@@ -6402,7 +6408,7 @@ dependencies = [
  "sha2 0.10.8",
  "snow",
  "static_assertions",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tracing",
  "x25519-dalek",
  "zeroize",
@@ -6457,7 +6463,7 @@ dependencies = [
  "ring 0.17.13",
  "rustls 0.23.18",
  "socket2 0.5.8",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
 ]
@@ -6562,7 +6568,7 @@ dependencies = [
  "ring 0.17.13",
  "rustls 0.23.18",
  "rustls-webpki 0.101.7",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "x509-parser",
  "yasna",
 ]
@@ -6595,7 +6601,7 @@ dependencies = [
  "pin-project-lite",
  "rw-stream-sink",
  "soketto 0.8.0",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tracing",
  "url",
  "webpki-roots 0.25.4",
@@ -6609,7 +6615,7 @@ dependencies = [
  "either",
  "futures",
  "libp2p-core",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tracing",
  "yamux 0.12.1",
  "yamux 0.13.4",
@@ -6758,7 +6764,7 @@ dependencies = [
  "futures-timer",
  "hex-literal",
  "hickory-resolver",
- "indexmap 2.5.0",
+ "indexmap 2.8.0",
  "libc",
  "mockall 0.13.1",
  "multiaddr 0.17.1",
@@ -7738,7 +7744,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7b1d40dd8f367db3c65bec8d3dd47d4a604ee8874480738f93191bddab4e0e0"
 dependencies = [
  "expander",
- "indexmap 2.5.0",
+ "indexmap 2.8.0",
  "itertools 0.11.0",
  "petgraph",
  "proc-macro-crate 3.2.0",
@@ -8525,7 +8531,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b7cafe60d6cf8e62e1b9b2ea516a089c008945bb5a275416789e7db0bc199dc"
 dependencies = [
  "memchr",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "ucd-trie",
 ]
 
@@ -8570,7 +8576,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4c5cc86750666a3ed20bdaf5ca2a0344f9c67674cae0515bec2da16fbaa47db"
 dependencies = [
  "fixedbitset",
- "indexmap 2.5.0",
+ "indexmap 2.8.0",
 ]
 
 [[package]]
@@ -9350,7 +9356,7 @@ dependencies = [
  "asynchronous-codec 0.7.0",
  "bytes",
  "quick-protobuf",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "unsigned-varint 0.8.0",
 ]
 
@@ -10443,7 +10449,7 @@ dependencies = [
  "subspace-kzg",
  "subspace-proof-of-space",
  "subspace-verification",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
 ]
@@ -10478,7 +10484,7 @@ dependencies = [
  "subspace-kzg",
  "subspace-networking",
  "subspace-rpc-primitives",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tracing",
 ]
 
@@ -11100,7 +11106,7 @@ dependencies = [
  "strum_macros 0.26.4",
  "subspace-core-primitives",
  "substrate-prometheus-endpoint",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tracing",
 ]
 
@@ -11211,7 +11217,7 @@ dependencies = [
  "async-trait",
  "futures",
  "futures-timer",
- "indexmap 2.5.0",
+ "indexmap 2.8.0",
  "itertools 0.11.0",
  "linked-hash-map",
  "log",
@@ -12302,7 +12308,7 @@ dependencies = [
  "subspace-kzg",
  "subspace-proof-of-space",
  "subspace-verification",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -12510,7 +12516,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-test-service",
  "tempfile",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "trie-db",
 ]
@@ -13217,7 +13223,7 @@ dependencies = [
  "subspace-erasure-coding",
  "subspace-kzg",
  "subspace-verification",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -13251,7 +13257,7 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
 ]
@@ -13352,7 +13358,7 @@ dependencies = [
  "subspace-verification",
  "substrate-bip39",
  "tempfile",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "thread-priority",
  "tokio",
  "tokio-stream",
@@ -13388,7 +13394,7 @@ dependencies = [
  "subspace-kzg",
  "subspace-proof-of-space",
  "subspace-verification",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
  "winapi",
@@ -13432,7 +13438,7 @@ dependencies = [
  "serde",
  "subspace-core-primitives",
  "subspace-data-retrieval",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tracing",
 ]
 
@@ -13525,7 +13531,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-service",
  "substrate-build-script-utils",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
 ]
@@ -13571,7 +13577,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-logging",
  "subspace-metrics",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -13643,7 +13649,7 @@ dependencies = [
  "substrate-build-script-utils",
  "substrate-prometheus-endpoint",
  "tempfile",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -13690,7 +13696,7 @@ dependencies = [
  "criterion",
  "rand",
  "subspace-core-primitives",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -13867,7 +13873,7 @@ dependencies = [
  "subspace-verification",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
 ]
@@ -14042,7 +14048,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-kzg",
  "subspace-proof-of-space",
- "thiserror 2.0.0",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -14466,11 +14472,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.0"
+version = "2.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15291287e9bff1bc6f9ff3409ed9af665bec7a5fc8ac079ea96be07bca0e2668"
+checksum = "567b8a2dae586314f7be2a752ec7474332959c6460e02bde30d702a66d488708"
 dependencies = [
- "thiserror-impl 2.0.0",
+ "thiserror-impl 2.0.12",
 ]
 
 [[package]]
@@ -14486,9 +14492,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.0"
+version = "2.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22efd00f33f93fa62848a7cab956c3d38c8d43095efda1decfc2b3a5dc0b8972"
+checksum = "7f7cf42b4507d8ea322120659672cf1b9dbb93f8f2d4ecfd6e51350ff5b17a1d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -14779,7 +14785,7 @@ version = "0.22.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ae48d6208a266e853d946088ed816055e556cc6028c5e8e2b84d9fa5dd7c7f5"
 dependencies = [
- "indexmap 2.5.0",
+ "indexmap 2.8.0",
  "serde",
  "serde_spanned",
  "toml_datetime",
