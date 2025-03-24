@@ -440,6 +440,22 @@ impl NodeRunner {
             .remove_address(&event.peer_id, &remove_p2p_suffix(event.address));
     }
 
+    fn handle_remove_listeners(&mut self, removed_listeners: &[Multiaddr]) {
+        let shared = match self.shared_weak.upgrade() {
+            Some(shared) => shared,
+            None => {
+                return;
+            }
+        };
+
+        // Remove both versions of the address
+        let peer_id = shared.id;
+        shared.listeners.lock().retain(|old_listener| {
+            !removed_listeners.contains(&append_p2p_suffix(peer_id, old_listener.clone()))
+                && !removed_listeners.contains(&remove_p2p_suffix(old_listener.clone()))
+        });
+    }
+
     async fn handle_swarm_event(&mut self, swarm_event: SwarmEvent<Event>) {
         match swarm_event {
             SwarmEvent::Behaviour(Event::Identify(event)) => {
@@ -466,6 +482,14 @@ impl NodeRunner {
                 };
                 shared.listeners.lock().push(address.clone());
                 shared.handlers.new_listener.call_simple(&address);
+            }
+            ref event @ SwarmEvent::ListenerClosed { ref addresses, .. } => {
+                trace!(?event, "Local listener closed event.");
+                self.handle_remove_listeners(addresses);
+            }
+            ref event @ SwarmEvent::ExpiredListenAddr { ref address, .. } => {
+                trace!(?event, "Local listener expired event.");
+                self.handle_remove_listeners(&[address.clone()]);
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id,
