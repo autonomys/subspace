@@ -118,6 +118,8 @@ pub struct SubstrateConfiguration {
     pub force_authoring: bool,
     /// Chain specification
     pub chain_spec: Box<dyn ChainSpec>,
+    /// Executor configuration
+    pub executor: ExecutorConfiguration,
 }
 
 impl From<SubstrateConfiguration> for Configuration {
@@ -214,14 +216,7 @@ impl From<SubstrateConfiguration> for Configuration {
             trie_cache_maximum_size: Some(64 * 1024 * 1024),
             state_pruning: Some(configuration.state_pruning),
             blocks_pruning: configuration.blocks_pruning,
-            executor: ExecutorConfiguration {
-                wasm_method: Default::default(),
-                // Substrate's default
-                max_runtime_instances: 8,
-                default_heap_pages: None,
-                // Substrate's default
-                runtime_cache_size: 2,
-            },
+            executor: configuration.executor,
             wasm_runtime_overrides: None,
             rpc: RpcConfiguration {
                 addr: rpc_addr,

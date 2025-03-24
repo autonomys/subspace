@@ -4,11 +4,12 @@ use clap::Parser;
 use prometheus_client::registry::Registry;
 use sc_chain_spec::GenericChainSpec;
 use sc_cli::{
-    generate_node_name, Cors, NodeKeyParams, NodeKeyType, RpcMethods, TelemetryParams,
-    TransactionPoolParams, RPC_DEFAULT_PORT,
+    generate_node_name, Cors, NodeKeyParams, NodeKeyType, RpcMethods, RuntimeParams,
+    TelemetryParams, TransactionPoolParams, RPC_DEFAULT_PORT,
 };
 use sc_consensus_subspace::archiver::CreateObjectMappings;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, Role, SetConfig};
+use sc_service::config::ExecutorConfiguration;
 use sc_service::{BlocksPruning, Configuration, PruningMode};
 use sc_storage_monitor::StorageMonitorParams;
 use sc_telemetry::TelemetryEndpoints;
@@ -480,6 +481,10 @@ pub(super) struct ConsensusChainOptions {
     /// Examples: `snap`, `full`
     #[arg(long, default_value = None)]
     sync: Option<ChainSyncMode>,
+
+    /// Options for Runtime
+    #[clap(flatten)]
+    pub runtime_params: RuntimeParams,
 }
 
 pub(super) struct PrometheusConfiguration {
@@ -523,6 +528,7 @@ pub(super) fn create_consensus_chain_configuration(
         storage_monitor,
         mut timekeeper_options,
         mut sync,
+        runtime_params,
     } = consensus_node_options;
 
     let transaction_pool;
@@ -694,6 +700,12 @@ pub(super) fn create_consensus_chain_configuration(
         },
         force_authoring,
         chain_spec: Box::new(chain_spec),
+        executor: ExecutorConfiguration {
+            wasm_method: Default::default(),
+            max_runtime_instances: runtime_params.max_runtime_instances,
+            default_heap_pages: None,
+            runtime_cache_size: runtime_params.runtime_cache_size,
+        },
     };
     let consensus_chain_config = Configuration::from(consensus_chain_config);
 
