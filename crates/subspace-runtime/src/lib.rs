@@ -540,6 +540,16 @@ parameter_types! {
     pub const NoPreimagePostponement: Option<u32> = Some(10);
 }
 
+// Call preimages for the democracy and scheduler pallets can be stored as a binary blob. These
+// blobs are only fetched and decoded in the future block when the call is actually run. This
+// means any member of the council (or sudo) can schedule an invalid subspace runtime call. These
+// calls can cause a stack limit exceeded error in a future block. (Or other kinds of errors.)
+//
+// This risk is acceptable because those accounts are privileged, and those pallets already have
+// to deal with invalid stored calls (for example, stored before an upgrade, but run after).
+//
+// Invalid domain runtime calls will be rejected by the domain runtime extrinsic format checks,
+// even if they are scheduled/democratized in the subspace runtime.
 impl pallet_scheduler::Config for Runtime {
     type MaxScheduledPerBlock = ConstU32<50>;
     type MaximumWeight = MaximumSchedulerWeight;

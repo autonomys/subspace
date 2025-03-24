@@ -3139,7 +3139,7 @@ where
     /// Submits an unsigned extrinsic [`Call::submit_bundle`].
     pub fn submit_bundle_unsigned(opaque_bundle: OpaqueBundleOf<T>) {
         let slot = opaque_bundle.sealed_header.slot_number();
-        let extrincis_count = opaque_bundle.extrinsics.len();
+        let extrinsics_count = opaque_bundle.extrinsics.len();
 
         let call = Call::submit_bundle { opaque_bundle };
         let ext = T::create_unsigned(call.into());
@@ -3148,7 +3148,7 @@ where
             Ok(()) => {
                 log::info!(
                     target: "runtime::domains",
-                    "Submitted bundle from slot {slot}, extrinsics: {extrincis_count}",
+                    "Submitted bundle from slot {slot}, extrinsics: {extrinsics_count}",
                 );
             }
             Err(()) => {

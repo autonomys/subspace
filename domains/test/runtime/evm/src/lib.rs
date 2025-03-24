@@ -50,7 +50,7 @@ use pallet_evm::{
 use pallet_evm_tracker::create_contract::is_create_contract_allowed;
 use pallet_evm_tracker::traits::{MaybeIntoEthCall, MaybeIntoEvmCall};
 use pallet_transporter::EndpointHandler;
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeLimit, Encode, MaxEncodedLen};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
@@ -93,7 +93,8 @@ use static_assertions::const_assert;
 use subspace_runtime_primitives::utility::{MaybeNestedCall, MaybeUtilityCall};
 use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, Hash as ConsensusBlockHash,
-    Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee, XdmFeeMultipler, SHANNON, SSC,
+    Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee, XdmFeeMultipler,
+    MAX_CALL_RECURSION_DEPTH, SHANNON, SSC,
 };
 
 /// The address format for describing accounts.
@@ -960,16 +961,20 @@ fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
     }
 }
 
-/// Returns a valid Sudo call.
-/// Should extend this function to limit specific calls Sudo can make when needed.
+/// Returns `true`` if this is a validly encoded Sudo call.
 fn is_valid_sudo_call(encoded_ext: Vec<u8>) -> bool {
-    UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()).is_ok()
+    UncheckedExtrinsic::decode_with_depth_limit(
+        MAX_CALL_RECURSION_DEPTH,
+        &mut encoded_ext.as_slice(),
+    )
+    .is_ok()
 }
 
 /// Constructs a domain-sudo call extrinsic from the given encoded extrinsic.
 fn construct_sudo_call_extrinsic(encoded_ext: Vec<u8>) -> <Block as BlockT>::Extrinsic {
-    let ext = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice())
-        .expect("must always be an valid extrinsic due to the check above; qed");
+    let ext = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()).expect(
+        "must always be a valid extrinsic due to the check above and storage proof check; qed",
+    );
     UncheckedExtrinsic::new_bare(
         pallet_domain_sudo::Call::sudo {
             call: Box::new(ext.0.function),
@@ -1381,8 +1386,11 @@ impl_runtime_apis! {
             opaque_extrinsic: sp_runtime::OpaqueExtrinsic,
         ) -> Result<<Block as BlockT>::Extrinsic, DecodeExtrinsicError> {
             let encoded = opaque_extrinsic.encode();
-            UncheckedExtrinsic::decode(&mut encoded.as_slice())
-                .map_err(|err| DecodeExtrinsicError(format!("{}", err)))
+
+            UncheckedExtrinsic::decode_with_depth_limit(
+                MAX_CALL_RECURSION_DEPTH,
+                &mut encoded.as_slice(),
+            ).map_err(|err| DecodeExtrinsicError(format!("{}", err)))
         }
 
         fn extrinsic_era(
