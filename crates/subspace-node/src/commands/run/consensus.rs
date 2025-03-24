@@ -1,4 +1,4 @@
-use crate::commands::run::shared::RpcOptions;
+use crate::commands::run::shared::{RpcOptions, TrieCacheParams};
 use crate::{chain_spec, derive_pot_external_entropy, Error};
 use clap::Parser;
 use prometheus_client::registry::Registry;
@@ -485,6 +485,10 @@ pub(super) struct ConsensusChainOptions {
     /// Options for Runtime
     #[clap(flatten)]
     pub runtime_params: RuntimeParams,
+
+    /// Options for Trie cache.
+    #[clap(flatten)]
+    pub trie_cache_params: TrieCacheParams,
 }
 
 pub(super) struct PrometheusConfiguration {
@@ -529,6 +533,7 @@ pub(super) fn create_consensus_chain_configuration(
         mut timekeeper_options,
         mut sync,
         runtime_params,
+        trie_cache_params,
     } = consensus_node_options;
 
     let transaction_pool;
@@ -706,6 +711,7 @@ pub(super) fn create_consensus_chain_configuration(
             default_heap_pages: None,
             runtime_cache_size: runtime_params.runtime_cache_size,
         },
+        trie_cache_size: trie_cache_params.trie_cache_maximum_size(),
     };
     let consensus_chain_config = Configuration::from(consensus_chain_config);
 

@@ -95,3 +95,24 @@ pub(super) struct RpcOptions<const DEFAULT_PORT: u16> {
     #[arg(long)]
     pub(super) rpc_cors: Option<Cors>,
 }
+
+/// Parameters for Trie cache.
+#[derive(Debug, Parser)]
+pub struct TrieCacheParams {
+    /// Specify the state cache size.
+    ///
+    /// Providing `0` will disable the cache.
+    #[arg(long, value_name = "Bytes", default_value_t = 67108864)]
+    pub trie_cache_size: usize,
+}
+
+impl TrieCacheParams {
+    /// Specify the trie cache maximum size.
+    pub fn trie_cache_maximum_size(&self) -> Option<usize> {
+        if self.trie_cache_size == 0 {
+            None
+        } else {
+            Some(self.trie_cache_size)
+        }
+    }
+}

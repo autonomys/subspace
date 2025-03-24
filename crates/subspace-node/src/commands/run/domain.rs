@@ -1,4 +1,4 @@
-use crate::commands::run::shared::RpcOptions;
+use crate::commands::run::shared::{RpcOptions, TrieCacheParams};
 use crate::commands::shared::{store_key_in_keystore, KeystoreOptions};
 use crate::Error;
 use clap::Parser;
@@ -132,6 +132,10 @@ pub(super) struct DomainOptions {
     #[clap(flatten)]
     pub runtime_params: RuntimeParams,
 
+    /// Options for Trie cache.
+    #[clap(flatten)]
+    pub trie_cache_params: TrieCacheParams,
+
     /// Additional args for domain.
     #[clap(raw = true)]
     additional_args: Vec<String>,
@@ -161,6 +165,7 @@ pub(super) fn create_domain_configuration(
         keystore_options,
         pool_config,
         runtime_params,
+        trie_cache_params,
         additional_args,
     } = domain_options;
 
@@ -380,6 +385,7 @@ pub(super) fn create_domain_configuration(
             default_heap_pages: None,
             runtime_cache_size: runtime_params.runtime_cache_size,
         },
+        trie_cache_size: trie_cache_params.trie_cache_maximum_size(),
     };
 
     Ok(DomainConfiguration {

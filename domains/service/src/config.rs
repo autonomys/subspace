@@ -112,6 +112,8 @@ pub struct SubstrateConfiguration {
     pub chain_spec: Box<dyn ChainSpec>,
     /// Executor configuration
     pub executor: ExecutorConfiguration,
+    /// Trie cache size
+    pub trie_cache_size: Option<usize>,
 }
 
 impl From<SubstrateConfiguration> for Configuration {
@@ -206,8 +208,7 @@ impl From<SubstrateConfiguration> for Configuration {
                 path: configuration.base_path.join("db"),
             },
             data_path: configuration.base_path.clone(),
-            // Substrate's default
-            trie_cache_maximum_size: Some(64 * 1024 * 1024),
+            trie_cache_maximum_size: configuration.trie_cache_size,
             state_pruning: configuration.state_pruning,
             blocks_pruning: configuration.blocks_pruning,
             executor: configuration.executor,
