@@ -616,6 +616,7 @@ where
                             chain_id,
                             block_id
                         );
+                        set_xdm_message_processed_at(&**client, TX_POOL_PREFIX, xdm_id, block_id)?;
                     }
                     _ => {
                         tracing::error!(
