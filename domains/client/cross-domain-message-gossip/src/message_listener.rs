@@ -10,6 +10,7 @@ use futures::{Stream, StreamExt};
 use sc_client_api::AuxStore;
 use sc_executor::RuntimeVersionOf;
 use sc_network::NetworkPeers;
+use sc_transaction_pool_api::error::{Error as PoolError, IntoPoolError};
 use sc_transaction_pool_api::{TransactionPool, TransactionSource};
 use sp_api::{ApiError, ApiExt, ProvideRuntimeApi, StorageProof};
 use sp_blockchain::HeaderBackend;
@@ -605,14 +606,40 @@ where
 
         let block_id: BlockId<BlockOf<TxPool>> = client.info().into();
         if let Err(err) = tx_pool_res {
-            tracing::error!(
-                target: LOG_TARGET,
-                "Failed to submit XDM[{:?}] to tx pool for Chain {:?} with error: {:?} at block: {:?}",
-                xdm_id,
-                chain_id,
-                err,
-                block_id
-            );
+            match err.into_pool_error() {
+                Ok(err) => match err {
+                    PoolError::TooLowPriority { .. } => {
+                        tracing::debug!(
+                            target: LOG_TARGET,
+                            "Failed to submit XDM[{:?}] to tx pool for Chain {:?} at block: {:?}: Low Priority",
+                            xdm_id,
+                            chain_id,
+                            block_id
+                        );
+                        set_xdm_message_processed_at(&**client, TX_POOL_PREFIX, xdm_id, block_id)?;
+                    }
+                    _ => {
+                        tracing::error!(
+                            target: LOG_TARGET,
+                            "Failed to submit XDM[{:?}] to tx pool for Chain {:?} with error: {:?} at block: {:?}",
+                            xdm_id,
+                            chain_id,
+                            err,
+                            block_id
+                        );
+                    }
+                },
+                Err(err) => {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        "Failed to submit XDM[{:?}] to tx pool for Chain {:?} with error: {:?} at block: {:?}",
+                        xdm_id,
+                        chain_id,
+                        err,
+                        block_id
+                    );
+                }
+            }
         } else {
             tracing::debug!(
                 target: LOG_TARGET,
