@@ -101,6 +101,8 @@ where
     pub operator: DomainOperator<RuntimeApi>,
     /// Sink to the node's tx pool
     pub tx_pool_sink: TracingUnboundedSender<ChainMsg>,
+    /// The node base path
+    pub base_path: BasePath,
 }
 
 impl<Runtime, RuntimeApi> DomainNode<Runtime, RuntimeApi>
@@ -143,15 +145,15 @@ where
         role: Role,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
-        let key_seed = Runtime::to_seed(key);
+        let base_path = BasePath::new(base_path.path().join(format!("domain-{domain_id:?}")));
         let mut domain_config = node_config(
             domain_id,
             tokio_handle.clone(),
-            key_seed,
+            Runtime::to_seed(key),
             domain_nodes,
             domain_nodes_exclusive,
             role,
-            BasePath::new(base_path.path().join(format!("domain-{domain_id:?}"))),
+            base_path.clone(),
             Box::new(create_domain_spec()) as Box<_>,
         )
         .expect("could not generate domain node Configuration");
@@ -292,6 +294,7 @@ where
             rpc_handlers,
             operator,
             tx_pool_sink: domain_message_sink,
+            base_path,
         }
     }
 
@@ -468,6 +471,13 @@ where
             addr.peer_id,
             ReputationChange::new(i32::MAX, "Peer unbanned by test (2)"),
         );
+    }
+
+    /// Take and stop the domain node and delete its database lock file
+    pub fn stop(self) -> Result<(), std::io::Error> {
+        // Remove the database lock file
+        std::fs::remove_file(self.base_path.path().join("paritydb/lock"))?;
+        Ok(())
     }
 }
 

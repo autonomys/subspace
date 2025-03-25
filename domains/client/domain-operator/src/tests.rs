@@ -20,7 +20,7 @@ use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
 use domain_test_service::{EvmDomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID};
 use ethereum::TransactionV2 as EthereumTransaction;
 use fp_rpc::EthereumRuntimeRPCApi;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use hex_literal::hex;
 use pallet_domains::{FraudProofFor, OpaqueBundleOf, OperatorConfig};
 use pallet_messenger::ChainAllowlistUpdate;
@@ -6490,6 +6490,15 @@ async fn test_bad_receipt_chain() {
     .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
+    // Start another operator node
+    let bob = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("bob")),
+    )
+    .operator_id(2)
+    .build_evm_node(Role::Authority, Charlie, &mut ferdie)
+    .await;
+
     let mut bundle_producer = {
         let domain_bundle_proposer = DomainBundleProposer::new(
             EVM_DOMAIN_ID,
@@ -6512,6 +6521,9 @@ async fn test_bad_receipt_chain() {
     };
 
     produce_blocks!(ferdie, alice, 15).await.unwrap();
+
+    // Stop `Bob` so it won't generate fraud proof for the incoming bad ER
+    bob.stop().unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
@@ -6673,7 +6685,7 @@ async fn test_bad_receipt_chain() {
     let alice_best_number = alice.client.info().best_number;
     drop(alice);
 
-    // Start another operator node
+    // Restart `Bob`
     let bob = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("bob")),
@@ -8169,6 +8181,91 @@ async fn test_current_block_number_used_as_new_account_nonce() {
         bob.account_nonce_of(Sr25519Keyring::Charlie.to_account_id()),
         bob.client.info().best_number
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_domain_node_starting_check() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    // Produce 5 consensus block with bundle
+    for _ in 0..5 {
+        ferdie.produce_block_with_extrinsics(vec![]).await.unwrap();
+    }
+    assert_eq!(ferdie.client.info().best_number, 5);
+    assert_eq!(alice.client.info().best_number, 0);
+
+    // Start one more domain node `Bob` on the same consensus node shoule be fine
+    let bob = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("bob")),
+    )
+    .operator_id(1)
+    .build_evm_node(Role::Authority, Bob, &mut ferdie)
+    .await;
+
+    // Produce 3 domain blocks
+    produce_blocks!(ferdie, alice, 3, bob).await.unwrap();
+    assert_eq!(alice.client.info().best_number, 3);
+    assert_eq!(bob.client.info().best_number, 3);
+
+    // Stop `Bob`, produce more domain blocks, then restart `Bob` with the same
+    // consensus node should be fine
+    bob.stop().unwrap();
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+    assert_eq!(alice.client.info().best_number, 6);
+
+    let bob = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("bob")),
+    )
+    .operator_id(1)
+    .build_evm_node(Role::Authority, Bob, &mut ferdie)
+    .await;
+    assert_eq!(bob.client.info().best_number, 3);
+
+    // It should be able catch up the missed domain block as more consensus block
+    // produced
+    ferdie.produce_block_with_extrinsics(vec![]).await.unwrap();
+    assert_eq!(bob.client.info().best_number, 6);
+
+    // Start another domain node with the same consensus node shoule be failed now
+    // because there are already domain block produced, the domain node has to start
+    // with a fresh consensus node
+    let result = async move {
+        std::panic::AssertUnwindSafe(
+            domain_test_service::DomainNodeBuilder::new(
+                tokio_handle.clone(),
+                BasePath::new(directory.path().join("charlie")),
+            )
+            .operator_id(2)
+            .build_evm_node(Role::Authority, Charlie, &mut ferdie),
+        )
+        .catch_unwind()
+        .await
+    }
+    .await;
+    assert!(result.is_err());
 }
 
 fn bundle_to_tx(
