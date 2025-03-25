@@ -27,8 +27,92 @@ pub trait PieceGetter: fmt::Debug {
     ) -> anyhow::Result<
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
     >;
+
+    /// Returns a piece getter that falls back to `other` if `self` does not return the piece.
+    /// Piece getters may need to be wrapped in `Arc` to be used with this method.
+    fn with_fallback<U>(self, other: U) -> FallbackPieceGetter<Self, U>
+    where
+        Self: Send + Sync + Sized,
+        U: PieceGetter + Send + Sync,
+    {
+        FallbackPieceGetter {
+            first: self,
+            second: other,
+        }
+    }
 }
 
+/// A piece getter that falls back to another piece getter if the first one does not return the piece.
+/// If both piece getters don't return the piece, returns the result of the second piece getter.
+#[derive(Debug)]
+pub struct FallbackPieceGetter<T, U>
+where
+    T: PieceGetter + Send + Sync,
+    U: PieceGetter + Send + Sync,
+{
+    first: T,
+    second: U,
+}
+
+#[async_trait]
+impl<T, U> PieceGetter for FallbackPieceGetter<T, U>
+where
+    T: PieceGetter + Send + Sync,
+    U: PieceGetter + Send + Sync,
+{
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
+        if let Ok(Some(piece)) = self.first.get_piece(piece_index).await {
+            Ok(Some(piece))
+        } else {
+            self.second.get_piece(piece_index).await
+        }
+    }
+
+    async fn get_pieces<'a>(
+        &'a self,
+        piece_indices: Vec<PieceIndex>,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    > {
+        let first_stream = self.first.get_pieces(piece_indices.clone()).await;
+
+        let fallback_stream = if let Ok(first_stream) = first_stream {
+            // For each missing piece, try the second piece getter
+            Box::new(Box::pin(first_stream.then(
+                |(piece_index, piece_result)| fallback_to(piece_index, piece_result, &self.second),
+            )))
+                as Box<
+                    dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin,
+                >
+        } else {
+            // If no pieces are available, just use the second piece getter
+            self.second.get_pieces(piece_indices).await?
+        };
+
+        Ok(fallback_stream)
+    }
+}
+
+/// A heler function which falls back to another piece getter if the first one does not return the
+/// piece.
+///
+/// We can't use an async closure, because async closures eagerly capture lifetimes.
+async fn fallback_to<U>(
+    piece_index: PieceIndex,
+    piece_result: anyhow::Result<Option<Piece>>,
+    second: &U,
+) -> (PieceIndex, anyhow::Result<Option<Piece>>)
+where
+    U: PieceGetter,
+{
+    if let Ok(Some(piece)) = piece_result {
+        return (piece_index, Ok(Some(piece)));
+    }
+
+    (piece_index, second.get_piece(piece_index).await)
+}
+
+// Generic wrapper methods
 #[async_trait]
 impl<T> PieceGetter for Arc<T>
 where
@@ -47,6 +131,36 @@ where
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
     > {
         self.as_ref().get_pieces(piece_indices).await
+    }
+}
+
+#[async_trait]
+impl<T> PieceGetter for Option<T>
+where
+    T: PieceGetter + Send + Sync,
+{
+    #[inline]
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
+        if let Some(piece_getter) = self.as_ref() {
+            piece_getter.get_piece(piece_index).await
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[inline]
+    async fn get_pieces<'a>(
+        &'a self,
+        piece_indices: Vec<PieceIndex>,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    > {
+        if let Some(piece_getter) = self.as_ref() {
+            piece_getter.get_pieces(piece_indices).await
+        } else {
+            // The values will all be `Ok(None)`, but we need a stream of them
+            get_pieces_individually(|piece_index| self.get_piece(piece_index), piece_indices)
+        }
     }
 }
 
@@ -76,6 +190,7 @@ impl PieceGetter for NewArchivedSegment {
     }
 }
 
+// Used for piece caches
 #[async_trait]
 impl PieceGetter for (PieceIndex, Piece) {
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
@@ -121,8 +236,8 @@ impl PieceGetter for Vec<(PieceIndex, Piece)> {
 /// A default implementation which gets each piece individually, using the `get_piece` async
 /// function.
 ///
-/// This is mainly used for testing, most production implementations can fetch multiple pieces more
-/// efficiently.
+/// This is mainly used for testing and caches. Most production implementations can fetch multiple
+/// pieces more efficiently.
 #[expect(clippy::type_complexity, reason = "type matches trait signature")]
 pub fn get_pieces_individually<'a, PieceIndices, Func, Fut>(
     // TODO: replace with AsyncFn(PieceIndex) -> anyhow::Result<Option<Piece>> once it stabilises
