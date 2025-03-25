@@ -5,6 +5,7 @@ mod malicious_bundle_producer;
 mod malicious_bundle_tamper;
 pub mod malicious_domain_instance_starter;
 
+pub use chain_spec::create_domain_spec;
 use clap::Parser;
 use sc_chain_spec::GenericChainSpec;
 use sc_cli::{
