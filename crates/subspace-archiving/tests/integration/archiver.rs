@@ -18,15 +18,15 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::Kzg;
 use subspace_verification::is_piece_valid;
 
-fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
-    let offset: u64 = offset.into();
-    let Compact(size) = Compact::<u64>::decode(&mut &data[offset as usize..]).unwrap();
+fn extract_data<O: Into<u32>>(data: &[u8], offset: O) -> &[u8] {
+    let offset: u32 = offset.into();
+    let Compact(size) = Compact::<u32>::decode(&mut &data[offset as usize..]).unwrap();
     &data[offset as usize + Compact::compact_len(&size)..][..size as usize]
 }
 
-fn extract_data_from_source_record<O: Into<u64>>(record: &Record, offset: O) -> Vec<u8> {
-    let offset: u64 = offset.into();
-    let Compact(size) = Compact::<u64>::decode(
+fn extract_data_from_source_record<O: Into<u32>>(record: &Record, offset: O) -> Vec<u8> {
+    let offset: u32 = offset.into();
+    let Compact(size) = Compact::<u32>::decode(
         &mut record
             .to_raw_record_chunks()
             .flatten()
