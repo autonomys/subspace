@@ -156,6 +156,9 @@ where
         )
         .expect("could not generate domain node Configuration");
 
+        let domain_backend = sc_service::new_db_backend::<Block>(domain_config.db_config())
+            .expect("Failed to create domain backend: {error:?}");
+
         let BootstrapResult {
             domain_instance_data,
             domain_created_at,
@@ -231,6 +234,7 @@ where
             consensus_chain_sync_params: None::<
                 ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
             >,
+            domain_backend,
         };
 
         let domain_node = domain_service::new_full::<

@@ -283,6 +283,11 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                     );
             };
 
+            let domain_backend = sc_service::new_db_backend::<DomainBlock>(
+                domain_configuration.domain_config.db_config(),
+            )
+            .map_err(|error| Error::Other(format!("Failed to create domain backend: {error:?}")))?;
+
             let domain_start_options = DomainStartOptions {
                 consensus_client: consensus_chain_node.client.clone(),
                 consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
@@ -295,6 +300,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 consensus_network_sync_oracle: consensus_chain_node.sync_service.clone(),
                 domain_message_receiver,
                 gossip_message_sink,
+                domain_backend,
             };
 
             consensus_chain_node
