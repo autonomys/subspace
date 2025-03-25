@@ -166,6 +166,7 @@ where
             ..
         } = fetch_domain_bootstrap_info::<Block, _, _, _>(
             &*mock_consensus_node.client,
+            &*domain_backend,
             domain_id,
         )
         .await
