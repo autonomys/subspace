@@ -164,9 +164,13 @@ where
             domain_created_at,
             imported_block_notification_stream,
             ..
-        } = fetch_domain_bootstrap_info::<Block, _, _>(&*mock_consensus_node.client, domain_id)
-            .await
-            .expect("Failed to get domain instance data");
+        } = fetch_domain_bootstrap_info::<Block, _, _, _>(
+            &*mock_consensus_node.client,
+            &*domain_backend,
+            domain_id,
+        )
+        .await
+        .expect("Failed to get domain instance data");
 
         domain_config
             .chain_spec

@@ -329,8 +329,9 @@ fn main() -> Result<(), Error> {
                     "domain",
                     None,
                     Box::pin(async move {
-                        let bootstrap_result_fut = fetch_domain_bootstrap_info::<DomainBlock, _, _>(
+                        let bootstrap_result_fut = fetch_domain_bootstrap_info::<DomainBlock, _, _, _>(
                             &*domain_starter.consensus_client,
+                            &*domain_starter.domain_backend,
                             domain_id,
                         );
                         let bootstrap_result = match bootstrap_result_fut.await {

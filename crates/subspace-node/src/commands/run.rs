@@ -333,10 +333,12 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                         let span = info_span!("Domain");
                         let _enter = span.enter();
 
-                        let bootstrap_result_fut = fetch_domain_bootstrap_info::<DomainBlock, _, _>(
-                            &*domain_start_options.consensus_client,
-                            domain_configuration.domain_id,
-                        );
+                        let bootstrap_result_fut =
+                            fetch_domain_bootstrap_info::<DomainBlock, _, _, _>(
+                                &*domain_start_options.consensus_client,
+                                &*domain_start_options.domain_backend,
+                                domain_configuration.domain_id,
+                            );
 
                         let bootstrap_result = match bootstrap_result_fut.await {
                             Ok(bootstrap_result) => bootstrap_result,
