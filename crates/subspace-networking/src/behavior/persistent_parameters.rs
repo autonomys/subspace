@@ -685,7 +685,7 @@ pub(crate) fn remove_p2p_suffix(mut address: Multiaddr) -> Multiaddr {
     address
 }
 
-/// Appends a P2p protocol suffix to the multiaddress if require3d.
+/// Appends a P2p protocol suffix to the multiaddress if required.
 pub(crate) fn append_p2p_suffix(peer_id: PeerId, mut address: Multiaddr) -> Multiaddr {
     let last_protocol = address.pop();
 
