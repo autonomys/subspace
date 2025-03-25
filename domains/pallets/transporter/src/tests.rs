@@ -59,6 +59,7 @@ fn test_initiate_transfer() {
             crate::Event::<MockRuntime>::OutgoingTransferInitiated {
                 chain_id: dst_chain_id,
                 message_id: MESSAGE_ID,
+                amount: 500,
             },
         ));
         assert_eq!(
@@ -113,6 +114,7 @@ fn initiate_transfer(dst_chain_id: ChainId, account: AccountId, amount: Balance)
         crate::Event::<MockRuntime>::OutgoingTransferInitiated {
             chain_id: dst_chain_id,
             message_id: MESSAGE_ID,
+            amount,
         },
     ));
 }

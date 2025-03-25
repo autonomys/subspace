@@ -882,6 +882,7 @@ fn initiate_transfer_on_chain(chain_a_ext: &mut TestExternalities) {
             pallet_transporter::Event::<chain_a::Runtime>::OutgoingTransferInitiated {
                 chain_id: chain_b::SelfChainId::get(),
                 message_id: (U256::zero(), U256::one()),
+                amount: 500,
             },
         ));
         chain_a::System::assert_has_event(chain_a::RuntimeEvent::Messenger(crate::Event::<
@@ -931,6 +932,7 @@ fn verify_transfer_on_chain(
             pallet_transporter::Event::<chain_b::Runtime>::IncomingTransferSuccessful {
                 chain_id: chain_a::SelfChainId::get(),
                 message_id: (U256::zero(), U256::one()),
+                amount: 500,
             },
         ));
         chain_b::System::assert_has_event(chain_b::RuntimeEvent::Messenger(crate::Event::<

@@ -168,6 +168,8 @@ mod pallet {
             chain_id: ChainId,
             /// Id of the transfer.
             message_id: MessageIdOf<T>,
+            /// Amount transferred from this chain
+            amount: BalanceOf<T>,
         },
 
         /// Emits when a given outgoing transfer was failed on dst_chain.
@@ -194,6 +196,8 @@ mod pallet {
             chain_id: ChainId,
             /// Id of the transfer.
             message_id: MessageIdOf<T>,
+            /// Amount transferred to this chain.
+            amount: BalanceOf<T>,
         },
     }
 
@@ -273,6 +277,7 @@ mod pallet {
             Self::deposit_event(Event::<T>::OutgoingTransferInitiated {
                 chain_id: dst_chain_id,
                 message_id,
+                amount,
             });
 
             // if this is consensus chain, then note the transfer
@@ -592,6 +597,7 @@ impl<T: Config> Pallet<T> {
             Event::<T>::IncomingTransferSuccessful {
                 chain_id: src_chain_id,
                 message_id,
+                amount: req.amount,
             },
         ));
         Ok(vec![])
