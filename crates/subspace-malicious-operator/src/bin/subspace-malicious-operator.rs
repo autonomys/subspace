@@ -5,7 +5,7 @@
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::fetch_domain_bootstrap_info;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use sc_cli::{ChainSpec, SubstrateCli};
+use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::CreateObjectMappings;
 use sc_network::config::MultiaddrWithPeerId;
@@ -18,7 +18,7 @@ use sp_domains::DomainId;
 use sp_messenger::messages::ChainId;
 use std::collections::HashMap;
 use subspace_malicious_operator::malicious_domain_instance_starter::DomainInstanceStarter;
-use subspace_malicious_operator::{Cli, DomainCli};
+use subspace_malicious_operator::{create_malicious_operator_configuration, Cli, DomainCli};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
@@ -280,10 +280,21 @@ fn main() -> Result<(), Error> {
             xdm_gossip_worker_builder
                 .push_chain_sink(ChainId::Domain(domain_id), domain_message_sink);
 
+            let domain_config = {
+                let chain_id = domain_cli.run.chain_id(domain_cli.run.is_dev()?)?;
+                let domain_spec =
+                subspace_malicious_operator::create_domain_spec(chain_id.as_str())?;
+                create_malicious_operator_configuration::<DomainCli>(
+                    domain_id,
+                    base_path.into(),
+                    &domain_cli,
+                    domain_spec,
+                    tokio_handle,
+                )?
+            };
+
             let domain_starter = DomainInstanceStarter {
                 domain_cli,
-                base_path,
-                tokio_handle,
                 consensus_client: consensus_chain_node.client.clone(),
                 consensus_keystore,
                 consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
@@ -299,6 +310,7 @@ fn main() -> Result<(), Error> {
                 consensus_sync_service: consensus_chain_node.sync_service.clone(),
                 domain_message_receiver,
                 gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
+                domain_config,
             };
 
             let consensus_network_service = consensus_chain_node.network_service.clone();

@@ -143,14 +143,6 @@ where
         role: Role,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
-        let BootstrapResult {
-            domain_instance_data,
-            domain_created_at,
-            imported_block_notification_stream,
-        } = fetch_domain_bootstrap_info::<Block, _, _>(&*mock_consensus_node.client, domain_id)
-            .await
-            .expect("Failed to get domain instance data");
-        let chain_spec = create_domain_spec(domain_instance_data.raw_genesis);
         let key_seed = Runtime::to_seed(key);
         let domain_config = node_config(
             domain_id,
@@ -160,9 +152,25 @@ where
             domain_nodes_exclusive,
             role,
             BasePath::new(base_path.path().join(format!("domain-{domain_id:?}"))),
-            Box::new(chain_spec) as Box<_>,
+            Box::new(create_domain_spec()) as Box<_>,
         )
         .expect("could not generate domain node Configuration");
+
+        let BootstrapResult {
+            domain_instance_data,
+            domain_created_at,
+            imported_block_notification_stream,
+            ..
+        } = fetch_domain_bootstrap_info::<Block, _, _, _>(
+            &*mock_consensus_node.client,
+            domain_id,
+        )
+        .await
+        .expect("Failed to get domain instance data");
+
+        domain_config
+            .chain_spec
+            .set_storage(domain_instance_data.raw_genesis.into_storage());
 
         let span = sc_tracing::tracing::info_span!(
             sc_tracing::logging::PREFIX_LOG_SPAN,
