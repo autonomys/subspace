@@ -438,6 +438,7 @@ pub(super) struct DomainStartOptions {
     pub(super) domain_message_receiver:
         TracingUnboundedReceiver<cross_domain_message_gossip::ChainMsg>,
     pub(super) gossip_message_sink: TracingUnboundedSender<cross_domain_message_gossip::Message>,
+    pub(super) domain_backend: Arc<FullBackend<DomainBlock>>,
 }
 
 pub(super) async fn run_domain<CNR>(
@@ -481,6 +482,7 @@ where
         consensus_network_sync_oracle,
         domain_message_receiver,
         gossip_message_sink,
+        domain_backend,
     } = domain_start_options;
 
     let block_importing_notification_stream = block_importing_notification_stream
@@ -563,6 +565,7 @@ where
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 consensus_chain_sync_params,
                 challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+                domain_backend,
             };
 
             let mut domain_node = domain_service::new_full::<
@@ -604,6 +607,7 @@ where
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 consensus_chain_sync_params,
                 challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+                domain_backend,
             };
 
             let mut domain_node = domain_service::new_full::<

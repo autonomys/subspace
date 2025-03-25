@@ -43,6 +43,7 @@ prometheus-client.workspace = true
 sc-chain-spec.workspace = true
 sc-cli.workspace = true
 sc-client-api.workspace = true
+sc-client-db.workspace = true
 sc-consensus-slots.workspace = true
 sc-consensus-subspace.workspace = true
 sc-domains.workspace = true

@@ -44,6 +44,7 @@ pub struct DomainInstanceStarter {
     pub domain_message_receiver: TracingUnboundedReceiver<ChainMsg>,
     pub gossip_message_sink: TracingUnboundedSender<Message>,
     pub consensus_network: Arc<dyn NetworkPeers + Send + Sync>,
+    pub domain_backend: Arc<FullBackend<DomainBlock>>,
     pub domain_config: Configuration,
 }
 
@@ -75,6 +76,7 @@ impl DomainInstanceStarter {
             domain_message_receiver,
             gossip_message_sink,
             consensus_network,
+            domain_backend,
             mut domain_config,
         } = self;
 
@@ -155,6 +157,7 @@ impl DomainInstanceStarter {
                         ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
                     >,
                     challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+                    domain_backend,
                 };
 
                 let mut domain_node = domain_service::new_full::<
@@ -218,6 +221,7 @@ impl DomainInstanceStarter {
                         ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
                     >,
                     challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+                    domain_backend,
                 };
 
                 let mut domain_node = domain_service::new_full::<

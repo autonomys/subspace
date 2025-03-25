@@ -293,6 +293,11 @@ fn main() -> Result<(), Error> {
                 )?
             };
 
+            let domain_backend = sc_service::new_db_backend::<DomainBlock>(
+                    domain_config.db_config(),
+                )
+                .map_err(|error| Error::Other(format!("Failed to create domain backend: {error:?}")))?;
+
             let domain_starter = DomainInstanceStarter {
                 domain_cli,
                 consensus_client: consensus_chain_node.client.clone(),
@@ -310,6 +315,7 @@ fn main() -> Result<(), Error> {
                 consensus_sync_service: consensus_chain_node.sync_service.clone(),
                 domain_message_receiver,
                 gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
+                domain_backend,
                 domain_config,
             };
 

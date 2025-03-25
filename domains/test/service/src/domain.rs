@@ -144,7 +144,7 @@ where
         mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
         let key_seed = Runtime::to_seed(key);
-        let domain_config = node_config(
+        let mut domain_config = node_config(
             domain_id,
             tokio_handle.clone(),
             key_seed,
@@ -156,17 +156,17 @@ where
         )
         .expect("could not generate domain node Configuration");
 
+        let domain_backend = sc_service::new_db_backend::<Block>(domain_config.db_config())
+            .expect("Failed to create domain backend: {error:?}");
+
         let BootstrapResult {
             domain_instance_data,
             domain_created_at,
             imported_block_notification_stream,
             ..
-        } = fetch_domain_bootstrap_info::<Block, _, _, _>(
-            &*mock_consensus_node.client,
-            domain_id,
-        )
-        .await
-        .expect("Failed to get domain instance data");
+        } = fetch_domain_bootstrap_info::<Block, _, _>(&*mock_consensus_node.client, domain_id)
+            .await
+            .expect("Failed to get domain instance data");
 
         domain_config
             .chain_spec
@@ -231,6 +231,7 @@ where
             consensus_chain_sync_params: None::<
                 ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
             >,
+            domain_backend,
         };
 
         let domain_node = domain_service::new_full::<
