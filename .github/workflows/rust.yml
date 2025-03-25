@@ -163,16 +163,9 @@ jobs:
         if: runner.os == 'Windows'
 
   cargo-runtime-build:
-    strategy:
-      matrix:
-        os: ${{ fromJson(github.repository_owner == 'autonomys' &&
-          '[
-            "runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64",
-            ["self-hosted", "windows-server-2022-x86-64"],
-            ["self-hosted", "macos-14-arm64"]
-          ]' ||
-          '["ubuntu-22.04", "windows-2022", "macos-14"]') }}
-    runs-on: ${{ matrix.os }}
+    # If clippy and tests pass on all OSes, it is unlikely that a runtime build will pass on Linux, but fail on other OSes.
+    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
+      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64"' || '"ubuntu-22.04"') }}
 
     steps:
       - name: Checkout
@@ -297,15 +290,9 @@ jobs:
   # We need to check crates individually for missing features, because cargo does feature
   # unification, which hides missing features when crates are built together.
   cargo-check-individually:
-    strategy:
-      matrix:
-        # We only want to run these slower checks on the fastest runner
-        os: ${{ fromJson(github.repository_owner == 'autonomys' &&
-          '[
-            "runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64",
-          ]' ||
-          '["ubuntu-22.04"]') }}
-    runs-on: ${{ matrix.os }}
+    # If clippy and tests pass on all OSes, it is unlikely that a crate build will pass on Linux but fail on other OSes.
+    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
+      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64"' || '"ubuntu-22.04"') }}
 
     steps:
       - name: Checkout
@@ -326,12 +313,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # Pruning the target directory is only required if we're using a build cache or running locally
       - name: check all crates individually
         run: |
-          for crate in $(grep 'path =' Cargo.toml | sed 's/.*path *= *"\([^"]*\).*/\1/' | sort); do
+          for crate in $(find . -name Cargo.toml -o -path ./target -prune | xargs -n 1 dirname | grep -v '^[.]$' | sort); do
               echo "$crate";
               pushd "$crate";
-              if ! cargo -Zgitoxide -Zgit check --locked --all-targets; then
+              if ! cargo -Zgitoxide -Zgit clippy --locked --all-targets -- -D warnings; then
                   pwd;
                   popd;
                   exit 1;

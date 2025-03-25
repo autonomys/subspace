@@ -22,6 +22,7 @@
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
+pub mod extensions;
 mod fees;
 mod messages;
 pub mod migrations;
@@ -34,9 +35,9 @@ pub mod weights;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use frame_support::pallet_prelude::StorageVersion;
+use frame_support::__private::RuntimeDebug;
+use frame_support::pallet_prelude::{EnsureOrigin, MaxEncodedLen, StorageVersion};
 use frame_support::traits::fungible::{Inspect, InspectHold};
-use frame_system::offchain::CreateInherent;
 use frame_system::pallet_prelude::BlockNumberFor;
 pub use pallet::*;
 use parity_scale_codec::{Decode, Encode};
@@ -44,10 +45,12 @@ use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::{DomainAllowlistUpdates, DomainId};
 use sp_messenger::messages::{
-    ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, FeeModel, MessageId, Nonce,
+    ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, FeeModel, Message, MessageId,
+    Nonce,
 };
 use sp_runtime::traits::Hash;
 use sp_runtime::DispatchError;
+use subspace_runtime_primitives::CreateUnsigned;
 
 /// Transaction validity for a given validated XDM extrinsic.
 /// If the extrinsic is not included in the bundle, extrinsic is removed from the TxPool.
@@ -72,20 +75,34 @@ pub enum OutboxMessageResult {
     Err(DispatchError),
 }
 
+/// Custom origin for validated unsigned extrinsics.
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub enum RawOrigin {
+    ValidatedUnsigned,
+}
+
+/// Ensure the messenger origin.
+pub struct EnsureMessengerOrigin;
+impl<O: Into<Result<RawOrigin, O>> + From<RawOrigin>> EnsureOrigin<O> for EnsureMessengerOrigin {
+    type Success = ();
+
+    fn try_origin(o: O) -> Result<Self::Success, O> {
+        o.into().map(|o| match o {
+            RawOrigin::ValidatedUnsigned => (),
+        })
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn try_successful_origin() -> Result<O, ()> {
+        Ok(O::from(RawOrigin::ValidatedUnsigned))
+    }
+}
+
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
 pub(crate) type FungibleHoldId<T> =
     <<T as Config>::Currency as InspectHold<<T as frame_system::Config>::AccountId>>::Reason;
-
-/// A validated relay message.
-#[derive(Debug)]
-pub struct ValidatedRelayMessage {
-    msg_nonce: Nonce,
-    dst_chain_id: ChainId,
-    channel_id: ChannelId,
-    next_nonce: Nonce,
-}
 
 /// Parameter to update chain allow list.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
@@ -101,6 +118,20 @@ impl ChainAllowlistUpdate {
             ChainAllowlistUpdate::Remove(chain_id) => *chain_id,
         }
     }
+}
+
+/// Type enum for XDM message version to use.
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
+pub enum MessageVersion {
+    V0,
+    V1,
+}
+
+#[derive(Debug, Encode, Decode, TypeInfo)]
+pub struct ValidatedRelayMessage<T: Config> {
+    pub message: Message<BalanceOf<T>>,
+    pub should_init_channel: bool,
+    pub next_nonce: Nonce,
 }
 
 /// Channel can be closed either by Channel owner or Sudo
@@ -123,8 +154,8 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
-        FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage,
-        STORAGE_VERSION, U256, XDM_TRANSACTION_LONGEVITY,
+        FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, RawOrigin, StateRootOf,
+        ValidatedRelayMessage, STORAGE_VERSION, U256,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -142,14 +173,17 @@ mod pallet {
     use sp_core::storage::StorageKey;
     use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
     use sp_domains::{DomainAllowlistUpdates, DomainId, DomainOwner};
-    use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
+    use sp_messenger::endpoint::{
+        Endpoint, EndpointHandler, EndpointRequest, EndpointRequestWithCollectedFee, Sender,
+    };
     use sp_messenger::messages::{
-        ChainId, ChannelOpenParams, CrossDomainMessage, Message, MessageId, MessageKey,
-        MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        ChainId, ChannelOpenParams, ChannelOpenParamsV1, ConvertedPayload, CrossDomainMessage,
+        Message, MessageId, MessageKey, MessageWeightTag, Payload, PayloadV1,
+        ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
         ChannelNonce, DomainRegistration, InherentError, InherentType, OnXDMRewards, StorageKeys,
-        INHERENT_IDENTIFIER, MAX_FUTURE_ALLOWED_NONCES,
+        INHERENT_IDENTIFIER,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{ArithmeticError, Perbill, Saturating};
@@ -173,6 +207,13 @@ mod pallet {
         type WeightInfo: WeightInfo;
         /// Weight to fee conversion.
         type WeightToFee: WeightToFee<Balance = BalanceOf<Self>>;
+        /// Adjusted Weight to fee conversion.
+        /// This includes the TransactionPayment Multiper at the time of fee deduction.
+        type AdjustedWeightToFee: WeightToFee<Balance = BalanceOf<Self>>;
+        /// Fee Multiper for XDM
+        /// Final fee calculated will fee_multiplier * adjusted_weight_to_fee.
+        #[pallet::constant]
+        type FeeMultiplier: Get<u32>;
         /// Handle XDM rewards.
         type OnXDMRewards: OnXDMRewards<BalanceOf<Self>>;
         /// Hash type of MMR
@@ -201,7 +242,13 @@ mod pallet {
         /// Channels fee model
         type ChannelFeeModel: Get<FeeModel<BalanceOf<Self>>>;
         /// Maximum outgoing messages from a given channel
+        #[pallet::constant]
         type MaxOutgoingMessages: Get<u32>;
+        /// Origin for messenger call.
+        type MessengerOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = ()>;
+        /// Message version to use.
+        #[pallet::constant]
+        type MessageVersion: Get<crate::MessageVersion>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -303,6 +350,9 @@ mod pallet {
     pub(super) type UpdatedChannels<T: Config> =
         StorageValue<_, BTreeSet<(ChainId, ChannelId)>, ValueQuery>;
 
+    #[pallet::origin]
+    pub type Origin = RawOrigin;
+
     /// `pallet-messenger` events
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
@@ -386,28 +436,6 @@ mod pallet {
 
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::relay_message { msg: xdm } => {
-                    let consensus_state_root = T::MmrProofVerifier::verify_proof_and_extract_leaf(
-                        xdm.proof.consensus_mmr_proof(),
-                    )
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
-                    Self::validate_relay_message(xdm, true, consensus_state_root)?;
-
-                    Ok(())
-                }
-                Call::relay_message_response { msg: xdm } => {
-                    let consensus_state_root = T::MmrProofVerifier::verify_proof_and_extract_leaf(
-                        xdm.proof.consensus_mmr_proof(),
-                    )
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
-                    Self::validate_relay_message_response(xdm, true, consensus_state_root)?;
-
-                    Ok(())
-                }
                 // always accept inherent extrinsic
                 Call::update_domain_allowlist { .. } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
@@ -415,93 +443,11 @@ mod pallet {
         }
 
         /// Validate unsigned call to this module.
-        fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-            match call {
-                Call::relay_message { msg: xdm } => {
-                    let consensus_state_root = T::MmrProofVerifier::verify_proof_and_extract_leaf(
-                        xdm.proof.consensus_mmr_proof(),
-                    )
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
-                    let ValidatedRelayMessage {
-                        msg_nonce,
-                        dst_chain_id,
-                        channel_id,
-                        next_nonce,
-                    } = Self::validate_relay_message(xdm, false, consensus_state_root)?;
-
-                    let mut valid_tx_builder = ValidTransaction::with_tag_prefix("MessengerInbox");
-                    // Only add the requires tag if the msg nonce is in future
-                    if msg_nonce > next_nonce {
-                        let max_future_nonce =
-                            next_nonce.saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
-                        if msg_nonce > max_future_nonce {
-                            return Err(InvalidTransaction::Custom(
-                                crate::verification_errors::IN_FUTURE_NONCE,
-                            )
-                            .into());
-                        }
-
-                        valid_tx_builder = valid_tx_builder.and_requires((
-                            dst_chain_id,
-                            channel_id,
-                            msg_nonce - Nonce::one(),
-                        ));
-                    };
-                    valid_tx_builder
-                        // XDM have a bit higher priority than normal extrinsic but must less than
-                        // fraud proof
-                        .priority(1)
-                        .longevity(XDM_TRANSACTION_LONGEVITY)
-                        .and_provides((dst_chain_id, channel_id, msg_nonce))
-                        .propagate(true)
-                        .build()
-                }
-                Call::relay_message_response { msg: xdm } => {
-                    let consensus_state_root = T::MmrProofVerifier::verify_proof_and_extract_leaf(
-                        xdm.proof.consensus_mmr_proof(),
-                    )
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
-                    let ValidatedRelayMessage {
-                        msg_nonce,
-                        dst_chain_id,
-                        channel_id,
-                        next_nonce,
-                    } = Self::validate_relay_message_response(xdm, false, consensus_state_root)?;
-
-                    let mut valid_tx_builder =
-                        ValidTransaction::with_tag_prefix("MessengerOutboxResponse");
-                    // Only add the requires tag if the msg nonce is in future
-                    if msg_nonce > next_nonce {
-                        let max_future_nonce =
-                            next_nonce.saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
-                        if msg_nonce > max_future_nonce {
-                            return Err(InvalidTransaction::Custom(
-                                crate::verification_errors::IN_FUTURE_NONCE,
-                            )
-                            .into());
-                        }
-
-                        valid_tx_builder = valid_tx_builder.and_requires((
-                            dst_chain_id,
-                            channel_id,
-                            msg_nonce - Nonce::one(),
-                        ));
-                    };
-                    valid_tx_builder
-                        // XDM have a bit higher priority than normal extrinsic but must less than
-                        // fraud proof
-                        .priority(1)
-                        .longevity(XDM_TRANSACTION_LONGEVITY)
-                        .and_provides((dst_chain_id, channel_id, msg_nonce))
-                        .propagate(true)
-                        .build()
-                }
-                _ => InvalidTransaction::Call.into(),
-            }
+        fn validate_unsigned(
+            _source: TransactionSource,
+            _call: &Self::Call,
+        ) -> TransactionValidity {
+            InvalidTransaction::Call.into()
         }
     }
 
@@ -580,6 +526,9 @@ mod pallet {
 
         /// Message count underflow
         MessageCountUnderflow,
+
+        /// Incorrect message version
+        MessageVersionMismatch,
     }
 
     #[pallet::call]
@@ -617,15 +566,23 @@ mod pallet {
                 amount,
             )?;
 
+            let payload = match T::MessageVersion::get() {
+                crate::MessageVersion::V0 => {
+                    VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
+                        ProtocolMessageRequest::ChannelOpen(channel_open_params),
+                    )))
+                }
+                crate::MessageVersion::V1 => {
+                    VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(
+                        ProtocolMessageRequest::ChannelOpen(ChannelOpenParamsV1 {
+                            max_outgoing_messages: channel_open_params.max_outgoing_messages,
+                        }),
+                    )))
+                }
+            };
+
             // send message to dst_chain
-            Self::new_outbox_message(
-                T::SelfChainId::get(),
-                dst_chain_id,
-                channel_id,
-                VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-                    ProtocolMessageRequest::ChannelOpen(channel_open_params),
-                ))),
-            )?;
+            Self::new_outbox_message(T::SelfChainId::get(), dst_chain_id, channel_id, payload)?;
 
             Ok(())
         }
@@ -646,14 +603,17 @@ mod pallet {
                 None => CloseChannelBy::Sudo,
             };
             Self::do_close_channel(chain_id, channel_id, close_channel_by)?;
-            Self::new_outbox_message(
-                T::SelfChainId::get(),
-                chain_id,
-                channel_id,
-                VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-                    ProtocolMessageRequest::ChannelClose,
-                ))),
-            )?;
+
+            let payload = match T::MessageVersion::get() {
+                crate::MessageVersion::V0 => VersionedPayload::V0(Payload::Protocol(
+                    RequestResponse::Request(ProtocolMessageRequest::ChannelClose),
+                )),
+                crate::MessageVersion::V1 => VersionedPayload::V1(PayloadV1::Protocol(
+                    RequestResponse::Request(ProtocolMessageRequest::ChannelClose),
+                )),
+            };
+
+            Self::new_outbox_message(T::SelfChainId::get(), chain_id, channel_id, payload)?;
 
             Ok(())
         }
@@ -665,7 +625,7 @@ mod pallet {
             origin: OriginFor<T>,
             msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> DispatchResult {
-            ensure_none(origin)?;
+            T::MessengerOrigin::ensure_origin(origin)?;
             let inbox_msg = Inbox::<T>::take().ok_or(Error::<T>::MissingMessage)?;
             Self::process_inbox_messages(inbox_msg, msg.weight_tag)?;
             Ok(())
@@ -678,7 +638,7 @@ mod pallet {
             origin: OriginFor<T>,
             msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> DispatchResult {
-            ensure_none(origin)?;
+            T::MessengerOrigin::ensure_origin(origin)?;
             let outbox_resp_msg = OutboxResponses::<T>::take().ok_or(Error::<T>::MissingMessage)?;
             Self::process_outbox_message_responses(outbox_resp_msg, msg.weight_tag)?;
             Ok(())
@@ -870,22 +830,46 @@ mod pallet {
                 Self::get_open_channel_for_chain(dst_chain_id).ok_or(Error::<T>::NoOpenChannel)?;
 
             let src_endpoint = req.src_endpoint.clone();
-            let nonce = Self::new_outbox_message(
-                T::SelfChainId::get(),
-                dst_chain_id,
-                channel_id,
-                VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
-            )?;
 
-            // ensure fees are paid by the sender
-            Self::collect_fees_for_message(
-                sender,
-                (dst_chain_id, (channel_id, nonce)),
-                &fee_model,
-                &src_endpoint,
-            )?;
+            let message_id = match T::MessageVersion::get() {
+                crate::MessageVersion::V0 => {
+                    let nonce = Self::new_outbox_message(
+                        T::SelfChainId::get(),
+                        dst_chain_id,
+                        channel_id,
+                        VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
+                    )?;
 
-            Ok((channel_id, nonce))
+                    // ensure fees are paid by the sender
+                    Self::collect_fees_for_message(
+                        sender,
+                        (dst_chain_id, (channel_id, nonce)),
+                        &fee_model,
+                        &src_endpoint,
+                    )?;
+                    (channel_id, nonce)
+                }
+                crate::MessageVersion::V1 => {
+                    // collect the fees from the sender
+                    let collected_fee = Self::collect_fees_for_message_v1(sender, &src_endpoint)?;
+                    let src_chain_fee = collected_fee.src_chain_fee;
+                    let nonce = Self::new_outbox_message(
+                        T::SelfChainId::get(),
+                        dst_chain_id,
+                        channel_id,
+                        VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Request(
+                            EndpointRequestWithCollectedFee { req, collected_fee },
+                        ))),
+                    )?;
+
+                    // store src_chain, this chain, fee to OutboxFee
+                    let message_id = (channel_id, nonce);
+                    OutboxFee::<T>::insert((dst_chain_id, message_id), src_chain_fee);
+                    message_id
+                }
+            };
+
+            Ok(message_id)
         }
 
         /// Only used in benchmark to prepare for a upcoming `send_message` call to
@@ -1092,9 +1076,8 @@ mod pallet {
 
         pub fn validate_relay_message(
             xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
-            pre_dispatch: bool,
             consensus_state_root: StateRootOf<T>,
-        ) -> Result<ValidatedRelayMessage, TransactionValidityError> {
+        ) -> Result<ValidatedRelayMessage<T>, TransactionValidityError> {
             let (next_nonce, maybe_channel) =
                 match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
                     None => {
@@ -1129,35 +1112,34 @@ mod pallet {
             // verify and decode message
             let msg = Self::do_verify_xdm(next_nonce, key, consensus_state_root, xdm)?;
 
-            let is_valid_call = match &msg.payload {
-                VersionedPayload::V0(payload) => match payload {
-                    Payload::Protocol(RequestResponse::Request(req)) => match req {
-                        // channel open should ensure there is no Channel present already
-                        ProtocolMessageRequest::ChannelOpen(_) => maybe_channel.is_none(),
-                        // we allow channel close only if it is init or open state
-                        ProtocolMessageRequest::ChannelClose => {
-                            if let Some(ref channel) = maybe_channel {
-                                !(channel.state == ChannelState::Closed)
-                            } else {
-                                false
-                            }
-                        }
-                    },
-                    // endpoint request messages are only allowed when
-                    // channel is open, or
-                    // channel is closed. Channel can be closed by dst_chain simultaneously
-                    // while src_chain already sent a message. We allow the message but return an
-                    // error in the response so that src_chain can revert any necessary actions
-                    Payload::Endpoint(RequestResponse::Request(_)) => {
+            let ConvertedPayload { payload, is_v1: _ } = msg.payload.clone().into_payload_v0();
+            let is_valid_call = match &payload {
+                Payload::Protocol(RequestResponse::Request(req)) => match req {
+                    // channel open should ensure there is no Channel present already
+                    ProtocolMessageRequest::ChannelOpen(_) => maybe_channel.is_none(),
+                    // we allow channel close only if it is init or open state
+                    ProtocolMessageRequest::ChannelClose => {
                         if let Some(ref channel) = maybe_channel {
-                            !(channel.state == ChannelState::Initiated)
+                            !(channel.state == ChannelState::Closed)
                         } else {
                             false
                         }
                     }
-                    // any other message variants are not allowed
-                    _ => false,
                 },
+                // endpoint request messages are only allowed when
+                // channel is open, or
+                // channel is closed. Channel can be closed by dst_chain simultaneously
+                // while src_chain already sent a message. We allow the message but return an
+                // error in the response so that src_chain can revert any necessary actions
+                Payload::Endpoint(RequestResponse::Request(_)) => {
+                    if let Some(ref channel) = maybe_channel {
+                        !(channel.state == ChannelState::Initiated)
+                    } else {
+                        false
+                    }
+                }
+                // any other message variants are not allowed
+                _ => false,
             };
 
             if !is_valid_call {
@@ -1165,24 +1147,16 @@ mod pallet {
                 return Err(InvalidTransaction::Call.into());
             }
 
-            // Reject stale message and in future message when in `pre_dispatch`
-            match msg.nonce.cmp(&next_nonce) {
-                Ordering::Less => return Err(InvalidTransaction::Stale.into()),
-                Ordering::Greater if pre_dispatch => return Err(InvalidTransaction::Future.into()),
-                _ => {}
+            // Reject stale message
+            if msg.nonce.cmp(&next_nonce) == Ordering::Less {
+                return Err(InvalidTransaction::Stale.into());
             }
 
             let validated_relay_msg = ValidatedRelayMessage {
-                msg_nonce: msg.nonce,
-                dst_chain_id: msg.dst_chain_id,
-                channel_id: msg.channel_id,
+                message: msg,
+                should_init_channel: maybe_channel.is_none(),
                 next_nonce,
             };
-
-            if pre_dispatch {
-                let should_init_channel = maybe_channel.is_none();
-                Self::pre_dispatch_relay_message(msg, should_init_channel)?;
-            }
 
             Ok(validated_relay_msg)
         }
@@ -1226,9 +1200,8 @@ mod pallet {
 
         pub fn validate_relay_message_response(
             xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
-            pre_dispatch: bool,
             consensus_state_root: StateRootOf<T>,
-        ) -> Result<ValidatedRelayMessage, TransactionValidityError> {
+        ) -> Result<ValidatedRelayMessage<T>, TransactionValidityError> {
             // channel should be open and message should be present in outbox
             let next_nonce =
                 match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
@@ -1257,23 +1230,17 @@ mod pallet {
             // verify, decode, and store the message
             let msg = Self::do_verify_xdm(next_nonce, key, consensus_state_root, xdm)?;
 
-            // Reject stale message and in future message when in `pre_dispatch`
-            match msg.nonce.cmp(&next_nonce) {
-                Ordering::Less => return Err(InvalidTransaction::Stale.into()),
-                Ordering::Greater if pre_dispatch => return Err(InvalidTransaction::Future.into()),
-                _ => {}
+            // Reject stale message
+            if msg.nonce.cmp(&next_nonce) == Ordering::Less {
+                return Err(InvalidTransaction::Stale.into());
             }
 
             let validated_relay_msg = ValidatedRelayMessage {
-                msg_nonce: msg.nonce,
-                dst_chain_id: msg.dst_chain_id,
-                channel_id: msg.channel_id,
+                message: msg,
                 next_nonce,
+                // not applicable in relay message response, default should be fine here
+                should_init_channel: false,
             };
-
-            if pre_dispatch {
-                Self::pre_dispatch_relay_message_response(msg)?;
-            }
 
             Ok(validated_relay_msg)
         }
@@ -1412,55 +1379,25 @@ mod pallet {
                 }
             })
         }
-
-        pub fn pre_dispatch_with_trusted_mmr_proof(
-            call: &Call<T>,
-        ) -> Result<(), TransactionValidityError> {
-            match call {
-                Call::relay_message { msg: xdm } => {
-                    let consensus_state_root = T::MmrProofVerifier::extract_leaf_without_verifying(
-                        xdm.proof.consensus_mmr_proof(),
-                    )
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
-                    Self::validate_relay_message(xdm, true, consensus_state_root)?;
-
-                    Ok(())
-                }
-                Call::relay_message_response { msg: xdm } => {
-                    let consensus_state_root = T::MmrProofVerifier::extract_leaf_without_verifying(
-                        xdm.proof.consensus_mmr_proof(),
-                    )
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
-                    Self::validate_relay_message_response(xdm, true, consensus_state_root)?;
-
-                    Ok(())
-                }
-                call => Self::pre_dispatch(call),
-            }
-        }
     }
 }
 
 impl<T> Pallet<T>
 where
-    T: Config + CreateInherent<Call<T>>,
+    T: Config + CreateUnsigned<Call<T>>,
 {
     pub fn outbox_message_unsigned(
         msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message { msg };
-        Some(T::create_inherent(call.into()))
+        Some(T::create_unsigned(call.into()))
     }
 
     pub fn inbox_response_message_unsigned(
         msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message_response { msg };
-        Some(T::create_inherent(call.into()))
+        Some(T::create_unsigned(call.into()))
     }
 
     /// Returns true if the outbox message has not received the response yet.

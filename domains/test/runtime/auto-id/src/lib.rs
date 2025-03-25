@@ -19,8 +19,8 @@ pub use domain_runtime_primitives::{
     Nonce, Signature, EXISTENTIAL_DEPOSIT, MAX_OUTGOING_MESSAGES,
 };
 use domain_runtime_primitives::{
-    CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier, ERR_BALANCE_OVERFLOW,
-    SLOT_DURATION,
+    CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier, TargetBlockFullness,
+    ERR_BALANCE_OVERFLOW, SLOT_DURATION,
 };
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::genesis_builder_helper::{build_state, get_preset};
@@ -36,7 +36,7 @@ use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_block_fees::fees::OnChargeDomainTransaction;
 use pallet_transporter::EndpointHandler;
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeLimit, Encode, MaxEncodedLen};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata};
@@ -70,8 +70,9 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_runtime_primitives::utility::DefaultNonceProvider;
 use subspace_runtime_primitives::{
-    BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment,
-    SlowAdjustingFeeUpdate, SSC,
+    BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, Hash as ConsensusBlockHash,
+    Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee, XdmFeeMultipler,
+    MAX_CALL_RECURSION_DEPTH, SSC,
 };
 
 /// Block type as expected by this runtime.
@@ -93,6 +94,20 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    pallet_messenger::extensions::MessengerExtension<Runtime>,
+);
+
+/// The Custom SignedExtension used for pre_dispatch checks for bundle extrinsic verification
+pub type CustomSignedExtra = (
+    frame_system::CheckNonZeroSender<Runtime>,
+    frame_system::CheckSpecVersion<Runtime>,
+    frame_system::CheckTxVersion<Runtime>,
+    frame_system::CheckGenesis<Runtime>,
+    frame_system::CheckMortality<Runtime>,
+    frame_system::CheckNonce<Runtime>,
+    domain_check_weight::CheckWeight<Runtime>,
+    pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    pallet_messenger::extensions::MessengerTrustedMmrExtension<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -189,6 +204,7 @@ impl frame_system::Config for Runtime {
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
     type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
+    type EventSegmentSize = DomainEventSegmentSize;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -256,7 +272,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = OnChargeDomainTransaction<Balances>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = ConstantMultiplier<Balance, FinalDomainTransactionByteFee>;
-    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime, TargetBlockFullness>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
     type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
@@ -395,6 +411,7 @@ parameter_types! {
     // TODO update the fee model
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
+    pub const MessageVersion: pallet_messenger::MessageVersion = pallet_messenger::MessageVersion::V0;
 }
 
 // ensure the max outgoing messages is not 0.
@@ -415,6 +432,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = IdentityFee<Balance>;
+    type AdjustedWeightToFee = XdmAdjustedWeightToFee<Runtime>;
+    type FeeMultiplier = XdmFeeMultipler;
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = MmrHash;
     type MmrProofVerifier = MmrProofVerifier;
@@ -426,6 +445,8 @@ impl pallet_messenger::Config for Runtime {
     type DomainRegistration = ();
     type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
+    type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
+    type MessageVersion = MessageVersion;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -434,15 +455,6 @@ where
 {
     type Extrinsic = UncheckedExtrinsic;
     type RuntimeCall = RuntimeCall;
-}
-
-impl<C> frame_system::offchain::CreateInherent<C> for Runtime
-where
-    RuntimeCall: From<C>,
-{
-    fn create_inherent(call: Self::RuntimeCall) -> Self::Extrinsic {
-        UncheckedExtrinsic::new_bare(call)
-    }
 }
 
 parameter_types! {
@@ -537,15 +549,19 @@ fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
     }
 }
 
-/// Returns `true` if this is a valid Sudo call.
-/// Should extend this function to limit specific calls Sudo can make when needed.
+/// Returns `true` if this is a validly encoded Sudo call.
 fn is_valid_sudo_call(encoded_ext: Vec<u8>) -> bool {
-    UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()).is_ok()
+    UncheckedExtrinsic::decode_with_depth_limit(
+        MAX_CALL_RECURSION_DEPTH,
+        &mut encoded_ext.as_slice(),
+    )
+    .is_ok()
 }
 
 fn construct_sudo_call_extrinsic(encoded_ext: Vec<u8>) -> <Block as BlockT>::Extrinsic {
-    let ext = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice())
-        .expect("must always be an valid extrinsic due to the check above; qed");
+    let ext = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()).expect(
+        "must always be a valid extrinsic due to the check above and storage proof check; qed",
+    );
     UncheckedExtrinsic::new_bare(
         pallet_domain_sudo::Call::sudo {
             call: Box::new(ext.function),
@@ -593,6 +609,44 @@ fn extrinsic_era(extrinsic: &<Block as BlockT>::Extrinsic) -> Option<Era> {
     }
 }
 
+impl pallet_messenger::extensions::MaybeMessengerCall<Runtime> for RuntimeCall {
+    fn maybe_messenger_call(&self) -> Option<&pallet_messenger::Call<Runtime>> {
+        match self {
+            RuntimeCall::Messenger(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl<C> subspace_runtime_primitives::CreateUnsigned<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    fn create_unsigned(call: Self::RuntimeCall) -> Self::Extrinsic {
+        create_unsigned_general_extrinsic(call)
+    }
+}
+
+fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
+    let extra: SignedExtra = (
+        frame_system::CheckNonZeroSender::<Runtime>::new(),
+        frame_system::CheckSpecVersion::<Runtime>::new(),
+        frame_system::CheckTxVersion::<Runtime>::new(),
+        frame_system::CheckGenesis::<Runtime>::new(),
+        frame_system::CheckMortality::<Runtime>::from(generic::Era::Immortal),
+        // for unsigned extrinsic, nonce check will be skipped
+        // so set a default value
+        frame_system::CheckNonce::<Runtime>::from(0u32.into()),
+        domain_check_weight::CheckWeight::<Runtime>::new(),
+        // for unsigned extrinsic, transaction fee check will be skipped
+        // so set a default value
+        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
+        pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
+    );
+
+    UncheckedExtrinsic::new_transaction(call, extra)
+}
+
 #[cfg(feature = "runtime-benchmarks")]
 mod benches {
     frame_benchmarking::define_benchmarks!(
@@ -638,9 +692,20 @@ fn check_transaction_and_do_pre_dispatch_inner(
         }
         // signed transaction
         ExtrinsicFormat::Signed(account_id, extra) => {
+            let custom_extra: CustomSignedExtra = (
+                extra.0,
+                extra.1,
+                extra.2,
+                extra.3,
+                extra.4,
+                extra.5,
+                extra.6.clone(),
+                extra.7,
+                pallet_messenger::extensions::MessengerTrustedMmrExtension::<Runtime>::new(),
+            );
             let origin = RuntimeOrigin::signed(account_id);
-            <SignedExtra as DispatchTransaction<RuntimeCall>>::validate_and_prepare(
-                extra,
+            <CustomSignedExtra as DispatchTransaction<RuntimeCall>>::validate_and_prepare(
+                custom_extra,
                 origin,
                 &xt.function,
                 &dispatch_info,
@@ -653,11 +718,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
         }
         // unsigned transaction
         ExtrinsicFormat::Bare => {
-            if let RuntimeCall::Messenger(call) = &xt.function {
-                Messenger::pre_dispatch_with_trusted_mmr_proof(call)?;
-            } else {
-                Runtime::pre_dispatch(&xt.function).map(|_| ())?;
-            }
+            Runtime::pre_dispatch(&xt.function).map(|_| ())?;
             <SignedExtra as TransactionExtension<RuntimeCall>>::bare_validate_and_prepare(
                 &xt.function,
                 &dispatch_info,
@@ -866,8 +927,11 @@ impl_runtime_apis! {
             opaque_extrinsic: sp_runtime::OpaqueExtrinsic,
         ) -> Result<<Block as BlockT>::Extrinsic, DecodeExtrinsicError> {
             let encoded = opaque_extrinsic.encode();
-            UncheckedExtrinsic::decode(&mut encoded.as_slice())
-                .map_err(|err| DecodeExtrinsicError(format!("{}", err)))
+
+            UncheckedExtrinsic::decode_with_depth_limit(
+                MAX_CALL_RECURSION_DEPTH,
+                &mut encoded.as_slice(),
+            ).map_err(|err| DecodeExtrinsicError(format!("{}", err)))
         }
 
         fn extrinsic_era(

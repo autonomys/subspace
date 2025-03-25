@@ -29,7 +29,6 @@ frame-system.workspace = true
 frame-system-benchmarking = { workspace = true, optional = true }
 frame-system-rpc-runtime-api.workspace = true
 pallet-balances.workspace = true
-pallet-base-fee.workspace = true
 pallet-block-fees.workspace = true
 pallet-domain-id.workspace = true
 pallet-domain-sudo.workspace = true
@@ -92,7 +91,6 @@ std = [
     "frame-system/std",
     "frame-system-rpc-runtime-api/std",
     "pallet-balances/std",
-    "pallet-base-fee/std",
     "pallet-domain-id/std",
     "pallet-domain-sudo/std",
     "pallet-block-fees/std",

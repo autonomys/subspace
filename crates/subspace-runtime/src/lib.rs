@@ -46,6 +46,7 @@ use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
+use frame_system::pallet_prelude::RuntimeCallFor;
 use frame_system::EnsureRoot;
 use pallet_collective::{EnsureMember, EnsureProportionAtLeast};
 pub use pallet_rewards::RewardPoint;
@@ -99,10 +100,13 @@ use subspace_core_primitives::solutions::{
     pieces_to_solution_range, solution_range_to_pieces, SolutionRange,
 };
 use subspace_core_primitives::{PublicKey, Randomness, SlotNumber, U256};
-use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilityCall};
+use subspace_runtime_primitives::utility::{
+    DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
+};
 use subspace_runtime_primitives::{
-    maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
-    HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC,
+    maximum_normal_block_length, AccountId, Balance, BlockNumber, ConsensusEventSegmentSize,
+    FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate,
+    TargetBlockFullness, XdmAdjustedWeightToFee, XdmFeeMultipler, BLOCK_WEIGHT_FOR_2_SEC,
     DOMAINS_BLOCK_PRUNING_DEPTH, MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO,
     SHANNON, SLOT_PROBABILITY, SSC,
 };
@@ -254,6 +258,7 @@ impl frame_system::Config for Runtime {
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
     type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
+    type EventSegmentSize = ConsensusEventSegmentSize;
 }
 
 parameter_types! {
@@ -399,7 +404,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
-    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime, TargetBlockFullness>;
     type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
 
@@ -410,13 +415,48 @@ impl pallet_utility::Config for Runtime {
     type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
 }
 
-impl MaybeIntoUtilityCall<Runtime> for RuntimeCall {
+impl MaybeMultisigCall<Runtime> for RuntimeCall {
+    /// If this call is a `pallet_multisig::Call<Runtime>` call, returns the inner call.
+    fn maybe_multisig_call(&self) -> Option<&pallet_multisig::Call<Runtime>> {
+        match self {
+            RuntimeCall::Multisig(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl MaybeUtilityCall<Runtime> for RuntimeCall {
     /// If this call is a `pallet_utility::Call<Runtime>` call, returns the inner call.
-    fn maybe_into_utility_call(&self) -> Option<&pallet_utility::Call<Runtime>> {
+    fn maybe_utility_call(&self) -> Option<&pallet_utility::Call<Runtime>> {
         match self {
             RuntimeCall::Utility(call) => Some(call),
             _ => None,
         }
+    }
+}
+
+impl MaybeNestedCall<Runtime> for RuntimeCall {
+    /// If this call is a nested runtime call, returns the inner call(s).
+    ///
+    /// Ignored calls (such as `pallet_utility::Call::__Ignore`) should be yielded themsevles, but
+    /// their contents should not be yielded.
+    fn maybe_nested_call(&self) -> Option<Vec<&RuntimeCallFor<Runtime>>> {
+        // We currently ignore privileged calls, because privileged users can already change
+        // runtime code. This includes sudo, collective, and scheduler nested `RuntimeCall`s,
+        // and democracy nested `BoundedCall`s.
+
+        // It is ok to return early, because each call can only belong to one pallet.
+        let calls = self.maybe_nested_utility_calls();
+        if calls.is_some() {
+            return calls;
+        }
+
+        let calls = self.maybe_nested_multisig_calls();
+        if calls.is_some() {
+            return calls;
+        }
+
+        None
     }
 }
 
@@ -500,6 +540,16 @@ parameter_types! {
     pub const NoPreimagePostponement: Option<u32> = Some(10);
 }
 
+// Call preimages for the democracy and scheduler pallets can be stored as a binary blob. These
+// blobs are only fetched and decoded in the future block when the call is actually run. This
+// means any member of the council (or sudo) can schedule an invalid subspace runtime call. These
+// calls can cause a stack limit exceeded error in a future block. (Or other kinds of errors.)
+//
+// This risk is acceptable because those accounts are privileged, and those pallets already have
+// to deal with invalid stored calls (for example, stored before an upgrade, but run after).
+//
+// Invalid domain runtime calls will be rejected by the domain runtime extrinsic format checks,
+// even if they are scheduled/democratized in the subspace runtime.
 impl pallet_scheduler::Config for Runtime {
     type MaxScheduledPerBlock = ConstU32<50>;
     type MaximumWeight = MaximumSchedulerWeight;
@@ -674,6 +724,7 @@ parameter_types! {
     // TODO update the fee model
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
+    pub const MessageVersion: pallet_messenger::MessageVersion = pallet_messenger::MessageVersion::V0;
 }
 
 // ensure the max outgoing messages is not 0.
@@ -701,6 +752,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
+    type AdjustedWeightToFee = XdmAdjustedWeightToFee<Runtime>;
+    type FeeMultiplier = XdmFeeMultipler;
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
@@ -712,6 +765,8 @@ impl pallet_messenger::Config for Runtime {
     type DomainRegistration = DomainRegistration;
     type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
+    type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
+    type MessageVersion = MessageVersion;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -1037,6 +1092,7 @@ pub type SignedExtra = (
     DisablePallets,
     pallet_subspace::extensions::SubspaceExtension<Runtime>,
     pallet_domains::extensions::DomainsExtension<Runtime>,
+    pallet_messenger::extensions::MessengerExtension<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
@@ -1070,6 +1126,15 @@ impl pallet_domains::extensions::MaybeDomainsCall<Runtime> for RuntimeCall {
     fn maybe_domains_call(&self) -> Option<&pallet_domains::Call<Runtime>> {
         match self {
             RuntimeCall::Domains(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl pallet_messenger::extensions::MaybeMessengerCall<Runtime> for RuntimeCall {
+    fn maybe_messenger_call(&self) -> Option<&pallet_messenger::Call<Runtime>> {
+        match self {
+            RuntimeCall::Messenger(call) => Some(call),
             _ => None,
         }
     }
@@ -1129,6 +1194,7 @@ fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
         DisablePallets,
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
+        pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
     );
 
     UncheckedExtrinsic::new_transaction(call, extra)

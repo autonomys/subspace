@@ -1,4 +1,4 @@
-use crate::commands::run::shared::RpcOptions;
+use crate::commands::run::shared::{RpcOptions, TrieCacheParams};
 use crate::commands::shared::{store_key_in_keystore, KeystoreOptions};
 use crate::Error;
 use clap::Parser;
@@ -16,14 +16,15 @@ use evm_domain_runtime::AccountId as AccountId20;
 use futures::StreamExt;
 use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension, Properties};
 use sc_cli::{
-    Cors, KeystoreParams, PruningParams, RpcMethods, TransactionPoolParams, RPC_DEFAULT_PORT,
+    Cors, KeystoreParams, PruningParams, RpcMethods, RuntimeParams, TransactionPoolParams,
+    RPC_DEFAULT_PORT,
 };
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, TransportConfig};
 use sc_network::{NetworkPeers, NetworkRequest};
 use sc_proof_of_time::source::PotSlotInfo;
-use sc_service::config::KeystoreConfig;
+use sc_service::config::{ExecutorConfiguration, KeystoreConfig};
 use sc_service::Configuration;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
@@ -127,6 +128,14 @@ pub(super) struct DomainOptions {
     #[clap(flatten)]
     pool_config: TransactionPoolParams,
 
+    /// Options for Runtime
+    #[clap(flatten)]
+    pub runtime_params: RuntimeParams,
+
+    /// Options for Trie cache.
+    #[clap(flatten)]
+    pub trie_cache_params: TrieCacheParams,
+
     /// Additional args for domain.
     #[clap(raw = true)]
     additional_args: Vec<String>,
@@ -155,8 +164,9 @@ pub(super) fn create_domain_configuration(
         mut keystore_suri,
         keystore_options,
         pool_config,
+        runtime_params,
+        trie_cache_params,
         additional_args,
-        ..
     } = domain_options;
 
     let domain_id;
@@ -369,6 +379,13 @@ pub(super) fn create_domain_configuration(
         telemetry_endpoints: consensus_chain_configuration.telemetry_endpoints.clone(),
         force_authoring: false,
         chain_spec: Box::new(chain_spec),
+        executor: ExecutorConfiguration {
+            wasm_method: Default::default(),
+            max_runtime_instances: runtime_params.max_runtime_instances,
+            default_heap_pages: None,
+            runtime_cache_size: runtime_params.runtime_cache_size,
+        },
+        trie_cache_size: trie_cache_params.trie_cache_maximum_size(),
     };
 
     Ok(DomainConfiguration {

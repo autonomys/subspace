@@ -37,6 +37,7 @@ macro_rules! impl_runtime {
         use core::mem;
         use sp_runtime::Perbill;
         use sp_domains::DomainId;
+        use subspace_runtime_primitives::DomainEventSegmentSize;
 
         type Block = frame_system::mocking::MockBlock<Runtime>;
 
@@ -53,6 +54,7 @@ macro_rules! impl_runtime {
         impl frame_system::Config for $runtime {
             type Block = Block;
             type AccountData = AccountData<Balance>;
+            type EventSegmentSize = DomainEventSegmentSize;
         }
 
         parameter_types! {
@@ -61,6 +63,8 @@ macro_rules! impl_runtime {
             pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
             pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: 1};
             pub const MaxOutgoingMessages: u32 = 25;
+            pub const FeeMultiplier: u32 = 1;
+            pub const MessageVersion: crate::MessageVersion = crate::MessageVersion::V0;
         }
 
         #[derive(
@@ -104,6 +108,10 @@ macro_rules! impl_runtime {
             type DomainRegistration = DomainRegistration;
             type ChannelFeeModel = ChannelFeeModel;
             type MaxOutgoingMessages = MaxOutgoingMessages;
+            type MessengerOrigin = crate::EnsureMessengerOrigin;
+            type AdjustedWeightToFee = frame_support::weights::IdentityFee<u64>;
+            type FeeMultiplier = FeeMultiplier;
+            type MessageVersion = MessageVersion;
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 #[allow(unused_variables)] endpoint: &Endpoint,

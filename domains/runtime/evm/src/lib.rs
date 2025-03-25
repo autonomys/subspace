@@ -23,8 +23,8 @@ pub use domain_runtime_primitives::{
 };
 use domain_runtime_primitives::{
     AccountId20, CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier,
-    DEFAULT_EXTENSION_VERSION, ERR_BALANCE_OVERFLOW, ERR_CONTRACT_CREATION_NOT_ALLOWED,
-    ERR_NONCE_OVERFLOW, MAX_OUTGOING_MESSAGES, SLOT_DURATION,
+    TargetBlockFullness, DEFAULT_EXTENSION_VERSION, ERR_BALANCE_OVERFLOW,
+    ERR_CONTRACT_CREATION_NOT_ALLOWED, ERR_NONCE_OVERFLOW, MAX_OUTGOING_MESSAGES, SLOT_DURATION,
 };
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
@@ -36,10 +36,11 @@ use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
     OnUnbalanced, VariantCount,
 };
-use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
+use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
+use frame_system::pallet_prelude::RuntimeCallFor;
 use pallet_block_fees::fees::OnChargeDomainTransaction;
 use pallet_ethereum::{
     PostLogContent, Transaction as EthereumTransaction, TransactionAction, TransactionData,
@@ -52,12 +53,15 @@ use pallet_evm::{
 use pallet_evm_tracker::create_contract::{is_create_contract_allowed, CheckContractCreation};
 use pallet_evm_tracker::traits::{MaybeIntoEthCall, MaybeIntoEvmCall};
 use pallet_transporter::EndpointHandler;
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeLimit, Encode, MaxEncodedLen};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
 use sp_domains::{
     ChannelId, DomainAllowlistUpdates, DomainId, PermissionedActionAllowedBy, Transfers,
+};
+use sp_evm_tracker::{
+    BlockGasLimit, GasLimitPovSizeRatio, GasPerByte, StorageFeeRatio, WeightPerGas,
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
@@ -75,7 +79,6 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
-use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{
     generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
     ExtrinsicInclusionMode,
@@ -91,10 +94,11 @@ use sp_subspace_mmr::domain_mmr_runtime_interface::{
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
-use subspace_runtime_primitives::utility::{DefaultNonceProvider, MaybeIntoUtilityCall};
+use subspace_runtime_primitives::utility::{MaybeNestedCall, MaybeUtilityCall};
 use subspace_runtime_primitives::{
-    BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment,
-    SlowAdjustingFeeUpdate, SHANNON, SSC,
+    BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, Hash as ConsensusBlockHash,
+    Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee, XdmFeeMultipler,
+    MAX_CALL_RECURSION_DEPTH, SHANNON, SSC,
 };
 
 /// The address format for describing accounts.
@@ -123,6 +127,7 @@ pub type SignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     CheckContractCreation<Runtime>,
+    pallet_messenger::extensions::MessengerExtension<Runtime>,
 );
 
 /// Custom signed extra for check_and_pre_dispatch.
@@ -137,6 +142,7 @@ type CustomSignedExtra = (
     domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     CheckContractCreation<Runtime>,
+    pallet_messenger::extensions::MessengerTrustedMmrExtension<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -154,7 +160,10 @@ pub type Executive = domain_pallet_executive::Executive<
     Runtime,
     AllPalletsWithSystem,
     // TODO: remove once migrations are done
-    pallet_messenger::migrations::VersionCheckedMigrateDomainsV0ToV1<Runtime>,
+    (
+        pallet_messenger::migrations::VersionCheckedMigrateDomainsV0ToV1<Runtime>,
+        domain_pallet_executive::migrations::StorageCheckedMigrateToEventSegments<Runtime>,
+    ),
 >;
 
 /// Returns the storage fee for `len` bytes, or an overflow error.
@@ -202,24 +211,8 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
             .into()));
         }
 
-        // TODO: move this code into pallet-block-fees, so it can be used from the production and
-        // test runtimes.
         match self {
-            RuntimeCall::Ethereum(call) => {
-                // Ensure the caller can pay for the consensus chain storage fee
-                let consensus_storage_fee = match consensus_storage_fee(len) {
-                    Ok(fee) => fee,
-                    Err(err) => return Some(Err(err)),
-                };
-                let withdraw_res = <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
-                    Runtime,
-                >>::withdraw_fee(info, consensus_storage_fee.into());
-                if withdraw_res.is_err() {
-                    return Some(Err(InvalidTransaction::Payment.into()));
-                }
-
-                call.validate_self_contained(info, dispatch_info, len)
-            }
+            RuntimeCall::Ethereum(call) => call.validate_self_contained(info, dispatch_info, len),
             _ => None,
         }
     }
@@ -241,23 +234,6 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         // test runtimes.
         match self {
             RuntimeCall::Ethereum(call) => {
-                // Withdraw the consensus chain storage fee from the caller and record
-                // it in the `BlockFees`
-                let consensus_storage_fee = match consensus_storage_fee(len) {
-                    Ok(fee) => fee,
-                    Err(err) => return Some(Err(err)),
-                };
-                match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
-                    info,
-                    consensus_storage_fee.into(),
-                ) {
-                    Ok(None) => {}
-                    Ok(Some(paid_consensus_storage_fee)) => {
-                        BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee.peek())
-                    }
-                    Err(_) => return Some(Err(InvalidTransaction::Payment.into())),
-                }
-
                 // Copied from [`pallet_ethereum::Call::pre_dispatch_self_contained`] with `frame_system::CheckWeight`
                 // replaced with `domain_check_weight::CheckWeight`
                 if let pallet_ethereum::Call::transact { transaction } = call {
@@ -343,7 +319,7 @@ impl frame_system::Config for Runtime {
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
     type Lookup = IdentityLookup<AccountId>;
     /// The type for storing how many extrinsics an account has signed.
-    type Nonce = TypeWithDefault<Nonce, DefaultNonceProvider<System, Nonce>>;
+    type Nonce = Nonce;
     /// The type for hashing blocks and tries.
     type Hash = Hash;
     /// The hashing algorithm used.
@@ -386,6 +362,7 @@ impl frame_system::Config for Runtime {
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
     type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
+    type EventSegmentSize = DomainEventSegmentSize;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -432,7 +409,7 @@ impl pallet_balances::Config for Runtime {
 
 parameter_types! {
     pub const OperationalFeeMultiplier: u8 = 5;
-    pub const DomainChainByteFee: Balance = 1;
+    pub const DomainChainByteFee: Balance = 100_000 * SHANNON;
     pub TransactionWeightFee: Balance = 100_000 * SHANNON;
 }
 
@@ -456,7 +433,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = OnChargeDomainTransaction<Balances>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type LengthToFee = ConstantMultiplier<Balance, FinalDomainTransactionByteFee>;
-    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime, TargetBlockFullness>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
     type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
@@ -588,6 +565,7 @@ parameter_types! {
     // TODO update the fee model
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
+    pub const MessageVersion: pallet_messenger::MessageVersion = pallet_messenger::MessageVersion::V0;
 }
 
 // ensure the max outgoing messages is not 0.
@@ -608,6 +586,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
+    type AdjustedWeightToFee = XdmAdjustedWeightToFee<Runtime>;
+    type FeeMultiplier = XdmFeeMultipler;
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = MmrHash;
     type MmrProofVerifier = MmrProofVerifier;
@@ -619,6 +599,8 @@ impl pallet_messenger::Config for Runtime {
     type DomainRegistration = ();
     type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
+    type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
+    type MessageVersion = MessageVersion;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -627,15 +609,6 @@ where
 {
     type Extrinsic = UncheckedExtrinsic;
     type RuntimeCall = RuntimeCall;
-}
-
-impl<C> frame_system::offchain::CreateInherent<C> for Runtime
-where
-    RuntimeCall: From<C>,
-{
-    fn create_inherent(call: Self::RuntimeCall) -> Self::Extrinsic {
-        UncheckedExtrinsic::new_bare(call)
-    }
 }
 
 parameter_types! {
@@ -666,21 +639,8 @@ impl FindAuthor<H160> for FindAuthorTruncated {
     }
 }
 
-/// Current approximation of the gas/s consumption considering
-/// EVM execution over compiled WASM (on 4.4Ghz CPU).
-pub const GAS_PER_SECOND: u64 = 40_000_000;
-
-/// Approximate ratio of the amount of Weight per Gas.
-/// u64 works for approximations because Weight is a very small unit compared to gas.
-pub const WEIGHT_PER_GAS: u64 = WEIGHT_REF_TIME_PER_SECOND.saturating_div(GAS_PER_SECOND);
-
 parameter_types! {
-    /// EVM block gas limit is set to maximum to allow all the transaction stored on Consensus chain.
-    pub BlockGasLimit: U256 = U256::from(
-        maximum_domain_block_weight().ref_time() / WEIGHT_PER_GAS
-    );
     pub PrecompilesValue: Precompiles = Precompiles::default();
-    pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
 }
 
 type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, ()>;
@@ -707,8 +667,13 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
         already_withdrawn: Self::LiquidityInfo,
     ) -> Self::LiquidityInfo {
         if already_withdrawn.is_some() {
-            // Record the evm actual transaction fee
-            BlockFees::note_domain_execution_fee(corrected_fee.as_u128());
+            // Record the evm actual transaction fee and storage fee
+            let (storage_fee, execution_fee) =
+                EvmGasPriceCalculator::split_fee_into_storage_and_execution(
+                    corrected_fee.as_u128(),
+                );
+            BlockFees::note_consensus_storage_fee(storage_fee);
+            BlockFees::note_domain_execution_fee(execution_fee);
         }
 
         <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
@@ -723,12 +688,16 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
     }
 }
 
-parameter_types! {
-    pub const GasLimitPovSizeRatio: u64 = 4;
-}
+pub type EvmGasPriceCalculator = pallet_evm_tracker::fees::EvmGasPriceCalculator<
+    Runtime,
+    TransactionWeightFee,
+    GasPerByte,
+    StorageFeeRatio,
+>;
 
 impl pallet_evm::Config for Runtime {
-    type FeeCalculator = BaseFee;
+    type AccountProvider = pallet_evm::FrameSystemAccountProvider<Self>;
+    type FeeCalculator = EvmGasPriceCalculator;
     type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
     type WeightPerGas = WeightPerGas;
     type BlockHashMapping = pallet_ethereum::EthereumBlockHashMapping<Self>;
@@ -746,11 +715,10 @@ impl pallet_evm::Config for Runtime {
     type OnCreate = ();
     type FindAuthor = FindAuthorTruncated;
     type GasLimitPovSizeRatio = GasLimitPovSizeRatio;
-    type Timestamp = Timestamp;
-    type WeightInfo = pallet_evm::weights::SubstrateWeight<Self>;
-    type AccountProvider = pallet_evm::FrameSystemAccountProvider<Self>;
     // TODO: re-check this value mostly from moonbeam
     type GasLimitStorageGrowthRatio = ();
+    type Timestamp = Timestamp;
+    type WeightInfo = pallet_evm::weights::SubstrateWeight<Self>;
 }
 
 impl MaybeIntoEvmCall<Runtime> for RuntimeCall {
@@ -786,37 +754,6 @@ impl MaybeIntoEthCall<Runtime> for RuntimeCall {
     }
 }
 
-parameter_types! {
-    pub BoundDivision: U256 = U256::from(1024);
-}
-
-parameter_types! {
-    pub DefaultBaseFeePerGas: U256 = U256::from(1_000_000_000);
-    // mark it to 5% increments on beyond target weight.
-    pub DefaultElasticity: Permill = Permill::from_parts(50_000);
-}
-
-pub struct BaseFeeThreshold;
-
-impl pallet_base_fee::BaseFeeThreshold for BaseFeeThreshold {
-    fn lower() -> Permill {
-        Permill::zero()
-    }
-    fn ideal() -> Permill {
-        Permill::from_parts(500_000)
-    }
-    fn upper() -> Permill {
-        Permill::from_parts(1_000_000)
-    }
-}
-
-impl pallet_base_fee::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Threshold = BaseFeeThreshold;
-    type DefaultBaseFeePerGas = DefaultBaseFeePerGas;
-    type DefaultElasticity = DefaultElasticity;
-}
-
 impl pallet_domain_id::Config for Runtime {}
 
 pub struct IntoRuntimeCall;
@@ -843,13 +780,25 @@ impl pallet_utility::Config for Runtime {
     type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
 }
 
-impl MaybeIntoUtilityCall<Runtime> for RuntimeCall {
+impl MaybeUtilityCall<Runtime> for RuntimeCall {
     /// If this call is a `pallet_utility::Call<Runtime>` call, returns the inner call.
-    fn maybe_into_utility_call(&self) -> Option<&pallet_utility::Call<Runtime>> {
+    fn maybe_utility_call(&self) -> Option<&pallet_utility::Call<Runtime>> {
         match self {
             RuntimeCall::Utility(call) => Some(call),
             _ => None,
         }
+    }
+}
+
+impl MaybeNestedCall<Runtime> for RuntimeCall {
+    /// If this call is a nested runtime call, returns the inner call(s).
+    ///
+    /// Ignored calls (such as `pallet_utility::Call::__Ignore`) should be yielded themsevles, but
+    /// their contents should not be yielded.
+    fn maybe_nested_call(&self) -> Option<Vec<&RuntimeCallFor<Runtime>>> {
+        // We currently ignore privileged calls, because privileged users can already change
+        // runtime code. Domain sudo `RuntimeCall`s also have to pass inherent validation.
+        self.maybe_nested_utility_calls()
     }
 }
 
@@ -880,7 +829,6 @@ construct_runtime!(
         Ethereum: pallet_ethereum = 80,
         EVM: pallet_evm = 81,
         EVMChainId: pallet_evm_chain_id = 82,
-        BaseFee: pallet_base_fee = 83,
         EVMNoncetracker: pallet_evm_tracker = 84,
 
         // domain instance stuff
@@ -938,16 +886,20 @@ fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
     }
 }
 
-/// Returns `true` if this is a valid Sudo call.
-/// Should extend this function to limit specific calls Sudo can make when needed.
+/// Returns `true` if this is a validly encoded Sudo call.
 fn is_valid_sudo_call(encoded_ext: Vec<u8>) -> bool {
-    UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()).is_ok()
+    UncheckedExtrinsic::decode_with_depth_limit(
+        MAX_CALL_RECURSION_DEPTH,
+        &mut encoded_ext.as_slice(),
+    )
+    .is_ok()
 }
 
 /// Constructs a domain-sudo call extrinsic from the given encoded extrinsic.
 fn construct_sudo_call_extrinsic(encoded_ext: Vec<u8>) -> <Block as BlockT>::Extrinsic {
-    let ext = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice())
-        .expect("must always be an valid extrinsic due to the check above; qed");
+    let ext = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()).expect(
+        "must always be a valid extrinsic due to the check above and storage proof check; qed",
+    );
     UncheckedExtrinsic::new_bare(
         pallet_domain_sudo::Call::sudo {
             call: Box::new(ext.0.function),
@@ -1035,20 +987,6 @@ fn pre_dispatch_evm_transaction(
 ) -> Result<(), TransactionValidityError> {
     match call {
         RuntimeCall::Ethereum(call) => {
-            // Withdraw the consensus chain storage fee from the caller and record
-            // it in the `BlockFees`
-            let consensus_storage_fee = consensus_storage_fee(len)?;
-            match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
-                &account_id,
-                consensus_storage_fee.into(),
-            ) {
-                Ok(None) => {}
-                Ok(Some(paid_consensus_storage_fee)) => {
-                    BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee.peek())
-                }
-                Err(_) => return Err(InvalidTransaction::Payment.into()),
-            }
-
             if let Some(transaction_validity) =
                 call.validate_self_contained(&account_id, dispatch_info, len)
             {
@@ -1117,11 +1055,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
     match xt.signed {
         CheckedSignature::GenericDelegated(format) => match format {
             ExtrinsicFormat::Bare => {
-                if let RuntimeCall::Messenger(call) = &xt.function {
-                    Messenger::pre_dispatch_with_trusted_mmr_proof(call)?;
-                } else {
-                    Runtime::pre_dispatch(&xt.function).map(|_| ())?;
-                }
+                Runtime::pre_dispatch(&xt.function).map(|_| ())?;
                 <SignedExtra as TransactionExtension<RuntimeCall>>::bare_validate_and_prepare(
                     &xt.function,
                     &dispatch_info,
@@ -1140,6 +1074,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.6,
                     extra.7.clone(),
                     extra.8,
+                    pallet_messenger::extensions::MessengerTrustedMmrExtension::<Runtime>::new(),
                 );
 
                 let origin = RuntimeOrigin::none();
@@ -1164,6 +1099,9 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.6,
                     extra.7.clone(),
                     extra.8,
+                    // trusted MMR extension here does not matter since this extension
+                    // will only affect unsigned extrinsics but not signed extrinsics
+                    pallet_messenger::extensions::MessengerTrustedMmrExtension::<Runtime>::new(),
                 );
 
                 let origin = RuntimeOrigin::signed(account_id);
@@ -1182,6 +1120,45 @@ fn check_transaction_and_do_pre_dispatch_inner(
             pre_dispatch_evm_transaction(account_id, xt.function, &dispatch_info, encoded_len)
         }
     }
+}
+
+impl pallet_messenger::extensions::MaybeMessengerCall<Runtime> for RuntimeCall {
+    fn maybe_messenger_call(&self) -> Option<&pallet_messenger::Call<Runtime>> {
+        match self {
+            RuntimeCall::Messenger(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl<C> subspace_runtime_primitives::CreateUnsigned<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    fn create_unsigned(call: Self::RuntimeCall) -> Self::Extrinsic {
+        create_unsigned_general_extrinsic(call)
+    }
+}
+
+fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
+    let extra: SignedExtra = (
+        frame_system::CheckNonZeroSender::<Runtime>::new(),
+        frame_system::CheckSpecVersion::<Runtime>::new(),
+        frame_system::CheckTxVersion::<Runtime>::new(),
+        frame_system::CheckGenesis::<Runtime>::new(),
+        frame_system::CheckMortality::<Runtime>::from(generic::Era::Immortal),
+        // for unsigned extrinsic, nonce check will be skipped
+        // so set a default value
+        frame_system::CheckNonce::<Runtime>::from(0u32),
+        domain_check_weight::CheckWeight::<Runtime>::new(),
+        // for unsigned extrinsic, transaction fee check will be skipped
+        // so set a default value
+        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
+        CheckContractCreation::<Runtime>::new(),
+        pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
+    );
+
+    UncheckedExtrinsic::from(generic::UncheckedExtrinsic::new_transaction(call, extra))
 }
 
 #[cfg(feature = "runtime-benchmarks")]
@@ -1270,7 +1247,7 @@ impl_runtime_apis! {
 
     impl frame_system_rpc_runtime_api::AccountNonceApi<Block, AccountId, Nonce> for Runtime {
         fn account_nonce(account: AccountId) -> Nonce {
-            *System::account_nonce(account)
+            System::account_nonce(account)
         }
     }
 
@@ -1383,8 +1360,11 @@ impl_runtime_apis! {
             opaque_extrinsic: sp_runtime::OpaqueExtrinsic,
         ) -> Result<<Block as BlockT>::Extrinsic, DecodeExtrinsicError> {
             let encoded = opaque_extrinsic.encode();
-            UncheckedExtrinsic::decode(&mut encoded.as_slice())
-                .map_err(|err| DecodeExtrinsicError(format!("{}", err)))
+
+            UncheckedExtrinsic::decode_with_depth_limit(
+                MAX_CALL_RECURSION_DEPTH,
+                &mut encoded.as_slice(),
+            ).map_err(|err| DecodeExtrinsicError(format!("{}", err)))
         }
 
         fn extrinsic_era(
@@ -1686,7 +1666,7 @@ impl_runtime_apis! {
         }
 
         fn elasticity() -> Option<Permill> {
-            Some(pallet_base_fee::Elasticity::<Runtime>::get())
+            None
         }
 
         fn gas_limit_multiplier_support() {}

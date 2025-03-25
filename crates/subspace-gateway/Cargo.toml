@@ -39,7 +39,7 @@ subspace-kzg.workspace = true
 subspace-logging.workspace = true
 subspace-networking.workspace = true
 subspace-rpc-primitives.workspace = true
-subspace-verification.workspace = true
+subspace-verification = { workspace = true, features = ["kzg"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "macros"] }
 tracing.workspace = true
 

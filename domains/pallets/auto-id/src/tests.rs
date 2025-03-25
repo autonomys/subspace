@@ -18,7 +18,7 @@ use sp_core::{blake2_256, H256, U256};
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::BuildStorage;
 use std::sync::Arc;
-use subspace_runtime_primitives::Moment;
+use subspace_runtime_primitives::{DomainEventSegmentSize, Moment};
 use x509_parser::der_parser::asn1_rs::ToDer;
 use x509_parser::oid_registry::OID_PKCS1_SHA256WITHRSA;
 use x509_parser::prelude::{AlgorithmIdentifier, FromDer};
@@ -87,6 +87,7 @@ impl frame_system::Config for Test {
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
     type ExtensionsWeightInfo = ();
+    type EventSegmentSize = DomainEventSegmentSize;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {

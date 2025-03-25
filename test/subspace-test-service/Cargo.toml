@@ -27,6 +27,7 @@ pallet-transaction-payment.workspace = true
 mmr-gadget.workspace = true
 rand.workspace = true
 pallet-domains.workspace = true
+pallet-messenger.workspace = true
 pallet-subspace.workspace = true
 parking_lot.workspace = true
 sc-block-builder.workspace = true

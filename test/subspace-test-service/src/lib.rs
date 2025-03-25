@@ -96,7 +96,8 @@ use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{chain_spec, Backend, Client};
 use subspace_test_primitives::OnchainStateApi;
 use subspace_test_runtime::{
-    Runtime, RuntimeApi, RuntimeCall, SignedExtra, UncheckedExtrinsic, SLOT_DURATION,
+    DisablePallets, Runtime, RuntimeApi, RuntimeCall, SignedExtra, UncheckedExtrinsic,
+    SLOT_DURATION,
 };
 use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{RpcHandlersExt, RpcTransactionError, RpcTransactionOutput};
@@ -1382,8 +1383,10 @@ fn get_signed_extra(
         frame_system::CheckNonce::<Runtime>::from(nonce.into()),
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+        DisablePallets,
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
+        pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
     )
 }
 
@@ -1413,7 +1416,7 @@ where
         >::from_raw(
             function,
             extra.clone(),
-            ((), 100, 1, genesis_block, current_block_hash, (), (), (), (), ()),
+            ((), 100, 1, genesis_block, current_block_hash, (), (), (), (), (), (),()),
         ),
         extra,
     )

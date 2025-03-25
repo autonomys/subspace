@@ -592,7 +592,8 @@ fn channel_relay_request_and_response(
         Inbox::<chain_b::Runtime>::set(Some(msg));
 
         // process inbox message
-        let result = chain_b::Messenger::relay_message(chain_b::RuntimeOrigin::none(), xdm);
+        let result =
+            chain_b::Messenger::relay_message(crate::RawOrigin::ValidatedUnsigned.into(), xdm);
         assert_ok!(result);
 
         chain_b::System::assert_has_event(chain_b::RuntimeEvent::Messenger(crate::Event::<
@@ -649,8 +650,10 @@ fn channel_relay_request_and_response(
         OutboxResponses::<chain_a::Runtime>::set(Some(msg));
 
         // process outbox message response
-        let result =
-            chain_a::Messenger::relay_message_response(chain_a::RuntimeOrigin::none(), xdm);
+        let result = chain_a::Messenger::relay_message_response(
+            crate::RawOrigin::ValidatedUnsigned.into(),
+            xdm,
+        );
         assert_ok!(result);
 
         // outbox message and message response should not exists
@@ -879,6 +882,7 @@ fn initiate_transfer_on_chain(chain_a_ext: &mut TestExternalities) {
             pallet_transporter::Event::<chain_a::Runtime>::OutgoingTransferInitiated {
                 chain_id: chain_b::SelfChainId::get(),
                 message_id: (U256::zero(), U256::one()),
+                amount: 500,
             },
         ));
         chain_a::System::assert_has_event(chain_a::RuntimeEvent::Messenger(crate::Event::<
@@ -928,6 +932,7 @@ fn verify_transfer_on_chain(
             pallet_transporter::Event::<chain_b::Runtime>::IncomingTransferSuccessful {
                 chain_id: chain_a::SelfChainId::get(),
                 message_id: (U256::zero(), U256::one()),
+                amount: 500,
             },
         ));
         chain_b::System::assert_has_event(chain_b::RuntimeEvent::Messenger(crate::Event::<

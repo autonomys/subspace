@@ -27,12 +27,14 @@ sp-mmr-primitives.workspace = true
 sp-runtime.workspace = true
 sp-trie.workspace = true
 sp-subspace-mmr.workspace = true
+subspace-runtime-primitives.workspace = true
 
 [dev-dependencies]
 domain-runtime-primitives.workspace = true
 pallet-balances = { workspace = true, features = ["std"] }
 pallet-transporter = { workspace = true, features = ["std"] }
 sp-state-machine.workspace = true
+subspace-runtime-primitives.workspace = true
 
 [features]
 default = ["std"]
@@ -50,6 +52,7 @@ std = [
     "sp-runtime/std",
     "sp-trie/std",
     "sp-subspace-mmr/std",
+    "subspace-runtime-primitives/std",
 ]
 runtime-benchmarks = [
     "frame-benchmarking",

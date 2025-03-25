@@ -25,6 +25,7 @@ pallet-balances.workspace = true
 pallet-domains.workspace = true
 pallet-messenger.workspace = true
 pallet-mmr.workspace = true
+pallet-multisig.workspace = true
 pallet-rewards.workspace = true
 pallet-runtime-configs.workspace = true
 pallet-subspace = { workspace = true, features = ["serde"] }
@@ -79,6 +80,7 @@ std = [
     "pallet-domains/std",
     "pallet-messenger/std",
     "pallet-mmr/std",
+    "pallet-multisig/std",
     "pallet-rewards/std",
     "pallet-runtime-configs/std",
     "pallet-subspace/std",
@@ -122,8 +124,9 @@ runtime-benchmarks = [
     "frame-system/runtime-benchmarks",
     "pallet-balances/runtime-benchmarks",
     "pallet-domains/runtime-benchmarks",
-    "pallet-mmr/runtime-benchmarks",
     "pallet-messenger/runtime-benchmarks",
+    "pallet-mmr/runtime-benchmarks",
+    "pallet-multisig/runtime-benchmarks",
     "pallet-rewards/runtime-benchmarks",
     "pallet-runtime-configs/runtime-benchmarks",
     "pallet-subspace/runtime-benchmarks",
