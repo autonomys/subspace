@@ -63,7 +63,7 @@ where
         //    in inconsistent `raw_genesis`
         if !is_domain_started && !domain_best_number.is_zero() {
             return Err(
-                "Unable to restart the existing consensus node as a domain node"
+                "An existing consensus node can’t be restarted as a domain node"
                     .to_string()
                     .into(),
             );
