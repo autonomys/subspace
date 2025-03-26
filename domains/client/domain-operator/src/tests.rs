@@ -8208,7 +8208,7 @@ async fn test_domain_node_starting_check() {
     .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
-    // Produce 5 consensus block with bundle
+    // Produce 5 consensus block without bundle
     for _ in 0..5 {
         ferdie.produce_block_with_extrinsics(vec![]).await.unwrap();
     }
