@@ -8250,7 +8250,7 @@ async fn test_domain_node_starting_check() {
     assert_eq!(bob.client.info().best_number, 6);
 
     // Start another domain node with the same consensus node shoule be failed now
-    // because there are already domain block produced, the domain node has to start
+    // because there domain blocks are already produced, the domain node has to start
     // with a fresh consensus node
     let result = async move {
         std::panic::AssertUnwindSafe(
