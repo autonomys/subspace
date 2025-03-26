@@ -81,8 +81,8 @@ where
     // which is unexpected as the domain chain is derived from the consensus chain.
     if is_domain_started {
         return Err(
-            "The domain chain is ahead of the consensus chain, possibly uncleaned `domains`
-            folder from the last run"
+            "The domain chain is ahead of the consensus chain, inconsistent `db` and `domains`
+            folders from the last run"
                 .to_string()
                 .into(),
         );
