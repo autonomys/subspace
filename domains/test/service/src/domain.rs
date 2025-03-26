@@ -145,7 +145,6 @@ where
         role: Role,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
-        let base_path = BasePath::new(base_path.path().join(format!("domain-{domain_id:?}")));
         let mut domain_config = node_config(
             domain_id,
             tokio_handle.clone(),
@@ -580,7 +579,11 @@ impl DomainNodeBuilder {
             EVM_DOMAIN_ID,
             self.tokio_handle,
             key,
-            self.base_path,
+            BasePath::new(
+                self.base_path
+                    .path()
+                    .join(format!("domain-{EVM_DOMAIN_ID:?}")),
+            ),
             self.domain_nodes,
             self.domain_nodes_exclusive,
             self.skip_empty_bundle_production,
@@ -600,6 +603,33 @@ impl DomainNodeBuilder {
     ) -> AutoIdDomainNode {
         DomainNode::build(
             AUTO_ID_DOMAIN_ID,
+            self.tokio_handle,
+            key,
+            BasePath::new(
+                self.base_path
+                    .path()
+                    .join(format!("domain-{AUTO_ID_DOMAIN_ID:?}")),
+            ),
+            self.domain_nodes,
+            self.domain_nodes_exclusive,
+            self.skip_empty_bundle_production,
+            self.maybe_operator_id,
+            role,
+            mock_consensus_node,
+        )
+        .await
+    }
+
+    /// Build an EVM domain node with the given domain id
+    pub async fn build_evm_node_with(
+        self,
+        role: Role,
+        key: EcdsaKeyring,
+        mock_consensus_node: &mut MockConsensusNode,
+        domain_id: DomainId,
+    ) -> EvmDomainNode {
+        DomainNode::build(
+            domain_id,
             self.tokio_handle,
             key,
             self.base_path,
