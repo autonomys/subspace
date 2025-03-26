@@ -8249,17 +8249,38 @@ async fn test_domain_node_starting_check() {
     ferdie.produce_block_with_extrinsics(vec![]).await.unwrap();
     assert_eq!(bob.client.info().best_number, 6);
 
-    // Start another domain node with the same consensus node shoule be failed now
-    // because there domain blocks are already produced, the domain node has to start
+    // Starting another domain node with the same consensus node should fail now.
+    // Because there are already domain blocks produced, the domain node has to start
     // with a fresh consensus node
+    let tokio_handle_clone = tokio_handle.clone();
+    let charlie_base_path = BasePath::new(directory.path().join("charlie"));
     let result = async move {
         std::panic::AssertUnwindSafe(
-            domain_test_service::DomainNodeBuilder::new(
-                tokio_handle.clone(),
-                BasePath::new(directory.path().join("charlie")),
-            )
-            .operator_id(2)
-            .build_evm_node(Role::Authority, Charlie, &mut ferdie),
+            domain_test_service::DomainNodeBuilder::new(tokio_handle_clone, charlie_base_path)
+                .operator_id(2)
+                .build_evm_node(Role::Authority, Charlie, &mut ferdie),
+        )
+        .catch_unwind()
+        .await
+    }
+    .await;
+    assert!(result.is_err());
+
+    // Restart a domain node with a fresh consensus node should fail
+    let mut eve = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Keyring::Eve,
+        BasePath::new(directory.path().join("eve")),
+    );
+    let alice_base_path = alice.base_path.clone();
+    alice.stop().unwrap();
+    let result = async move {
+        std::panic::AssertUnwindSafe(
+            domain_test_service::DomainNodeBuilder::new(tokio_handle, alice_base_path)
+                // Build with another domain id `3`, which is not instantiated in the
+                // consensus chain, to simulate the domain node `alice` is running ahead
+                // of the consensus node `eve`.
+                .build_evm_node_with(Role::Authority, Alice, &mut eve, 3.into()),
         )
         .catch_unwind()
         .await
