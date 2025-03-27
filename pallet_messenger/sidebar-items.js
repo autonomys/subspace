@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Call","ChainAllowlistUpdate","Error","Event","MessageVersion","OutboxMessageResult","RawOrigin"],"mod":["dispatchables","extensions","migrations","storage_types","weights"],"struct":["EnsureMessengerOrigin","Pallet","ValidatedRelayMessage"],"trait":["Config","HoldIdentifier"],"type":["Module","Origin"]};
