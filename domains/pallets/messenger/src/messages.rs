@@ -115,12 +115,6 @@ impl<T: Config> Pallet<T> {
         let channel =
             Channels::<T>::get(dst_chain_id, channel_id).ok_or(Error::<T>::MissingChannel)?;
 
-        assert_eq!(
-            nonce,
-            channel.next_inbox_nonce,
-            "The message nonce and the channel next inbox nonce must be the same as checked in pre_dispatch; qed"
-        );
-
         let maybe_collected_fee = msg.payload.maybe_collected_fee();
         let ConvertedPayload { payload, is_v1 } = msg.payload.into_payload_v0();
         let response = match payload {
@@ -210,18 +204,6 @@ impl<T: Config> Pallet<T> {
                 .insert((dst_chain_id, (channel_id, nonce)), weight_tag);
             *maybe_messages = Some(messages)
         });
-
-        Channels::<T>::mutate(
-            dst_chain_id,
-            channel_id,
-            |maybe_channel| -> DispatchResult {
-                let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
-                channel.next_inbox_nonce = nonce
-                    .checked_add(Nonce::one())
-                    .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
-                Ok(())
-            },
-        )?;
 
         UpdatedChannels::<T>::mutate(|updated_channels| {
             updated_channels.insert((dst_chain_id, channel_id))
@@ -344,16 +326,6 @@ impl<T: Config> Pallet<T> {
     ) -> DispatchResult {
         let (dst_chain_id, channel_id, nonce) =
             (resp_msg.src_chain_id, resp_msg.channel_id, resp_msg.nonce);
-        let channel =
-            Channels::<T>::get(dst_chain_id, channel_id).ok_or(Error::<T>::MissingChannel)?;
-
-        assert_eq!(
-            nonce,
-            channel.latest_response_received_message_nonce
-                .and_then(|nonce| nonce.checked_add(Nonce::one()))
-                .unwrap_or(Nonce::zero()),
-            "The message nonce and the channel last msg response nonce must be the same as checked in pre_dispatch; qed"
-        );
 
         // fetch original request
         let req_msg = Outbox::<T>::take((dst_chain_id, channel_id, nonce))
@@ -426,16 +398,6 @@ impl<T: Config> Pallet<T> {
 
             (_, _) => Err(Error::<T>::InvalidMessagePayload.into()),
         };
-
-        Channels::<T>::mutate(
-            dst_chain_id,
-            channel_id,
-            |maybe_channel| -> DispatchResult {
-                let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
-                channel.latest_response_received_message_nonce = Some(nonce);
-                Ok(())
-            },
-        )?;
 
         UpdatedChannels::<T>::mutate(|updated_channels| {
             updated_channels.insert((dst_chain_id, channel_id))

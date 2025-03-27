@@ -65,6 +65,8 @@ pub(crate) mod verification_errors {
     // This error code was previously 200, but that clashed with ERR_BALANCE_OVERFLOW.
     pub(crate) const INVALID_CHANNEL: u8 = 203;
     pub(crate) const IN_FUTURE_NONCE: u8 = 204;
+    // Failed to update next nonce during the pre_dispatch
+    pub(crate) const NEXT_NONCE_UPDATE: u8 = 205;
 }
 
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
@@ -1189,6 +1191,30 @@ mod pallet {
                 }
             }
 
+            let (dst_chain_id, channel_id, nonce) = (msg.src_chain_id, msg.channel_id, msg.nonce);
+            // future nonce check is already validated by the extension
+            // it is safe to increment the next nonce here before processing.
+            Channels::<T>::mutate(
+                dst_chain_id,
+                channel_id,
+                |maybe_channel| -> sp_runtime::DispatchResult {
+                    let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
+                    channel.next_inbox_nonce = nonce
+                        .checked_add(Nonce::one())
+                        .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
+                    Ok(())
+                },
+            )
+            .map_err(|err| {
+                log::error!(
+                    "Failed to increment the next relay message nonce for Chain[{:?}] with Channel[{:?}]: {:?}",
+                    dst_chain_id,
+                    channel_id,
+                    err,
+                );
+                InvalidTransaction::Custom(crate::verification_errors::NEXT_NONCE_UPDATE)
+            })?;
+
             Self::deposit_event(Event::InboxMessage {
                 chain_id: msg.src_chain_id,
                 channel_id: msg.channel_id,
@@ -1248,6 +1274,28 @@ mod pallet {
         pub(crate) fn pre_dispatch_relay_message_response(
             msg: Message<BalanceOf<T>>,
         ) -> Result<(), TransactionValidityError> {
+            // future nonce check is already validated by the extension
+            // it is safe to increment the next nonce here before processing.
+            let (dst_chain_id, channel_id, nonce) = (msg.src_chain_id, msg.channel_id, msg.nonce);
+            Channels::<T>::mutate(
+                dst_chain_id,
+                channel_id,
+                |maybe_channel| -> sp_runtime::DispatchResult {
+                    let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
+                    channel.latest_response_received_message_nonce = Some(nonce);
+                    Ok(())
+                },
+            )
+            .map_err(|err| {
+                log::error!(
+                    "Failed to increment the next relay message response nonce for Chain[{:?}] with Channel[{:?}]: {:?}",
+                    dst_chain_id,
+                    channel_id,
+                    err,
+                );
+                InvalidTransaction::Custom(crate::verification_errors::NEXT_NONCE_UPDATE)
+            })?;
+
             Self::deposit_event(Event::OutboxMessageResponse {
                 chain_id: msg.src_chain_id,
                 channel_id: msg.channel_id,
