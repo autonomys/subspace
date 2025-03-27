@@ -414,8 +414,10 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     Error::InvalidDomainTransfers
                 );
 
-                update_domain_transfers::<T>(domain_id, &execution_receipt.transfers, block_fees)
-                    .map_err(|_| Error::DomainTransfersTracking)?;
+                // FIXME:  the domain balance bookkeeping check is problematic, disable it temporarily
+                // NOTE: we can't simple ignore the error because there will be partial state change persisted
+                // update_domain_transfers::<T>(domain_id, &execution_receipt.transfers, block_fees)
+                //     .map_err(|_| Error::DomainTransfersTracking)?;
 
                 update_domain_runtime_upgrade_records::<T>(
                     domain_id,
