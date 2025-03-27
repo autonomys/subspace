@@ -312,10 +312,6 @@ mod pallet {
         #[pallet::constant]
         type ConfirmationDepthK: Get<BlockNumberFor<Self>>;
 
-        /// Delay before a domain runtime is upgraded.
-        #[pallet::constant]
-        type DomainRuntimeUpgradeDelay: Get<BlockNumberFor<Self>>;
-
         /// Currency type used by the domains for staking and other currency related stuff.
         type Currency: Inspect<Self::AccountId, Balance = Self::Balance>
             + Mutate<Self::AccountId>

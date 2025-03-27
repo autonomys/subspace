@@ -813,8 +813,6 @@ parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
-    /// Runtime upgrade is delayed for 1 day at 6 sec block time.
-    pub const DomainRuntimeUpgradeDelay: BlockNumber = 14_400;
     /// Minimum operator stake to become an operator.
     // TODO: this value should be properly updated before mainnet
     pub const MinOperatorStake: Balance = 100 * SSC;
@@ -902,7 +900,6 @@ impl pallet_domains::Config for Runtime {
     type Balance = Balance;
     type DomainHeader = sp_runtime::generic::Header<DomainNumber, BlakeTwo256>;
     type ConfirmationDepthK = ConfirmationDepthK;
-    type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
     type Share = Balance;
     type HoldIdentifier = HoldIdentifierWrapper;

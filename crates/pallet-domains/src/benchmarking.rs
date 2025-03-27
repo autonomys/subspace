@@ -524,7 +524,7 @@ mod benchmarks {
         _(RawOrigin::Root, runtime_id, genesis_storage.clone());
 
         let scheduled_at = frame_system::Pallet::<T>::current_block_number()
-            .checked_add(&T::DomainRuntimeUpgradeDelay::get())
+            .checked_add(&BlockNumberFor::<T>::from(1u32))
             .expect("must not overflow");
         let scheduled_upgrade = ScheduledRuntimeUpgrades::<T>::get(scheduled_at, runtime_id)
             .expect("scheduled upgrade must exist");
