@@ -475,7 +475,7 @@ where
     /// Take and stop the domain node and delete its database lock file
     pub fn stop(self) -> Result<(), std::io::Error> {
         // Remove the database lock file
-        std::fs::remove_file(self.base_path.path().join("paritydb/lock"))?;
+        std::fs::remove_file(self.base_path.path().join("paritydb").join("lock"))?;
         Ok(())
     }
 }

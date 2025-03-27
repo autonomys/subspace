@@ -6182,7 +6182,8 @@ async fn test_restart_domain_operator() {
             .path()
             .join(format!("alice/domain-{EVM_DOMAIN_ID:?}"))
             .as_path()
-            .join("paritydb/lock"),
+            .join("paritydb")
+            .join("lock"),
     )
     .unwrap();
 
