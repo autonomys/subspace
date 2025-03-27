@@ -109,7 +109,11 @@ where
         }
     };
 
-    // TODO: return a multi-part response, with one part per object
+    // TODO:
+    // - return a multi-part response, with one part per object.
+    // - add the object hash to each part, so we can sort mappings by piece index and offset,
+    //   for more efficient piece re-use. See the `ObjectFetcher::fetch_objects` performance docs
+    //   for more details.
     HttpResponse::Ok()
         .content_type("application/octet-stream")
         .body(objects.concat())
