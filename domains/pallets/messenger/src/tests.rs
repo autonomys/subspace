@@ -313,10 +313,6 @@ fn open_channel_between_chains(
     chain_a_test_ext.execute_with(|| {
         let channel = chain_a::Messenger::channels(chain_b_id, channel_id).unwrap();
         assert_eq!(channel.state, ChannelState::Open);
-        assert_eq!(
-            channel.latest_response_received_message_nonce,
-            Some(Nonce::zero())
-        );
         assert_eq!(channel.next_inbox_nonce, Nonce::zero());
         assert_eq!(channel.next_outbox_nonce, Nonce::one());
         chain_a::System::assert_has_event(chain_a::RuntimeEvent::Messenger(crate::Event::<
@@ -397,12 +393,6 @@ fn send_message_between_chains(
             channel_id,
             Nonce::one()
         )));
-
-        let channel = chain_a::Messenger::channels(chain_b_id, channel_id).unwrap();
-        assert_eq!(
-            channel.latest_response_received_message_nonce,
-            Some(Nonce::one())
-        );
     });
 }
 
@@ -416,7 +406,7 @@ fn close_channel_between_chains(
 
     // initiate channel close on chain_a
     chain_a_test_ext.execute_with(|| {
-        close_channel(chain_b_id, channel_id, Some(Nonce::zero()));
+        close_channel(chain_b_id, channel_id, None);
     });
 
     channel_relay_request_and_response(
@@ -441,11 +431,6 @@ fn close_channel_between_chains(
             channel_id,
         }));
 
-        assert_eq!(channel.latest_response_received_message_nonce, None);
-        assert_eq!(
-            channel.next_inbox_nonce,
-            Nonce::one().checked_add(Nonce::one()).unwrap()
-        );
         assert_eq!(channel.next_outbox_nonce, Nonce::zero());
 
         // Outbox, Outbox responses, Inbox, InboxResponses must be empty
@@ -468,10 +453,6 @@ fn close_channel_between_chains(
     chain_a_test_ext.execute_with(|| {
         let channel = chain_a::Messenger::channels(chain_b_id, channel_id).unwrap();
         assert_eq!(channel.state, ChannelState::Closed);
-        assert_eq!(
-            channel.latest_response_received_message_nonce,
-            Some(Nonce::one())
-        );
         assert_eq!(channel.next_inbox_nonce, Nonce::zero());
         assert_eq!(
             channel.next_outbox_nonce,
@@ -758,7 +739,7 @@ fn close_init_channels_between_chains() {
     });
 
     // close channel
-    chain_a_test_ext.execute_with(|| close_channel(chain_b_id, channel_id, Some(Nonce::zero())));
+    chain_a_test_ext.execute_with(|| close_channel(chain_b_id, channel_id, None));
 
     chain_a_test_ext.execute_with(|| {
         let channel = Channels::<chain_a::Runtime>::get(chain_b_id, channel_id).unwrap();
