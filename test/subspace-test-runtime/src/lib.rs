@@ -771,7 +771,6 @@ parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 2;
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
-    pub const DomainRuntimeUpgradeDelay: BlockNumber = 10;
     pub const MinOperatorStake: Balance = 100 * SSC;
     pub const MinNominatorStake: Balance = SSC;
     /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
@@ -850,7 +849,6 @@ impl pallet_domains::Config for Runtime {
     type Balance = Balance;
     type DomainHeader = DomainHeader;
     type ConfirmationDepthK = ConfirmationDepthK;
-    type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
     type Share = Balance;
     type HoldIdentifier = HoldIdentifierWrapper;

@@ -86,7 +86,6 @@ parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const InitialDomainTxRange: u64 = 3;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
-    pub const DomainRuntimeUpgradeDelay: BlockNumber = 100;
     pub const MaxDomainBlockSize: u32 = 1024 * 1024;
     pub const MaxDomainBlockWeight: Weight = Weight::from_parts(1024 * 1024, 0);
     pub const DomainInstantiationDeposit: Balance = 100;
@@ -249,7 +248,6 @@ impl pallet_domains::Config for Test {
     type Balance = Balance;
     type DomainHeader = DomainHeader;
     type ConfirmationDepthK = ConfirmationDepthK;
-    type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
     type Share = Balance;
     type HoldIdentifier = HoldIdentifierWrapper;
