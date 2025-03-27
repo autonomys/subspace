@@ -36,7 +36,7 @@ const TX_POOL_PREFIX: &[u8] = b"xdm_tx_pool_listener";
 pub const RELAYER_PREFIX: &[u8] = b"xdm_relayer";
 
 /// Number of blocks an already submitted XDM is not accepted since last submission.
-const XDM_ACCEPT_BLOCK_LIMIT: u32 = 5;
+const XDM_ACCEPT_BLOCK_LIMIT: u32 = 15;
 
 type BlockOf<T> = <T as TransactionPool>::Block;
 type HeaderOf<T> = <<T as TransactionPool>::Block as BlockT>::Header;
@@ -215,7 +215,7 @@ fn handle_channel_update<CClient, CBlock, Executor, Block>(
                 block_number,
                 storage_proof,
             ) {
-                tracing::error!(
+                tracing::debug!(
                     target: LOG_TARGET,
                     "Failed to update channel update from {:?} to {:?}: {:?}",
                     ChainId::Consensus,
@@ -243,7 +243,7 @@ fn handle_channel_update<CClient, CBlock, Executor, Block>(
                 executor,
                 domain_storage_key_cache,
             ) {
-                tracing::error!(
+                tracing::debug!(
                     target: LOG_TARGET,
                     "Failed to update channel update from {:?} to {:?}: {:?}",
                     ChainId::Domain(domain_id),
@@ -608,10 +608,12 @@ where
         if let Err(err) = tx_pool_res {
             match err.into_pool_error() {
                 Ok(err) => match err {
-                    PoolError::TooLowPriority { .. } => {
+                    PoolError::TooLowPriority { .. }
+                    | PoolError::AlreadyImported(..)
+                    | PoolError::TemporarilyBanned => {
                         tracing::debug!(
                             target: LOG_TARGET,
-                            "Failed to submit XDM[{:?}] to tx pool for Chain {:?} at block: {:?}: Low Priority",
+                            "XDM[{:?}] to tx pool for Chain {:?} at block: {:?}: Already included",
                             xdm_id,
                             chain_id,
                             block_id
