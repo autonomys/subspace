@@ -4,6 +4,7 @@ use super::*;
 use crate::object_fetcher::partial_object::PADDING_BYTE_VALUE;
 use parity_scale_codec::{Compact, CompactLen, Encode};
 use rand::{thread_rng, RngCore};
+use std::fmt::Debug;
 use std::iter;
 use subspace_core_primitives::hashes::blake3_hash;
 use subspace_core_primitives::segments::{
@@ -11,6 +12,15 @@ use subspace_core_primitives::segments::{
     SegmentHeader,
 };
 use subspace_logging::init_logger;
+
+/// Converts the supplied number to a `PieceIndex`.
+fn idx<N>(piece_index: N) -> PieceIndex
+where
+    N: TryInto<u64> + Copy + Debug,
+    <N as TryInto<u64>>::Error: Debug,
+{
+    PieceIndex::from(piece_index.try_into().expect("must fit in u64"))
+}
 
 /// Returns a piece filled with random data.
 fn random_piece() -> Piece {
@@ -384,10 +394,12 @@ async fn get_single_piece_object_no_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index);
 
     // Now get the object back
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - middle of segment
@@ -400,9 +412,11 @@ async fn get_single_piece_object_no_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - end of segment, no padding
@@ -415,9 +429,11 @@ async fn get_single_piece_object_no_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }
 
@@ -439,9 +455,11 @@ async fn get_single_piece_object_potential_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - potential padding that has the right byte value for padding, but is part of the object
@@ -456,9 +474,11 @@ async fn get_single_piece_object_potential_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - potential padding that has the right byte value for padding, but only some is part of the object
@@ -474,9 +494,11 @@ async fn get_single_piece_object_potential_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - end of segment, start of object length is in potential padding (but object does not cross into the next segment)
@@ -491,9 +513,11 @@ async fn get_single_piece_object_potential_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - end of segment, zero-length object in potential padding (but object does not cross into the next segment)
@@ -508,9 +532,11 @@ async fn get_single_piece_object_potential_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }
 
@@ -542,9 +568,11 @@ async fn get_multi_piece_object_length_outside_padding() {
         None,
         Some(after_segment_header),
     );
-    let object_fetcher = create_object_fetcher(vec![piece1, piece2], start_piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece1, piece2.clone()], start_piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - potential padding that has the right byte value for padding, but is part of the object
@@ -567,9 +595,11 @@ async fn get_multi_piece_object_length_outside_padding() {
         None,
         Some(after_segment_header),
     );
-    let object_fetcher = create_object_fetcher(vec![piece1, piece2], start_piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece1, piece2.clone()], start_piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - actual padding that has the right byte value for padding, and isn't part of the object
@@ -593,9 +623,11 @@ async fn get_multi_piece_object_length_outside_padding() {
         Some(skip_padding),
         Some(after_segment_header),
     );
-    let object_fetcher = create_object_fetcher(vec![piece1, piece2], start_piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece1, piece2.clone()], start_piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - end of segment, end of object goes into padding, and multiple pieces from both segments
@@ -621,10 +653,14 @@ async fn get_multi_piece_object_length_outside_padding() {
         None,
         Some(after_segment_header),
     );
-    let object_fetcher =
-        create_object_fetcher(vec![piece1, piece2, piece3, piece4], start_piece_index);
+    let object_fetcher = create_object_fetcher(
+        vec![piece1, piece2, piece3, piece4.clone()],
+        start_piece_index,
+    );
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 6), piece4)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - potential padding that has the right byte value for padding, but is part of the object
@@ -655,10 +691,14 @@ async fn get_multi_piece_object_length_outside_padding() {
         None,
         Some(after_segment_header),
     );
-    let object_fetcher =
-        create_object_fetcher(vec![piece1, piece2, piece3, piece4], start_piece_index);
+    let object_fetcher = create_object_fetcher(
+        vec![piece1, piece2, piece3, piece4.clone()],
+        start_piece_index,
+    );
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 6), piece4)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - actual padding that has the right byte value for padding, and isn't part of the object
@@ -695,11 +735,13 @@ async fn get_multi_piece_object_length_outside_padding() {
         Some(after_segment_header),
     );
     let object_fetcher = create_object_fetcher(
-        vec![piece1, piece2, piece3, piece4, piece5, piece6],
+        vec![piece1, piece2, piece3, piece4, piece5, piece6.clone()],
         start_piece_index,
     );
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 10), piece6)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }
 
@@ -744,9 +786,11 @@ async fn get_multi_piece_object_length_overlaps_padding() {
         None,
         Some(after_segment_header),
     );
-    let object_fetcher = create_object_fetcher(vec![piece1, piece2], start_piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece1, piece2.clone()], start_piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - potential padding that has the right byte value for padding, but is part of the length
@@ -779,9 +823,11 @@ async fn get_multi_piece_object_length_overlaps_padding() {
         None,
         Some(after_segment_header),
     );
-    let object_fetcher = create_object_fetcher(vec![piece1, piece2], start_piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece1, piece2.clone()], start_piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - actual padding that has the right byte value for padding, it could be part of the length, but isn't
@@ -822,8 +868,10 @@ async fn get_multi_piece_object_length_overlaps_padding() {
         Some(skip_padding),
         Some(after_segment_header),
     );
-    let object_fetcher = create_object_fetcher(vec![piece1, piece2], start_piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece1, piece2.clone()], start_piece_index);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }

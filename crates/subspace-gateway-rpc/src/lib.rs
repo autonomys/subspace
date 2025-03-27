@@ -83,8 +83,15 @@ impl DerefMut for HexData {
 /// Provides rpc methods for interacting with a Subspace DSN Gateway.
 #[rpc(client, server)]
 pub trait SubspaceGatewayRpcApi {
-    /// Get object data from DSN object mappings.
+    /// Get object data from a DSN object mapping batch.
     /// Returns an error if any object fetch was unsuccessful.
+    ///
+    /// For efficiency, objects in a batch should be sorted by increasing piece index. Objects with
+    /// the same piece index should be sorted by increasing offset. This allows the last piece to
+    /// be re-used for the next object in the batch.
+    ///
+    /// Batches should be split if the gap between object piece indexes is 6 or more. Those objects
+    /// can't share any pieces, because a maximum-sized object only uses 6 pieces.
     #[method(name = "subspace_fetchObject")]
     async fn fetch_object(&self, mappings: GlobalObjectMapping) -> Result<Vec<HexData>, Error>;
 }
