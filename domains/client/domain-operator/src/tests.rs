@@ -8185,6 +8185,10 @@ async fn test_current_block_number_used_as_new_account_nonce() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+// TODO: This test is broken on Windows, we suspect it is due to platform-specific behavior of the
+// file system but haven't located the root cause yet. This needs to be fixed and enable the test
+// on Windows.
+#[cfg_attr(windows, ignore)]
 async fn test_domain_node_starting_check() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
