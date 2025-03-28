@@ -183,6 +183,7 @@ const MAX_BUNDLE_PER_BLOCK: u32 = 100;
 
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 
+#[expect(clippy::useless_conversion, reason = "Macro-generated")]
 #[frame_support::pallet]
 mod pallet {
     #[cfg(not(feature = "runtime-benchmarks"))]

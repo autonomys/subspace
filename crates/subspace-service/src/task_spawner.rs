@@ -33,6 +33,7 @@ use std::sync::Arc;
 use tracing::info;
 
 /// Spawn the tasks that are required to run a node.
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub(super) fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
     params: SpawnTasksParams<TBl, TCl, TExPool, TRpc, TBackend>,
 ) -> Result<RpcHandlers, Error>
