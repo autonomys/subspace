@@ -127,6 +127,7 @@ pub type FullPool<RuntimeApi> =
 fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
     config: &ServiceConfiguration,
     consensus_client: Arc<CClient>,
+    domain_backend: Arc<FullBackend<Block>>,
     block_import_provider: &BIMP,
     confirmation_depth_k: NumberFor<CBlock>,
     snap_sync: bool,
@@ -178,11 +179,10 @@ where
 
     let executor = sc_service::new_wasm_executor(&config.executor);
 
-    let backend = sc_service::new_db_backend(config.db_config())?;
     let genesis_block_builder = GenesisBlockBuilder::new(
         config.chain_spec.as_storage_builder(),
         !snap_sync,
-        backend.clone(),
+        domain_backend.clone(),
         executor.clone(),
     )?;
 
@@ -191,7 +191,7 @@ where
             config,
             telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
             executor.clone(),
-            backend,
+            domain_backend,
             genesis_block_builder,
             false,
         )?;
@@ -273,6 +273,7 @@ where
     pub confirmation_depth_k: NumberFor<CBlock>,
     pub challenge_period: NumberFor<CBlock>,
     pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, CNR>>,
+    pub domain_backend: Arc<FullBackend<Block>>,
 }
 
 /// Builds service for a domain full node.
@@ -375,6 +376,7 @@ where
         confirmation_depth_k,
         consensus_chain_sync_params,
         challenge_period,
+        domain_backend,
     } = domain_params;
 
     // TODO: Do we even need block announcement on domain node?
@@ -383,6 +385,7 @@ where
     let params = new_partial(
         &domain_config,
         consensus_client.clone(),
+        domain_backend,
         &provider,
         confirmation_depth_k,
         consensus_chain_sync_params.is_some(),

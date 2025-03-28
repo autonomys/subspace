@@ -3,7 +3,7 @@ use evm_domain_runtime::{AccountId as AccountId20, EVMChainIdConfig, EVMConfig, 
 use hex_literal::hex;
 use parity_scale_codec::Encode;
 use sc_chain_spec::GenericChainSpec;
-use sc_service::{ChainSpec, ChainType};
+use sc_service::ChainType;
 use sp_core::crypto::AccountId32;
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::storage::RawGenesis;
@@ -90,15 +90,11 @@ pub(crate) fn consensus_dev_sudo_account() -> AccountId32 {
     get_account_id_from_seed("Alice")
 }
 
-pub fn create_domain_spec(
-    chain_id: &str,
-    raw_genesis: RawGenesis,
-) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
-    let mut chain_spec = match chain_id {
+pub fn create_domain_spec(chain_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
+    let chain_spec = match chain_id {
         "dev" => domain_dev_config()?,
         path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
-    chain_spec.set_storage(raw_genesis.into_storage());
     Ok(Box::new(chain_spec))
 }
 
