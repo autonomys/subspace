@@ -14,9 +14,10 @@ use crate::cluster::nats_client::{
 use crate::farm::{FarmError, PieceCache, PieceCacheId, PieceCacheOffset};
 use anyhow::anyhow;
 use async_trait::async_trait;
+use derive_more::{Display, From};
 use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Stream, StreamExt};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode, EncodeLike, Input, Output};
 use std::collections::BTreeSet;
 use std::pin::Pin;
 use std::task::Poll;
@@ -24,21 +25,91 @@ use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tokio::time::MissedTickBehavior;
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
+use ulid::Ulid;
 
 const MIN_CACHE_IDENTIFICATION_INTERVAL: Duration = Duration::from_secs(1);
+
+/// An identifier for a cluster cache, can be used for in logs, thread names, etc.
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Display, From)]
+pub enum ClusterCacheId {
+    /// Cache ID
+    Ulid(Ulid),
+}
+
+impl Encode for ClusterCacheId {
+    #[inline]
+    fn size_hint(&self) -> usize {
+        1_usize
+            + match self {
+                ClusterCacheId::Ulid(ulid) => 0_usize.saturating_add(Encode::size_hint(&ulid.0)),
+            }
+    }
+
+    #[inline]
+    fn encode_to<O: Output + ?Sized>(&self, output: &mut O) {
+        match self {
+            ClusterCacheId::Ulid(ulid) => {
+                output.push_byte(0);
+                Encode::encode_to(&ulid.0, output);
+            }
+        }
+    }
+}
+
+impl EncodeLike for ClusterCacheId {}
+
+impl Decode for ClusterCacheId {
+    #[inline]
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        match input.read_byte().map_err(|e| {
+            e.chain("Could not decode `ClusterCacheId`, failed to read variant byte")
+        })? {
+            0 => u128::decode(input)
+                .map(|ulid| ClusterCacheId::Ulid(Ulid(ulid)))
+                .map_err(|e| e.chain("Could not decode `ClusterCacheId::Ulid.0`")),
+            _ => Err("Could not decode `ClusterCacheId`, variant doesn't exist".into()),
+        }
+    }
+}
+
+#[allow(clippy::new_without_default)]
+impl ClusterCacheId {
+    /// Creates new ID
+    #[inline]
+    pub fn new() -> Self {
+        Self::Ulid(Ulid::new())
+    }
+}
 
 /// Broadcast with identification details by caches
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct ClusterCacheIdentifyBroadcast {
     /// Cache ID
-    pub cache_id: PieceCacheId,
-    /// Max number of elements in this cache
-    pub max_num_elements: u32,
+    pub cluster_cache_id: ClusterCacheId,
 }
 
 impl GenericBroadcast for ClusterCacheIdentifyBroadcast {
     /// `*` here stands for cache group
-    const SUBJECT: &'static str = "subspace.cache.*.identify";
+    const SUBJECT: &'static str = "subspace.cache.*.cache-identify";
+}
+
+/// Request cache details from cache
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct ClusterCacheDetailsRequest;
+
+impl GenericStreamRequest for ClusterCacheDetailsRequest {
+    /// `*` here stands for piece cache ID
+    const SUBJECT: &'static str = "subspace.cache.*.details";
+    type Response = ClusterPieceCacheDetails;
+}
+
+/// Cache details
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct ClusterPieceCacheDetails {
+    /// Piece Cache ID
+    pub piece_cache_id: PieceCacheId,
+    /// Max number of elements in this cache
+    pub max_num_elements: u32,
 }
 
 /// Write piece into cache
@@ -50,6 +121,7 @@ struct ClusterCacheWritePieceRequest {
 }
 
 impl GenericRequest for ClusterCacheWritePieceRequest {
+    /// `*` here stands for piece cache ID
     const SUBJECT: &'static str = "subspace.cache.*.write-piece";
     type Response = Result<(), String>;
 }
@@ -61,6 +133,7 @@ struct ClusterCacheReadPieceIndexRequest {
 }
 
 impl GenericRequest for ClusterCacheReadPieceIndexRequest {
+    /// `*` here stands for piece cache ID
     const SUBJECT: &'static str = "subspace.cache.*.read-piece-index";
     type Response = Result<Option<PieceIndex>, String>;
 }
@@ -72,6 +145,7 @@ pub(super) struct ClusterCacheReadPieceRequest {
 }
 
 impl GenericRequest for ClusterCacheReadPieceRequest {
+    /// `*` here stands for piece cache ID
     const SUBJECT: &'static str = "subspace.cache.*.read-piece";
     type Response = Result<Option<(PieceIndex, Piece)>, String>;
 }
@@ -83,6 +157,7 @@ pub(super) struct ClusterCacheReadPiecesRequest {
 }
 
 impl GenericStreamRequest for ClusterCacheReadPiecesRequest {
+    /// `*` here stands for piece cache ID
     const SUBJECT: &'static str = "subspace.cache.*.read-pieces";
     type Response = Result<(PieceCacheOffset, Option<(PieceIndex, Piece)>), String>;
 }
@@ -92,6 +167,7 @@ impl GenericStreamRequest for ClusterCacheReadPiecesRequest {
 struct ClusterCacheContentsRequest;
 
 impl GenericStreamRequest for ClusterCacheContentsRequest {
+    /// `*` here stands for piece cache ID
     const SUBJECT: &'static str = "subspace.cache.*.contents";
     type Response = Result<(PieceCacheOffset, Option<PieceIndex>), String>;
 }
@@ -99,8 +175,8 @@ impl GenericStreamRequest for ClusterCacheContentsRequest {
 /// Cluster cache implementation
 #[derive(Debug)]
 pub struct ClusterPieceCache {
-    cache_id: PieceCacheId,
-    cache_id_string: String,
+    piece_cache_id: PieceCacheId,
+    piece_cache_id_string: String,
     max_num_elements: u32,
     nats_client: NatsClient,
 }
@@ -108,7 +184,7 @@ pub struct ClusterPieceCache {
 #[async_trait]
 impl PieceCache for ClusterPieceCache {
     fn id(&self) -> &PieceCacheId {
-        &self.cache_id
+        &self.piece_cache_id
     }
 
     #[inline]
@@ -129,7 +205,10 @@ impl PieceCache for ClusterPieceCache {
     > {
         Ok(Box::new(
             self.nats_client
-                .stream_request(&ClusterCacheContentsRequest, Some(&self.cache_id_string))
+                .stream_request(
+                    &ClusterCacheContentsRequest,
+                    Some(&self.piece_cache_id_string),
+                )
                 .await?
                 .map(|response| response.map_err(FarmError::from)),
         ))
@@ -149,7 +228,7 @@ impl PieceCache for ClusterPieceCache {
                     piece_index,
                     piece: piece.clone(),
                 },
-                Some(&self.cache_id_string),
+                Some(&self.piece_cache_id_string),
             )
             .await??)
     }
@@ -162,7 +241,7 @@ impl PieceCache for ClusterPieceCache {
             .nats_client
             .request(
                 &ClusterCacheReadPieceIndexRequest { offset },
-                Some(&self.cache_id_string),
+                Some(&self.piece_cache_id_string),
             )
             .await??)
     }
@@ -175,7 +254,7 @@ impl PieceCache for ClusterPieceCache {
             .nats_client
             .request(
                 &ClusterCacheReadPieceRequest { offset },
-                Some(&self.cache_id_string),
+                Some(&self.piece_cache_id_string),
             )
             .await??)
     }
@@ -198,7 +277,7 @@ impl PieceCache for ClusterPieceCache {
             .nats_client
             .stream_request(
                 &ClusterCacheReadPiecesRequest { offsets },
-                Some(&self.cache_id_string),
+                Some(&self.piece_cache_id_string),
             )
             .await?
             .map(|response| response.map_err(FarmError::from))
@@ -235,13 +314,13 @@ impl ClusterPieceCache {
     /// [`ClusterCacheIdentifyBroadcast`]
     #[inline]
     pub fn new(
-        cache_id: PieceCacheId,
+        piece_cache_id: PieceCacheId,
         max_num_elements: u32,
         nats_client: NatsClient,
     ) -> ClusterPieceCache {
         Self {
-            cache_id,
-            cache_id_string: cache_id.to_string(),
+            piece_cache_id,
+            piece_cache_id_string: piece_cache_id.to_string(),
             max_num_elements,
             nats_client,
         }
@@ -250,8 +329,8 @@ impl ClusterPieceCache {
 
 #[derive(Debug)]
 struct CacheDetails<'a, C> {
-    cache_id: PieceCacheId,
-    cache_id_string: String,
+    piece_cache_id: PieceCacheId,
+    piece_cache_id_string: String,
     cache: &'a C,
 }
 
@@ -267,18 +346,21 @@ pub async fn cache_service<C>(
 where
     C: PieceCache,
 {
+    let cluster_cache_id = ClusterCacheId::new();
+    let cluster_cache_id_string = cluster_cache_id.to_string();
+
     let caches_details = caches
         .iter()
         .map(|cache| {
-            let cache_id = *cache.id();
+            let piece_cache_id = *cache.id();
 
             if primary_instance {
-                info!(%cache_id, max_num_elements = %cache.max_num_elements(), "Created cache");
+                info!(%piece_cache_id, max_num_elements = %cache.max_num_elements(), "Created piece cache");
             }
 
             CacheDetails {
-                cache_id,
-                cache_id_string: cache_id.to_string(),
+                piece_cache_id,
+                piece_cache_id_string: piece_cache_id.to_string(),
                 cache,
             }
         })
@@ -286,7 +368,19 @@ where
 
     if primary_instance {
         select! {
-            result = identify_responder(&nats_client, &caches_details, cache_group, identification_broadcast_interval).fuse() => {
+            result = identify_responder(
+                &nats_client,
+                cluster_cache_id,
+                cache_group,
+                identification_broadcast_interval
+            ).fuse() => {
+                result
+            },
+            result = piece_cache_details_responder(
+                &nats_client,
+                &cluster_cache_id_string,
+                &caches_details
+            ).fuse() => {
                 result
             },
             result = write_piece_responder(&nats_client, &caches_details).fuse() => {
@@ -331,15 +425,12 @@ where
 ///
 /// Implementation is using concurrency with multiple tokio tasks, but can be started multiple times
 /// per controller instance in order to parallelize more work across threads if needed.
-async fn identify_responder<C>(
+async fn identify_responder(
     nats_client: &NatsClient,
-    caches_details: &[CacheDetails<'_, C>],
+    cluster_cache_id: ClusterCacheId,
     cache_group: &str,
     identification_broadcast_interval: Duration,
-) -> anyhow::Result<()>
-where
-    C: PieceCache,
-{
+) -> anyhow::Result<()> {
     let mut subscription = nats_client
         .subscribe_to_broadcasts::<ClusterControllerCacheIdentifyBroadcast>(Some(cache_group), None)
         .await
@@ -370,14 +461,14 @@ where
                 }
 
                 last_identification = Instant::now();
-                send_identify_broadcast(nats_client, caches_details, cache_group).await;
+                send_identify_broadcast(nats_client, cluster_cache_id, cache_group).await;
                 interval.reset();
             }
             _ = interval.tick().fuse() => {
                 last_identification = Instant::now();
                 trace!("Cache self-identification");
 
-                send_identify_broadcast(nats_client, caches_details, cache_group).await;
+                send_identify_broadcast(nats_client, cluster_cache_id, cache_group).await;
             }
         }
     }
@@ -385,36 +476,44 @@ where
     Ok(())
 }
 
-async fn send_identify_broadcast<C>(
+async fn send_identify_broadcast(
     nats_client: &NatsClient,
-    caches_details: &[CacheDetails<'_, C>],
+    cluster_cache_id: ClusterCacheId,
     cache_group: &str,
-) where
+) {
+    if let Err(error) = nats_client
+        .broadcast(
+            &ClusterCacheIdentifyBroadcast { cluster_cache_id },
+            cache_group,
+        )
+        .await
+    {
+        warn!(%cluster_cache_id, %error, "Failed to send cache identify notification");
+    }
+}
+
+async fn piece_cache_details_responder<C>(
+    nats_client: &NatsClient,
+    cluster_cache_id_string: &str,
+    caches_details: &[CacheDetails<'_, C>],
+) -> anyhow::Result<()>
+where
     C: PieceCache,
 {
-    caches_details
-        .iter()
-        .map(|cache| async move {
-            if let Err(error) = nats_client
-                .broadcast(
-                    &ClusterCacheIdentifyBroadcast {
-                        cache_id: cache.cache_id,
-                        max_num_elements: cache.cache.max_num_elements(),
-                    },
-                    cache_group,
-                )
-                .await
-            {
-                warn!(
-                    cache_id = %cache.cache_id,
-                    %error,
-                    "Failed to send cache identify notification"
-                );
-            }
-        })
-        .collect::<FuturesUnordered<_>>()
-        .collect::<Vec<_>>()
-        .await;
+    nats_client
+        .stream_request_responder(
+            Some(cluster_cache_id_string),
+            Some(cluster_cache_id_string.to_string()),
+            |_request: ClusterCacheDetailsRequest| async {
+                Some(stream::iter(caches_details.iter().map(|cache_details| {
+                    ClusterPieceCacheDetails {
+                        piece_cache_id: cache_details.piece_cache_id,
+                        max_num_elements: cache_details.cache.max_num_elements(),
+                    }
+                })))
+            },
+        )
+        .await
 }
 
 async fn write_piece_responder<C>(
@@ -429,8 +528,8 @@ where
         .map(|cache_details| async move {
             nats_client
                 .request_responder(
-                    Some(cache_details.cache_id_string.as_str()),
-                    Some(cache_details.cache_id_string.clone()),
+                    Some(cache_details.piece_cache_id_string.as_str()),
+                    Some(cache_details.piece_cache_id_string.clone()),
                     |request: ClusterCacheWritePieceRequest| async move {
                         Some(
                             cache_details
@@ -441,7 +540,7 @@ where
                         )
                     },
                 )
-                .instrument(info_span!("", cache_id = %cache_details.cache_id))
+                .instrument(info_span!("", piece_cache_id = %cache_details.piece_cache_id))
                 .await
         })
         .collect::<FuturesUnordered<_>>()
@@ -462,8 +561,8 @@ where
         .map(|cache_details| async move {
             nats_client
                 .request_responder(
-                    Some(cache_details.cache_id_string.as_str()),
-                    Some(cache_details.cache_id_string.clone()),
+                    Some(cache_details.piece_cache_id_string.as_str()),
+                    Some(cache_details.piece_cache_id_string.clone()),
                     |request: ClusterCacheReadPieceIndexRequest| async move {
                         Some(
                             cache_details
@@ -474,7 +573,7 @@ where
                         )
                     },
                 )
-                .instrument(info_span!("", cache_id = %cache_details.cache_id))
+                .instrument(info_span!("", piece_cache_id = %cache_details.piece_cache_id))
                 .await
         })
         .collect::<FuturesUnordered<_>>()
@@ -495,8 +594,8 @@ where
         .map(|cache_details| async move {
             nats_client
                 .request_responder(
-                    Some(cache_details.cache_id_string.as_str()),
-                    Some(cache_details.cache_id_string.clone()),
+                    Some(cache_details.piece_cache_id_string.as_str()),
+                    Some(cache_details.piece_cache_id_string.clone()),
                     |request: ClusterCacheReadPieceRequest| async move {
                         Some(
                             cache_details
@@ -507,7 +606,7 @@ where
                         )
                     },
                 )
-                .instrument(info_span!("", cache_id = %cache_details.cache_id))
+                .instrument(info_span!("", piece_cache_id = %cache_details.piece_cache_id))
                 .await
         })
         .collect::<FuturesUnordered<_>>()
@@ -528,8 +627,8 @@ where
         .map(|cache_details| async move {
             nats_client
                 .stream_request_responder::<_, _, Pin<Box<dyn Stream<Item = _> + Send>>, _>(
-                    Some(cache_details.cache_id_string.as_str()),
-                    Some(cache_details.cache_id_string.clone()),
+                    Some(cache_details.piece_cache_id_string.as_str()),
+                    Some(cache_details.piece_cache_id_string.clone()),
                     |ClusterCacheReadPiecesRequest { offsets }| async move {
                         Some(
                             match cache_details
@@ -551,7 +650,7 @@ where
                         )
                     },
                 )
-                .instrument(info_span!("", cache_id = %cache_details.cache_id))
+                .instrument(info_span!("", piece_cache_id = %cache_details.piece_cache_id))
                 .await
         })
         .collect::<FuturesUnordered<_>>()
@@ -572,8 +671,8 @@ where
         .map(|cache_details| async move {
             nats_client
                 .stream_request_responder::<_, _, Pin<Box<dyn Stream<Item = _> + Send>>, _>(
-                    Some(cache_details.cache_id_string.as_str()),
-                    Some(cache_details.cache_id_string.clone()),
+                    Some(cache_details.piece_cache_id_string.as_str()),
+                    Some(cache_details.piece_cache_id_string.clone()),
                     |_request: ClusterCacheContentsRequest| async move {
                         Some(match cache_details.cache.contents().await {
                             Ok(contents) => Box::pin(contents.map(|maybe_cache_element| {
@@ -589,7 +688,7 @@ where
                         })
                     },
                 )
-                .instrument(info_span!("", cache_id = %cache_details.cache_id))
+                .instrument(info_span!("", piece_cache_id = %cache_details.piece_cache_id))
                 .await
         })
         .collect::<FuturesUnordered<_>>()
