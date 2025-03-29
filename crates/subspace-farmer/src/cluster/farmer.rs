@@ -70,22 +70,9 @@ impl Decode for ClusterFarmerId {
 
 #[allow(clippy::new_without_default)]
 impl ClusterFarmerId {
-    /// Create a new cluster farmer ID for a given list of farms
-    pub fn new<F>(farms: &[F]) -> Self
-    where
-        F: Farm,
-    {
-        Self({
-            let mut hasher = blake3::Hasher::new();
-            for farm in farms {
-                hasher.update(&farm.id().encode());
-                hasher.update(&farm.total_sectors_count().to_le_bytes());
-            }
-            Ulid::from_bytes(
-                *<&[u8; 16]>::try_from(&hasher.finalize().as_bytes()[..16])
-                    .expect("Correct length; qed"),
-            )
-        })
+    /// Create a new cluster farmer ID
+    pub fn new() -> Self {
+        Self(Ulid::new())
     }
 }
 
@@ -428,7 +415,7 @@ pub fn farmer_service<F>(
 where
     F: Farm,
 {
-    let farmer_id = ClusterFarmerId::new(farms);
+    let farmer_id = ClusterFarmerId::new();
     let farmer_id_string = farmer_id.to_string();
 
     // For each farm start forwarding notifications as broadcast messages and create farm details
