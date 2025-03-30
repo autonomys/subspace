@@ -84,12 +84,12 @@ impl Decode for PieceCacheId {
     fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
         match input
             .read_byte()
-            .map_err(|e| e.chain("Could not decode `CacheId`, failed to read variant byte"))?
+            .map_err(|e| e.chain("Could not decode `PieceCacheId`, failed to read variant byte"))?
         {
             0 => u128::decode(input)
                 .map(|ulid| PieceCacheId::Ulid(Ulid(ulid)))
-                .map_err(|e| e.chain("Could not decode `CacheId::Ulid.0`")),
-            _ => Err("Could not decode `CacheId`, variant doesn't exist".into()),
+                .map_err(|e| e.chain("Could not decode `PieceCacheId::Ulid.0`")),
+            _ => Err("Could not decode `PieceCacheId`, variant doesn't exist".into()),
         }
     }
 }

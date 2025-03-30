@@ -5,10 +5,13 @@
 //! cache addition and removal, tries to reduce number of reinitializations that result in potential
 //! piece cache sync, etc.
 
-use crate::cluster::cache::{ClusterCacheIdentifyBroadcast, ClusterPieceCache};
+use crate::cluster::cache::{
+    ClusterCacheDetailsRequest, ClusterCacheId, ClusterCacheIdentifyBroadcast, ClusterPieceCache,
+    ClusterPieceCacheDetails,
+};
 use crate::cluster::controller::ClusterControllerCacheIdentifyBroadcast;
 use crate::cluster::nats_client::NatsClient;
-use crate::farm::{PieceCache, PieceCacheId};
+use crate::farm::PieceCache;
 use crate::farmer_cache::FarmerCache;
 use anyhow::anyhow;
 use futures::channel::oneshot;
@@ -20,15 +23,16 @@ use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::MissedTickBehavior;
-use tracing::{info, trace, warn};
+use tokio_stream::StreamMap;
+use tracing::{debug, info, trace, warn};
 
 const SCHEDULE_REINITIALIZATION_DELAY: Duration = Duration::from_secs(3);
 
 #[derive(Debug)]
 struct KnownCache {
-    cache_id: PieceCacheId,
+    cluster_cache_id: ClusterCacheId,
     last_identification: Instant,
-    piece_cache: Arc<ClusterPieceCache>,
+    piece_caches: Vec<Arc<ClusterPieceCache>>,
 }
 
 #[derive(Debug)]
@@ -48,39 +52,40 @@ impl KnownCaches {
     fn get_all(&self) -> Vec<Arc<dyn PieceCache>> {
         self.known_caches
             .iter()
-            .map(|known_cache| Arc::clone(&known_cache.piece_cache) as Arc<_>)
+            .flat_map(|known_cache| {
+                known_cache
+                    .piece_caches
+                    .iter()
+                    .map(|piece_cache| Arc::clone(piece_cache) as Arc<_>)
+            })
             .collect()
     }
 
-    /// Return `true` if farmer cache reinitialization is required
-    fn update(
-        &mut self,
-        cache_id: PieceCacheId,
-        max_num_elements: u32,
-        nats_client: &NatsClient,
-    ) -> bool {
-        if self.known_caches.iter_mut().any(|known_cache| {
-            if known_cache.cache_id == cache_id {
+    /// Return `false` if cluster cache is unknown and reinitialization is required
+    #[must_use]
+    fn refresh(&mut self, cluster_cache_id: ClusterCacheId) -> bool {
+        self.known_caches.iter_mut().any(|known_cache| {
+            if known_cache.cluster_cache_id == cluster_cache_id {
+                trace!(%cluster_cache_id, "Updating last identification for cache");
                 known_cache.last_identification = Instant::now();
                 true
             } else {
                 false
             }
-        }) {
-            return false;
-        }
+        })
+    }
 
-        let piece_cache = Arc::new(ClusterPieceCache::new(
-            cache_id,
-            max_num_elements,
-            nats_client.clone(),
-        ));
+    /// Return `true` if cluster cache reinitialization is required
+    fn add_cache(
+        &mut self,
+        cluster_cache_id: ClusterCacheId,
+        piece_caches: Vec<Arc<ClusterPieceCache>>,
+    ) {
         self.known_caches.push(KnownCache {
-            cache_id,
+            cluster_cache_id,
             last_identification: Instant::now(),
-            piece_cache,
+            piece_caches,
         });
-        true
     }
 
     fn remove_expired(&mut self) -> impl Iterator<Item = KnownCache> + '_ {
@@ -99,8 +104,9 @@ pub async fn maintain_caches(
 ) -> anyhow::Result<()> {
     let mut known_caches = KnownCaches::new(identification_broadcast_interval);
 
+    let mut piece_caches_to_add = StreamMap::<ClusterCacheId, _>::new().fuse();
+
     let mut scheduled_reinitialization_for = None;
-    // Farm that is being added/removed right now (if any)
     let mut cache_reinitialization =
         (Box::pin(ready(())) as Pin<Box<dyn Future<Output = ()>>>).fuse();
 
@@ -164,24 +170,47 @@ pub async fn maintain_caches(
                     return Err(anyhow!("Cache identify stream ended"));
                 };
 
-                let ClusterCacheIdentifyBroadcast {
-                    cache_id,
-                    max_num_elements,
-                } = identify_message;
-                if known_caches.update(cache_id, max_num_elements, nats_client) {
-                    info!(
-                        %cache_id,
-                        "New cache discovered, scheduling reinitialization"
-                    );
-                    scheduled_reinitialization_for.replace(
-                        Instant::now() + SCHEDULE_REINITIALIZATION_DELAY,
-                    );
-                } else {
+                let ClusterCacheIdentifyBroadcast { cluster_cache_id } = identify_message;
+
+                if known_caches.refresh(cluster_cache_id) {
                     trace!(
-                        %cache_id,
+                        %cluster_cache_id,
                         "Received identification for already known cache"
                     );
+                } else if piece_caches_to_add.get_ref().contains_key(&cluster_cache_id) {
+                    debug!(
+                        %cluster_cache_id,
+                        "Received identification for new cache, which is already in progress"
+                    );
+                } else {
+                    debug!(
+                        %cluster_cache_id,
+                        "Received identification for new cache, collecting piece caches"
+                    );
+                    piece_caches_to_add.get_mut().insert(
+                        cluster_cache_id,
+                        Box::pin(collect_piece_caches(cluster_cache_id, nats_client).into_stream()),
+                    );
                 }
+            }
+            (cluster_cache_id, maybe_piece_caches) = piece_caches_to_add.select_next_some() => {
+                let Ok(piece_caches) = maybe_piece_caches.inspect_err(|error| {
+                    warn!(
+                        %cluster_cache_id,
+                        %error,
+                        "Failed to collect piece caches to add, may retry later"
+                    )
+                }) else {
+                    continue;
+                };
+
+                info!(
+                    %cluster_cache_id,
+                    "New cache discovered, scheduling reinitialization"
+                );
+                scheduled_reinitialization_for.replace(Instant::now() + SCHEDULE_REINITIALIZATION_DELAY);
+
+                known_caches.add_cache(cluster_cache_id, piece_caches);
             }
             _ = cache_pruning_interval.tick().fuse() => {
                 let mut reinit = false;
@@ -189,7 +218,7 @@ pub async fn maintain_caches(
                     reinit = true;
 
                     warn!(
-                        cache_id = %removed_cache.cache_id,
+                        cluster_cache_id = %removed_cache.cluster_cache_id,
                         "Cache expired and removed, scheduling reinitialization"
                     );
                 }
@@ -205,4 +234,47 @@ pub async fn maintain_caches(
             }
         }
     }
+}
+
+/// Collect piece caches from the cache and convert them to `ClusterPieceCache` by sending a stream
+/// request, then construct a `KnownCache` instance.
+async fn collect_piece_caches(
+    cluster_cache_id: ClusterCacheId,
+    nats_client: &NatsClient,
+) -> anyhow::Result<Vec<Arc<ClusterPieceCache>>> {
+    let piece_caches = nats_client
+        .stream_request(
+            &ClusterCacheDetailsRequest,
+            Some(&cluster_cache_id.to_string()),
+        )
+        .await
+        .inspect_err(|error| {
+            warn!(
+                %error,
+                %cluster_cache_id,
+                "Failed to request farmer farm details"
+            )
+        })?
+        .map(
+            |ClusterPieceCacheDetails {
+                 piece_cache_id,
+                 max_num_elements,
+             }| {
+                debug!(
+                    %cluster_cache_id,
+                    %piece_cache_id,
+                    %max_num_elements,
+                    "Discovered new piece cache"
+                );
+                Arc::new(ClusterPieceCache::new(
+                    piece_cache_id,
+                    max_num_elements,
+                    nats_client.clone(),
+                ))
+            },
+        )
+        .collect()
+        .await;
+
+    Ok(piece_caches)
 }
