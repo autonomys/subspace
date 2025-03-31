@@ -158,7 +158,9 @@ where
         .expect("could not generate domain node Configuration");
 
         let domain_backend = sc_service::new_db_backend::<Block>(domain_config.db_config())
-            .expect("Failed to create domain backend: {error:?}");
+            .unwrap_or_else(
+                |err| panic!("Failed to create domain backend: {domain_id:?} {role:?} {base_path:?} error: {err:?}")
+            );
 
         let BootstrapResult {
             domain_instance_data,
@@ -474,8 +476,13 @@ where
 
     /// Take and stop the domain node and delete its database lock file
     pub fn stop(self) -> Result<(), std::io::Error> {
-        // Remove the database lock file
-        std::fs::remove_file(self.base_path.path().join("paritydb").join("lock"))?;
+        let lock_file_path = self.base_path.path().join("paritydb").join("lock");
+        // On Windows, sometimes open files can’t be deleted so `drop` first then delete
+        std::mem::drop(self);
+        // The lock file already being deleted is not a fatal test error, so just log it
+        if let Err(err) = std::fs::remove_file(lock_file_path) {
+            tracing::error!("deleting paritydb lock file failed: {err:?}");
+        }
         Ok(())
     }
 }

@@ -6142,10 +6142,6 @@ async fn test_unordered_cross_domains_message_should_work() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// TODO: https://github.com/autonomys/subspace/pull/1954 broke this on Windows, we suspect the test
-//  is racy, but didn't find why and why it only fails on Windows. This needs to be fixed and test
-//  un-ignored on Windows.
-#[cfg_attr(windows, ignore)]
 async fn test_restart_domain_operator() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -6174,18 +6170,8 @@ async fn test_restart_domain_operator() {
     let next_slot = ferdie.next_slot();
 
     // Stop Ferdie and Alice and delete their database lock files
-    drop(ferdie);
-    drop(alice);
-    std::fs::remove_file(directory.path().join("ferdie/paritydb/lock")).unwrap();
-    std::fs::remove_file(
-        directory
-            .path()
-            .join(format!("alice/domain-{EVM_DOMAIN_ID:?}"))
-            .as_path()
-            .join("paritydb")
-            .join("lock"),
-    )
-    .unwrap();
+    ferdie.stop().unwrap();
+    alice.stop().unwrap();
 
     // Restart Ferdie
     let mut ferdie = MockConsensusNode::run(
