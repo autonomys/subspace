@@ -8,6 +8,7 @@ mod chain_spec;
 mod chain_spec_utils;
 mod cli;
 mod domain;
+mod heap;
 
 use crate::cli::{Cli, SubspaceCliPlaceholder};
 use crate::commands::set_exit_on_panic;
@@ -31,8 +32,15 @@ use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::HostFunctions;
 use tracing::warn;
 
+// #[global_allocator]
+// static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+#[allow(non_upper_case_globals)]
+#[export_name = "malloc_conf"]
+pub static malloc_conf: &[u8] = b"prof:true,prof_active:true,lg_prof_sample:19\0";
 
 type PosTable = ChiaTable;
 

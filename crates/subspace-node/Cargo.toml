@@ -82,6 +82,9 @@ tokio = { workspace = true, features = ["macros"] }
 tokio-stream.workspace = true
 tracing.workspace = true
 subspace-logging.workspace = true
+tikv-jemallocator = { version = "0.5.4", features = ["profiling", "unprefixed_malloc_on_supported_platforms"] }
+axum = "0.8.3"
+jemalloc_pprof = { version = "0.4.2"}
 
 [build-dependencies]
 substrate-build-script-utils.workspace = true

@@ -377,6 +377,14 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             );
         };
 
+        consensus_chain_node
+            .task_manager
+            .spawn_essential_handle()
+            .spawn_essential_blocking(
+                "heap-profiler",
+                None,
+                Box::pin(crate::heap::run_heap_webserver()),
+            );
         consensus_chain_node.task_manager
     };
 
