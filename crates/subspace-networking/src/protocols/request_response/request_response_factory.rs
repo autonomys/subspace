@@ -417,6 +417,14 @@ impl RequestResponseFactoryBehaviour {
             );
         }
     }
+
+    /// Wake this task soon, using the supplied context.
+    ///
+    /// This avoids starving other tasks of executor time, but ensures that we are called again to
+    /// finish our work.
+    fn wake(cx: &Context) {
+        cx.waker().wake_by_ref()
+    }
 }
 
 impl NetworkBehaviour for RequestResponseFactoryBehaviour {
@@ -608,7 +616,15 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
     }
 
     fn poll(&mut self, cx: &mut Context) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
-        'poll_all: loop {
+        // Futures have to schedule a wakeup if they create a new `Poll::Pending`. So we track
+        // if we might have unscheduled work, or we can wait until an already scheduled wakeup.
+        //
+        // To increase the CPU time other tasks get, call `tokio::task::yield_now().poll(cx)`
+        // insteak of just waking this task. To increase the CPU time this task gets, loop a
+        // limited number of times before manually waking this task, and returning Pending.
+        let mut needs_wakeup = false;
+
+        {
             if let Some(message_request) = self.message_request.take() {
                 let MessageRequest {
                     peer,
@@ -652,25 +668,25 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                     }
                 }));
 
-                // This `continue` makes sure that `pending_responses` gets polled
-                // after we have added the new element.
-                continue 'poll_all;
+                // We are just about to poll `pending_responses` after adding a new element.
+                // So we don't need to schedule a wakeup here, that code will do it if necessary.
             }
+
             // Poll to see if any response is ready to be sent back.
-            while let Poll::Ready(Some(outcome)) = self.pending_responses.poll_next_unpin(cx) {
-                let RequestProcessingOutcome {
+            if let Poll::Ready(Some(maybe_outcome)) = self.pending_responses.poll_next_unpin(cx) {
+                // If the response builder was too busy, or handling the request failed, we will
+                // get None here. This is later on reported as a `InboundFailure::Omission`.
+                if let Some(RequestProcessingOutcome {
                     request_id,
                     protocol: protocol_name,
                     inner_channel,
-                    response: OutgoingResponse { result, .. },
-                } = match outcome {
-                    Some(outcome) => outcome,
-                    // The response builder was too busy or handling the request failed. This is
-                    // later on reported as a `InboundFailure::Omission`.
-                    None => continue,
-                };
-
-                if let Ok(payload) = result {
+                    response:
+                        OutgoingResponse {
+                            result: Ok(payload),
+                            ..
+                        },
+                }) = maybe_outcome
+                {
                     if let Some((protocol, _)) = self.protocols.get_mut(&*protocol_name) {
                         if protocol.send_response(inner_channel, Ok(payload)).is_err() {
                             // Note: Failure is handled further below when receiving
@@ -686,19 +702,32 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                         }
                     }
                 }
+
+                // We didn't receive a Poll::Pending, so there might be more pending_responses ready.
+                needs_wakeup = true;
             }
 
+            // We want to poll all the runners once, every time.
             for rq_rs_runner in &mut self.request_handlers {
-                // Future.Output == (), so we don't need a result here
-                let _ = rq_rs_runner.poll_unpin(cx);
+                if let Poll::Ready(()) = rq_rs_runner.poll_unpin(cx) {
+                    // We didn't receive a Poll::Pending, but runners are only expected to do work
+                    // if there are pending events.
+                    // TODO: work out if we need to schedule a manual wakeup here.
+                }
             }
 
-            // Poll request-responses protocols.
+            // We want to poll all the request-response protocols once, every time.
             for (protocol, (behaviour, response_builder)) in &mut self.protocols {
-                while let Poll::Ready(event) = behaviour.poll(cx) {
-                    let event = match event {
+                if let Poll::Ready(event) = behaviour.poll(cx) {
+                    // We almost always return Poll::Ready here, and we might have more work to do.
+                    // So schedule a manual wakeup before we return, to deal with any pending work.
+                    // (See the comment at the end of this function for more details.)
+                    Self::wake(cx);
+                    needs_wakeup = false;
+
+                    let maybe_event = match event {
                         // Main events we are interested in.
-                        ToSwarm::GenerateEvent(event) => event,
+                        ToSwarm::GenerateEvent(event) => Some(event),
 
                         // Other events generated by the underlying behaviour are transparently
                         // passed through.
@@ -752,13 +781,13 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                 "New event from request response protocol must be send up"
                             );
 
-                            continue;
+                            None
                         }
                     };
 
-                    match event {
+                    match maybe_event {
                         // Received a request from a remote.
-                        RequestResponseEvent::Message {
+                        Some(RequestResponseEvent::Message {
                             peer,
                             message:
                                 RequestResponseMessage::Request {
@@ -766,7 +795,7 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                     request,
                                     channel,
                                 },
-                        } => {
+                        }) => {
                             self.message_request = Some(MessageRequest {
                                 peer,
                                 request_id,
@@ -776,21 +805,20 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                 response_builder: response_builder.clone(),
                             });
 
-                            // This `continue` makes sure that `message_request` gets polled
-                            // after we have added the new element.
-                            continue 'poll_all;
+                            // `message_request` will get polled in the wakeup we've already
+                            // scheduled at the start of this behaviour.poll() block.
                         }
 
                         // Received a response from a remote to one of our requests.
-                        RequestResponseEvent::Message {
+                        Some(RequestResponseEvent::Message {
                             peer,
                             message:
                                 RequestResponseMessage::Response {
                                     request_id,
                                     response,
                                 },
-                        } => {
-                            let (started, delivered) = match self
+                        }) => {
+                            let maybe_timing = match self
                                 .pending_requests
                                 .remove(&(protocol.clone(), request_id).into())
                             {
@@ -798,7 +826,8 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                     let delivered = pending_response
                                         .send(response.map_err(|()| RequestFailure::Refused))
                                         .map_err(|_| RequestFailure::Obsolete.to_string());
-                                    (started, delivered)
+
+                                    Some((started, delivered))
                                 }
                                 None => {
                                     warn!(
@@ -807,29 +836,32 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                         request_id,
                                     );
                                     debug_assert!(false);
-                                    continue;
+
+                                    None
                                 }
                             };
 
-                            let out = Event::RequestFinished {
-                                peer: Some(peer),
-                                protocol: protocol.clone(),
-                                duration: started.elapsed(),
-                                result: delivered,
-                            };
+                            if let Some((started, delivered)) = maybe_timing {
+                                let out = Event::RequestFinished {
+                                    peer: Some(peer),
+                                    protocol: protocol.clone(),
+                                    duration: started.elapsed(),
+                                    result: delivered,
+                                };
 
-                            return Poll::Ready(ToSwarm::GenerateEvent(out));
+                                return Poll::Ready(ToSwarm::GenerateEvent(out));
+                            }
                         }
 
                         // One of our requests has failed.
-                        RequestResponseEvent::OutboundFailure {
+                        Some(RequestResponseEvent::OutboundFailure {
                             peer,
                             request_id,
                             error,
                             ..
-                        } => {
+                        }) => {
                             let error_string = error.to_string();
-                            let started = match self
+                            let maybe_started = match self
                                 .pending_requests
                                 .remove(&(protocol.clone(), request_id).into())
                             {
@@ -845,7 +877,8 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                             the result",
                                         );
                                     }
-                                    started
+
+                                    Some(started)
                                 }
                                 None => {
                                     warn!(
@@ -854,23 +887,26 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                         "Received `RequestResponseEvent::Message` with unexpected request",
                                     );
                                     debug_assert!(false);
-                                    continue;
+
+                                    None
                                 }
                             };
 
-                            let out = Event::RequestFinished {
-                                peer,
-                                protocol: protocol.clone(),
-                                duration: started.elapsed(),
-                                result: Err(error_string),
-                            };
+                            if let Some(started) = maybe_started {
+                                let out = Event::RequestFinished {
+                                    peer,
+                                    protocol: protocol.clone(),
+                                    duration: started.elapsed(),
+                                    result: Err(error_string),
+                                };
 
-                            return Poll::Ready(ToSwarm::GenerateEvent(out));
+                                return Poll::Ready(ToSwarm::GenerateEvent(out));
+                            }
                         }
 
                         // An inbound request failed, either while reading the request or due to
                         // failing to send a response.
-                        RequestResponseEvent::InboundFailure { peer, error, .. } => {
+                        Some(RequestResponseEvent::InboundFailure { peer, error, .. }) => {
                             debug!(?error, %peer, "Inbound request failed.");
 
                             let out = Event::InboundRequest {
@@ -882,7 +918,7 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                         }
 
                         // A response to an inbound request has been sent.
-                        RequestResponseEvent::ResponseSent { peer, .. } => {
+                        Some(RequestResponseEvent::ResponseSent { peer, .. }) => {
                             let out = Event::InboundRequest {
                                 peer,
                                 protocol: protocol.clone(),
@@ -891,12 +927,26 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
 
                             return Poll::Ready(ToSwarm::GenerateEvent(out));
                         }
+
+                        None => {}
                     };
                 }
             }
-
-            break Poll::Pending;
         }
+
+        // If all tasks return Pending, then we've finished all our work, and needs_wakeup will be
+        // false. So the next time we'll be woken is after a new network or internal event.
+        if needs_wakeup {
+            // Some of the previous polls returned Ready, so we might have more work to do. If no
+            // polls returned Pending, then we won't be woken at all (which is a bug). And those
+            // polls that returned Pending might not have scheduled a wakeup early enough (causing
+            // performance issues).
+            //
+            // So schedule a manual wakeup before we return Pending, to deal with any more work.
+            Self::wake(cx);
+        }
+
+        Poll::Pending
     }
 }
 
