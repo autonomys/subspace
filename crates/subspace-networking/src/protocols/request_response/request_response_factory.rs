@@ -783,6 +783,9 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                 };
 
                 match maybe_event {
+                    // We don't know how to handle this event.
+                    None => {}
+
                     // Received a request from a remote.
                     Some(RequestResponseEvent::Message {
                         peer,
@@ -815,17 +818,10 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                 response,
                             },
                     }) => {
-                        let maybe_timing = match self
+                        match self
                             .pending_requests
                             .remove(&(protocol.clone(), request_id).into())
                         {
-                            Some((started, pending_response)) => {
-                                let delivered = pending_response
-                                    .send(response.map_err(|()| RequestFailure::Refused))
-                                    .map_err(|_| RequestFailure::Obsolete.to_string());
-
-                                Some((started, delivered))
-                            }
                             None => {
                                 warn!(
                                     target: LOG_TARGET,
@@ -833,20 +829,21 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                     request_id,
                                 );
                                 debug_assert!(false);
-
-                                None
                             }
-                        };
+                            Some((started, pending_response)) => {
+                                let delivered = pending_response
+                                    .send(response.map_err(|()| RequestFailure::Refused))
+                                    .map_err(|_| RequestFailure::Obsolete.to_string());
 
-                        if let Some((started, delivered)) = maybe_timing {
-                            let out = Event::RequestFinished {
-                                peer: Some(peer),
-                                protocol: protocol.clone(),
-                                duration: started.elapsed(),
-                                result: delivered,
-                            };
+                                let out = Event::RequestFinished {
+                                    peer: Some(peer),
+                                    protocol: protocol.clone(),
+                                    duration: started.elapsed(),
+                                    result: delivered,
+                                };
 
-                            return Poll::Ready(ToSwarm::GenerateEvent(out));
+                                return Poll::Ready(ToSwarm::GenerateEvent(out));
+                            }
                         }
                     }
 
@@ -858,10 +855,19 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                         ..
                     }) => {
                         let error_string = error.to_string();
-                        let maybe_started = match self
+
+                        match self
                             .pending_requests
                             .remove(&(protocol.clone(), request_id).into())
                         {
+                            None => {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    %request_id,
+                                    "Received `RequestResponseEvent::Message` with unexpected request",
+                                );
+                                debug_assert!(false);
+                            }
                             Some((started, pending_response)) => {
                                 if pending_response
                                     .send(Err(RequestFailure::Network(error)))
@@ -875,29 +881,15 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                     );
                                 }
 
-                                Some(started)
+                                let out = Event::RequestFinished {
+                                    peer,
+                                    protocol: protocol.clone(),
+                                    duration: started.elapsed(),
+                                    result: Err(error_string),
+                                };
+
+                                return Poll::Ready(ToSwarm::GenerateEvent(out));
                             }
-                            None => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    %request_id,
-                                    "Received `RequestResponseEvent::Message` with unexpected request",
-                                );
-                                debug_assert!(false);
-
-                                None
-                            }
-                        };
-
-                        if let Some(started) = maybe_started {
-                            let out = Event::RequestFinished {
-                                peer,
-                                protocol: protocol.clone(),
-                                duration: started.elapsed(),
-                                result: Err(error_string),
-                            };
-
-                            return Poll::Ready(ToSwarm::GenerateEvent(out));
                         }
                     }
 
@@ -924,9 +916,7 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
 
                         return Poll::Ready(ToSwarm::GenerateEvent(out));
                     }
-
-                    None => {}
-                };
+                }
             }
         }
 
