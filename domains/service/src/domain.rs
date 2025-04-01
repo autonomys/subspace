@@ -178,7 +178,7 @@ where
 
     let executor = sc_service::new_wasm_executor(&config.executor);
 
-    let backend = sc_service::new_db_backend(config.db_config())?;
+    let backend = Arc::new(sc_client_db::Backend::new(config.db_config(), 150)?);
     let genesis_block_builder = GenesisBlockBuilder::new(
         config.chain_spec.as_storage_builder(),
         !snap_sync,

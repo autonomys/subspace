@@ -37,6 +37,7 @@ rayon.workspace = true
 sc-basic-authorship.workspace = true
 sc-chain-spec.workspace = true
 sc-client-api.workspace = true
+sc-client-db.workspace = true
 sc-consensus.workspace = true
 sc-consensus-subspace.workspace = true
 sc-consensus-subspace-rpc.workspace = true

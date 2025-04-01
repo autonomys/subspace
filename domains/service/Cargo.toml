@@ -31,6 +31,7 @@ parity-scale-codec.workspace = true
 sp-io.workspace = true
 sc-chain-spec.workspace = true
 sc-client-api.workspace = true
+sc-client-db.workspace = true
 sc-consensus.workspace = true
 sc-domains.workspace = true
 sc-executor.workspace = true
