@@ -624,313 +624,309 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
         // limited number of times before manually waking this task, and returning Pending.
         let mut needs_wakeup = false;
 
-        {
-            if let Some(message_request) = self.message_request.take() {
-                let MessageRequest {
+        if let Some(message_request) = self.message_request.take() {
+            let MessageRequest {
+                peer,
+                request_id,
+                request,
+                channel,
+                protocol,
+                response_builder,
+            } = message_request;
+
+            let (tx, rx) = oneshot::channel();
+
+            // Submit the request to the "response builder" passed by the user at
+            // initialization.
+            if let Some(mut response_builder) = response_builder {
+                // If the response builder is too busy, silently drop `tx`. This
+                // will be reported by the corresponding `RequestResponse` through
+                // an `InboundFailure::Omission` event.
+                let _ = response_builder.try_send(IncomingRequest {
                     peer,
-                    request_id,
-                    request,
-                    channel,
-                    protocol,
-                    response_builder,
-                } = message_request;
-
-                let (tx, rx) = oneshot::channel();
-
-                // Submit the request to the "response builder" passed by the user at
-                // initialization.
-                if let Some(mut response_builder) = response_builder {
-                    // If the response builder is too busy, silently drop `tx`. This
-                    // will be reported by the corresponding `RequestResponse` through
-                    // an `InboundFailure::Omission` event.
-                    let _ = response_builder.try_send(IncomingRequest {
-                        peer,
-                        payload: request,
-                        pending_response: tx,
-                    });
-                } else {
-                    debug_assert!(false, "Received message on outbound-only protocol.");
-                }
-
-                self.pending_responses.push(Box::pin(async move {
-                    // The `tx` created above can be dropped if we are not capable of
-                    // processing this request, which is reflected as a
-                    // `InboundFailure::Omission` event.
-                    if let Ok(response) = rx.await {
-                        Some(RequestProcessingOutcome {
-                            request_id,
-                            protocol: Cow::from(protocol),
-                            inner_channel: channel,
-                            response,
-                        })
-                    } else {
-                        None
-                    }
-                }));
-
-                // We are just about to poll `pending_responses` after adding a new element.
-                // So we don't need to schedule a wakeup here, that code will do it if necessary.
+                    payload: request,
+                    pending_response: tx,
+                });
+            } else {
+                debug_assert!(false, "Received message on outbound-only protocol.");
             }
 
-            // Poll to see if any response is ready to be sent back.
-            if let Poll::Ready(Some(maybe_outcome)) = self.pending_responses.poll_next_unpin(cx) {
-                // If the response builder was too busy, or handling the request failed, we will
-                // get None here. This is later on reported as a `InboundFailure::Omission`.
-                if let Some(RequestProcessingOutcome {
-                    request_id,
-                    protocol: protocol_name,
-                    inner_channel,
-                    response:
-                        OutgoingResponse {
-                            result: Ok(payload),
-                            ..
-                        },
-                }) = maybe_outcome
-                {
-                    if let Some((protocol, _)) = self.protocols.get_mut(&*protocol_name) {
-                        if protocol.send_response(inner_channel, Ok(payload)).is_err() {
-                            // Note: Failure is handled further below when receiving
-                            // `InboundFailure` event from `RequestResponse` behaviour.
-                            debug!(
-                                target: LOG_TARGET,
-                                %request_id,
-                                "Failed to send response for request on protocol {} due to a \
-                                timeout or due to the connection to the peer being closed. \
-                                Dropping response",
-                                protocol_name,
+            self.pending_responses.push(Box::pin(async move {
+                // The `tx` created above can be dropped if we are not capable of
+                // processing this request, which is reflected as a
+                // `InboundFailure::Omission` event.
+                if let Ok(response) = rx.await {
+                    Some(RequestProcessingOutcome {
+                        request_id,
+                        protocol: Cow::from(protocol),
+                        inner_channel: channel,
+                        response,
+                    })
+                } else {
+                    None
+                }
+            }));
+
+            // We are just about to poll `pending_responses` after adding a new element.
+            // So we don't need to schedule a wakeup here, that code will do it if necessary.
+        }
+
+        // Poll to see if any response is ready to be sent back.
+        if let Poll::Ready(Some(maybe_outcome)) = self.pending_responses.poll_next_unpin(cx) {
+            // If the response builder was too busy, or handling the request failed, we will
+            // get None here. This is later on reported as a `InboundFailure::Omission`.
+            if let Some(RequestProcessingOutcome {
+                request_id,
+                protocol: protocol_name,
+                inner_channel,
+                response:
+                    OutgoingResponse {
+                        result: Ok(payload),
+                        ..
+                    },
+            }) = maybe_outcome
+            {
+                if let Some((protocol, _)) = self.protocols.get_mut(&*protocol_name) {
+                    if protocol.send_response(inner_channel, Ok(payload)).is_err() {
+                        // Note: Failure is handled further below when receiving
+                        // `InboundFailure` event from `RequestResponse` behaviour.
+                        debug!(
+                            target: LOG_TARGET,
+                            %request_id,
+                            "Failed to send response for request on protocol {} due to a \
+                            timeout or due to the connection to the peer being closed. \
+                            Dropping response",
+                            protocol_name,
+                        );
+                    }
+                }
+            }
+
+            // We didn't receive a Poll::Pending, so there might be more pending_responses ready.
+            needs_wakeup = true;
+        }
+
+        // We want to poll all the runners once, every time.
+        for rq_rs_runner in &mut self.request_handlers {
+            if let Poll::Ready(()) = rq_rs_runner.poll_unpin(cx) {
+                // We didn't receive a Poll::Pending, but runners are only expected to do work
+                // if there are pending events.
+                // TODO: work out if we need to schedule a manual wakeup here.
+            }
+        }
+
+        // We want to poll all the request-response protocols once, every time.
+        for (protocol, (behaviour, response_builder)) in &mut self.protocols {
+            if let Poll::Ready(event) = behaviour.poll(cx) {
+                // We almost always return Poll::Ready here, and we might have more work to do.
+                // So schedule a manual wakeup before we return, to deal with any pending work.
+                // (See the comment at the end of this function for more details.)
+                Self::wake(cx);
+                needs_wakeup = false;
+
+                let maybe_event = match event {
+                    // Main events we are interested in.
+                    ToSwarm::GenerateEvent(event) => Some(event),
+
+                    // Other events generated by the underlying behaviour are transparently
+                    // passed through.
+                    ToSwarm::Dial { opts } => {
+                        if opts.get_peer_id().is_none() {
+                            error!(
+                                "The request-response isn't supposed to start dialing \
+                                    addresses"
                             );
                         }
+                        return Poll::Ready(ToSwarm::Dial { opts });
                     }
-                }
-
-                // We didn't receive a Poll::Pending, so there might be more pending_responses ready.
-                needs_wakeup = true;
-            }
-
-            // We want to poll all the runners once, every time.
-            for rq_rs_runner in &mut self.request_handlers {
-                if let Poll::Ready(()) = rq_rs_runner.poll_unpin(cx) {
-                    // We didn't receive a Poll::Pending, but runners are only expected to do work
-                    // if there are pending events.
-                    // TODO: work out if we need to schedule a manual wakeup here.
-                }
-            }
-
-            // We want to poll all the request-response protocols once, every time.
-            for (protocol, (behaviour, response_builder)) in &mut self.protocols {
-                if let Poll::Ready(event) = behaviour.poll(cx) {
-                    // We almost always return Poll::Ready here, and we might have more work to do.
-                    // So schedule a manual wakeup before we return, to deal with any pending work.
-                    // (See the comment at the end of this function for more details.)
-                    Self::wake(cx);
-                    needs_wakeup = false;
-
-                    let maybe_event = match event {
-                        // Main events we are interested in.
-                        ToSwarm::GenerateEvent(event) => Some(event),
-
-                        // Other events generated by the underlying behaviour are transparently
-                        // passed through.
-                        ToSwarm::Dial { opts } => {
-                            if opts.get_peer_id().is_none() {
-                                error!(
-                                    "The request-response isn't supposed to start dialing \
-                                    addresses"
-                                );
-                            }
-                            return Poll::Ready(ToSwarm::Dial { opts });
-                        }
-                        ToSwarm::NotifyHandler {
+                    ToSwarm::NotifyHandler {
+                        peer_id,
+                        handler,
+                        event,
+                    } => {
+                        return Poll::Ready(ToSwarm::NotifyHandler {
                             peer_id,
                             handler,
-                            event,
-                        } => {
-                            return Poll::Ready(ToSwarm::NotifyHandler {
-                                peer_id,
-                                handler,
-                                event: ((*protocol).to_string(), event),
-                            })
-                        }
-                        ToSwarm::CloseConnection {
+                            event: ((*protocol).to_string(), event),
+                        })
+                    }
+                    ToSwarm::CloseConnection {
+                        peer_id,
+                        connection,
+                    } => {
+                        return Poll::Ready(ToSwarm::CloseConnection {
                             peer_id,
                             connection,
-                        } => {
-                            return Poll::Ready(ToSwarm::CloseConnection {
-                                peer_id,
-                                connection,
-                            })
-                        }
-                        ToSwarm::NewExternalAddrCandidate(observed) => {
-                            return Poll::Ready(ToSwarm::NewExternalAddrCandidate(observed))
-                        }
-                        ToSwarm::ExternalAddrConfirmed(addr) => {
-                            return Poll::Ready(ToSwarm::ExternalAddrConfirmed(addr))
-                        }
-                        ToSwarm::ExternalAddrExpired(addr) => {
-                            return Poll::Ready(ToSwarm::ExternalAddrExpired(addr))
-                        }
-                        ToSwarm::ListenOn { opts } => {
-                            return Poll::Ready(ToSwarm::ListenOn { opts })
-                        }
-                        ToSwarm::RemoveListener { id } => {
-                            return Poll::Ready(ToSwarm::RemoveListener { id })
-                        }
-                        event => {
-                            warn!(
-                                ?event,
-                                "New event from request response protocol must be send up"
-                            );
+                        })
+                    }
+                    ToSwarm::NewExternalAddrCandidate(observed) => {
+                        return Poll::Ready(ToSwarm::NewExternalAddrCandidate(observed))
+                    }
+                    ToSwarm::ExternalAddrConfirmed(addr) => {
+                        return Poll::Ready(ToSwarm::ExternalAddrConfirmed(addr))
+                    }
+                    ToSwarm::ExternalAddrExpired(addr) => {
+                        return Poll::Ready(ToSwarm::ExternalAddrExpired(addr))
+                    }
+                    ToSwarm::ListenOn { opts } => return Poll::Ready(ToSwarm::ListenOn { opts }),
+                    ToSwarm::RemoveListener { id } => {
+                        return Poll::Ready(ToSwarm::RemoveListener { id })
+                    }
+                    event => {
+                        warn!(
+                            ?event,
+                            "New event from request response protocol must be send up"
+                        );
 
-                            None
-                        }
-                    };
+                        None
+                    }
+                };
 
-                    match maybe_event {
-                        // Received a request from a remote.
-                        Some(RequestResponseEvent::Message {
-                            peer,
-                            message:
-                                RequestResponseMessage::Request {
-                                    request_id,
-                                    request,
-                                    channel,
-                                },
-                        }) => {
-                            self.message_request = Some(MessageRequest {
-                                peer,
+                match maybe_event {
+                    // Received a request from a remote.
+                    Some(RequestResponseEvent::Message {
+                        peer,
+                        message:
+                            RequestResponseMessage::Request {
                                 request_id,
                                 request,
                                 channel,
-                                protocol: protocol.to_string(),
-                                response_builder: response_builder.clone(),
-                            });
-
-                            // `message_request` will get polled in the wakeup we've already
-                            // scheduled at the start of this behaviour.poll() block.
-                        }
-
-                        // Received a response from a remote to one of our requests.
-                        Some(RequestResponseEvent::Message {
-                            peer,
-                            message:
-                                RequestResponseMessage::Response {
-                                    request_id,
-                                    response,
-                                },
-                        }) => {
-                            let maybe_timing = match self
-                                .pending_requests
-                                .remove(&(protocol.clone(), request_id).into())
-                            {
-                                Some((started, pending_response)) => {
-                                    let delivered = pending_response
-                                        .send(response.map_err(|()| RequestFailure::Refused))
-                                        .map_err(|_| RequestFailure::Obsolete.to_string());
-
-                                    Some((started, delivered))
-                                }
-                                None => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        "Received `RequestResponseEvent::Message` with unexpected request id {:?}",
-                                        request_id,
-                                    );
-                                    debug_assert!(false);
-
-                                    None
-                                }
-                            };
-
-                            if let Some((started, delivered)) = maybe_timing {
-                                let out = Event::RequestFinished {
-                                    peer: Some(peer),
-                                    protocol: protocol.clone(),
-                                    duration: started.elapsed(),
-                                    result: delivered,
-                                };
-
-                                return Poll::Ready(ToSwarm::GenerateEvent(out));
-                            }
-                        }
-
-                        // One of our requests has failed.
-                        Some(RequestResponseEvent::OutboundFailure {
+                            },
+                    }) => {
+                        self.message_request = Some(MessageRequest {
                             peer,
                             request_id,
-                            error,
-                            ..
-                        }) => {
-                            let error_string = error.to_string();
-                            let maybe_started = match self
-                                .pending_requests
-                                .remove(&(protocol.clone(), request_id).into())
-                            {
-                                Some((started, pending_response)) => {
-                                    if pending_response
-                                        .send(Err(RequestFailure::Network(error)))
-                                        .is_err()
-                                    {
-                                        debug!(
-                                            target: LOG_TARGET,
-                                            %request_id,
-                                            "Request failed. At the same time local node is no longer interested in \
-                                            the result",
-                                        );
-                                    }
+                            request,
+                            channel,
+                            protocol: protocol.to_string(),
+                            response_builder: response_builder.clone(),
+                        });
 
-                                    Some(started)
-                                }
-                                None => {
-                                    warn!(
+                        // `message_request` will get polled in the wakeup we've already
+                        // scheduled at the start of this behaviour.poll() block.
+                    }
+
+                    // Received a response from a remote to one of our requests.
+                    Some(RequestResponseEvent::Message {
+                        peer,
+                        message:
+                            RequestResponseMessage::Response {
+                                request_id,
+                                response,
+                            },
+                    }) => {
+                        let maybe_timing = match self
+                            .pending_requests
+                            .remove(&(protocol.clone(), request_id).into())
+                        {
+                            Some((started, pending_response)) => {
+                                let delivered = pending_response
+                                    .send(response.map_err(|()| RequestFailure::Refused))
+                                    .map_err(|_| RequestFailure::Obsolete.to_string());
+
+                                Some((started, delivered))
+                            }
+                            None => {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Received `RequestResponseEvent::Message` with unexpected request id {:?}",
+                                    request_id,
+                                );
+                                debug_assert!(false);
+
+                                None
+                            }
+                        };
+
+                        if let Some((started, delivered)) = maybe_timing {
+                            let out = Event::RequestFinished {
+                                peer: Some(peer),
+                                protocol: protocol.clone(),
+                                duration: started.elapsed(),
+                                result: delivered,
+                            };
+
+                            return Poll::Ready(ToSwarm::GenerateEvent(out));
+                        }
+                    }
+
+                    // One of our requests has failed.
+                    Some(RequestResponseEvent::OutboundFailure {
+                        peer,
+                        request_id,
+                        error,
+                        ..
+                    }) => {
+                        let error_string = error.to_string();
+                        let maybe_started = match self
+                            .pending_requests
+                            .remove(&(protocol.clone(), request_id).into())
+                        {
+                            Some((started, pending_response)) => {
+                                if pending_response
+                                    .send(Err(RequestFailure::Network(error)))
+                                    .is_err()
+                                {
+                                    debug!(
                                         target: LOG_TARGET,
                                         %request_id,
-                                        "Received `RequestResponseEvent::Message` with unexpected request",
+                                        "Request failed. At the same time local node is no longer interested in \
+                                        the result",
                                     );
-                                    debug_assert!(false);
-
-                                    None
                                 }
-                            };
 
-                            if let Some(started) = maybe_started {
-                                let out = Event::RequestFinished {
-                                    peer,
-                                    protocol: protocol.clone(),
-                                    duration: started.elapsed(),
-                                    result: Err(error_string),
-                                };
-
-                                return Poll::Ready(ToSwarm::GenerateEvent(out));
+                                Some(started)
                             }
-                        }
+                            None => {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    %request_id,
+                                    "Received `RequestResponseEvent::Message` with unexpected request",
+                                );
+                                debug_assert!(false);
 
-                        // An inbound request failed, either while reading the request or due to
-                        // failing to send a response.
-                        Some(RequestResponseEvent::InboundFailure { peer, error, .. }) => {
-                            debug!(?error, %peer, "Inbound request failed.");
+                                None
+                            }
+                        };
 
-                            let out = Event::InboundRequest {
+                        if let Some(started) = maybe_started {
+                            let out = Event::RequestFinished {
                                 peer,
                                 protocol: protocol.clone(),
-                                result: Err(ResponseFailure::Network(error)),
-                            };
-                            return Poll::Ready(ToSwarm::GenerateEvent(out));
-                        }
-
-                        // A response to an inbound request has been sent.
-                        Some(RequestResponseEvent::ResponseSent { peer, .. }) => {
-                            let out = Event::InboundRequest {
-                                peer,
-                                protocol: protocol.clone(),
-                                result: Ok(()),
+                                duration: started.elapsed(),
+                                result: Err(error_string),
                             };
 
                             return Poll::Ready(ToSwarm::GenerateEvent(out));
                         }
+                    }
 
-                        None => {}
-                    };
-                }
+                    // An inbound request failed, either while reading the request or due to
+                    // failing to send a response.
+                    Some(RequestResponseEvent::InboundFailure { peer, error, .. }) => {
+                        debug!(?error, %peer, "Inbound request failed.");
+
+                        let out = Event::InboundRequest {
+                            peer,
+                            protocol: protocol.clone(),
+                            result: Err(ResponseFailure::Network(error)),
+                        };
+                        return Poll::Ready(ToSwarm::GenerateEvent(out));
+                    }
+
+                    // A response to an inbound request has been sent.
+                    Some(RequestResponseEvent::ResponseSent { peer, .. }) => {
+                        let out = Event::InboundRequest {
+                            peer,
+                            protocol: protocol.clone(),
+                            result: Ok(()),
+                        };
+
+                        return Poll::Ready(ToSwarm::GenerateEvent(out));
+                    }
+
+                    None => {}
+                };
             }
         }
 
