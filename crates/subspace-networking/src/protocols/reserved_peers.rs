@@ -60,7 +60,7 @@ pub struct Behaviour {
     reserved_peers_state: HashMap<PeerId, ReservedPeerState>,
     /// Delay between dialing attempts.
     dialing_delay: Delay,
-    /// Future waker.
+    /// The last `Future` task waker passed to `NetworkBehaviour::poll(), if any.
     waker: Option<Waker>,
 }
 

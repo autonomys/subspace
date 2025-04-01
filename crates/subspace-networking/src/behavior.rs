@@ -53,6 +53,9 @@ pub(crate) struct BehaviorConfig {
     pub(crate) autonat: AutonatWrapperConfig,
 }
 
+// This derive correctly implements NetworkBehaviour::poll(), by polling each sub-behaviour once.
+// The documentation for the macro is incorrect - there are no loops in the derived code.
+// <https://docs.rs/libp2p/latest/libp2p/swarm/trait.NetworkBehaviour.html#custom-networkbehaviour-with-the-derive-macro>
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "Event")]
 pub(crate) struct Behavior {
