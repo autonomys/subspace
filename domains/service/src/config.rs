@@ -95,7 +95,7 @@ pub struct SubstrateConfiguration {
     /// Keystore configuration
     pub keystore: KeystoreConfig,
     /// State pruning settings
-    pub state_pruning: Option<PruningMode>,
+    pub state_pruning: PruningMode,
     /// Number of blocks to keep in the db.
     ///
     /// NOTE: only finalized blocks are subject for removal!
@@ -209,7 +209,7 @@ impl From<SubstrateConfiguration> for Configuration {
             },
             data_path: configuration.base_path.clone(),
             trie_cache_maximum_size: configuration.trie_cache_size,
-            state_pruning: configuration.state_pruning,
+            state_pruning: Some(configuration.state_pruning),
             blocks_pruning: configuration.blocks_pruning,
             executor: configuration.executor,
             wasm_runtime_overrides: None,

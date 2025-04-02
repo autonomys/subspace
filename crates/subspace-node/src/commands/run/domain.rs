@@ -1,3 +1,4 @@
+use crate::commands::run::consensus::{BlocksPruningMode, StatePruningMode};
 use crate::commands::run::shared::{RpcOptions, TrieCacheParams};
 use crate::commands::shared::{store_key_in_keystore, KeystoreOptions};
 use crate::Error;
@@ -16,8 +17,7 @@ use evm_domain_runtime::AccountId as AccountId20;
 use futures::StreamExt;
 use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension, Properties};
 use sc_cli::{
-    Cors, KeystoreParams, PruningParams, RpcMethods, RuntimeParams, TransactionPoolParams,
-    RPC_DEFAULT_PORT,
+    Cors, KeystoreParams, RpcMethods, RuntimeParams, TransactionPoolParams, RPC_DEFAULT_PORT,
 };
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -38,12 +38,15 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
+use subspace_runtime_primitives::{DOMAINS_BLOCK_PRUNING_DEPTH, DOMAINS_PRUNING_DEPTH_MULTIPLIER};
 use subspace_service::FullClient as CFullClient;
 use tokio::sync::broadcast::Receiver;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tracing::log::info;
 use tracing::warn;
+
+/// Minimum Block and State pruning required for Domain
+pub(crate) const MIN_PRUNING: u32 = DOMAINS_BLOCK_PRUNING_DEPTH * DOMAINS_PRUNING_DEPTH_MULTIPLIER;
 
 /// Options for Substrate networking
 #[derive(Debug, Parser)]
@@ -106,7 +109,7 @@ pub(super) struct DomainOptions {
 
     /// Options for chain database pruning
     #[clap(flatten)]
-    pruning_params: PruningParams,
+    pruning_params: PruningOptions,
 
     /// Options for Substrate networking
     #[clap(flatten)]
@@ -139,6 +142,34 @@ pub(super) struct DomainOptions {
     /// Additional args for domain.
     #[clap(raw = true)]
     additional_args: Vec<String>,
+}
+
+/// Parameters to define the pruning mode
+#[derive(Debug, Clone, Parser)]
+struct PruningOptions {
+    /// The state pruning mode.
+    ///
+    /// This mode specifies when the block's state (ie, storage) should be pruned (ie, removed)
+    /// from the database.
+    /// This setting can only be set on the first creation of the database. Every subsequent run
+    /// will load the pruning mode from the database and will error if the stored mode doesn't
+    /// match this CLI value. It is fine to drop this CLI flag for subsequent runs.
+    /// Possible values:
+    ///  - archive: Keep the state of all blocks.
+    ///  - archive-canonical: Keep only the state of finalized blocks.
+    #[arg(long, default_value_t = StatePruningMode::Number(MIN_PRUNING))]
+    state_pruning: StatePruningMode,
+
+    /// The blocks pruning mode.
+    ///
+    /// This mode specifies when the block's body (including justifications)
+    /// should be pruned (ie, removed) from the database.
+    /// Possible values:
+    ///  - archive Keep all blocks.
+    ///  - archive-canonical Keep only finalized blocks.
+    ///  - number: Keep the last `number` of finalized blocks.
+    #[arg(long, default_value_t = BlocksPruningMode::Number(MIN_PRUNING))]
+    blocks_pruning: BlocksPruningMode,
 }
 
 #[derive(Debug)]
@@ -349,8 +380,8 @@ pub(super) fn create_domain_configuration(
             force_synced: true,
         },
         keystore,
-        state_pruning: pruning_params.state_pruning()?,
-        blocks_pruning: pruning_params.blocks_pruning()?,
+        state_pruning: pruning_params.state_pruning.into(),
+        blocks_pruning: pruning_params.blocks_pruning.into(),
         rpc_options: SubstrateRpcConfiguration {
             listen_on: Some(rpc_options.rpc_listen_on),
             max_connections: rpc_options.rpc_max_connections,

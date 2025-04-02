@@ -7,6 +7,7 @@ use crate::commands::run::consensus::{
 };
 use crate::commands::run::domain::{
     create_domain_configuration, run_domain, DomainOptions, DomainStartOptions,
+    MIN_PRUNING as DOMAINS_MIN_PRUNING,
 };
 use crate::{set_default_ss58_version, Error, PosTable};
 use clap::Parser;
@@ -32,7 +33,6 @@ use std::sync::Arc;
 use subspace_logging::init_logger;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_runtime::{Block, RuntimeApi};
-use subspace_runtime_primitives::{DOMAINS_BLOCK_PRUNING_DEPTH, DOMAINS_PRUNING_DEPTH_MULTIPLIER};
 use subspace_service::config::ChainSyncMode;
 use tracing::{debug, error, info, info_span, warn};
 
@@ -137,7 +137,10 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         //  But is there a situation when challenge period is not enough?
         //  If we do such a scenario, we would rather keep the consensus block and state pruning
         //  to archive-canonical
-        ensure_block_and_state_pruning_params(&mut subspace_configuration.base)
+        // we supress warning here since the consensus has different defaults when running without
+        // domain node, even if user do not override them, the default vaules are low enough to
+        // trigger a warning and confusing user. Instead supress them
+        ensure_block_and_state_pruning_params(&mut subspace_configuration.base, true)
     }
 
     let mut task_manager = {
@@ -195,7 +198,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
         // Run a domain
         if let Some(mut domain_configuration) = maybe_domain_configuration {
-            ensure_block_and_state_pruning_params(&mut domain_configuration.domain_config);
+            ensure_block_and_state_pruning_params(&mut domain_configuration.domain_config, false);
             let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
             let gossip_message_sink = xdm_gossip_worker_builder.gossip_msg_sink();
             let (domain_message_sink, domain_message_receiver) =
@@ -386,41 +389,42 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         .map_err(Into::into)
 }
 
-pub fn ensure_block_and_state_pruning_params(config: &mut Configuration) {
-    let domains_pruning_depth =
-        DOMAINS_BLOCK_PRUNING_DEPTH.saturating_mul(DOMAINS_PRUNING_DEPTH_MULTIPLIER);
-
+pub fn ensure_block_and_state_pruning_params(config: &mut Configuration, supress_warning: bool) {
     if let BlocksPruning::Some(blocks) = config.blocks_pruning {
-        config.blocks_pruning = BlocksPruning::Some(if blocks >= domains_pruning_depth {
+        config.blocks_pruning = BlocksPruning::Some(if blocks >= DOMAINS_MIN_PRUNING {
             blocks
         } else {
-            warn!(
-                "Blocks pruning config needs to be at least {:?}",
-                domains_pruning_depth
-            );
-            domains_pruning_depth
+            if !supress_warning {
+                warn!(
+                    "Blocks pruning config needs to be at least {:?}",
+                    DOMAINS_MIN_PRUNING
+                );
+            }
+            DOMAINS_MIN_PRUNING
         });
     }
 
     match &config.state_pruning {
         None => {
             config.state_pruning = Some(PruningMode::Constrained(Constraints {
-                max_blocks: Some(domains_pruning_depth),
+                max_blocks: Some(DOMAINS_MIN_PRUNING),
             }))
         }
         Some(pruning_mode) => {
             if let PruningMode::Constrained(constraints) = pruning_mode {
                 let max_blocks = match constraints.max_blocks {
-                    None => domains_pruning_depth,
+                    None => DOMAINS_MIN_PRUNING,
                     Some(max_blocks) => {
-                        if max_blocks >= domains_pruning_depth {
+                        if max_blocks >= DOMAINS_MIN_PRUNING {
                             max_blocks
                         } else {
-                            warn!(
-                                "State pruning config needs to be at least {:?}",
-                                domains_pruning_depth
-                            );
-                            domains_pruning_depth
+                            if !supress_warning {
+                                warn!(
+                                    "State pruning config needs to be at least {:?}",
+                                    DOMAINS_MIN_PRUNING
+                                );
+                            }
+                            DOMAINS_MIN_PRUNING
                         }
                     }
                 };

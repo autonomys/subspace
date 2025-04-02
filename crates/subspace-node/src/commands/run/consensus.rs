@@ -163,7 +163,7 @@ struct DsnOptions {
 /// This mode specifies when the block's state (ie, storage) should be pruned (ie, removed) from
 /// the database.
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum StatePruningMode {
+pub(crate) enum StatePruningMode {
     /// Keep the data of all blocks.
     Archive,
     /// Keep only the data of finalized blocks.
@@ -197,10 +197,30 @@ impl fmt::Display for StatePruningMode {
     }
 }
 
+impl From<StatePruningMode> for PruningMode {
+    fn from(value: StatePruningMode) -> Self {
+        match value {
+            StatePruningMode::Archive => PruningMode::ArchiveAll,
+            StatePruningMode::ArchiveCanonical => PruningMode::ArchiveCanonical,
+            StatePruningMode::Number(number) => PruningMode::blocks_pruning(number),
+        }
+    }
+}
+
+impl From<BlocksPruningMode> for BlocksPruning {
+    fn from(value: BlocksPruningMode) -> Self {
+        match value {
+            BlocksPruningMode::Archive => BlocksPruning::KeepAll,
+            BlocksPruningMode::ArchiveCanonical => BlocksPruning::KeepFinalized,
+            BlocksPruningMode::Number(number) => BlocksPruning::Some(number),
+        }
+    }
+}
+
 /// This mode specifies when the block's body (including justifications) should be pruned (ie,
 /// removed) from the database.
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum BlocksPruningMode {
+pub(crate) enum BlocksPruningMode {
     /// Keep the data of all blocks.
     Archive,
     /// Keep only the data of finalized blocks.
@@ -260,26 +280,6 @@ struct PruningOptions {
     ///  - number: Keep the last `number` of finalized blocks.
     #[arg(long, default_value_t = BlocksPruningMode::Number(256))]
     blocks_pruning: BlocksPruningMode,
-}
-
-impl PruningOptions {
-    /// Get the pruning value from the parameters
-    fn state_pruning(&self) -> PruningMode {
-        match self.state_pruning {
-            StatePruningMode::Archive => PruningMode::ArchiveAll,
-            StatePruningMode::ArchiveCanonical => PruningMode::ArchiveCanonical,
-            StatePruningMode::Number(num) => PruningMode::blocks_pruning(num),
-        }
-    }
-
-    /// Get the block pruning value from the parameters
-    fn blocks_pruning(&self) -> BlocksPruning {
-        match self.blocks_pruning {
-            BlocksPruningMode::Archive => BlocksPruning::KeepAll,
-            BlocksPruningMode::ArchiveCanonical => BlocksPruning::KeepFinalized,
-            BlocksPruningMode::Number(n) => BlocksPruning::Some(n),
-        }
-    }
 }
 
 /// Options for timekeeper
@@ -666,8 +666,8 @@ pub(super) fn create_consensus_chain_configuration(
             sync_mode: sync,
             force_synced,
         },
-        state_pruning: pruning_params.state_pruning(),
-        blocks_pruning: pruning_params.blocks_pruning(),
+        state_pruning: pruning_params.state_pruning.into(),
+        blocks_pruning: pruning_params.blocks_pruning.into(),
         rpc_options: SubstrateRpcConfiguration {
             listen_on: Some(rpc_options.rpc_listen_on),
             max_connections: rpc_options.rpc_max_connections,
