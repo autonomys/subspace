@@ -313,7 +313,7 @@ fn create_mapping(
 
     (
         GlobalObject {
-            piece_index: PieceIndex::from(start_piece_index as u64),
+            piece_index: idx(start_piece_index),
             offset: offset as u32,
             hash: blake3_hash(&object_data),
         },
@@ -357,12 +357,7 @@ fn create_object_fetcher(
     let piece_getter = pieces
         .into_iter()
         .enumerate()
-        .map(|(i, piece)| {
-            (
-                PieceIndex::from((start_piece_index + (i * 2)) as u64),
-                piece,
-            )
-        })
+        .map(|(i, piece)| (idx(start_piece_index + (i * 2)), piece))
         .collect();
     ObjectFetcher::new(Arc::new(piece_getter), max_supported_object_length())
 }
