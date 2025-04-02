@@ -24,6 +24,7 @@ async-trait.workspace = true
 cross-domain-message-gossip.workspace = true
 domain-runtime-primitives.workspace = true
 frame-benchmarking = { workspace = true, optional = true }
+frame-support.workspace = true
 futures.workspace = true
 hex.workspace = true
 jsonrpsee = { workspace = true, features = ["server-core"] }
@@ -37,6 +38,7 @@ rayon.workspace = true
 sc-basic-authorship.workspace = true
 sc-chain-spec.workspace = true
 sc-client-api.workspace = true
+sc-client-db.workspace = true
 sc-consensus.workspace = true
 sc-consensus-subspace.workspace = true
 sc-consensus-subspace-rpc.workspace = true
@@ -59,6 +61,7 @@ sc-transaction-pool.workspace = true
 sc-transaction-pool-api.workspace = true
 schnellru.workspace = true
 schnorrkel.workspace = true
+serde_json.workspace = true
 sp-api.workspace = true
 sp-blockchain.workspace = true
 sp-block-builder.workspace = true
