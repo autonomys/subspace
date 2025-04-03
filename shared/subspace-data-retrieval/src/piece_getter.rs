@@ -135,6 +135,27 @@ where
 }
 
 #[async_trait]
+impl<T> PieceGetter for Box<T>
+where
+    T: PieceGetter + Send + Sync + ?Sized,
+{
+    #[inline]
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
+        self.as_ref().get_piece(piece_index).await
+    }
+
+    #[inline]
+    async fn get_pieces<'a>(
+        &'a self,
+        piece_indices: Vec<PieceIndex>,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    > {
+        self.as_ref().get_pieces(piece_indices).await
+    }
+}
+
+#[async_trait]
 impl<T> PieceGetter for Option<T>
 where
     T: PieceGetter + Send + Sync,
