@@ -504,8 +504,9 @@ where
     let executor = sc_service::new_wasm_executor(&config.executor);
     let domains_executor = sc_service::new_wasm_executor(&config.executor);
 
-    let confirmation_depth_k = extract_confirmation_depth(config.chain_spec.as_ref())
-        .expect("Confirmation depth is always present in Genesis chain spec; qed");
+    let confirmation_depth_k = extract_confirmation_depth(config.chain_spec.as_ref()).ok_or(
+        ServiceError::Other("Failed to extract confirmation depth from chain spec".to_string()),
+    )?;
 
     let backend = Arc::new(sc_client_db::Backend::new(
         config.db_config(),
@@ -1358,9 +1359,9 @@ fn confirmation_depth_storage_key() -> StorageKey {
     StorageKey(
         frame_support::storage::storage_prefix(
             // This is the name used for `pallet-runtime-configs` in the `construct_runtime` macro
-            // i.e. `RuntimeConfigs: pallet_domain_id = 90`
+            // i.e. `RuntimeConfigs: pallet_runtime_configs = 14`
             "RuntimeConfigs".as_bytes(),
-            // This is the storage item name used inside `pallet-runtime-config`
+            // This is the storage item name used inside `pallet-runtime-configs`
             "ConfirmationDepthK".as_bytes(),
         )
         .to_vec(),
