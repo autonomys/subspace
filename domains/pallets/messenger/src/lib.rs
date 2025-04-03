@@ -1145,7 +1145,7 @@ mod pallet {
             };
 
             if !is_valid_call {
-                log::error!("Unexpected call instead of channel open request: {:?}", msg,);
+                log::error!("Unexpected XDM message: {:?}", msg,);
                 return Err(InvalidTransaction::Call.into());
             }
 
@@ -1168,9 +1168,10 @@ mod pallet {
             should_init_channel: bool,
         ) -> Result<(), TransactionValidityError> {
             if should_init_channel {
-                if let VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
+                let ConvertedPayload { payload, is_v1: _ } = msg.payload.clone().into_payload_v0();
+                if let Payload::Protocol(RequestResponse::Request(
                     ProtocolMessageRequest::ChannelOpen(params),
-                ))) = msg.payload
+                )) = payload
                 {
                     // channel is being opened without an owner since this is a relay message
                     // from other chain
