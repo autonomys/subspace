@@ -4,15 +4,12 @@
 //! * for objects within a block
 //! * for global objects in the global history of the blockchain (inside a piece)
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
 use crate::hashes::Blake3Hash;
 use crate::pieces::PieceIndex;
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
 use core::default::Default;
 use parity_scale_codec::{Decode, Encode};
+use scale_info::prelude::vec;
+use scale_info::prelude::vec::Vec;
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -140,6 +137,14 @@ impl GlobalObjectMapping {
     pub fn from_objects(objects: impl IntoIterator<Item = GlobalObject>) -> Self {
         Self::V0 {
             objects: objects.into_iter().collect(),
+        }
+    }
+
+    /// Returns a newly created GlobalObjectMapping from a single object mapping
+    #[inline]
+    pub fn from_object(object: GlobalObject) -> Self {
+        Self::V0 {
+            objects: vec![object],
         }
     }
 
