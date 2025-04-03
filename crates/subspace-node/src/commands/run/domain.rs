@@ -142,8 +142,8 @@ pub(super) struct DomainOptions {
     /// Domain type specific arguments.
     ///
     /// The command-line arguments provided first will be passed to the embedded consensus node,
-    /// while the arguments provided after `--` will be passed to domain node and
-    /// arguments provided after `--` will be passed to specific domain type configuration.
+    /// while the arguments provided after the first `--` will be passed to domain node and
+    /// arguments provided after the second `--` will be passed to specific domain type configuration.
     ///
     /// subspace-node [consensus-chain-args] -- [domain-args] -- [domain-type-args]
     #[clap(raw = true)]
