@@ -45,6 +45,7 @@ use sp_messenger::{MessengerApi, RelayerApi};
 use sp_mmr_primitives::MmrApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::SaturatedConversion;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::fmt::{Debug, Display};
@@ -178,7 +179,10 @@ where
 
     let executor = sc_service::new_wasm_executor(&config.executor);
 
-    let backend = sc_service::new_db_backend(config.db_config())?;
+    let backend = Arc::new(sc_client_db::Backend::new(
+        config.db_config(),
+        confirmation_depth_k.saturated_into::<u64>(),
+    )?);
     let genesis_block_builder = GenesisBlockBuilder::new(
         config.chain_spec.as_storage_builder(),
         !snap_sync,

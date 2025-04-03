@@ -35,10 +35,11 @@ use futures::channel::oneshot;
 use futures::FutureExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
+use parity_scale_codec::Decode;
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use sc_basic_authorship::ProposerFactory;
-use sc_chain_spec::GenesisBlockBuilder;
+use sc_chain_spec::{ChainSpec, GenesisBlockBuilder};
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{
     AuxStore, Backend, BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend,
@@ -93,6 +94,7 @@ use sp_core::offchain::storage::OffchainDb;
 use sp_core::offchain::OffchainDbExt;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
+use sp_domains::storage::StorageKey;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_domains_fraud_proof::{FraudProofApi, FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
@@ -502,7 +504,14 @@ where
     let executor = sc_service::new_wasm_executor(&config.executor);
     let domains_executor = sc_service::new_wasm_executor(&config.executor);
 
-    let backend = sc_service::new_db_backend(config.db_config())?;
+    let confirmation_depth_k = extract_confirmation_depth(config.chain_spec.as_ref()).ok_or(
+        ServiceError::Other("Failed to extract confirmation depth from chain spec".to_string()),
+    )?;
+
+    let backend = Arc::new(sc_client_db::Backend::new(
+        config.db_config(),
+        confirmation_depth_k.into(),
+    )?);
 
     let genesis_block_builder = GenesisBlockBuilder::new(
         config.chain_spec.as_storage_builder(),
@@ -544,6 +553,9 @@ where
         PotSeed::from_genesis(client_info.genesis_hash.as_ref(), pot_external_entropy),
         POT_VERIFIER_CACHE_SIZE,
     );
+
+    // ensure the extracted confirmation_depth matches the one from runtime
+    assert_eq!(confirmation_depth_k, chain_constants.confirmation_depth_k());
 
     client
         .execution_extensions()
@@ -1340,4 +1352,31 @@ where
         network_starter,
         transaction_pool,
     })
+}
+
+/// The storage key of the `ConfirmationDepthK` storage item in `pallet-runtime-configs`
+fn confirmation_depth_storage_key() -> StorageKey {
+    StorageKey(
+        frame_support::storage::storage_prefix(
+            // This is the name used for `pallet-runtime-configs` in the `construct_runtime` macro
+            // i.e. `RuntimeConfigs: pallet_runtime_configs = 14`
+            "RuntimeConfigs".as_bytes(),
+            // This is the storage item name used inside `pallet-runtime-configs`
+            "ConfirmationDepthK".as_bytes(),
+        )
+        .to_vec(),
+    )
+}
+
+fn extract_confirmation_depth(chain_spec: &dyn ChainSpec) -> Option<u32> {
+    let storage_key = format!("0x{}", hex::encode(confirmation_depth_storage_key().0));
+    let spec: serde_json::Value =
+        serde_json::from_str(chain_spec.as_json(true).ok()?.as_str()).ok()?;
+    let encoded_confirmation_depth = hex::decode(
+        spec.pointer(format!("/genesis/raw/top/{}", storage_key).as_str())?
+            .as_str()?
+            .trim_start_matches("0x"),
+    )
+    .ok()?;
+    u32::decode(&mut encoded_confirmation_depth.as_slice()).ok()
 }
