@@ -517,7 +517,7 @@ where
 
     let operator_streams = OperatorStreams {
         // TODO: proper value
-        consensus_block_import_throttling_buffer_size: 10,
+        consensus_block_import_throttling_buffer_size: 14_400,
         block_importing_notification_stream,
         imported_block_notification_stream,
         new_slot_notification_stream: pot_slot_info_stream,
