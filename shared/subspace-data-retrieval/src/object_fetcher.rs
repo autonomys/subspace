@@ -52,6 +52,9 @@ pub fn max_supported_object_length() -> usize {
 /// The length of the compact encoding of `max_supported_object_length()`.
 const MAX_ENCODED_LENGTH_SIZE: usize = 4;
 
+/// Used to store the last piece downloaded in an object fetcher batch.
+pub type LastPieceCache = (PieceIndex, Piece);
+
 /// Object fetching errors.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
@@ -238,11 +241,19 @@ where
     /// putting the objects' bytes together.
     ///
     /// Checks the objects' hashes to make sure the correct bytes are returned.
+    ///
+    /// For efficiency, objects in a batch should be sorted by increasing piece index. Objects with
+    /// the same piece index should be sorted by increasing offset. This allows the last piece to
+    /// be re-used for the next object in the batch.
+    ///
+    /// Batches should be split if the gap between object piece indexes is 6 or more. Those objects
+    /// can't share any pieces, because a maximum-sized object only uses 6 pieces.
     pub async fn fetch_objects(
         &self,
         mappings: GlobalObjectMapping,
     ) -> Result<Vec<Vec<u8>>, Error> {
         let mut objects = Vec::with_capacity(mappings.objects().len());
+        let mut piece_cache = None;
 
         // TODO:
         // - keep the last downloaded piece until it's no longer needed
@@ -292,7 +303,7 @@ where
 
             // All objects can be assembled from individual pieces, we handle segments by checking
             // all possible padding, and parsing and discarding segment headers.
-            let data = self.fetch_object(mapping).await?;
+            let data = self.fetch_object(mapping, &mut piece_cache).await?;
 
             objects.push(data);
         }
@@ -312,7 +323,11 @@ where
     /// or fetch more data.
     //
     // TODO: return last downloaded piece from fetch_object() and pass them to the next fetch_object()
-    async fn fetch_object(&self, mapping: GlobalObject) -> Result<Vec<u8>, Error> {
+    async fn fetch_object(
+        &self,
+        mapping: GlobalObject,
+        piece_cache: &mut Option<LastPieceCache>,
+    ) -> Result<Vec<u8>, Error> {
         let GlobalObject {
             piece_index,
             offset,
@@ -327,7 +342,9 @@ where
 
         // Get pieces until we have enough data to calculate the object's length(s).
         // Objects with their length bytes at the end of a piece are a rare edge case.
-        let piece = self.read_piece(next_source_piece_index, mapping).await?;
+        let piece = self
+            .read_piece(next_source_piece_index, mapping, piece_cache)
+            .await?;
 
         // Discard piece data before the offset.
         // If this is the first piece in a segment, this automatically skips the segment header.
@@ -367,7 +384,9 @@ where
             );
 
             // Get the second piece for the object
-            let piece = self.read_piece(next_source_piece_index, mapping).await?;
+            let piece = self
+                .read_piece(next_source_piece_index, mapping, piece_cache)
+                .await?;
             // We want all the piece data
             let piece_data = piece
                 .record()
@@ -427,7 +446,7 @@ where
             // TODO: turn this into a concurrent stream, which cancels piece downloads if they aren't
             // needed
             let pieces = self
-                .read_pieces(remaining_piece_indexes.clone(), mapping)
+                .read_pieces(remaining_piece_indexes.clone(), mapping, piece_cache)
                 .await?
                 .into_iter()
                 .zip(remaining_piece_indexes.iter().copied())
@@ -476,22 +495,31 @@ where
         &self,
         piece_indexes: Arc<[PieceIndex]>,
         mapping: GlobalObject,
+        piece_cache: &mut Option<LastPieceCache>,
     ) -> Result<Vec<Piece>, Error> {
-        download_pieces(piece_indexes.clone(), &self.piece_getter)
-            .await
-            .map_err(|source| {
-                debug!(
-                    ?piece_indexes,
-                    error = ?source,
-                    ?mapping,
-                    "Error fetching pieces during object assembling"
-                );
+        download_pieces(
+            piece_indexes.clone(),
+            &piece_cache.clone().with_fallback(self.piece_getter.clone()),
+        )
+        .await
+        .inspect(|pieces| {
+            if let (Some(piece_index), Some(piece)) = (piece_indexes.last(), pieces.last()) {
+                *piece_cache = Some((*piece_index, piece.clone()))
+            }
+        })
+        .map_err(|source| {
+            debug!(
+                ?piece_indexes,
+                error = ?source,
+                ?mapping,
+                "Error fetching pieces during object assembling"
+            );
 
-                Error::PieceGetterError {
-                    error: format!("{source:?}"),
-                    mapping,
-                }
-            })
+            Error::PieceGetterError {
+                error: format!("{source:?}"),
+                mapping,
+            }
+        })
     }
 
     /// Read and return a single piece.
@@ -501,28 +529,34 @@ where
         &self,
         piece_index: PieceIndex,
         mapping: GlobalObject,
+        piece_cache: &mut Option<LastPieceCache>,
     ) -> Result<Piece, Error> {
-        download_pieces(vec![piece_index].into(), &self.piece_getter)
-            .await
-            .map(|pieces| {
-                pieces
-                    .first()
-                    .expect("download_pieces always returns exact pieces or error")
-                    .clone()
-            })
-            .map_err(|source| {
-                debug!(
-                    %piece_index,
-                    error = ?source,
-                    ?mapping,
-                    "Error fetching piece during object assembling"
-                );
+        let piece_indexes = Arc::<[PieceIndex]>::from(vec![piece_index]);
+        download_pieces(
+            piece_indexes.clone(),
+            &piece_cache.clone().with_fallback(self.piece_getter.clone()),
+        )
+        .await
+        .inspect(|pieces| *piece_cache = Some((piece_index, pieces[0].clone())))
+        .map(|pieces| {
+            pieces
+                .first()
+                .expect("download_pieces always returns exact pieces or error")
+                .clone()
+        })
+        .map_err(|source| {
+            debug!(
+                %piece_index,
+                error = ?source,
+                ?mapping,
+                "Error fetching piece during object assembling"
+            );
 
-                Error::PieceGetterError {
-                    error: format!("{source:?}"),
-                    mapping,
-                }
-            })
+            Error::PieceGetterError {
+                error: format!("{source:?}"),
+                mapping,
+            }
+        })
     }
 }
 
