@@ -299,7 +299,7 @@ where
                     }
                     maybe_block_importing = blocks_importing.next() => {
                         // TODO: remove the `block_number` from the notification since it is not used
-                        let (_block_number, mut acknowledgement_sender) =
+                        let (block_number, mut acknowledgement_sender) =
                             match maybe_block_importing {
                                 Some(block_importing) => block_importing,
                                 None => {
@@ -308,7 +308,13 @@ where
                                 }
                             };
                         // Pause the consensus block import when the sink is full.
+                        let best_block = consensus_client.info().best_number;
+                        info!("=============================");
+                        info!("Consensus Importing Block: {:?}", block_number);
+                        info!("Consensus Best Block: {:?}", best_block);
                         let _ = block_info_sender.feed(None).await;
+                        info!("Domain block info sink not full");
+                        info!("=============================");
                         let _ = acknowledgement_sender.send(()).await;
                     }
                 }

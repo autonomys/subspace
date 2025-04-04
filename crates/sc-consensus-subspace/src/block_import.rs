@@ -42,7 +42,7 @@ use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_proof_of_space::Table;
 use subspace_verification::{calculate_block_weight, PieceCheckParams, VerifySolutionParams};
-use tracing::warn;
+use tracing::{info, warn};
 
 /// Notification with number of the block that is about to be imported and acknowledgement sender
 /// that can be used to pause block production if desired.
@@ -661,7 +661,10 @@ where
                 block_number,
                 acknowledgement_sender,
             });
-
+        info!(
+            "Block Import waiting for Acknowledgement for Importing Block: {:?}",
+            block_number
+        );
         while acknowledgement_receiver.next().await.is_some() {
             // Wait for all the acknowledgements to finish.
         }
