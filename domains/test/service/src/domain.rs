@@ -589,7 +589,7 @@ impl DomainNodeBuilder {
             BasePath::new(
                 self.base_path
                     .path()
-                    .join(format!("domain-{EVM_DOMAIN_ID:?}")),
+                    .join(format!("domain-{EVM_DOMAIN_ID}")),
             ),
             self.domain_nodes,
             self.domain_nodes_exclusive,
@@ -615,7 +615,7 @@ impl DomainNodeBuilder {
             BasePath::new(
                 self.base_path
                     .path()
-                    .join(format!("domain-{AUTO_ID_DOMAIN_ID:?}")),
+                    .join(format!("domain-{AUTO_ID_DOMAIN_ID}")),
             ),
             self.domain_nodes,
             self.domain_nodes_exclusive,
