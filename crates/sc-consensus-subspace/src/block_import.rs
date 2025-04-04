@@ -667,8 +667,16 @@ where
         );
         while acknowledgement_receiver.next().await.is_some() {
             // Wait for all the acknowledgements to finish.
+            info!(
+                "Block Import Acknowledgement received for Importing Block: {:?}",
+                block_number
+            );
         }
 
+        info!(
+            "Block Import all Acknowledgements for Importing Block: {:?} are complete. Importing...",
+            block_number
+        );
         self.inner
             .import_block(block)
             .await
