@@ -27,6 +27,7 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::traits::Block as BlockT;
+use std::env;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
@@ -43,7 +44,7 @@ pub struct EthProvider<CT, EC> {
 
 impl<CT, EC> EthProvider<CT, EC> {
     pub fn new(base_path: Option<&Path>, eth_cli: impl Iterator<Item = String>) -> Self {
-        let eth_config = EthConfiguration::parse_from(eth_cli);
+        let eth_config = EthConfiguration::parse_from(env::args().take(1).chain(eth_cli));
         Self::with_configuration(base_path, eth_config)
     }
 

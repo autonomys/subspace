@@ -139,9 +139,15 @@ pub(super) struct DomainOptions {
     #[clap(flatten)]
     pub trie_cache_params: TrieCacheParams,
 
-    /// Additional args for domain.
+    /// Domain type specific arguments.
+    ///
+    /// The command-line arguments provided first will be passed to the embedded consensus node,
+    /// while the arguments provided after the first `--` will be passed to domain node and
+    /// arguments provided after the second `--` will be passed to specific domain type configuration.
+    ///
+    /// subspace-node [consensus-chain-args] -- [domain-args] -- [domain-type-args]
     #[clap(raw = true)]
-    additional_args: Vec<String>,
+    domain_type_args: Vec<String>,
 }
 
 /// Parameters to define the pruning mode
@@ -177,7 +183,7 @@ pub(super) struct DomainConfiguration {
     pub(super) domain_config: Configuration,
     pub(super) domain_id: DomainId,
     pub(super) operator_id: Option<OperatorId>,
-    pub(super) additional_args: Vec<String>,
+    pub(super) domain_type_args: Vec<String>,
 }
 
 pub(super) fn create_domain_configuration(
@@ -197,7 +203,7 @@ pub(super) fn create_domain_configuration(
         pool_config,
         runtime_params,
         trie_cache_params,
-        additional_args,
+        domain_type_args,
     } = domain_options;
 
     let domain_id;
@@ -423,7 +429,7 @@ pub(super) fn create_domain_configuration(
         domain_config: Configuration::from(domain_config),
         domain_id,
         operator_id,
-        additional_args,
+        domain_type_args,
     })
 }
 
@@ -464,7 +470,7 @@ where
         mut domain_config,
         domain_id,
         operator_id,
-        additional_args,
+        domain_type_args,
     } = domain_configuration;
 
     // Replace storage in the chain spec with correct one for this particular domain
@@ -542,7 +548,7 @@ where
                 >,
             >::new(
                 Some(domain_config.base_path.path()),
-                additional_args.into_iter(),
+                domain_type_args.into_iter(),
             );
 
             let domain_params = domain_service::DomainParams {
