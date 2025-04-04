@@ -136,6 +136,8 @@ pub(super) async fn start_worker<
                 biased;
 
                 Some((slot, proof_of_time)) = latest_slot_notification_stream.next() => {
+                    info!("=============================");
+                    info!("Slot info notification received");
                     let res = bundle_producer
                         .produce_bundle(
                             operator_id,
@@ -170,9 +172,13 @@ pub(super) async fn start_worker<
                         }
                         Ok(None) => {}
                     }
+                    info!("=============================");
                 }
                 Some(maybe_block_info) = throttled_block_import_notification_stream.next() => {
+                    info!("=============================");
+                    info!("Received notification from throttled block import");
                     if let Some(block_info) = maybe_block_info {
+                        info!("Domain is going to build block from consensus block: {:?}", block_info.number);
                         if let Err(error) = bundle_processor
                             .clone()
                             .process_bundles((
@@ -189,16 +195,20 @@ pub(super) async fn start_worker<
                             break;
                         }
                     }
+                    info!("=============================");
                 }
                 // In production the `acknowledgement_sender_stream` is an empty stream, it only set to
                 // real stream in test
                 Some(mut acknowledgement_sender) = acknowledgement_sender_stream.next() => {
+                    info!("=============================");
+                    info!("Received acknowledgement sender stream");
                     if let Err(err) = acknowledgement_sender.send(()).await {
                         tracing::error!(
                             ?err,
                             "Failed to send acknowledgement"
                         );
                     }
+                    info!("=============================");
                 }
                 else => { break }
             }
@@ -272,6 +282,8 @@ where
                     biased;
 
                     maybe_block_imported = blocks_imported.next() => {
+                        info!("=============================");
+                        info!("Received block imported notification...");
                         let block_imported = match maybe_block_imported {
                             Some(block_imported) => block_imported,
                             None => {
@@ -279,6 +291,7 @@ where
                                 break;
                             }
                         };
+                        info!("Received block imported notification for Block: {:?}", block_imported.header.number());
                         let header = match consensus_client.header(block_imported.hash) {
                             Ok(Some(header)) => header,
                             res => {
@@ -295,7 +308,10 @@ where
                             number: *header.number(),
                             is_new_best: block_imported.is_new_best,
                         };
+                        info!("Sending block imported notification for Block: {:?} to domain", block_imported.header.number());
                         let _ = block_info_sender.feed(Some(block_info)).await;
+                        info!("Sent block imported notification for Block: {:?} to domain", block_imported.header.number());
+                        info!("=============================");
                     }
                     maybe_block_importing = blocks_importing.next() => {
                         // TODO: remove the `block_number` from the notification since it is not used
