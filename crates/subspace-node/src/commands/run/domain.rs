@@ -186,6 +186,7 @@ pub(super) struct DomainConfiguration {
     pub(super) domain_type_args: Vec<String>,
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub(super) fn create_domain_configuration(
     consensus_chain_configuration: &Configuration,
     dev: bool,

@@ -16,7 +16,6 @@
 
 //! Subspace test service only.
 
-#![feature(trait_upcasting)]
 #![warn(missing_docs, unused_crate_dependencies)]
 
 use cross_domain_message_gossip::{xdm_gossip_peers_set_config, GossipWorkerBuilder};
@@ -1314,7 +1313,7 @@ where
         &self,
         block: BlockCheckParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
-        self.inner.check_block(block).await.map_err(Into::into)
+        self.inner.check_block(block).await
     }
 }
 
