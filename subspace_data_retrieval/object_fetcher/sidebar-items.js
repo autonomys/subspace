@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Error"],"fn":["max_supported_object_length"],"struct":["ObjectFetcher"]};
