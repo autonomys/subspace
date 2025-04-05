@@ -384,6 +384,8 @@ pub struct MockConsensusNode {
     /// Ferdie key
     pub key: Sr25519Keyring,
     finalize_block_depth: Option<NumberFor<Block>>,
+    /// The node's base path
+    base_path: BasePath,
 }
 
 impl MockConsensusNode {
@@ -426,7 +428,7 @@ impl MockConsensusNode {
             false,
             private_evm,
             evm_owner.map(|key| key.to_account_id()),
-            base_path,
+            base_path.clone(),
         );
 
         // Set `transaction_pool.ban_time` to 0 such that duplicated tx will not immediately rejected
@@ -604,6 +606,7 @@ impl MockConsensusNode {
             log_prefix,
             key,
             finalize_block_depth,
+            base_path,
         }
     }
 
@@ -916,6 +919,18 @@ impl MockConsensusNode {
             addr.peer_id,
             ReputationChange::new(i32::MAX, "Peer unbanned by test (2)"),
         );
+    }
+
+    /// Take and stop the `MockConsensusNode` and delete its database lock file
+    pub fn stop(self) -> Result<(), std::io::Error> {
+        let lock_file_path = self.base_path.path().join("paritydb").join("lock");
+        // On Windows, sometimes open files can’t be deleted so `drop` first then delete
+        std::mem::drop(self);
+        // The lock file already being deleted is not a fatal test error, so just log it
+        if let Err(err) = std::fs::remove_file(lock_file_path) {
+            tracing::error!("deleting paritydb lock file failed: {err:?}");
+        }
+        Ok(())
     }
 }
 

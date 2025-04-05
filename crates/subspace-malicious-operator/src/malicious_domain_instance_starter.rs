@@ -1,5 +1,5 @@
 use crate::malicious_bundle_producer::MaliciousBundleProducer;
-use crate::{create_malicious_operator_configuration, DomainCli};
+use crate::DomainCli;
 use cross_domain_message_gossip::{ChainMsg, Message};
 use domain_client_operator::snap_sync::ConsensusChainSyncParams;
 use domain_client_operator::{BootstrapResult, OperatorStreams};
@@ -10,11 +10,11 @@ use domain_service::providers::DefaultProvider;
 use domain_service::{FullBackend, FullClient};
 use evm_domain_runtime::AccountId as AccountId20;
 use futures::StreamExt;
-use sc_cli::CliConfiguration;
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::NewSlotNotification;
 use sc_network::{NetworkPeers, NetworkRequest};
+use sc_service::Configuration;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
@@ -24,7 +24,6 @@ use sp_core::crypto::AccountId32;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::{DomainInstanceData, RuntimeType};
 use sp_keystore::KeystorePtr;
-use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
@@ -35,8 +34,6 @@ use subspace_service::FullClient as CFullClient;
 /// bootstrap result
 pub struct DomainInstanceStarter {
     pub domain_cli: DomainCli,
-    pub base_path: PathBuf,
-    pub tokio_handle: tokio::runtime::Handle,
     pub consensus_client: Arc<CFullClient<CRuntimeApi>>,
     pub consensus_keystore: KeystorePtr,
     pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
@@ -47,6 +44,8 @@ pub struct DomainInstanceStarter {
     pub domain_message_receiver: TracingUnboundedReceiver<ChainMsg>,
     pub gossip_message_sink: TracingUnboundedSender<Message>,
     pub consensus_network: Arc<dyn NetworkPeers + Send + Sync>,
+    pub domain_backend: Arc<FullBackend<DomainBlock>>,
+    pub domain_config: Configuration,
 }
 
 impl DomainInstanceStarter {
@@ -68,8 +67,6 @@ impl DomainInstanceStarter {
 
         let DomainInstanceStarter {
             domain_cli,
-            base_path,
-            tokio_handle,
             consensus_client,
             consensus_keystore,
             consensus_offchain_tx_pool_factory,
@@ -79,21 +76,14 @@ impl DomainInstanceStarter {
             domain_message_receiver,
             gossip_message_sink,
             consensus_network,
+            domain_backend,
+            mut domain_config,
         } = self;
 
         let domain_id = domain_cli.domain_id.into();
-        let domain_config = {
-            let chain_id = domain_cli.run.chain_id(domain_cli.run.is_dev()?)?;
-            let domain_spec =
-                crate::chain_spec::create_domain_spec(chain_id.as_str(), raw_genesis)?;
-            create_malicious_operator_configuration::<DomainCli>(
-                domain_id,
-                base_path.into(),
-                &domain_cli,
-                domain_spec,
-                tokio_handle,
-            )?
-        };
+        domain_config
+            .chain_spec
+            .set_storage(raw_genesis.into_storage());
 
         let block_importing_notification_stream = block_importing_notification_stream
             .subscribe()
@@ -167,6 +157,7 @@ impl DomainInstanceStarter {
                         ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
                     >,
                     challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+                    domain_backend,
                 };
 
                 let mut domain_node = domain_service::new_full::<
@@ -230,6 +221,7 @@ impl DomainInstanceStarter {
                         ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
                     >,
                     challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+                    domain_backend,
                 };
 
                 let mut domain_node = domain_service::new_full::<

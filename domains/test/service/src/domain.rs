@@ -101,6 +101,8 @@ where
     pub operator: DomainOperator<RuntimeApi>,
     /// Sink to the node's tx pool
     pub tx_pool_sink: TracingUnboundedSender<ChainMsg>,
+    /// The node base path
+    pub base_path: BasePath,
 }
 
 impl<Runtime, RuntimeApi> DomainNode<Runtime, RuntimeApi>
@@ -143,26 +145,39 @@ where
         role: Role,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
+        let mut domain_config = node_config(
+            domain_id,
+            tokio_handle.clone(),
+            Runtime::to_seed(key),
+            domain_nodes,
+            domain_nodes_exclusive,
+            role,
+            base_path.clone(),
+            Box::new(create_domain_spec()) as Box<_>,
+        )
+        .expect("could not generate domain node Configuration");
+
+        let domain_backend = sc_service::new_db_backend::<Block>(domain_config.db_config())
+            .unwrap_or_else(
+                |err| panic!("Failed to create domain backend: {domain_id:?} {role:?} {base_path:?} error: {err:?}")
+            );
+
         let BootstrapResult {
             domain_instance_data,
             domain_created_at,
             imported_block_notification_stream,
-        } = fetch_domain_bootstrap_info::<Block, _, _>(&*mock_consensus_node.client, domain_id)
-            .await
-            .expect("Failed to get domain instance data");
-        let chain_spec = create_domain_spec(domain_instance_data.raw_genesis);
-        let key_seed = Runtime::to_seed(key);
-        let domain_config = node_config(
+            ..
+        } = fetch_domain_bootstrap_info::<Block, _, _, _>(
+            &*mock_consensus_node.client,
+            &*domain_backend,
             domain_id,
-            tokio_handle.clone(),
-            key_seed,
-            domain_nodes,
-            domain_nodes_exclusive,
-            role,
-            BasePath::new(base_path.path().join(format!("domain-{domain_id:?}"))),
-            Box::new(chain_spec) as Box<_>,
         )
-        .expect("could not generate domain node Configuration");
+        .await
+        .expect("Failed to get domain instance data");
+
+        domain_config
+            .chain_spec
+            .set_storage(domain_instance_data.raw_genesis.into_storage());
 
         let span = sc_tracing::tracing::info_span!(
             sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -223,6 +238,7 @@ where
             consensus_chain_sync_params: None::<
                 ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
             >,
+            domain_backend,
         };
 
         let domain_node = domain_service::new_full::<
@@ -279,6 +295,7 @@ where
             rpc_handlers,
             operator,
             tx_pool_sink: domain_message_sink,
+            base_path,
         }
     }
 
@@ -456,6 +473,18 @@ where
             ReputationChange::new(i32::MAX, "Peer unbanned by test (2)"),
         );
     }
+
+    /// Take and stop the domain node and delete its database lock file
+    pub fn stop(self) -> Result<(), std::io::Error> {
+        let lock_file_path = self.base_path.path().join("paritydb").join("lock");
+        // On Windows, sometimes open files can’t be deleted so `drop` first then delete
+        std::mem::drop(self);
+        // The lock file already being deleted is not a fatal test error, so just log it
+        if let Err(err) = std::fs::remove_file(lock_file_path) {
+            tracing::error!("deleting paritydb lock file failed: {err:?}");
+        }
+        Ok(())
+    }
 }
 
 impl<Runtime, RuntimeApi> DomainNode<Runtime, RuntimeApi>
@@ -557,7 +586,11 @@ impl DomainNodeBuilder {
             EVM_DOMAIN_ID,
             self.tokio_handle,
             key,
-            self.base_path,
+            BasePath::new(
+                self.base_path
+                    .path()
+                    .join(format!("domain-{EVM_DOMAIN_ID}")),
+            ),
             self.domain_nodes,
             self.domain_nodes_exclusive,
             self.skip_empty_bundle_production,
@@ -577,6 +610,33 @@ impl DomainNodeBuilder {
     ) -> AutoIdDomainNode {
         DomainNode::build(
             AUTO_ID_DOMAIN_ID,
+            self.tokio_handle,
+            key,
+            BasePath::new(
+                self.base_path
+                    .path()
+                    .join(format!("domain-{AUTO_ID_DOMAIN_ID}")),
+            ),
+            self.domain_nodes,
+            self.domain_nodes_exclusive,
+            self.skip_empty_bundle_production,
+            self.maybe_operator_id,
+            role,
+            mock_consensus_node,
+        )
+        .await
+    }
+
+    /// Build an EVM domain node with the given domain id
+    pub async fn build_evm_node_with(
+        self,
+        role: Role,
+        key: EcdsaKeyring,
+        mock_consensus_node: &mut MockConsensusNode,
+        domain_id: DomainId,
+    ) -> EvmDomainNode {
+        DomainNode::build(
+            domain_id,
             self.tokio_handle,
             key,
             self.base_path,

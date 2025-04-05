@@ -20,12 +20,15 @@ use domain_runtime_primitives::opaque::Block as DomainBlock;
 use futures::stream::StreamExt;
 use futures::FutureExt;
 use sc_cli::Signals;
+use sc_client_api::HeaderBackend;
 use sc_consensus_slots::SlotProportion;
 use sc_service::{BlocksPruning, Configuration, PruningMode};
 use sc_state_db::Constraints;
 use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
+use sp_api::ProvideRuntimeApi;
+use sp_consensus_subspace::SubspaceApi;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::env;
@@ -286,6 +289,24 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                     );
             };
 
+            let domain_backend = {
+                let consensus_best_hash = consensus_chain_node.client.info().best_hash;
+                let chain_constants = consensus_chain_node
+                    .client
+                    .runtime_api()
+                    .chain_constants(consensus_best_hash)
+                    .map_err(|err| Error::Other(err.to_string()))?;
+                Arc::new(
+                    sc_client_db::Backend::new(
+                        domain_configuration.domain_config.db_config(),
+                        chain_constants.confirmation_depth_k().into(),
+                    )
+                    .map_err(|error| {
+                        Error::Other(format!("Failed to create domain backend: {error:?}"))
+                    })?,
+                )
+            };
+
             let domain_start_options = DomainStartOptions {
                 consensus_client: consensus_chain_node.client.clone(),
                 consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
@@ -298,6 +319,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 consensus_network_sync_oracle: consensus_chain_node.sync_service.clone(),
                 domain_message_receiver,
                 gossip_message_sink,
+                domain_backend,
             };
 
             consensus_chain_node
@@ -311,10 +333,12 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                         let span = info_span!("Domain");
                         let _enter = span.enter();
 
-                        let bootstrap_result_fut = fetch_domain_bootstrap_info::<DomainBlock, _, _>(
-                            &*domain_start_options.consensus_client,
-                            domain_configuration.domain_id,
-                        );
+                        let bootstrap_result_fut =
+                            fetch_domain_bootstrap_info::<DomainBlock, _, _, _>(
+                                &*domain_start_options.consensus_client,
+                                &*domain_start_options.domain_backend,
+                                domain_configuration.domain_id,
+                            );
 
                         let bootstrap_result = match bootstrap_result_fut.await {
                             Ok(bootstrap_result) => bootstrap_result,
