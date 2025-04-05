@@ -218,7 +218,13 @@ pub(super) async fn start_worker<
         drop(new_slot_notification_stream);
         drop(acknowledgement_sender_stream);
         while let Some(maybe_block_info) = throttled_block_import_notification_stream.next().await {
+            info!("=============================");
+            info!("Received notification from throttled block import");
             if let Some(block_info) = maybe_block_info {
+                info!(
+                    "Domain is going to build block from consensus block: {:?}",
+                    block_info.number
+                );
                 if let Err(error) = bundle_processor
                     .clone()
                     .process_bundles((block_info.hash, block_info.number, block_info.is_new_best))
@@ -231,6 +237,7 @@ pub(super) async fn start_worker<
                     break;
                 }
             }
+            info!("=============================");
         }
     }
 }
