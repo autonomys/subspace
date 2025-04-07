@@ -518,8 +518,13 @@ where
     );
 
     let operator_streams = OperatorStreams {
-        // TODO: proper value
-        consensus_block_import_throttling_buffer_size: 10,
+        // Ensure Consensus does not import blocks faster than Domains
+        // Since when running domains, consensus blocks and state pruning are set to
+        // 2 * DOMAINS_BLOCK_PRUNING_DEPTH by default and if cli is overridden, the
+        // minimum of 2 * DOMAINS_BLOCK_PRUNING_DEPTH is always guaranteed.
+        // Hence, we do not need to throttle the consensus block imports at least until it reaches
+        // DOMAINS_BLOCK_PRUNING_DEPTH number of blocks.
+        consensus_block_import_throttling_buffer_size: MIN_PRUNING / 2,
         block_importing_notification_stream,
         imported_block_notification_stream,
         new_slot_notification_stream: pot_slot_info_stream,
