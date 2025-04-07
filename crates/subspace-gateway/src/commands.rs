@@ -93,19 +93,18 @@ pub(crate) async fn shutdown_signal() {
     use futures::FutureExt;
     use std::pin::pin;
 
+    let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
+        .expect("Setting signal handlers must never fail");
+    let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
+        .expect("Setting signal handlers must never fail");
+
     futures::future::select(
-        pin!(signal::unix::signal(signal::unix::SignalKind::interrupt())
-            .expect("Setting signal handlers must never fail")
-            .recv()
-            .map(|_| {
-                tracing::info!("Received SIGINT, shutting down gateway...");
-            }),),
-        pin!(signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("Setting signal handlers must never fail")
-            .recv()
-            .map(|_| {
-                tracing::info!("Received SIGTERM, shutting down gateway...");
-            }),),
+        pin!(sigint.recv().map(|_| {
+            tracing::info!("Received SIGINT, shutting down gateway...");
+        }),),
+        pin!(sigterm.recv().map(|_| {
+            tracing::info!("Received SIGTERM, shutting down gateway...");
+        }),),
     )
     .await;
 }

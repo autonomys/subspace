@@ -241,6 +241,7 @@ pub struct CertificateAction {
     pub action_type: CertificateActionType,
 }
 
+#[expect(clippy::useless_conversion, reason = "Macro-generated")]
 #[frame_support::pallet]
 mod pallet {
     use super::*;

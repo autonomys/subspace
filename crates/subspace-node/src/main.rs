@@ -1,7 +1,5 @@
 //! Subspace node implementation.
 
-#![feature(trait_upcasting)]
-
 mod commands;
 
 mod chain_spec;
@@ -85,6 +83,7 @@ where
     }
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 fn derive_pot_external_entropy(
     consensus_chain_config: &Configuration,
     maybe_pot_external_entropy: Option<String>,
@@ -117,6 +116,7 @@ fn derive_pot_external_entropy(
         .into_bytes())
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 fn main() -> Result<(), Error> {
     set_exit_on_panic();
 

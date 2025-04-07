@@ -308,7 +308,10 @@ fn partial_data() {
                 &pieces
                     .source_pieces()
                     .map(Some)
-                    .zip(iter::repeat(None).take(RecordedHistorySegment::NUM_RAW_RECORDS))
+                    .zip(iter::repeat_n(
+                        None,
+                        RecordedHistorySegment::NUM_RAW_RECORDS,
+                    ))
                     .flat_map(|(a, b)| [a, b])
                     .collect::<Vec<_>>(),
             )
@@ -321,8 +324,7 @@ fn partial_data() {
         // Take just parity shards
         let contents = Reconstructor::new(erasure_coding.clone())
             .add_segment(
-                &iter::repeat(None)
-                    .take(RecordedHistorySegment::NUM_RAW_RECORDS)
+                &iter::repeat_n(None, RecordedHistorySegment::NUM_RAW_RECORDS)
                     .chain(
                         pieces
                             .pieces()

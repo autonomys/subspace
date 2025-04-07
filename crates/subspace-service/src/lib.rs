@@ -4,7 +4,6 @@
     impl_trait_in_assoc_type,
     int_roundings,
     let_chains,
-    trait_upcasting,
     type_alias_impl_trait,
     type_changing_struct_update
 )]
@@ -465,6 +464,7 @@ type PartialComponents<RuntimeApi> = sc_service::PartialComponents<
 >;
 
 /// Creates `PartialComponents` for Subspace client.
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub fn new_partial<PosTable, RuntimeApi>(
     // TODO: Stop using `Configuration` once
     //  https://github.com/paritytech/polkadot-sdk/pull/5364 is in our fork
