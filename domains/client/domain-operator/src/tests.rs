@@ -75,6 +75,7 @@ use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::{Balance, SSC};
+use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 use subspace_test_runtime::Runtime;
 use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockConsensusNode,
@@ -8281,6 +8282,149 @@ async fn test_domain_node_starting_check() {
     }
     .await;
     assert!(result.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_invalid_chain_reward_receipt() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    let mut bundle_producer = {
+        let domain_bundle_proposer = DomainBundleProposer::new(
+            EVM_DOMAIN_ID,
+            alice.client.clone(),
+            ferdie.client.clone(),
+            alice.operator.transaction_pool.clone(),
+        );
+        let (bundle_sender, _bundle_receiver) =
+            sc_utils::mpsc::tracing_unbounded("domain_bundle_stream", 100);
+        TestBundleProducer::new(
+            EVM_DOMAIN_ID,
+            ferdie.client.clone(),
+            alice.client.clone(),
+            domain_bundle_proposer,
+            Arc::new(bundle_sender),
+            alice.operator.keystore.clone(),
+            false,
+            false,
+        )
+    };
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+
+    // Get a bundle from the txn pool and modify the receipt of the target bundle to has an invalid `chain_rewards`
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (first_bad_receipt_hash, bad_submit_bundle_tx) = {
+        let receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        // Set an invalid `chain_rewards` that exceeds the domain's total balance
+        receipt
+            .block_fees
+            .chain_rewards
+            .insert(ChainId::Consensus, Balance::MAX / 2);
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(&ferdie, opaque_bundle),
+        )
+    };
+
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+    assert!(ferdie.does_receipt_exist(first_bad_receipt_hash).unwrap());
+
+    // Produce more bundles with bad ERs that use the previous bad ER as an ancestor,
+    // also not include the FP in the consensus block to try confirm the bad ER
+    let mut parent_bad_receipt_hash = first_bad_receipt_hash;
+    for i in 0..DOMAINS_BLOCK_PRUNING_DEPTH + 5 {
+        let slot = ferdie.produce_slot();
+        let bundle = bundle_producer
+            .produce_bundle(
+                0,
+                OperatorSlotInfo {
+                    slot: slot.0,
+                    proof_of_time: slot.1,
+                },
+            )
+            .await
+            .expect("produce bundle must success")
+            .and_then(|res| res.into_opaque_bundle())
+            .expect("must win the challenge");
+        let bad_submit_bundle_tx = {
+            let mut opaque_bundle = bundle;
+            let receipt = &mut opaque_bundle.sealed_header.header.receipt;
+            receipt.parent_domain_block_receipt_hash = parent_bad_receipt_hash;
+            opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+                .pair()
+                .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+                .into();
+            parent_bad_receipt_hash = opaque_bundle.receipt().hash::<BlakeTwo256>();
+
+            bundle_to_tx(&ferdie, opaque_bundle)
+        };
+
+        let pre_consensus_best_number = ferdie.client.info().best_number;
+        let pre_domain_best_number = alice.client.info().best_number;
+        ferdie
+            .produce_block_with_slot_at(
+                slot,
+                ferdie.client.info().best_hash,
+                Some(vec![bad_submit_bundle_tx]),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            ferdie.client.info().best_number,
+            pre_consensus_best_number + 1
+        );
+
+        // The first bad ER supposed to be confirmed at `DOMAINS_BLOCK_PRUNING_DEPTH - 1` since
+        // there is no FP included by the consensus chain to prune it. But the domain balance
+        // bookkeeping check will reject to confirm the first bad ER because the invalid `chain_rewards`
+        // exceeds the domain's total balance thus the bundle will fail and derive no domain block
+        // so the domain chain will stop progressing and the first bad ER is not confirmed.
+        let post_domain_best_number = if i < DOMAINS_BLOCK_PRUNING_DEPTH - 1 {
+            pre_domain_best_number + 1
+        } else {
+            pre_domain_best_number
+        };
+        assert_eq!(alice.client.info().best_number, post_domain_best_number);
+
+        assert!(ferdie.does_receipt_exist(first_bad_receipt_hash).unwrap());
+    }
 }
 
 fn bundle_to_tx(
