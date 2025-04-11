@@ -290,6 +290,7 @@ pub enum Error {
     BundleStorageFund(bundle_storage_fund::Error),
     UnconfirmedER,
     TooManyWithdrawals,
+    ZeroDeposit,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -541,6 +542,8 @@ pub(crate) fn do_nominate_operator<T: Config>(
     nominator_id: T::AccountId,
     amount: BalanceOf<T>,
 ) -> Result<(), Error> {
+    ensure!(!amount.is_zero(), Error::ZeroDeposit);
+
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
 
@@ -751,8 +754,6 @@ pub(crate) fn do_withdraw_stake<T: Config>(
             Error::OperatorNotRegistered
         );
 
-        ensure!(!to_withdraw.is_zero(), Error::ZeroWithdraw);
-
         // If the this is the first staking request of this operator `note_pending_staking_operation` for it
         if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
             note_pending_staking_operation::<T>(operator.current_domain_id)?;
@@ -799,6 +800,8 @@ pub(crate) fn do_withdraw_stake<T: Config>(
             }
             WithdrawStake::Share(s) => s,
         };
+
+        ensure!(!shares_withdrew.is_zero(), Error::ZeroWithdraw);
 
         Deposits::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_deposit| {
             let deposit = maybe_deposit.as_mut().ok_or(Error::UnknownNominator)?;
