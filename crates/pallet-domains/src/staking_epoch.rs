@@ -344,6 +344,10 @@ pub(crate) fn do_slash_operator<T: Config>(
         },
     };
 
+    let current_domain_epoch_index = DomainStakingSummary::<T>::get(domain_id)
+        .ok_or(TransitionError::DomainNotInitialized)?
+        .current_epoch_index;
+
     Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
         // take the operator so this operator info is removed once we slash the operator.
         let mut operator = maybe_operator
@@ -367,9 +371,17 @@ pub(crate) fn do_slash_operator<T: Config>(
             let locked_amount = DepositOnHold::<T>::take((operator_id, nominator_id.clone()));
 
             // convert any previous epoch deposits
-            do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;
+            match do_convert_previous_epoch_deposits::<T>(
+                operator_id,
+                &mut deposit,
+                current_domain_epoch_index,
+            ) {
+                // Share price may be missing if there is deposit happen in the same epoch as slash
+                Ok(()) | Err(TransitionError::MissingOperatorEpochSharePrice) => {}
+                Err(err) => return Err(err),
+            }
 
-            // there maybe some withdrawals that are initiated in this epoch where operator was slashed
+            // there maybe some withdrawals that are initiated in this epoch where operator was slash
             // then collect and include them to find the final stake amount
             let (
                 amount_ready_to_withdraw,
@@ -377,7 +389,15 @@ pub(crate) fn do_slash_operator<T: Config>(
                 shares_withdrew_in_current_epoch,
             ) = Withdrawals::<T>::take(operator_id, nominator_id.clone())
                 .map(|mut withdrawal| {
-                    do_convert_previous_epoch_withdrawal::<T>(operator_id, &mut withdrawal)?;
+                    match do_convert_previous_epoch_withdrawal::<T>(
+                        operator_id,
+                        &mut withdrawal,
+                        current_domain_epoch_index,
+                    ) {
+                        // Share price may be missing if there is withdrawal happen in the same epoch as de-register
+                        Ok(()) | Err(TransitionError::MissingOperatorEpochSharePrice) => {}
+                        Err(err) => return Err(err),
+                    }
                     Ok((
                         withdrawal.total_withdrawal_amount,
                         withdrawal.total_storage_fee_withdrawal,
