@@ -119,7 +119,7 @@ use subspace_runtime_primitives::utility::{
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, ConsensusEventSegmentSize, FindBlockRewardAddress, Hash,
     HoldIdentifier, Moment, Nonce, Signature, XdmAdjustedWeightToFee, XdmFeeMultipler,
-    MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR, SHANNON, SSC,
+    MAX_BLOCK_LENGTH, MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 
@@ -209,9 +209,6 @@ const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 /// The block weight for 2 seconds of compute
 const BLOCK_WEIGHT_FOR_2_SEC: Weight =
     Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX);
-
-/// Maximum block length for non-`Normal` extrinsic is 5 MiB.
-const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
