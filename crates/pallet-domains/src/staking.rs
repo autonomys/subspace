@@ -910,12 +910,11 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                 // of previous epoch withdrawals from shares to balances above. So just update it instead
                 let new_withdrawal_in_shares = match withdrawal.withdrawal_in_shares.take() {
                     Some(WithdrawalInShares {
-                        domain_epoch,
                         shares,
                         storage_fee_refund,
                         ..
                     }) => WithdrawalInShares {
-                        domain_epoch,
+                        domain_epoch: domain_current_epoch,
                         shares: shares
                             .checked_add(&shares_withdrew)
                             .ok_or(Error::ShareOverflow)?,
