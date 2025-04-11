@@ -487,8 +487,6 @@ impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
     }
 
     fn on_chain_protocol_fees(chain_id: ChainId, fees: Balance) {
-        // note the burned balance from this chain
-        BlockFees::note_burned_balance(fees);
         // note the chain rewards
         BlockFees::note_chain_rewards(chain_id, fees);
     }

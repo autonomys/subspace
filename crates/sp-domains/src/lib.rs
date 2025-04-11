@@ -276,7 +276,7 @@ pub struct BlockFees<Balance> {
 
 impl<Balance> BlockFees<Balance>
 where
-    Balance: CheckedAdd,
+    Balance: CheckedAdd + Zero,
 {
     pub fn new(
         domain_execution_fee: Balance,
@@ -294,9 +294,14 @@ where
 
     /// Returns the total fees that was collected and burned on the Domain.
     pub fn total_fees(&self) -> Option<Balance> {
+        let total_chain_reward = self
+            .chain_rewards
+            .values()
+            .try_fold(Zero::zero(), |acc: Balance, cr| acc.checked_add(cr))?;
         self.consensus_storage_fee
             .checked_add(&self.domain_execution_fee)
             .and_then(|balance| balance.checked_add(&self.burned_balance))
+            .and_then(|balance| balance.checked_add(&total_chain_reward))
     }
 }
 
