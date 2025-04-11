@@ -20,6 +20,8 @@ mod segment_header;
 #[cfg(test)]
 mod tests;
 
+pub use segment_header::MAX_BLOCK_LENGTH;
+
 /// The maximum object length the implementation in this module can reliably handle.
 ///
 /// Currently objects are limited by the largest block size in the consensus chain, which is 5 MB.

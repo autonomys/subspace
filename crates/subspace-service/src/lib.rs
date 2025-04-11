@@ -1380,3 +1380,20 @@ fn extract_confirmation_depth(chain_spec: &dyn ChainSpec) -> Option<u32> {
     .ok()?;
     u32::decode(&mut encoded_confirmation_depth.as_slice()).ok()
 }
+
+#[cfg(test)]
+mod test {
+    use static_assertions::const_assert_eq;
+    use subspace_data_retrieval::object_fetcher::MAX_BLOCK_LENGTH as ARCHIVER_MAX_BLOCK_LENGTH;
+    use subspace_runtime_primitives::MAX_BLOCK_LENGTH as CONSENSUS_RUNTIME_MAX_BLOCK_LENGTH;
+
+    /// Runtime and archiver code must agree on the consensus block length.
+    /// (This avoids importing all the runtime primitives code into the farmer and gateway.)
+    #[test]
+    fn max_block_length_consistent() {
+        const_assert_eq!(
+            CONSENSUS_RUNTIME_MAX_BLOCK_LENGTH,
+            ARCHIVER_MAX_BLOCK_LENGTH,
+        );
+    }
+}
