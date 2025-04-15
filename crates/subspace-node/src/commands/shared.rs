@@ -25,6 +25,7 @@ pub(super) struct KeystoreOptions {
     pub(super) keystore_password_filename: Option<PathBuf>,
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub(super) fn derive_keypair(
     suri: &SecretString,
     password: &Option<SecretString>,
@@ -39,6 +40,7 @@ pub(super) fn derive_keypair(
     keypair_result.map_err(|err| Error::Input(format!("Invalid password {:?}", err)))
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub(super) fn store_key_in_keystore(
     keystore_path: PathBuf,
     suri: &SecretString,

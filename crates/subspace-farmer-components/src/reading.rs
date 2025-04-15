@@ -317,10 +317,7 @@ where
                 )
                 .collect::<FuturesUnordered<_>>()
                 .filter_map(|result| async move {
-                    match result {
-                        Ok(()) => None,
-                        Err(error) => Some(error),
-                    }
+                    result.err()
                 });
 
             std::pin::pin!(processing_chunks)

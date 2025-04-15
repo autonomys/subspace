@@ -117,19 +117,18 @@ async fn get_peer(peer_id: PeerId, node: Node) {
 pub(crate) async fn shutdown_signal() {
     use std::pin::pin;
 
+    let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
+        .expect("Setting signal handlers must never fail");
+    let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
+        .expect("Setting signal handlers must never fail");
+
     futures::future::select(
-        pin!(signal::unix::signal(signal::unix::SignalKind::interrupt())
-            .expect("Setting signal handlers must never fail")
-            .recv()
-            .map(|_| {
-                tracing::info!("Received SIGINT, shutting down farmer...");
-            }),),
-        pin!(signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("Setting signal handlers must never fail")
-            .recv()
-            .map(|_| {
-                tracing::info!("Received SIGTERM, shutting down farmer...");
-            }),),
+        pin!(sigint.recv().map(|_| {
+            info!("Received SIGINT, shutting down farmer...");
+        }),),
+        pin!(sigterm.recv().map(|_| {
+            info!("Received SIGTERM, shutting down farmer...");
+        }),),
     )
     .await;
 }
@@ -140,5 +139,5 @@ pub(crate) async fn shutdown_signal() {
         .await
         .expect("Setting signal handlers must never fail");
 
-    tracing::info!("Received Ctrl+C, shutting down farmer...");
+    info!("Received Ctrl+C, shutting down farmer...");
 }

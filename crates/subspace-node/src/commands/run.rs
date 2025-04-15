@@ -79,6 +79,7 @@ fn raise_fd_limit() {
 
 /// Default run command for node
 #[tokio::main]
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     init_logger();
     raise_fd_limit();

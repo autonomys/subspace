@@ -52,11 +52,10 @@ fn basic_data() {
     assert_ne!(source_shards, parity_shards);
 
     let partial_shards = concatenated_to_interleaved(
-        iter::repeat(None)
-            .take(num_shards / 4)
+        iter::repeat_n(None, num_shards / 4)
             .chain(source_shards.iter().skip(num_shards / 4).copied().map(Some))
             .chain(parity_shards.iter().take(num_shards / 4).copied().map(Some))
-            .chain(iter::repeat(None).take(num_shards / 4))
+            .chain(iter::repeat_n(None, num_shards / 4))
             .collect::<Vec<_>>(),
     );
 

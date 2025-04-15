@@ -122,8 +122,7 @@ where
             for protocol in addr_iter {
                 if let Protocol::P2p(peer_id) = protocol {
                     if temporary_bans.is_banned(&peer_id) {
-                        let error =
-                            io::Error::new(io::ErrorKind::Other, "Peer is temporarily banned");
+                        let error = io::Error::other("Peer is temporarily banned");
                         return Err(TransportError::Other(error.into()));
                     }
                 }

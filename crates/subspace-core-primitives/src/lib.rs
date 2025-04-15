@@ -263,7 +263,7 @@ impl ScalarBytes {
     pub const FULL_BYTES: usize = 32;
 }
 
-#[allow(clippy::assign_op_pattern, clippy::ptr_offset_with_cast)]
+#[expect(clippy::manual_div_ceil)]
 mod private_u256 {
     //! This module is needed to scope clippy allows
     use parity_scale_codec::{Decode, Encode};

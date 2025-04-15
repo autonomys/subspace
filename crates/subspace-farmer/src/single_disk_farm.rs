@@ -1587,17 +1587,14 @@ impl SingleDiskFarm {
 
         let metadata_header = PlotMetadataHeader::decode(&mut metadata_header_bytes.as_ref())
             .map_err(|error| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Failed to decode metadata header: {}", error),
-                )
+                io::Error::other(format!("Failed to decode metadata header: {}", error))
             })?;
 
         if metadata_header.version != SingleDiskFarm::SUPPORTED_PLOT_VERSION {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Unsupported metadata version {}", metadata_header.version),
-            ));
+            return Err(io::Error::other(format!(
+                "Unsupported metadata version {}",
+                metadata_header.version
+            )));
         }
 
         let mut sectors_metadata = Vec::<SectorMetadataChecksummed>::with_capacity(
@@ -1613,10 +1610,7 @@ impl SingleDiskFarm {
             sectors_metadata.push(
                 SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref()).map_err(
                     |error| {
-                        io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("Failed to decode sector metadata: {}", error),
-                        )
+                        io::Error::other(format!("Failed to decode sector metadata: {}", error))
                     },
                 )?,
             );
