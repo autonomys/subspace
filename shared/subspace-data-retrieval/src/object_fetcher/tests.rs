@@ -2,8 +2,14 @@
 
 use super::*;
 use crate::object_fetcher::partial_object::PADDING_BYTE_VALUE;
+use crate::piece_getter::get_pieces_individually;
+use async_trait::async_trait;
+use futures::lock::Mutex;
+use futures::Stream;
 use parity_scale_codec::{Compact, CompactLen, Encode};
 use rand::{thread_rng, RngCore};
+use std::collections::HashMap;
+use std::fmt::Debug;
 use std::iter;
 use subspace_core_primitives::hashes::blake3_hash;
 use subspace_core_primitives::segments::{
@@ -11,6 +17,66 @@ use subspace_core_primitives::segments::{
     SegmentHeader,
 };
 use subspace_logging::init_logger;
+
+/// A piece getter that panics if called - used to make sure that caches work
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct PanicPieceGetter;
+
+#[async_trait]
+impl PieceGetter for PanicPieceGetter {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
+        unreachable!("the cache failed to answer the request for piece: {piece_index:?}")
+    }
+
+    async fn get_pieces<'a>(
+        &'a self,
+        piece_indices: Vec<PieceIndex>,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    > {
+        unreachable!("the cache failed to answer the request for pieces: {piece_indices:?}")
+    }
+}
+
+/// A piece getter that counts how often each piece is requested.
+/// Doesn't actually return any pieces.
+#[derive(Clone, Debug, Default)]
+struct CountingPieceGetter(Arc<Mutex<HashMap<PieceIndex, usize>>>);
+
+impl CountingPieceGetter {
+    /// Returns the number of times each piece index has been requested.
+    async fn piece_index_counts(&self) -> HashMap<PieceIndex, usize> {
+        self.0.lock().await.clone()
+    }
+}
+
+#[async_trait]
+impl PieceGetter for CountingPieceGetter {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
+        *self.0.lock().await.entry(piece_index).or_default() += 1;
+
+        Ok(None)
+    }
+
+    async fn get_pieces<'a>(
+        &'a self,
+        piece_indices: Vec<PieceIndex>,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    > {
+        // This could be implemented more efficiently, but it's only used in tests
+        get_pieces_individually(|piece_index| self.get_piece(piece_index), piece_indices)
+    }
+}
+
+/// Converts the supplied number to a `PieceIndex`.
+fn idx<N>(piece_index: N) -> PieceIndex
+where
+    N: TryInto<u64> + Copy + Debug,
+    <N as TryInto<u64>>::Error: Debug,
+{
+    PieceIndex::from(piece_index.try_into().expect("must fit in u64"))
+}
 
 /// Returns a piece filled with random data.
 fn random_piece() -> Piece {
@@ -303,7 +369,7 @@ fn create_mapping(
 
     (
         GlobalObject {
-            piece_index: PieceIndex::from(start_piece_index as u64),
+            piece_index: idx(start_piece_index),
             offset: offset as u32,
             hash: blake3_hash(&object_data),
         },
@@ -343,17 +409,20 @@ fn byte_position_in_extract_raw_data(
 fn create_object_fetcher(
     pieces: Vec<Piece>,
     start_piece_index: usize,
-) -> ObjectFetcher<Vec<(PieceIndex, Piece)>> {
+    first_piece_getter: Option<Box<dyn PieceGetter + Send + Sync>>,
+    last_piece_getter: Option<Box<dyn PieceGetter + Send + Sync>>,
+) -> ObjectFetcher<impl PieceGetter> {
     let piece_getter = pieces
         .into_iter()
         .enumerate()
-        .map(|(i, piece)| {
-            (
-                PieceIndex::from((start_piece_index + (i * 2)) as u64),
-                piece,
-            )
-        })
-        .collect();
+        .map(|(i, piece)| (idx(start_piece_index + (i * 2)), piece))
+        .collect::<Vec<(PieceIndex, Piece)>>();
+
+    // Add the supplied first and last piece getters
+    let piece_getter = first_piece_getter
+        .with_fallback(piece_getter)
+        .with_fallback(last_piece_getter);
+
     ObjectFetcher::new(Arc::new(piece_getter), max_supported_object_length())
 }
 
@@ -384,10 +453,12 @@ async fn get_single_piece_object_no_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index, None, None);
 
     // Now get the object back
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - middle of segment
@@ -400,9 +471,11 @@ async fn get_single_piece_object_no_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - end of segment, no padding
@@ -415,9 +488,11 @@ async fn get_single_piece_object_no_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }
 
@@ -439,9 +514,11 @@ async fn get_single_piece_object_potential_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - potential padding that has the right byte value for padding, but is part of the object
@@ -456,9 +533,11 @@ async fn get_single_piece_object_potential_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - potential padding that has the right byte value for padding, but only some is part of the object
@@ -474,9 +553,11 @@ async fn get_single_piece_object_potential_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - end of segment, start of object length is in potential padding (but object does not cross into the next segment)
@@ -491,9 +572,11 @@ async fn get_single_piece_object_potential_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - end of segment, zero-length object in potential padding (but object does not cross into the next segment)
@@ -508,9 +591,11 @@ async fn get_single_piece_object_potential_padding() {
     write_object_length(vec![&mut piece], offset, object_len, None);
     let (mapping, object_data) =
         create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
-    let object_fetcher = create_object_fetcher(vec![piece], piece_index);
+    let object_fetcher = create_object_fetcher(vec![piece.clone()], piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }
 
@@ -542,9 +627,12 @@ async fn get_multi_piece_object_length_outside_padding() {
         None,
         Some(after_segment_header),
     );
-    let object_fetcher = create_object_fetcher(vec![piece1, piece2], start_piece_index);
+    let object_fetcher =
+        create_object_fetcher(vec![piece1, piece2.clone()], start_piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - potential padding that has the right byte value for padding, but is part of the object
@@ -567,9 +655,12 @@ async fn get_multi_piece_object_length_outside_padding() {
         None,
         Some(after_segment_header),
     );
-    let object_fetcher = create_object_fetcher(vec![piece1, piece2], start_piece_index);
+    let object_fetcher =
+        create_object_fetcher(vec![piece1, piece2.clone()], start_piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - actual padding that has the right byte value for padding, and isn't part of the object
@@ -593,9 +684,12 @@ async fn get_multi_piece_object_length_outside_padding() {
         Some(skip_padding),
         Some(after_segment_header),
     );
-    let object_fetcher = create_object_fetcher(vec![piece1, piece2], start_piece_index);
+    let object_fetcher =
+        create_object_fetcher(vec![piece1, piece2.clone()], start_piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - end of segment, end of object goes into padding, and multiple pieces from both segments
@@ -621,10 +715,16 @@ async fn get_multi_piece_object_length_outside_padding() {
         None,
         Some(after_segment_header),
     );
-    let object_fetcher =
-        create_object_fetcher(vec![piece1, piece2, piece3, piece4], start_piece_index);
+    let object_fetcher = create_object_fetcher(
+        vec![piece1, piece2, piece3, piece4.clone()],
+        start_piece_index,
+        None,
+        None,
+    );
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 6), piece4)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - potential padding that has the right byte value for padding, but is part of the object
@@ -655,10 +755,16 @@ async fn get_multi_piece_object_length_outside_padding() {
         None,
         Some(after_segment_header),
     );
-    let object_fetcher =
-        create_object_fetcher(vec![piece1, piece2, piece3, piece4], start_piece_index);
+    let object_fetcher = create_object_fetcher(
+        vec![piece1, piece2, piece3, piece4.clone()],
+        start_piece_index,
+        None,
+        None,
+    );
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 6), piece4)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - actual padding that has the right byte value for padding, and isn't part of the object
@@ -695,11 +801,15 @@ async fn get_multi_piece_object_length_outside_padding() {
         Some(after_segment_header),
     );
     let object_fetcher = create_object_fetcher(
-        vec![piece1, piece2, piece3, piece4, piece5, piece6],
+        vec![piece1, piece2, piece3, piece4, piece5, piece6.clone()],
         start_piece_index,
+        None,
+        None,
     );
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 10), piece6)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }
 
@@ -744,9 +854,12 @@ async fn get_multi_piece_object_length_overlaps_padding() {
         None,
         Some(after_segment_header),
     );
-    let object_fetcher = create_object_fetcher(vec![piece1, piece2], start_piece_index);
+    let object_fetcher =
+        create_object_fetcher(vec![piece1, piece2.clone()], start_piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - potential padding that has the right byte value for padding, but is part of the length
@@ -779,9 +892,12 @@ async fn get_multi_piece_object_length_overlaps_padding() {
         None,
         Some(after_segment_header),
     );
-    let object_fetcher = create_object_fetcher(vec![piece1, piece2], start_piece_index);
+    let object_fetcher =
+        create_object_fetcher(vec![piece1, piece2.clone()], start_piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 
     // - - actual padding that has the right byte value for padding, it could be part of the length, but isn't
@@ -822,8 +938,192 @@ async fn get_multi_piece_object_length_overlaps_padding() {
         Some(skip_padding),
         Some(after_segment_header),
     );
-    let object_fetcher = create_object_fetcher(vec![piece1, piece2], start_piece_index);
+    let object_fetcher =
+        create_object_fetcher(vec![piece1, piece2.clone()], start_piece_index, None, None);
 
-    let fetched_data = object_fetcher.fetch_object(mapping).await;
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn last_piece_cache_works() {
+    init_logger();
+
+    // We need to cover 4 known good cases:
+    // (empty caches are tested by the tests above)
+
+    // - single mapping, cache already has the piece (middle of segment)
+    let offset = 0;
+    let object_len = 1000;
+    let piece_index = 60;
+
+    let mut piece = random_piece();
+
+    write_object_length(vec![&mut piece], offset, object_len, None);
+    let (mapping, object_data) =
+        create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
+    // Passing a PanicPieceGetter as the first piece getter makes sure the last piece cache is used before the ObjectFetcher's piece getters
+    let object_fetcher = create_object_fetcher(
+        vec![piece.clone()],
+        piece_index,
+        Some(Box::new(PanicPieceGetter)),
+        Some(Box::new(PanicPieceGetter)),
+    );
+
+    let mut cache = Some((idx(piece_index), piece.clone()));
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(piece_index), piece)));
+    assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
+
+    // - single mapping in a batch, internal cache not used (end of segment)
+    let offset = 0;
+    let object_len = 10_000;
+    let piece_index = ArchivedHistorySegment::NUM_PIECES - 2;
+
+    let mut piece = random_piece();
+
+    write_object_length(vec![&mut piece], offset, object_len, None);
+    let (mapping, object_data) =
+        create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
+    // Passing a PanicPieceGetter as the last piece getter makes sure the ObjectFetcher's piece getters are used
+    let object_fetcher = create_object_fetcher(
+        vec![piece],
+        piece_index,
+        None,
+        Some(Box::new(PanicPieceGetter)),
+    );
+
+    let fetched_data = object_fetcher
+        .fetch_objects(GlobalObjectMapping::from_object(mapping))
+        .await
+        .unwrap();
+    assert_eq!(
+        fetched_data
+            .iter()
+            .map(hex::encode)
+            .collect::<Vec<String>>(),
+        vec![hex::encode(object_data)],
+    );
+
+    // - multiple mappings in a batch, single piece requested once (end of segment)
+    let offset = 0;
+    let object_len = 10;
+    let piece_index = ArchivedHistorySegment::NUM_PIECES - 2;
+
+    let mut piece = random_piece();
+
+    write_object_length(vec![&mut piece], offset, object_len, None);
+    let (mapping1, object_data1) =
+        create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
+
+    let offset = object_len + compact_encoded(object_len).len();
+    let object_len = 20;
+
+    write_object_length(vec![&mut piece], offset, object_len, None);
+    let (mapping2, object_data2) =
+        create_mapping(vec![&piece], piece_index, offset, object_len, None, None);
+
+    // Passing a CountingPieceGetter as the first piece getter counts each request, except for
+    // requests handled by ObjectFetcher::fetch_objects() internal last piece cache.
+    let counter = CountingPieceGetter::default();
+    let object_fetcher = create_object_fetcher(
+        vec![piece],
+        piece_index,
+        Some(Box::new(counter.clone())),
+        Some(Box::new(PanicPieceGetter)),
+    );
+
+    let fetched_data = object_fetcher
+        .fetch_objects(GlobalObjectMapping::from_objects(vec![mapping1, mapping2]))
+        .await
+        .unwrap();
+    assert_eq!(
+        fetched_data
+            .iter()
+            .map(hex::encode)
+            .collect::<Vec<String>>(),
+        vec![hex::encode(object_data1), hex::encode(object_data2)],
+    );
+    assert_eq!(
+        counter.piece_index_counts().await,
+        [(idx(piece_index), 1)].into(),
+    );
+
+    // - multiple mappings in a batch, multiple pieces requested once each (middle of segment)
+    let offset = 0;
+    let object_len = 10;
+    let start_piece_index = ArchivedHistorySegment::NUM_PIECES / 2;
+
+    let mut piece1 = random_piece();
+    let mut piece2 = random_piece();
+
+    write_object_length(vec![&mut piece1], offset, object_len, None);
+    let (mapping1, object_data1) = create_mapping(
+        vec![&piece1],
+        start_piece_index,
+        offset,
+        object_len,
+        None,
+        None,
+    );
+
+    let object_len = 20;
+    let offset = RawRecord::SIZE - object_len / 2;
+
+    write_object_length(vec![&mut piece1], offset, object_len, None);
+    let (mapping2, object_data2) = create_mapping(
+        vec![&piece1, &piece2],
+        start_piece_index,
+        offset,
+        object_len,
+        None,
+        None,
+    );
+
+    let object_len = 50;
+    let offset = RawRecord::SIZE / 2;
+
+    write_object_length(vec![&mut piece2], offset, object_len, None);
+    let (mapping3, object_data3) = create_mapping(
+        vec![&piece2],
+        start_piece_index + 2,
+        offset,
+        object_len,
+        None,
+        None,
+    );
+
+    // Passing a CountingPieceGetter as the first piece getter counts each request, except for
+    // requests handled by ObjectFetcher::fetch_objects() internal last piece cache.
+    let counter = CountingPieceGetter::default();
+    let object_fetcher = create_object_fetcher(
+        vec![piece1, piece2],
+        start_piece_index,
+        Some(Box::new(counter.clone())),
+        Some(Box::new(PanicPieceGetter)),
+    );
+
+    let fetched_data = object_fetcher
+        .fetch_objects(GlobalObjectMapping::from_objects(vec![
+            mapping1, mapping2, mapping3,
+        ]))
+        .await
+        .unwrap();
+    assert_eq!(
+        fetched_data
+            .iter()
+            .map(hex::encode)
+            .collect::<Vec<String>>(),
+        vec![
+            hex::encode(object_data1),
+            hex::encode(object_data2),
+            hex::encode(object_data3)
+        ],
+    );
+    assert_eq!(
+        counter.piece_index_counts().await,
+        [(idx(start_piece_index), 1), (idx(start_piece_index + 2), 1)].into(),
+    );
 }

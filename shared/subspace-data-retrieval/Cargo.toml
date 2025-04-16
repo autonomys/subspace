@@ -20,13 +20,13 @@ parity-scale-codec = { workspace = true, features = ["derive"] }
 subspace-archiving.workspace = true
 subspace-core-primitives = { workspace = true, features = ["std"] }
 subspace-erasure-coding.workspace = true
-subspace-runtime-primitives = { workspace = true, features = ["std"] }
+# This crate can't depend on any runtime code, because it needs to be independent of Substrate.
 thiserror.workspace = true
 tokio = { workspace = true, features = ["sync", "rt"] }
 tracing = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
-rand.workspace = true
+rand = { workspace = true, features = ["std", "std_rng"] }
 subspace-logging.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
