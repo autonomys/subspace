@@ -1,4 +1,4 @@
-use crate::network::execution_receipt_protocol::LastDomainBlockERRequestHandler;
+use crate::network::execution_receipt_protocol::DomainBlockERRequestHandler;
 use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents, ProofProvider};
 use sc_consensus::ImportQueue;
 use sc_network::NetworkBackend;
@@ -97,12 +97,8 @@ where
                 .reserved_nodes
                 .len();
 
-        let (handler, protocol_config) = LastDomainBlockERRequestHandler::new::<Net>(
-            fork_id,
-            consensus_client,
-            client.clone(),
-            num_peer_hint,
-        );
+        let (handler, protocol_config) =
+            DomainBlockERRequestHandler::new::<Net>(fork_id, consensus_client, num_peer_hint);
         spawn_handle.spawn(
             "last-domain-execution-receipt-request-handler",
             Some("networking"),

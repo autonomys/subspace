@@ -113,6 +113,7 @@ impl SnapSyncOrchestrator {
     }
 }
 
+// TODO(ved): remove this
 #[async_trait]
 /// Provides execution receipts for the last confirmed domain block.
 pub trait LastDomainBlockReceiptProvider<Block: BlockT, CBlock: BlockT>: Sync + Send {

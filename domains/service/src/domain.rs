@@ -1,5 +1,4 @@
 use crate::network::build_network;
-use crate::network::receipt_receiver::LastDomainBlockInfoReceiver;
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{FullBackend, FullClient};
 use cross_domain_message_gossip::ChainMsg;
@@ -497,14 +496,6 @@ where
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, _bundle_receiver) = tracing_unbounded("domain_bundle_stream", 100);
 
-    let execution_receipt_provider = LastDomainBlockInfoReceiver::new(
-        domain_id,
-        fork_id.clone(),
-        consensus_client.clone(),
-        network_service.clone(),
-        sync_service.clone(),
-    );
-
     let operator = Operator::new(
         Box::new(spawn_essential.clone()),
         OperatorParams {
@@ -531,7 +522,8 @@ where
             consensus_chain_sync_params,
             domain_fork_id: fork_id,
             domain_network_service_handle: network_service_handle,
-            domain_execution_receipt_provider: Arc::new(execution_receipt_provider),
+            // TODO(ved): remove this
+            domain_execution_receipt_provider: Arc::new(()),
             challenge_period,
         },
     )
