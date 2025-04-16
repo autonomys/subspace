@@ -414,27 +414,24 @@ where
         sync_service,
         network_service_handle,
         block_downloader,
-    ) = build_network(
-        BuildNetworkParams {
-            config: &domain_config,
-            net_config,
-            client: client.clone(),
-            transaction_pool: transaction_pool.clone(),
-            spawn_handle: task_manager.spawn_handle(),
-            import_queue: params.import_queue,
-            // TODO: we might want to re-enable this some day.
-            block_announce_validator_builder: None,
-            warp_sync_config: None,
-            block_relay: None,
-            metrics: NotificationMetrics::new(
-                domain_config
-                    .prometheus_config
-                    .as_ref()
-                    .map(|cfg| &cfg.registry),
-            ),
-        },
-        consensus_client.clone(),
-    )?;
+    ) = build_network(BuildNetworkParams {
+        config: &domain_config,
+        net_config,
+        client: client.clone(),
+        transaction_pool: transaction_pool.clone(),
+        spawn_handle: task_manager.spawn_handle(),
+        import_queue: params.import_queue,
+        // TODO: we might want to re-enable this some day.
+        block_announce_validator_builder: None,
+        warp_sync_config: None,
+        block_relay: None,
+        metrics: NotificationMetrics::new(
+            domain_config
+                .prometheus_config
+                .as_ref()
+                .map(|cfg| &cfg.registry),
+        ),
+    })?;
 
     let fork_id = domain_config.chain_spec.fork_id().map(String::from);
 

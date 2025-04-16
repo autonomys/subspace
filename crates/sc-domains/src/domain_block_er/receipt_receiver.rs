@@ -1,9 +1,9 @@
-//! This module provides features for domains integration: snap sync syncrhonization primitives,
-//! custom protocols for last confirmed block execution receipts, etc..
+//! This module provides features for domains integration: snap sync synchronization primitives,
+//! custom protocols for last confirmed block execution receipts, etc...
 
 #![warn(missing_docs)]
 
-use crate::network::execution_receipt_protocol::{
+use crate::domain_block_er::execution_receipt_protocol::{
     generate_protocol_name, DomainBlockERRequest, DomainBlockERResponse, LOG_TARGET,
 };
 use domain_runtime_primitives::Balance;
