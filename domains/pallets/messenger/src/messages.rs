@@ -32,6 +32,12 @@ pub struct MessageWeightTags {
     pub inbox_responses: BTreeMap<(ChainId, MessageId), MessageWeightTag>,
 }
 
+impl MessageWeightTags {
+    pub fn is_empty(&self) -> bool {
+        self.outbox.is_empty() && self.inbox_responses.is_empty()
+    }
+}
+
 impl<T: Config> Pallet<T> {
     /// Takes a new message destined for dst_chain and adds the message to the outbox.
     pub(crate) fn new_outbox_message(
@@ -87,12 +93,10 @@ impl<T: Config> Pallet<T> {
                     .checked_add(Nonce::one())
                     .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
 
-                MessageWeightTagStore::<T>::mutate(|maybe_messages| {
-                    let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
+                MessageWeightTagStore::<T>::mutate(|messages| {
                     messages
                         .outbox
                         .insert((dst_chain_id, (channel_id, next_outbox_nonce)), weight_tag);
-                    *maybe_messages = Some(messages)
                 });
 
                 // emit event to notify relayer
@@ -197,12 +201,10 @@ impl<T: Config> Pallet<T> {
             },
         );
 
-        MessageWeightTagStore::<T>::mutate(|maybe_messages| {
-            let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
+        MessageWeightTagStore::<T>::mutate(|messages| {
             messages
                 .inbox_responses
                 .insert((dst_chain_id, (channel_id, nonce)), weight_tag);
-            *maybe_messages = Some(messages)
         });
 
         UpdatedChannels::<T>::mutate(|updated_channels| {
@@ -342,10 +344,8 @@ impl<T: Config> Pallet<T> {
         )?;
 
         // clear out box message weight tag
-        MessageWeightTagStore::<T>::mutate(|maybe_messages| {
-            let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
+        MessageWeightTagStore::<T>::mutate(|messages| {
             messages.outbox.remove(&(dst_chain_id, (channel_id, nonce)));
-            *maybe_messages = Some(messages)
         });
 
         let ConvertedPayload {
@@ -423,12 +423,12 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn get_block_messages() -> BlockMessagesWithStorageKey {
-        let message_weight_tags = match crate::pallet::MessageWeightTags::<T>::get() {
-            None => return Default::default(),
-            Some(messages) => messages,
-        };
-
+        let message_weight_tags = crate::pallet::MessageWeightTags::<T>::get();
         let mut messages_with_storage_key = BlockMessagesWithStorageKey::default();
+
+        if message_weight_tags.is_empty() {
+            return messages_with_storage_key;
+        };
 
         // create storage keys for inbox responses
         message_weight_tags.inbox_responses.into_iter().for_each(

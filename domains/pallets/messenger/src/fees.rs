@@ -7,7 +7,7 @@ use sp_core::Get;
 use sp_messenger::endpoint::{CollectedFee, Endpoint};
 use sp_messenger::messages::{ChainId, ChannelId, FeeModel, MessageId, Nonce};
 use sp_messenger::OnXDMRewards;
-use sp_runtime::traits::{CheckedAdd, CheckedMul};
+use sp_runtime::traits::{CheckedAdd, CheckedMul, Zero};
 use sp_runtime::{DispatchError, DispatchResult, Saturating};
 
 impl<T: Config> Pallet<T> {
@@ -128,28 +128,34 @@ impl<T: Config> Pallet<T> {
         channel_id: ChannelId,
         latest_confirmed_nonce: Option<Nonce>,
     ) -> DispatchResult {
-        let mut current_nonce = latest_confirmed_nonce;
+        if latest_confirmed_nonce.is_none() {
+            return Ok(());
+        }
 
-        while let Some(nonce) = current_nonce {
-            // clear weight tags for inbox response messages
-            MessageWeightTags::<T>::mutate(|maybe_messages| {
-                let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
+        let mut current_nonce = latest_confirmed_nonce;
+        let mut inbox_fees: BalanceOf<T> = Zero::zero();
+
+        MessageWeightTags::<T>::mutate(|messages| {
+            while let Some(nonce) = current_nonce {
                 messages
                     .inbox_responses
                     .remove(&(dst_chain_id, (channel_id, nonce)));
-                *maybe_messages = Some(messages)
-            });
 
-            // for every inbox response we take, distribute the reward to the operators.
-            if InboxResponses::<T>::take((dst_chain_id, channel_id, nonce)).is_none() {
-                return Ok(());
+                // for every inbox response we take, distribute the reward to the operators.
+                if InboxResponses::<T>::take((dst_chain_id, channel_id, nonce)).is_none() {
+                    break;
+                }
+
+                if let Some(fee) = InboxFee::<T>::take((dst_chain_id, (channel_id, nonce))) {
+                    inbox_fees = inbox_fees.saturating_add(fee);
+                }
+
+                current_nonce = nonce.checked_sub(Nonce::one())
             }
+        });
 
-            if let Some(inbox_fee) = InboxFee::<T>::take((dst_chain_id, (channel_id, nonce))) {
-                Self::reward_operators(inbox_fee);
-            }
-
-            current_nonce = nonce.checked_sub(Nonce::one())
+        if !inbox_fees.is_zero() {
+            Self::reward_operators(inbox_fees);
         }
 
         Ok(())
