@@ -15,7 +15,6 @@ use sc_client_api::{
     ProofProvider,
 };
 use sc_consensus::BlockImport;
-use sc_network::NetworkRequest;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
@@ -114,7 +113,7 @@ where
 {
     /// Create a new instance.
     #[allow(clippy::type_complexity)]
-    pub async fn new<IBNS, CIBNS, NSNS, ASS, CNR>(
+    pub async fn new<IBNS, CIBNS, NSNS, ASS>(
         spawn_essential: Box<dyn SpawnEssentialNamed>,
         mut params: OperatorParams<
             Block,
@@ -128,7 +127,6 @@ where
             CIBNS,
             NSNS,
             ASS,
-            CNR,
         >,
     ) -> Result<Self, sp_consensus::Error>
     where
@@ -136,7 +134,6 @@ where
         CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + Unpin + 'static,
         NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
         ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
-        CNR: NetworkRequest + Send + Sync + 'static,
     {
         let domain_bundle_proposer = DomainBundleProposer::<Block, _, CBlock, _, _>::new(
             params.domain_id,
@@ -225,7 +222,6 @@ where
                 domain_block_downloader: params.block_downloader.clone(),
                 consensus_chain_sync_params: consensus_sync_params,
                 domain_fork_id: params.domain_fork_id,
-                receipt_provider: params.domain_execution_receipt_provider,
                 challenge_period: params.challenge_period,
             });
 

@@ -86,14 +86,12 @@ pub use self::aux_schema::load_execution_receipt;
 pub use self::fetch_domain_bootstrap_info::{fetch_domain_bootstrap_info, BootstrapResult};
 pub use self::operator::Operator;
 pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications, OperatorSlotInfo};
-pub use crate::snap_sync::LastDomainBlockReceiptProvider;
 pub use domain_worker::OpaqueBundleFor;
 use futures::channel::mpsc;
 use futures::Stream;
 use sc_client_api::{AuxStore, BlockImportNotification};
 use sc_consensus::BoxBlockImport;
 use sc_network::service::traits::NetworkService;
-use sc_network::NetworkRequest;
 use sc_network_sync::block_relay_protocol::BlockDownloader;
 use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::SyncingService;
@@ -206,7 +204,6 @@ pub struct OperatorParams<
     CIBNS,
     NSNS,
     ASS,
-    CNR,
 > where
     Block: BlockT,
     CBlock: BlockT,
@@ -214,7 +211,6 @@ pub struct OperatorParams<
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
     ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
-    CNR: NetworkRequest + Send + Sync + 'static,
 {
     pub domain_id: DomainId,
     pub domain_created_at: NumberFor<CBlock>,
@@ -237,10 +233,9 @@ pub struct OperatorParams<
     pub sync_service: Arc<SyncingService<Block>>,
     pub network_service: Arc<dyn NetworkService>,
     pub block_downloader: Arc<dyn BlockDownloader<Block>>,
-    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, CNR>>,
+    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, Block::Header>>,
     pub domain_fork_id: Option<String>,
     pub domain_network_service_handle: NetworkServiceHandle,
-    pub domain_execution_receipt_provider: Arc<dyn LastDomainBlockReceiptProvider<Block, CBlock>>,
 }
 
 pub fn load_execution_receipt_by_domain_hash<Block, CBlock, Client>(

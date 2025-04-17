@@ -19,7 +19,7 @@ use sc_client_api::{
 use sc_consensus::{BasicQueue, BoxBlockImport};
 use sc_domains::{ExtensionsFactory, RuntimeExecutor};
 use sc_network::service::traits::NetworkService;
-use sc_network::{NetworkPeers, NetworkRequest, NetworkWorker, NotificationMetrics};
+use sc_network::{NetworkPeers, NetworkWorker, NotificationMetrics};
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
     SpawnTasksParams, TFullBackend, TaskManager,
@@ -251,10 +251,9 @@ where
     Ok(params)
 }
 
-pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNR>
+pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>
 where
     CBlock: BlockT,
-    CNR: NetworkRequest + Send + Sync + 'static,
 {
     pub domain_id: DomainId,
     pub domain_config: ServiceConfiguration,
@@ -272,24 +271,14 @@ where
     pub skip_out_of_order_slot: bool,
     pub confirmation_depth_k: NumberFor<CBlock>,
     pub challenge_period: NumberFor<CBlock>,
-    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, CNR>>,
+    pub consensus_chain_sync_params:
+        Option<ConsensusChainSyncParams<CBlock, <Block as BlockT>::Header>>,
     pub domain_backend: Arc<FullBackend<Block>>,
 }
 
 /// Builds service for a domain full node.
-pub async fn new_full<
-    CBlock,
-    CClient,
-    IBNS,
-    CIBNS,
-    NSNS,
-    ASS,
-    RuntimeApi,
-    AccountId,
-    Provider,
-    CNR,
->(
-    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNR>,
+pub async fn new_full<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, RuntimeApi, AccountId, Provider>(
+    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<Block, RuntimeApi>>,
@@ -356,7 +345,6 @@ where
             CreateInherentDataProvider<CClient, CBlock>,
         > + BlockImportProvider<Block, FullClient<Block, RuntimeApi>>
         + 'static,
-    CNR: NetworkRequest + Send + Sync + 'static,
 {
     let DomainParams {
         domain_id,
@@ -519,8 +507,6 @@ where
             consensus_chain_sync_params,
             domain_fork_id: fork_id,
             domain_network_service_handle: network_service_handle,
-            // TODO(ved): remove this
-            domain_execution_receipt_provider: Arc::new(()),
             challenge_period,
         },
     )

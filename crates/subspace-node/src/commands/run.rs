@@ -22,6 +22,7 @@ use futures::FutureExt;
 use sc_cli::Signals;
 use sc_client_api::HeaderBackend;
 use sc_consensus_slots::SlotProportion;
+use sc_domains::domain_block_er::receipt_receiver::DomainBlockERReceiver;
 use sc_service::{BlocksPruning, Configuration, PruningMode};
 use sc_state_db::Constraints;
 use sc_storage_monitor::StorageMonitorService;
@@ -334,6 +335,35 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                         let span = info_span!("Domain");
                         let _enter = span.enter();
 
+                        let maybe_snap_sync_params =
+                            if let Some(snap_sync_orchestrator) = snap_sync_orchestrator {
+                                let domain_block_er_receiver = DomainBlockERReceiver::new(
+                                    domain_configuration.domain_id,
+                                    fork_id,
+                                    domain_start_options.consensus_client.clone(),
+                                    consensus_chain_network_service,
+                                    consensus_chain_sync_service,
+                                );
+
+                                let maybe_last_confirmed_er = domain_block_er_receiver
+                                    .get_last_confirmed_domain_block_receipt()
+                                    .await;
+
+                                let Some(last_confirmed_er) = maybe_last_confirmed_er else {
+                                    error!("Failed to get last confirmed domain block ER");
+                                    return;
+                                };
+
+                                // unblock consensus snap sync
+                                snap_sync_orchestrator.unblock_consensus_snap_sync(
+                                    last_confirmed_er.consensus_block_number,
+                                );
+
+                                Some((snap_sync_orchestrator, last_confirmed_er))
+                            } else {
+                                None
+                            };
+
                         let bootstrap_result_fut =
                             fetch_domain_bootstrap_info::<DomainBlock, _, _, _>(
                                 &*domain_start_options.consensus_client,
@@ -349,13 +379,11 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                             }
                         };
 
-                        let consensus_chain_sync_params =
-                            snap_sync_orchestrator.map(|snap_sync_orchestrator| {
+                        let consensus_chain_sync_params = maybe_snap_sync_params.map(
+                            |(snap_sync_orchestrator, last_confirmed_er)| {
                                 ConsensusChainSyncParams {
                                     snap_sync_orchestrator,
-                                    fork_id,
-                                    network_service: consensus_chain_network_service,
-                                    sync_service: consensus_chain_sync_service,
+                                    last_domain_block_er: last_confirmed_er,
                                     block_importing_notification_stream: Box::new(
                                         subspace_link
                                             .block_importing_notification_stream()
@@ -367,7 +395,8 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                                             }),
                                     ),
                                 }
-                            });
+                            },
+                        );
 
                         let start_domain = run_domain(
                             bootstrap_result,
