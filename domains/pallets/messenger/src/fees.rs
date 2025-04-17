@@ -130,16 +130,22 @@ impl<T: Config> Pallet<T> {
     ) -> DispatchResult {
         let mut current_nonce = latest_confirmed_nonce;
 
-        while let Some(nonce) = current_nonce {
-            // clear weight tags for inbox response messages
-            MessageWeightTags::<T>::mutate(|maybe_messages| {
-                let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
+        if let Some(latest_confirmed_nonce) = latest_confirmed_nonce {
+            // Clear weight tags for inbox response messages.
+            // This could also be implemented using split_off() twice, then re-combining the
+            // leftover tags. But that is less efficient if the number of removed tags is small.
+            MessageWeightTags::<T>::mutate(|messages| {
                 messages
                     .inbox_responses
-                    .remove(&(dst_chain_id, (channel_id, nonce)));
-                *maybe_messages = Some(messages)
+                    .retain(|(chain, (channel, nonce)), _value| {
+                        *chain != dst_chain_id
+                            || *channel != channel_id
+                            || *nonce > latest_confirmed_nonce
+                    });
             });
+        }
 
+        while let Some(nonce) = current_nonce {
             // for every inbox response we take, distribute the reward to the operators.
             if InboxResponses::<T>::take((dst_chain_id, channel_id, nonce)).is_none() {
                 return Ok(());
