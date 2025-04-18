@@ -60,6 +60,7 @@ use sc_consensus_subspace::slot_worker::{
 };
 use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
 use sc_consensus_subspace::SubspaceLink;
+use sc_domains::domain_block_er::execution_receipt_protocol::DomainBlockERRequestHandler;
 use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::service::traits::NetworkService;
 use sc_network::{NetworkWorker, NotificationMetrics, NotificationService, Roles};
@@ -924,6 +925,17 @@ where
 
     let protocol_id = config.base.protocol_id();
     let fork_id = config.base.chain_spec.fork_id();
+
+    // enable domain block ER request handler
+    let (handler, protocol_config) = DomainBlockERRequestHandler::new::<
+        NetworkWorker<Block, <Block as BlockT>::Hash>,
+    >(fork_id, client.clone(), num_peer_hint);
+    task_manager.spawn_handle().spawn(
+        "domain-block-er-request-handler",
+        Some("networking"),
+        handler.run(),
+    );
+    net_config.add_request_response_protocol(protocol_config);
 
     if let Some(offchain_storage) = backend.offchain_storage() {
         // Allow both outgoing and incoming requests.

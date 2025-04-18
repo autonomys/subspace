@@ -22,7 +22,7 @@ use sc_cli::{
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, TransportConfig};
-use sc_network::{NetworkPeers, NetworkRequest};
+use sc_network::NetworkPeers;
 use sc_proof_of_time::source::PotSlotInfo;
 use sc_service::config::{ExecutorConfiguration, KeystoreConfig};
 use sc_service::Configuration;
@@ -33,6 +33,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::SubspaceApi;
 use sp_core::crypto::{AccountId32, SecretString};
 use sp_domains::{DomainId, DomainInstanceData, OperatorId, RuntimeType};
+use sp_runtime::traits::Block as BlockT;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -448,15 +449,14 @@ pub(super) struct DomainStartOptions {
     pub(super) domain_backend: Arc<FullBackend<DomainBlock>>,
 }
 
-pub(super) async fn run_domain<CNR>(
+pub(super) async fn run_domain(
     bootstrap_result: BootstrapResult<CBlock>,
     domain_configuration: DomainConfiguration,
     domain_start_options: DomainStartOptions,
-    consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, CNR>>,
-) -> Result<(), Error>
-where
-    CNR: NetworkRequest + Send + Sync + 'static,
-{
+    consensus_chain_sync_params: Option<
+        ConsensusChainSyncParams<CBlock, <DomainBlock as BlockT>::Header>,
+    >,
+) -> Result<(), Error> {
     let BootstrapResult {
         domain_instance_data,
         domain_created_at,
@@ -590,7 +590,6 @@ where
                 evm_domain_runtime::RuntimeApi,
                 AccountId20,
                 _,
-                _,
             >(domain_params)
             .await?;
 
@@ -631,7 +630,6 @@ where
                 _,
                 auto_id_domain_runtime::RuntimeApi,
                 AccountId32,
-                _,
                 _,
             >(domain_params)
             .await?;

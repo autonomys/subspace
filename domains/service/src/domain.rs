@@ -1,5 +1,4 @@
 use crate::network::build_network;
-use crate::network::receipt_receiver::LastDomainBlockInfoReceiver;
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{FullBackend, FullClient};
 use cross_domain_message_gossip::ChainMsg;
@@ -20,7 +19,7 @@ use sc_client_api::{
 use sc_consensus::{BasicQueue, BoxBlockImport};
 use sc_domains::{ExtensionsFactory, RuntimeExecutor};
 use sc_network::service::traits::NetworkService;
-use sc_network::{NetworkPeers, NetworkRequest, NetworkWorker, NotificationMetrics};
+use sc_network::{NetworkPeers, NetworkWorker, NotificationMetrics};
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
     SpawnTasksParams, TFullBackend, TaskManager,
@@ -252,10 +251,9 @@ where
     Ok(params)
 }
 
-pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNR>
+pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>
 where
     CBlock: BlockT,
-    CNR: NetworkRequest + Send + Sync + 'static,
 {
     pub domain_id: DomainId,
     pub domain_config: ServiceConfiguration,
@@ -273,24 +271,14 @@ where
     pub skip_out_of_order_slot: bool,
     pub confirmation_depth_k: NumberFor<CBlock>,
     pub challenge_period: NumberFor<CBlock>,
-    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, CNR>>,
+    pub consensus_chain_sync_params:
+        Option<ConsensusChainSyncParams<CBlock, <Block as BlockT>::Header>>,
     pub domain_backend: Arc<FullBackend<Block>>,
 }
 
 /// Builds service for a domain full node.
-pub async fn new_full<
-    CBlock,
-    CClient,
-    IBNS,
-    CIBNS,
-    NSNS,
-    ASS,
-    RuntimeApi,
-    AccountId,
-    Provider,
-    CNR,
->(
-    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNR>,
+pub async fn new_full<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, RuntimeApi, AccountId, Provider>(
+    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<Block, RuntimeApi>>,
@@ -357,7 +345,6 @@ where
             CreateInherentDataProvider<CClient, CBlock>,
         > + BlockImportProvider<Block, FullClient<Block, RuntimeApi>>
         + 'static,
-    CNR: NetworkRequest + Send + Sync + 'static,
 {
     let DomainParams {
         domain_id,
@@ -415,27 +402,24 @@ where
         sync_service,
         network_service_handle,
         block_downloader,
-    ) = build_network(
-        BuildNetworkParams {
-            config: &domain_config,
-            net_config,
-            client: client.clone(),
-            transaction_pool: transaction_pool.clone(),
-            spawn_handle: task_manager.spawn_handle(),
-            import_queue: params.import_queue,
-            // TODO: we might want to re-enable this some day.
-            block_announce_validator_builder: None,
-            warp_sync_config: None,
-            block_relay: None,
-            metrics: NotificationMetrics::new(
-                domain_config
-                    .prometheus_config
-                    .as_ref()
-                    .map(|cfg| &cfg.registry),
-            ),
-        },
-        consensus_client.clone(),
-    )?;
+    ) = build_network(BuildNetworkParams {
+        config: &domain_config,
+        net_config,
+        client: client.clone(),
+        transaction_pool: transaction_pool.clone(),
+        spawn_handle: task_manager.spawn_handle(),
+        import_queue: params.import_queue,
+        // TODO: we might want to re-enable this some day.
+        block_announce_validator_builder: None,
+        warp_sync_config: None,
+        block_relay: None,
+        metrics: NotificationMetrics::new(
+            domain_config
+                .prometheus_config
+                .as_ref()
+                .map(|cfg| &cfg.registry),
+        ),
+    })?;
 
     let fork_id = domain_config.chain_spec.fork_id().map(String::from);
 
@@ -497,14 +481,6 @@ where
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, _bundle_receiver) = tracing_unbounded("domain_bundle_stream", 100);
 
-    let execution_receipt_provider = LastDomainBlockInfoReceiver::new(
-        domain_id,
-        fork_id.clone(),
-        consensus_client.clone(),
-        network_service.clone(),
-        sync_service.clone(),
-    );
-
     let operator = Operator::new(
         Box::new(spawn_essential.clone()),
         OperatorParams {
@@ -531,7 +507,6 @@ where
             consensus_chain_sync_params,
             domain_fork_id: fork_id,
             domain_network_service_handle: network_service_handle,
-            domain_execution_receipt_provider: Arc::new(execution_receipt_provider),
             challenge_period,
         },
     )

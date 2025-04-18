@@ -13,7 +13,7 @@ use futures::StreamExt;
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::NewSlotNotification;
-use sc_network::{NetworkPeers, NetworkRequest};
+use sc_network::NetworkPeers;
 use sc_service::Configuration;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
@@ -24,6 +24,7 @@ use sp_core::crypto::AccountId32;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::{DomainInstanceData, RuntimeType};
 use sp_keystore::KeystorePtr;
+use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
@@ -154,7 +155,7 @@ impl DomainInstanceStarter {
                     maybe_operator_id: None,
                     confirmation_depth_k: chain_constants.confirmation_depth_k(),
                     consensus_chain_sync_params: None::<
-                        ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
+                        ConsensusChainSyncParams<_, <DomainBlock as BlockT>::Header>,
                     >,
                     challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
                     domain_backend,
@@ -169,7 +170,6 @@ impl DomainInstanceStarter {
                     _,
                     evm_domain_runtime::RuntimeApi,
                     AccountId20,
-                    _,
                     _,
                 >(domain_params)
                 .await?;
@@ -218,7 +218,7 @@ impl DomainInstanceStarter {
                     maybe_operator_id: None,
                     confirmation_depth_k: chain_constants.confirmation_depth_k(),
                     consensus_chain_sync_params: None::<
-                        ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
+                        ConsensusChainSyncParams<_, <DomainBlock as BlockT>::Header>,
                     >,
                     challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
                     domain_backend,
@@ -233,7 +233,6 @@ impl DomainInstanceStarter {
                     _,
                     auto_id_domain_runtime::RuntimeApi,
                     AccountId32,
-                    _,
                     _,
                 >(domain_params)
                 .await?;

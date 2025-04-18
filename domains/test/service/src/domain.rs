@@ -20,7 +20,7 @@ use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::HeaderBackend;
 use sc_domains::RuntimeExecutor;
 use sc_network::service::traits::NetworkService;
-use sc_network::{NetworkRequest, NetworkStateInfo, ReputationChange};
+use sc_network::{NetworkStateInfo, ReputationChange};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
@@ -236,7 +236,7 @@ where
             confirmation_depth_k: chain_constants.confirmation_depth_k(),
             challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
             consensus_chain_sync_params: None::<
-                ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
+                ConsensusChainSyncParams<_, <Block as BlockT>::Header>,
             >,
             domain_backend,
         };
@@ -250,7 +250,6 @@ where
             _,
             RuntimeApi,
             <Runtime as DomainRuntime>::AccountId,
-            _,
             _,
         >(domain_params)
         .await
