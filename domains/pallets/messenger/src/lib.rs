@@ -331,7 +331,7 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn message_weight_tags)]
     pub(super) type MessageWeightTags<T: Config> =
-        StorageValue<_, crate::messages::MessageWeightTags, OptionQuery>;
+        StorageValue<_, crate::messages::MessageWeightTags, ValueQuery>;
 
     /// An allowlist of chains that can open channel with this chain.
     #[pallet::storage]
