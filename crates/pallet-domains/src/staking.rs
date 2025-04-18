@@ -1459,13 +1459,15 @@ pub(crate) mod tests {
     };
     use crate::staking::{
         do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_nominate_operator,
-        do_reward_operators, do_unlock_funds, do_withdraw_stake, Error as StakingError, Operator,
-        OperatorConfig, OperatorStatus, StakingSummary, WithdrawStake,
+        do_reward_operators, do_unlock_funds, do_withdraw_stake, DomainEpoch,
+        Error as StakingError, Operator, OperatorConfig, OperatorStatus, StakingSummary,
+        WithdrawStake,
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
     use crate::{
-        bundle_storage_fund, BalanceOf, Error, NominatorId, SlashedReason, MAX_NOMINATORS_TO_SLASH,
+        bundle_storage_fund, BalanceOf, Error, NominatorId, OperatorEpochSharePrice, SlashedReason,
+        MAX_NOMINATORS_TO_SLASH,
     };
     use frame_support::traits::fungible::Mutate;
     use frame_support::traits::Currency;
@@ -1477,7 +1479,7 @@ pub(crate) mod tests {
         OperatorRewardSource,
     };
     use sp_runtime::traits::Zero;
-    use sp_runtime::{PerThing, Perbill};
+    use sp_runtime::{PerThing, Perbill, Percent};
     use std::collections::{BTreeMap, BTreeSet};
     use std::vec;
     use subspace_runtime_primitives::SSC;
@@ -3247,6 +3249,152 @@ pub(crate) mod tests {
 
             bundle_storage_fund::charge_bundle_storage_fee::<Test>(operator_id, 1).unwrap();
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
+        });
+    }
+
+    #[test]
+    fn zero_amount_deposit_and_withdraw() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_free_balance = 250 * SSC;
+        let operator_stake = 200 * SSC;
+        let pair = OperatorPair::from_seed(&[0; 32]);
+        let nominator_account = 2;
+        let nominator_free_balance = 150 * SSC;
+        let nominator_stake = 100 * SSC;
+
+        let nominators = vec![
+            (operator_account, (operator_free_balance, operator_stake)),
+            (nominator_account, (nominator_free_balance, nominator_stake)),
+        ];
+
+        let total_deposit = 300 * SSC;
+        let init_total_stake = STORAGE_FEE_RESERVE.left_from_one() * total_deposit;
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                10 * SSC,
+                pair.public(),
+                BTreeMap::from_iter(nominators),
+            );
+
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert_eq!(domain_stake_summary.current_total_stake, init_total_stake);
+
+            // Zero deposit should be reject
+            assert_err!(
+                do_nominate_operator::<Test>(operator_id, nominator_account, 0),
+                StakingError::ZeroDeposit
+            );
+
+            // Zero withdraw should be reject
+            assert_err!(
+                do_withdraw_stake::<Test>(operator_id, nominator_account, WithdrawStake::Stake(0)),
+                StakingError::ZeroWithdraw
+            );
+            assert_err!(
+                do_withdraw_stake::<Test>(operator_id, nominator_account, WithdrawStake::Share(0)),
+                StakingError::ZeroWithdraw
+            );
+            assert_err!(
+                do_withdraw_stake::<Test>(
+                    operator_id,
+                    nominator_account,
+                    WithdrawStake::Percent(Percent::from_percent(0)),
+                ),
+                StakingError::ZeroWithdraw
+            );
+
+            // Withdraw all
+            do_withdraw_stake::<Test>(operator_id, nominator_account, WithdrawStake::All).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+
+            // `WithdrawStake::Percent` and `WithdrawStake::All` should convert to zero and should be rejected
+            assert_err!(
+                do_withdraw_stake::<Test>(
+                    operator_id,
+                    nominator_account,
+                    WithdrawStake::Percent(Percent::from_percent(1)),
+                ),
+                StakingError::ZeroWithdraw
+            );
+            assert_err!(
+                do_withdraw_stake::<Test>(operator_id, nominator_account, WithdrawStake::All,),
+                StakingError::ZeroWithdraw
+            );
+        });
+    }
+
+    #[test]
+    fn deposit_and_withdraw_should_be_rejected_due_to_missing_share_price() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_free_balance = 250 * SSC;
+        let operator_stake = 200 * SSC;
+        let pair = OperatorPair::from_seed(&[0; 32]);
+        let nominator_account = 2;
+        let nominator_free_balance = 150 * SSC;
+        let nominator_stake = 100 * SSC;
+
+        let nominators = vec![
+            (operator_account, (operator_free_balance, operator_stake)),
+            (nominator_account, (nominator_free_balance, nominator_stake)),
+        ];
+
+        let total_deposit = 300 * SSC;
+        let init_total_stake = STORAGE_FEE_RESERVE.left_from_one() * total_deposit;
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                10 * SSC,
+                pair.public(),
+                BTreeMap::from_iter(nominators),
+            );
+
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert_eq!(domain_stake_summary.current_total_stake, init_total_stake);
+
+            do_nominate_operator::<Test>(operator_id, nominator_account, 5 * SSC).unwrap();
+            do_withdraw_stake::<Test>(
+                operator_id,
+                nominator_account,
+                WithdrawStake::Stake(3 * SSC),
+            )
+            .unwrap();
+
+            // Completed current epoch
+            let previous_epoch = do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            // Remove the epoch share price intentionally
+            OperatorEpochSharePrice::<Test>::remove(
+                operator_id,
+                DomainEpoch::from((domain_id, previous_epoch.completed_epoch_index)),
+            );
+
+            // Both deposit and withdrae should fail due to the share price is missing unexpectly
+            assert_err!(
+                do_nominate_operator::<Test>(operator_id, nominator_account, SSC),
+                StakingError::MissingOperatorEpochSharePrice
+            );
+            assert_err!(
+                do_withdraw_stake::<Test>(
+                    operator_id,
+                    nominator_account,
+                    WithdrawStake::Percent(Percent::from_percent(10))
+                ),
+                StakingError::MissingOperatorEpochSharePrice
+            );
         });
     }
 }
