@@ -414,8 +414,17 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     Error::InvalidDomainTransfers
                 );
 
-                update_domain_transfers::<T>(domain_id, &execution_receipt.transfers, block_fees)
+                // TODO: remove skipping domain balance checks for domain 0
+                //  once https://github.com/autonomys/subspace/issues/3466
+                //  is resolved. We need the issue to be resolved before phase 2 launch
+                if domain_id != DomainId::new(0) {
+                    update_domain_transfers::<T>(
+                        domain_id,
+                        &execution_receipt.transfers,
+                        block_fees,
+                    )
                     .map_err(|_| Error::DomainTransfersTracking)?;
+                }
 
                 update_domain_runtime_upgrade_records::<T>(
                     domain_id,
