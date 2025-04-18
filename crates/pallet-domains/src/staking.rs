@@ -5,8 +5,9 @@ extern crate alloc;
 
 use crate::bundle_storage_fund::{self, deposit_reserve_for_storage_fund};
 use crate::pallet::{
-    Deposits, DomainStakingSummary, HeadDomainNumber, NextOperatorId, NominatorCount,
-    OperatorIdOwner, Operators, PendingSlashes, PendingStakingOperationCount, Withdrawals,
+    Deposits, DomainRegistry, DomainStakingSummary, HeadDomainNumber, NextOperatorId,
+    NominatorCount, OperatorIdOwner, Operators, PendingSlashes, PendingStakingOperationCount,
+    Withdrawals,
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
@@ -325,8 +326,7 @@ pub fn do_register_operator<T: Config>(
             Error::MinimumNominatorStake
         );
 
-        let domain_obj =
-            Pallet::<T>::domain_registry_fallback(domain_id).ok_or(Error::DomainNotInitialized)?;
+        let domain_obj = DomainRegistry::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
         ensure!(
             domain_obj
                 .domain_config

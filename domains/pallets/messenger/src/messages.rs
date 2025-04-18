@@ -1,19 +1,17 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::pallet::{ChainAllowlist, InboxFee, OutboxMessageCount, UpdatedChannels};
+use crate::pallet::{
+    ChainAllowlist, InboxFee, InboxResponseMessageWeightTags, OutboxMessageCount,
+    OutboxMessageWeightTags, UpdatedChannels,
+};
 use crate::{
     BalanceOf, ChannelId, ChannelState, Channels, CloseChannelBy, Config, Error, Event,
-    InboxResponses, MessageWeightTags as MessageWeightTagStore, Nonce, Outbox, OutboxMessageResult,
-    Pallet,
+    InboxResponses, Nonce, Outbox, OutboxMessageResult, Pallet,
 };
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
-#[cfg(not(feature = "std"))]
-use alloc::collections::BTreeMap;
 use frame_support::ensure;
-use parity_scale_codec::{Decode, Encode};
-use scale_info::TypeInfo;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_messenger::messages::{
     BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, ChannelOpenParams,
@@ -22,15 +20,6 @@ use sp_messenger::messages::{
 };
 use sp_runtime::traits::Get;
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
-#[cfg(feature = "std")]
-use std::collections::BTreeMap;
-
-/// Weight tags for given outbox and inbox responses
-#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct MessageWeightTags {
-    pub outbox: BTreeMap<(ChainId, MessageId), MessageWeightTag>,
-    pub inbox_responses: BTreeMap<(ChainId, MessageId), MessageWeightTag>,
-}
 
 impl<T: Config> Pallet<T> {
     /// Takes a new message destined for dst_chain and adds the message to the outbox.
@@ -87,13 +76,10 @@ impl<T: Config> Pallet<T> {
                     .checked_add(Nonce::one())
                     .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
 
-                MessageWeightTagStore::<T>::mutate(|maybe_messages| {
-                    let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
-                    messages
-                        .outbox
-                        .insert((dst_chain_id, (channel_id, next_outbox_nonce)), weight_tag);
-                    *maybe_messages = Some(messages)
-                });
+                OutboxMessageWeightTags::<T>::insert(
+                    (dst_chain_id, (channel_id, next_outbox_nonce)),
+                    weight_tag,
+                );
 
                 // emit event to notify relayer
                 Self::deposit_event(Event::OutboxMessage {
@@ -197,13 +183,10 @@ impl<T: Config> Pallet<T> {
             },
         );
 
-        MessageWeightTagStore::<T>::mutate(|maybe_messages| {
-            let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
-            messages
-                .inbox_responses
-                .insert((dst_chain_id, (channel_id, nonce)), weight_tag);
-            *maybe_messages = Some(messages)
-        });
+        InboxResponseMessageWeightTags::<T>::insert(
+            (dst_chain_id, (channel_id, nonce)),
+            weight_tag,
+        );
 
         UpdatedChannels::<T>::mutate(|updated_channels| {
             updated_channels.insert((dst_chain_id, channel_id))
@@ -341,12 +324,11 @@ impl<T: Config> Pallet<T> {
             },
         )?;
 
-        // clear out box message weight tag
-        MessageWeightTagStore::<T>::mutate(|maybe_messages| {
-            let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
-            messages.outbox.remove(&(dst_chain_id, (channel_id, nonce)));
-            *maybe_messages = Some(messages)
-        });
+        // clear outbox message weight tag
+        crate::migrations::messenger_migration::remove_outbox_weight_tag::<T>((
+            dst_chain_id,
+            (channel_id, nonce),
+        ));
 
         let ConvertedPayload {
             payload: req,
@@ -423,15 +405,15 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn get_block_messages() -> BlockMessagesWithStorageKey {
-        let message_weight_tags = match crate::pallet::MessageWeightTags::<T>::get() {
-            None => return Default::default(),
-            Some(messages) => messages,
-        };
+        let weight_tags = crate::migrations::messenger_migration::get_weight_tags::<T>();
+        if weight_tags.outbox.is_empty() && weight_tags.inbox_responses.is_empty() {
+            return Default::default();
+        }
 
         let mut messages_with_storage_key = BlockMessagesWithStorageKey::default();
 
         // create storage keys for inbox responses
-        message_weight_tags.inbox_responses.into_iter().for_each(
+        weight_tags.inbox_responses.into_iter().for_each(
             |((chain_id, (channel_id, nonce)), weight_tag)| {
                 let storage_key =
                     InboxResponses::<T>::hashed_key_for((chain_id, channel_id, nonce));
@@ -449,8 +431,10 @@ impl<T: Config> Pallet<T> {
         );
 
         // create storage keys for outbox
-        message_weight_tags.outbox.into_iter().for_each(
-            |((chain_id, (channel_id, nonce)), weight_tag)| {
+        weight_tags
+            .outbox
+            .into_iter()
+            .for_each(|((chain_id, (channel_id, nonce)), weight_tag)| {
                 let storage_key = Outbox::<T>::hashed_key_for((chain_id, channel_id, nonce));
                 messages_with_storage_key
                     .outbox
@@ -462,8 +446,7 @@ impl<T: Config> Pallet<T> {
                         storage_key,
                         weight_tag,
                     })
-            },
-        );
+            });
 
         messages_with_storage_key
     }
