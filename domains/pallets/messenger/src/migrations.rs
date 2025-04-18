@@ -1,203 +1,213 @@
 //! Migration module for pallet-messenger
 #[cfg(not(feature = "std"))]
 extern crate alloc;
-use crate::{Config, Pallet};
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeMap;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use frame_support::migrations::VersionedMigration;
-use frame_support::traits::UncheckedOnRuntimeUpgrade;
-use frame_support::weights::Weight;
-use sp_core::sp_std;
 #[cfg(feature = "std")]
 use std::collections::BTreeMap;
 #[cfg(feature = "std")]
 use std::vec::Vec;
 
-pub type VersionCheckedMigrateDomainsV0ToV1<T> = VersionedMigration<
-    0,
-    1,
-    VersionUncheckedMigrateV0ToV1<T>,
-    Pallet<T>,
-    <T as frame_system::Config>::DbWeight,
->;
-
-pub struct VersionUncheckedMigrateV0ToV1<T>(sp_std::marker::PhantomData<T>);
-impl<T: Config> UncheckedOnRuntimeUpgrade for VersionUncheckedMigrateV0ToV1<T> {
-    fn on_runtime_upgrade() -> Weight {
-        messenger_migration::migrate_messenger_storages::<T>()
-    }
-}
-
-mod messenger_migration {
+// TODO: remove post migration on taurus for both consensus and evm chain.
+pub(crate) mod messenger_migration {
     use super::{BTreeMap, Vec};
-    use crate::{
-        BalanceOf, Config, InboxResponses as InboxResponsesNew, Outbox as OutboxNew,
-        OutboxMessageCount, Pallet,
-    };
-    use frame_support::pallet_prelude::OptionQuery;
-    use frame_support::weights::Weight;
-    use frame_support::{storage_alias, Identity};
-    use sp_core::Get;
-    use sp_domains::{ChainId, ChannelId};
-    use sp_messenger::messages::{Message, Nonce};
+    use crate::pallet::{InboxResponseMessageWeightTags, OutboxMessageWeightTags};
+    use crate::{Config, Pallet};
+    use frame_support::pallet_prelude::{Decode, Encode, OptionQuery, TypeInfo};
+    use frame_support::storage_alias;
+    use sp_domains::ChainId;
+    use sp_messenger::messages::{MessageId, MessageWeightTag};
 
     #[storage_alias]
-    pub(super) type InboxResponses<T: Config> = CountedStorageMap<
-        Pallet<T>,
-        Identity,
-        (ChainId, ChannelId, Nonce),
-        Message<BalanceOf<T>>,
-        OptionQuery,
-    >;
+    pub(super) type MessageWeightTags<T: Config> = StorageValue<Pallet<T>, WeightTags, OptionQuery>;
 
-    #[storage_alias]
-    pub(super) type Outbox<T: Config> = CountedStorageMap<
-        Pallet<T>,
-        Identity,
-        (ChainId, ChannelId, Nonce),
-        Message<BalanceOf<T>>,
-        OptionQuery,
-    >;
+    #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+    pub(crate) struct WeightTags {
+        pub(crate) outbox: BTreeMap<(ChainId, MessageId), MessageWeightTag>,
+        pub(crate) inbox_responses: BTreeMap<(ChainId, MessageId), MessageWeightTag>,
+    }
 
-    pub(super) fn migrate_messenger_storages<T: Config>() -> Weight {
+    pub(crate) fn migrate_message_weight_tags<T: Config>(count: u64) -> (u64, u64) {
         let mut reads = 0;
         let mut writes = 0;
-        let inbox_responses = InboxResponses::<T>::drain().collect::<Vec<_>>();
-        inbox_responses.into_iter().for_each(|(key, msg)| {
-            // we do one read from the old storage
-            reads += 1;
 
-            // we do one write to old storage and one write to new storage
-            writes += 2;
+        reads += 1;
+        let Some(mut weight_tags) = MessageWeightTags::<T>::get() else {
+            // nothing to process, exit
+            return (reads, writes);
+        };
 
-            InboxResponsesNew::<T>::insert(key, msg);
+        // migrate outbox weight tags
+        while writes < count {
+            match weight_tags.outbox.pop_first() {
+                // no more weight tags in outbox
+                None => break,
+                Some(((chain_id, message_id), weight_tag)) => {
+                    OutboxMessageWeightTags::<T>::insert((chain_id, message_id), weight_tag);
+                    writes += 1;
+                }
+            }
+        }
+
+        // migrate inbox responses weight tags
+        while writes < count {
+            match weight_tags.inbox_responses.pop_first() {
+                // no more weight tags in outbox
+                None => break,
+                Some(((chain_id, message_id), weight_tag)) => {
+                    InboxResponseMessageWeightTags::<T>::insert((chain_id, message_id), weight_tag);
+                    writes += 1;
+                }
+            }
+        }
+
+        writes += 1;
+        if weight_tags.outbox.is_empty() && weight_tags.inbox_responses.is_empty() {
+            MessageWeightTags::<T>::kill();
+        } else {
+            MessageWeightTags::<T>::set(Some(weight_tags));
+        }
+
+        (reads, writes)
+    }
+
+    pub(crate) fn remove_inbox_response_weight_tags<T: Config>(tags: Vec<(ChainId, MessageId)>) {
+        let mut maybe_weight_tags = MessageWeightTags::<T>::take();
+        tags.into_iter().for_each(|(chain_id, message_id)| {
+            InboxResponseMessageWeightTags::<T>::remove((chain_id, message_id));
+            if let Some(weight_tags) = maybe_weight_tags.as_mut() {
+                weight_tags.inbox_responses.remove(&(chain_id, message_id));
+            }
+        });
+        MessageWeightTags::<T>::set(maybe_weight_tags);
+    }
+
+    pub(crate) fn remove_outbox_weight_tag<T: Config>(tag: (ChainId, MessageId)) {
+        if OutboxMessageWeightTags::<T>::contains_key(tag) {
+            OutboxMessageWeightTags::<T>::remove(tag);
+        } else {
+            MessageWeightTags::<T>::mutate(|maybe_weight_tags| {
+                if let Some(weight_tags) = maybe_weight_tags.as_mut() {
+                    weight_tags.outbox.remove(&tag);
+                }
+            });
+        }
+    }
+
+    pub(crate) fn get_weight_tags<T: Config>() -> WeightTags {
+        let mut weight_tags = MessageWeightTags::<T>::get().unwrap_or_default();
+        InboxResponseMessageWeightTags::<T>::iter().for_each(|(key, weight_tag)| {
+            weight_tags.inbox_responses.insert(key, weight_tag);
         });
 
-        let outbox = Outbox::<T>::drain().collect::<Vec<_>>();
-        let mut outbox_count = BTreeMap::new();
-        outbox.into_iter().for_each(|(key, msg)| {
-            // we do one read from the old storage
-            reads += 1;
-
-            // we do one write to old storage and one write to new storage
-            writes += 2;
-
-            // total outbox count
-            outbox_count
-                .entry((key.0, key.1))
-                .and_modify(|count| *count += 1)
-                .or_insert(1);
-
-            OutboxNew::<T>::insert(key, msg);
+        OutboxMessageWeightTags::<T>::iter().for_each(|(key, weight_tag)| {
+            weight_tags.outbox.insert(key, weight_tag);
         });
 
-        outbox_count.into_iter().for_each(|(key, count)| {
-            // we do one write to the outbox message count
-            writes += 1;
-            OutboxMessageCount::<T>::insert(key, count);
-        });
-
-        T::DbWeight::get().reads_writes(reads, writes)
+        weight_tags
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::migrations::messenger_migration::{
-        migrate_messenger_storages, InboxResponses, Outbox,
+        migrate_message_weight_tags, MessageWeightTags, WeightTags,
     };
-    use crate::mock::chain_a::{new_test_ext, Runtime, SelfChainId};
-    use crate::{InboxResponses as InboxResponsesNew, Outbox as OutboxNew, OutboxMessageCount};
-    use frame_support::weights::RuntimeDbWeight;
-    use sp_core::Get;
+    use crate::mock::chain_a::{new_test_ext, Runtime};
+    use crate::pallet::{InboxResponseMessageWeightTags, OutboxMessageWeightTags};
     use sp_domains::{ChainId, ChannelId};
-    use sp_messenger::endpoint::{Endpoint, EndpointRequest};
-    use sp_messenger::messages::{Message, Nonce, Payload, RequestResponse, VersionedPayload};
+    use sp_messenger::messages::{MessageWeightTag, Nonce};
 
     #[test]
     fn test_messenger_storage_migration() {
         let mut ext = new_test_ext();
-        let msg = Message {
-            src_chain_id: ChainId::Consensus,
-            dst_chain_id: SelfChainId::get(),
-            channel_id: Default::default(),
-            nonce: Default::default(),
-            payload: VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(
-                EndpointRequest {
-                    src_endpoint: Endpoint::Id(0),
-                    dst_endpoint: Endpoint::Id(0),
-                    payload: vec![],
-                },
-            ))),
-            last_delivered_message_response_nonce: None,
-        };
+        let chain_id = ChainId::Consensus;
+        let channel_id = ChannelId::one();
+        let weight_tag = MessageWeightTag::ProtocolChannelOpen;
         ext.execute_with(|| {
-            // one inbox response
-            InboxResponses::<Runtime>::insert(
-                (ChainId::Consensus, ChannelId::zero(), Nonce::zero()),
-                msg.clone(),
-            );
+            let mut weight_tags = WeightTags::default();
+            for nonce in 0..50 {
+                weight_tags.outbox.insert(
+                    (chain_id, (channel_id, Nonce::from(nonce))),
+                    weight_tag.clone(),
+                );
 
-            // outbox responses
-            Outbox::<Runtime>::insert(
-                (ChainId::Consensus, ChannelId::zero(), Nonce::zero()),
-                msg.clone(),
-            );
-            Outbox::<Runtime>::insert(
-                (ChainId::Consensus, ChannelId::zero(), Nonce::one()),
-                msg.clone(),
-            );
-            Outbox::<Runtime>::insert(
-                (ChainId::Consensus, ChannelId::one(), Nonce::zero()),
-                msg.clone(),
-            );
+                weight_tags.inbox_responses.insert(
+                    (chain_id, (channel_id, Nonce::from(nonce))),
+                    weight_tag.clone(),
+                );
+            }
+
+            MessageWeightTags::<Runtime>::set(Some(weight_tags));
         });
-
         ext.commit_all().unwrap();
 
+        // migrate 50 outbox weight tags
+        // should migrate all outbox weight tags
         ext.execute_with(|| {
-            let weights = migrate_messenger_storages::<Runtime>();
-            // 1 read and 2 writes for inbox response
-            // 3 reads and 6 writes for outbox
-            // 2 writes for Outbox message count
-            let db_weights: RuntimeDbWeight = <Runtime as frame_system::Config>::DbWeight::get();
-            assert_eq!(weights, db_weights.reads_writes(4, 10),);
+            assert!(OutboxMessageWeightTags::<Runtime>::iter_keys()
+                .collect::<Vec<_>>()
+                .is_empty());
+            assert!(InboxResponseMessageWeightTags::<Runtime>::iter_keys()
+                .collect::<Vec<_>>()
+                .is_empty());
+
+            let (reads, writes) = migrate_message_weight_tags::<Runtime>(50);
+            assert_eq!(reads, 1);
+            // 50 migration writes and 1 write for previous storage
+            assert_eq!(writes, 51);
 
             assert_eq!(
-                InboxResponsesNew::<Runtime>::get((
-                    ChainId::Consensus,
-                    ChannelId::zero(),
-                    Nonce::zero()
-                )),
-                Some(msg.clone())
+                OutboxMessageWeightTags::<Runtime>::iter_keys()
+                    .collect::<Vec<_>>()
+                    .len(),
+                50
             );
 
-            assert_eq!(
-                OutboxNew::<Runtime>::get((ChainId::Consensus, ChannelId::zero(), Nonce::zero())),
-                Some(msg.clone())
-            );
-
-            assert_eq!(
-                OutboxNew::<Runtime>::get((ChainId::Consensus, ChannelId::zero(), Nonce::one())),
-                Some(msg.clone())
-            );
-
-            assert_eq!(
-                OutboxNew::<Runtime>::get((ChainId::Consensus, ChannelId::one(), Nonce::zero())),
-                Some(msg.clone())
-            );
-
-            assert_eq!(
-                OutboxMessageCount::<Runtime>::get((ChainId::Consensus, ChannelId::zero())),
-                2
-            );
-
-            assert_eq!(
-                OutboxMessageCount::<Runtime>::get((ChainId::Consensus, ChannelId::one())),
-                1
-            );
+            assert!(InboxResponseMessageWeightTags::<Runtime>::iter_keys()
+                .collect::<Vec<_>>()
+                .is_empty());
+            assert!(MessageWeightTags::<Runtime>::exists())
         });
+        ext.commit_all().unwrap();
+
+        // migrate 50 inbox response weight tags
+        // should migrate all weight tags
+        ext.execute_with(|| {
+            assert_eq!(
+                OutboxMessageWeightTags::<Runtime>::iter_keys()
+                    .collect::<Vec<_>>()
+                    .len(),
+                50
+            );
+            assert!(InboxResponseMessageWeightTags::<Runtime>::iter_keys()
+                .collect::<Vec<_>>()
+                .is_empty());
+
+            assert!(MessageWeightTags::<Runtime>::exists());
+
+            let (reads, writes) = migrate_message_weight_tags::<Runtime>(50);
+            assert_eq!(reads, 1);
+            // 50 migration writes and 1 write for previous storage
+            assert_eq!(writes, 51);
+
+            assert_eq!(
+                OutboxMessageWeightTags::<Runtime>::iter_keys()
+                    .collect::<Vec<_>>()
+                    .len(),
+                50
+            );
+
+            assert_eq!(
+                InboxResponseMessageWeightTags::<Runtime>::iter_keys()
+                    .collect::<Vec<_>>()
+                    .len(),
+                50
+            );
+            assert!(!MessageWeightTags::<Runtime>::exists());
+        });
+        ext.commit_all().unwrap();
     }
 }

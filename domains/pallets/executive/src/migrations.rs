@@ -6,6 +6,7 @@ use frame_support::weights::Weight;
 use frame_system::pallet::Config;
 use frame_system::{EventRecord, Pallet as System};
 
+// TODO: remove migration
 pub struct StorageCheckedMigrateToEventSegments<T>(sp_std::marker::PhantomData<T>);
 
 impl<T: Config> OnRuntimeUpgrade for StorageCheckedMigrateToEventSegments<T> {

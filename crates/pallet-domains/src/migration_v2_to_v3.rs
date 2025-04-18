@@ -26,6 +26,7 @@ use sp_domains::{
     EvmDomainRuntimeConfig as EvmDomainRuntimeConfigV3,
 };
 
+// TODO remove migration
 pub type VersionCheckedMigrateDomainsV2ToV3<T> = VersionedMigration<
     2,
     3,
