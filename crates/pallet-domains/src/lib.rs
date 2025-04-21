@@ -13,7 +13,6 @@ pub mod block_tree;
 mod bundle_storage_fund;
 pub mod domain_registry;
 pub mod extensions;
-pub mod migration_v2_to_v3;
 pub mod migrations;
 pub mod runtime_registry;
 mod staking;
@@ -24,8 +23,7 @@ extern crate alloc;
 
 use crate::block_tree::{verify_execution_receipt, Error as BlockTreeError};
 use crate::bundle_storage_fund::{charge_bundle_storage_fee, storage_fund_account};
-use crate::domain_registry::{DomainConfig, DomainObject, Error as DomainRegistryError};
-use crate::migration_v2_to_v3::DomainRegistryV2;
+use crate::domain_registry::{DomainConfig, Error as DomainRegistryError};
 use crate::runtime_registry::into_complete_raw_genesis;
 #[cfg(feature = "runtime-benchmarks")]
 pub use crate::staking::do_register_operator;
@@ -2081,7 +2079,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn domain_best_number(domain_id: DomainId) -> Result<DomainBlockNumberFor<T>, BundleError> {
-        // The missed domain runtime upgrades will derive domain blocks thus should be accountted
+        // The missed domain runtime upgrades will derive domain blocks thus should be accounted
         // into the domain best number
         let missed_upgrade = Self::missed_domain_runtime_upgrade(domain_id)
             .map_err(|_| BundleError::FailedToGetMissedUpgradeCount)?;
@@ -2089,28 +2087,9 @@ impl<T: Config> Pallet<T> {
         Ok(HeadDomainNumber::<T>::get(domain_id) + missed_upgrade.into())
     }
 
-    /// Fallback decoding for the domain registry v2 to v3 migration.
-    /// Returns the domain registry entry for the supplied `domain_id`, if that domain exists.
-    /// Tries the v3 storage format first, then falls back to the v2 format.
-    ///
-    /// All reads that could possibly happen between the runtime upgrade and the storage migration
-    /// must go through this function. (Writes are ok, because any v3 writes will look "corrupt"
-    /// and get skipped by the migration.)
-    //
-    // TODO: remove this fallback in the next runtime upgrade after the v3 storage format,
-    // and just read DomainRegistry directly.
-    #[expect(clippy::type_complexity)]
-    pub fn domain_registry_fallback(
-        domain_id: DomainId,
-    ) -> Option<DomainObject<BlockNumberFor<T>, ReceiptHashFor<T>, T::AccountId, BalanceOf<T>>>
-    {
-        DomainRegistry::<T>::get(domain_id)
-            .or_else(|| DomainRegistryV2::<T>::get(domain_id).map(Into::into))
-    }
-
     /// Returns the runtime ID for the supplied `domain_id`, if that domain exists.
     pub fn runtime_id(domain_id: DomainId) -> Option<RuntimeId> {
-        Self::domain_registry_fallback(domain_id)
+        DomainRegistry::<T>::get(domain_id)
             .map(|domain_object| domain_object.domain_config.runtime_id)
     }
 
@@ -2122,7 +2101,7 @@ impl<T: Config> Pallet<T> {
     pub fn domain_instance_data(
         domain_id: DomainId,
     ) -> Option<(DomainInstanceData, BlockNumberFor<T>)> {
-        let domain_obj = Self::domain_registry_fallback(domain_id)?;
+        let domain_obj = DomainRegistry::<T>::get(domain_id)?;
         let runtime_object = RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)?;
         let runtime_type = runtime_object.runtime_type;
         let total_issuance = domain_obj.domain_config.total_issuance()?;
@@ -2161,7 +2140,7 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
     ) -> Option<BundleProducerElectionParams<BalanceOf<T>>> {
         match (
-            Self::domain_registry_fallback(domain_id),
+            DomainRegistry::<T>::get(domain_id),
             DomainStakingSummary::<T>::get(domain_id),
         ) {
             (Some(domain_object), Some(stake_summary)) => Some(BundleProducerElectionParams {
@@ -2355,7 +2334,7 @@ impl<T: Config> Pallet<T> {
             BundleError::UnexpectedReceiptGap,
         );
 
-        let domain_config = &Self::domain_registry_fallback(domain_id)
+        let domain_config = &DomainRegistry::<T>::get(domain_id)
             .ok_or(BundleError::InvalidDomainId)?
             .domain_config;
 
@@ -2391,7 +2370,7 @@ impl<T: Config> Pallet<T> {
             BundleError::ExpectingReceiptGap,
         );
 
-        let domain_config = Self::domain_registry_fallback(domain_id)
+        let domain_config = DomainRegistry::<T>::get(domain_id)
             .ok_or(BundleError::InvalidDomainId)?
             .domain_config;
         Self::validate_eligibility(
@@ -2733,7 +2712,7 @@ impl<T: Config> Pallet<T> {
     pub fn domain_bundle_limit(
         domain_id: DomainId,
     ) -> Result<Option<DomainBundleLimit>, DomainRegistryError> {
-        let domain_config = match Self::domain_registry_fallback(domain_id) {
+        let domain_config = match DomainRegistry::<T>::get(domain_id) {
             None => return Ok(None),
             Some(domain_obj) => domain_obj.domain_config,
         };
@@ -3069,8 +3048,7 @@ impl<T: Config> Pallet<T> {
                 // If there is no `ExecutionInbox` exist for the `last_domain_block_number` it means
                 // there is no bundle submitted for the domain since it is instantiated, in this case,
                 // we use the `domain_obj.created_at` (which derive the genesis block).
-                .or(Self::domain_registry_fallback(domain_id)
-                    .map(|domain_obj| domain_obj.created_at))
+                .or(DomainRegistry::<T>::get(domain_id).map(|domain_obj| domain_obj.created_at))
                 .ok_or(BlockTreeError::LastBlockNotFound)?;
 
         Ok(DomainRuntimeUpgradeRecords::<T>::get(runtime_id)
@@ -3101,7 +3079,7 @@ impl<T: Config> Pallet<T> {
 
     /// Returns true if this is an EVM domain.
     pub fn is_evm_domain(domain_id: DomainId) -> bool {
-        if let Some(domain_obj) = Self::domain_registry_fallback(domain_id) {
+        if let Some(domain_obj) = DomainRegistry::<T>::get(domain_id) {
             domain_obj.domain_runtime_info.is_evm_domain()
         } else {
             false
@@ -3110,7 +3088,7 @@ impl<T: Config> Pallet<T> {
 
     /// Returns true if this is a private EVM domain.
     pub fn is_private_evm_domain(domain_id: DomainId) -> bool {
-        if let Some(domain_obj) = Self::domain_registry_fallback(domain_id) {
+        if let Some(domain_obj) = DomainRegistry::<T>::get(domain_id) {
             domain_obj.domain_runtime_info.is_private_evm_domain()
         } else {
             false
@@ -3127,7 +3105,7 @@ impl<T: Config> Pallet<T> {
 
 impl<T: Config> sp_domains::DomainOwner<T::AccountId> for Pallet<T> {
     fn is_domain_owner(domain_id: DomainId, acc: T::AccountId) -> bool {
-        if let Some(domain_obj) = Self::domain_registry_fallback(domain_id) {
+        if let Some(domain_obj) = DomainRegistry::<T>::get(domain_id) {
             domain_obj.owner_account_id == acc
         } else {
             false

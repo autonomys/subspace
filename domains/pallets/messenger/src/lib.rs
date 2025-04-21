@@ -149,7 +149,7 @@ pub trait HoldIdentifier<T: Config> {
 }
 
 /// The current storage version.
-const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
+const STORAGE_VERSION: StorageVersion = StorageVersion::new(2);
 
 #[frame_support::pallet]
 mod pallet {
@@ -327,11 +327,17 @@ mod pallet {
     pub(super) type OutboxResponses<T: Config> =
         StorageValue<_, Message<BalanceOf<T>>, OptionQuery>;
 
-    /// Storage to store the weight tags for all the outbox and inbox response messages.
+    /// Storage to store the weight tags for all the outbox messages.
     #[pallet::storage]
-    #[pallet::getter(fn message_weight_tags)]
-    pub(super) type MessageWeightTags<T: Config> =
-        StorageValue<_, crate::messages::MessageWeightTags, OptionQuery>;
+    #[pallet::getter(fn outbox_message_weight_tags)]
+    pub(super) type OutboxMessageWeightTags<T: Config> =
+        StorageMap<_, Identity, (ChainId, MessageId), MessageWeightTag>;
+
+    /// Storage to store the weight tags for all the inbox responses messages.
+    #[pallet::storage]
+    #[pallet::getter(fn inbox_response_message_weight_tags)]
+    pub(super) type InboxResponseMessageWeightTags<T: Config> =
+        StorageMap<_, Identity, (ChainId, MessageId), MessageWeightTag>;
 
     /// An allowlist of chains that can open channel with this chain.
     #[pallet::storage]
@@ -428,7 +434,12 @@ mod pallet {
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
             UpdatedChannels::<T>::take();
-            T::DbWeight::get().writes(1)
+            // we will have 1 read and 5002 writes
+            // So total ref_time is 2,50,10,80,00,000
+            // which is equal to 0.25 seconds
+            let (reads, writes) =
+                crate::migrations::messenger_migration::migrate_message_weight_tags::<T>(5000);
+            T::DbWeight::get().reads_writes(reads, writes + 1)
         }
     }
 
