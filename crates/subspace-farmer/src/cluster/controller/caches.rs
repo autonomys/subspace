@@ -9,6 +9,7 @@ use crate::cluster::cache::{
     ClusterCacheDetailsRequest, ClusterCacheId, ClusterCacheIdentifyBroadcast, ClusterPieceCache,
     ClusterPieceCacheDetails,
 };
+use crate::cluster::controller::stream_map::StreamMap;
 use crate::cluster::controller::ClusterControllerCacheIdentifyBroadcast;
 use crate::cluster::nats_client::NatsClient;
 use crate::farm::PieceCache;
@@ -23,7 +24,6 @@ use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::MissedTickBehavior;
-use tokio_stream::StreamMap;
 use tracing::{debug, info, trace, warn};
 
 const SCHEDULE_REINITIALIZATION_DELAY: Duration = Duration::from_secs(3);
@@ -104,7 +104,7 @@ pub async fn maintain_caches(
 ) -> anyhow::Result<()> {
     let mut known_caches = KnownCaches::new(identification_broadcast_interval);
 
-    let mut piece_caches_to_add = StreamMap::<ClusterCacheId, _>::new().fuse();
+    let mut piece_caches_to_add = StreamMap::default();
 
     let mut scheduled_reinitialization_for = None;
     let mut cache_reinitialization =
@@ -177,19 +177,15 @@ pub async fn maintain_caches(
                         %cluster_cache_id,
                         "Received identification for already known cache"
                     );
-                } else if piece_caches_to_add.get_ref().contains_key(&cluster_cache_id) {
-                    debug!(
-                        %cluster_cache_id,
-                        "Received identification for new cache, which is already in progress"
-                    );
-                } else {
+                } else if piece_caches_to_add.add_if_not_in_progress(cluster_cache_id, Box::pin(collect_piece_caches(cluster_cache_id, nats_client))) {
                     debug!(
                         %cluster_cache_id,
                         "Received identification for new cache, collecting piece caches"
                     );
-                    piece_caches_to_add.get_mut().insert(
-                        cluster_cache_id,
-                        Box::pin(collect_piece_caches(cluster_cache_id, nats_client).into_stream()),
+                } else {
+                    debug!(
+                        %cluster_cache_id,
+                        "Received identification for new cache, which is already in progress"
                     );
                 }
             }
@@ -252,7 +248,7 @@ async fn collect_piece_caches(
             warn!(
                 %error,
                 %cluster_cache_id,
-                "Failed to request farmer farm details"
+                "Failed to request cache details"
             )
         })?
         .map(

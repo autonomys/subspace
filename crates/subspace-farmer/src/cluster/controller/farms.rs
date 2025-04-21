@@ -4,9 +4,7 @@
 //! about which pieces are plotted in which sectors of which farm up to date. Implementation
 //! automatically handles dynamic farm addition and removal, etc.
 
-mod stream_map;
-
-use crate::cluster::controller::farms::stream_map::StreamMap;
+use crate::cluster::controller::stream_map::StreamMap;
 use crate::cluster::controller::ClusterControllerFarmerIdentifyBroadcast;
 use crate::cluster::farmer::{
     ClusterFarm, ClusterFarmerFarmDetails, ClusterFarmerFarmDetailsRequest, ClusterFarmerId,

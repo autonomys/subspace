@@ -8,6 +8,7 @@
 
 pub mod caches;
 pub mod farms;
+mod stream_map;
 
 use crate::cluster::cache::{ClusterCacheReadPieceRequest, ClusterCacheReadPiecesRequest};
 use crate::cluster::nats_client::{
