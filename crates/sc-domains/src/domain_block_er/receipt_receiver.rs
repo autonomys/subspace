@@ -1,13 +1,11 @@
-//! This module provides features for domains integration: snap sync syncrhonization primitives,
-//! custom protocols for last confirmed block execution receipts, etc..
+//! This module provides features for domains integration: snap sync synchronization primitives,
+//! custom protocols for last confirmed block execution receipts, etc...
 
 #![warn(missing_docs)]
 
-use crate::network::execution_receipt_protocol::{
-    generate_protocol_name, LastConfirmedBlockRequest, LastConfirmedBlockResponse,
+use crate::domain_block_er::execution_receipt_protocol::{
+    generate_protocol_name, DomainBlockERRequest, DomainBlockERResponse, LOG_TARGET,
 };
-use async_trait::async_trait;
-use domain_client_operator::LastDomainBlockReceiptProvider;
 use domain_runtime_primitives::Balance;
 use futures::channel::oneshot;
 use parity_scale_codec::{Decode, Encode};
@@ -30,7 +28,7 @@ const PEERS_THRESHOLD: usize = 20;
 
 /// Last confirmed domain block info error.
 #[derive(Debug, thiserror::Error)]
-pub enum LastConfirmedDomainBlockResponseError {
+pub enum DomainBlockERResponseError {
     /// Last confirmed domain block info request failed.
     #[error("Last confirmed domain block info request failed: {0}")]
     RequestFailed(#[from] RequestFailure),
@@ -45,60 +43,44 @@ pub enum LastConfirmedDomainBlockResponseError {
 
     /// Failed to decode response.
     #[error("Failed to decode response: {0}")]
-    DecodeFailed(String),
+    DecodeFailed(parity_scale_codec::Error),
 }
 
-#[async_trait]
-impl<Block, CBlock, Client, NR> LastDomainBlockReceiptProvider<Block, CBlock>
-    for LastDomainBlockInfoReceiver<Block, CBlock, Client, NR>
-where
-    Block: BlockT,
-    CBlock: BlockT,
-    NR: NetworkRequest + Sync + Send,
-    Client: HeaderBackend<CBlock>,
-{
-    async fn get_execution_receipt(
-        &self,
-    ) -> Option<ExecutionReceiptFor<Block::Header, CBlock, Balance>> {
-        self.get_last_confirmed_domain_block_receipt().await
-    }
-}
-
-/// Provides execution receipts for the last confirmed domain block.
-pub struct LastDomainBlockInfoReceiver<Block, CBlock, Client, NR>
+/// Provides execution receipts for domain block.
+pub struct DomainBlockERReceiver<Block, CBlock, CClient, NR>
 where
     Block: BlockT,
     CBlock: BlockT,
     NR: NetworkRequest,
-    Client: HeaderBackend<CBlock>,
+    CClient: HeaderBackend<CBlock>,
 {
     domain_id: DomainId,
     fork_id: Option<String>,
-    client: Arc<Client>,
+    consensus_client: Arc<CClient>,
     network_service: NR,
     sync_service: Arc<SyncingService<Block>>,
     _marker: PhantomData<CBlock>,
 }
 
-impl<Block, CBlock, Client, NR> LastDomainBlockInfoReceiver<Block, CBlock, Client, NR>
+impl<Block, CBlock, CClient, NR> DomainBlockERReceiver<Block, CBlock, CClient, NR>
 where
     CBlock: BlockT,
     Block: BlockT,
     NR: NetworkRequest,
-    Client: HeaderBackend<CBlock>,
+    CClient: HeaderBackend<CBlock>,
 {
     /// Constructor.
     pub fn new(
         domain_id: DomainId,
         fork_id: Option<String>,
-        client: Arc<Client>,
+        client: Arc<CClient>,
         network_service: NR,
         sync_service: Arc<SyncingService<Block>>,
     ) -> Self {
         Self {
             domain_id,
             fork_id,
-            client,
+            consensus_client: client,
             network_service,
             sync_service,
             _marker: PhantomData,
@@ -109,10 +91,14 @@ where
     pub async fn get_last_confirmed_domain_block_receipt(
         &self,
     ) -> Option<ExecutionReceiptFor<Block::Header, CBlock, Balance>> {
-        let info = self.client.info();
+        let info = self.consensus_client.info();
         let protocol_name = generate_protocol_name(info.genesis_hash, self.fork_id.as_deref());
 
-        debug!(domain_id=%self.domain_id, %protocol_name, "Started obtaining domain info...");
+        debug!(target: LOG_TARGET,
+            domain_id=%self.domain_id,
+            %protocol_name,
+            "Started obtaining last confirmed domain block ER..."
+        );
 
         let mut receipts = BTreeMap::new();
         let mut receipts_hashes = BTreeMap::new();
@@ -122,7 +108,7 @@ where
             let peers_info = match self.sync_service.peers_info().await {
                 Ok(peers_info) => peers_info,
                 Err(error) => {
-                    error!("Peers info request returned an error: {error}",);
+                    error!(target: LOG_TARGET, "Peers info request returned an error: {error}",);
                     sleep(REQUEST_PAUSE).await;
 
                     continue;
@@ -132,26 +118,22 @@ where
             //  Enumerate peers until we find a suitable source for domain info
             'peers: for (peer_id, peer_info) in peers_info.iter() {
                 debug!(
-                    "Domain data request. peer = {peer_id}, info = {:?}",
+                    target: LOG_TARGET,
+                    "Domain block ER request. peer = {peer_id}, info = {:?}",
                     peer_info
                 );
 
                 if peers_hashes.contains_key(peer_id) {
-                    trace!(%attempt, %peer_id, "Peer receipt has been already collected.");
-
+                    trace!(target: LOG_TARGET, %attempt, %peer_id, "Peer receipt has been already collected.");
                     continue 'peers;
                 }
 
                 if !peer_info.is_synced {
-                    trace!(%attempt, %peer_id, "Domain data request skipped (not synced).");
-
+                    trace!(target: LOG_TARGET, %attempt, %peer_id, "Domain data request skipped (not synced).");
                     continue 'peers;
                 }
 
-                let request = LastConfirmedBlockRequest {
-                    domain_id: self.domain_id,
-                };
-
+                let request = DomainBlockERRequest::LastConfirmedER(self.domain_id);
                 let response = send_request::<NR, CBlock, Block::Header>(
                     protocol_name.clone(),
                     *peer_id,
@@ -162,31 +144,29 @@ where
 
                 match response {
                     Ok(response) => {
+                        let DomainBlockERResponse::LastConfirmedER(receipt) = response;
                         trace!(
+                            target: LOG_TARGET,
                             %attempt,
-                            receipts=response.last_confirmed_block_receipts.len(),
-                            "Response from a peer {peer_id},"
+                            "Response from a peer {peer_id}: {receipt:?}"
                         );
 
-                        for receipt in response.last_confirmed_block_receipts.into_iter() {
-                            let receipt_hash = KeccakHasher::hash(&receipt.encode());
-
-                            peers_hashes.insert(*peer_id, receipt_hash);
-                            receipts.insert(receipt_hash, receipt);
-                            receipts_hashes
-                                .entry(receipt_hash)
-                                .and_modify(|count: &mut u32| *count += 1)
-                                .or_insert(1u32);
-                        }
+                        let receipt_hash = KeccakHasher::hash(&receipt.encode());
+                        peers_hashes.insert(*peer_id, receipt_hash);
+                        receipts.insert(receipt_hash, receipt);
+                        receipts_hashes
+                            .entry(receipt_hash)
+                            .and_modify(|count: &mut u32| *count += 1)
+                            .or_insert(1u32);
                     }
                     Err(error) => {
-                        debug!(%attempt, "Domain info request failed. peer = {peer_id}: {error}");
-
+                        debug!(target: LOG_TARGET, %attempt, "Domain block ER request failed. peer = {peer_id}: {error}");
                         continue 'peers;
                     }
                 }
             }
             debug!(
+                target: LOG_TARGET,
                 domain_id=%self.domain_id,
                 "No synced peers to handle the domain confirmed block info request. Pausing..."
             );
@@ -199,7 +179,7 @@ where
         }
 
         if peers_hashes.len() < PEERS_THRESHOLD {
-            debug!(peers=%peers_hashes.len(), "Couldn't pass peer threshold for receipts.");
+            debug!(target: LOG_TARGET, peers=%peers_hashes.len(), "Couldn't pass peer threshold for receipts.");
         }
 
         // Find the receipt with the maximum votes
@@ -211,10 +191,10 @@ where
                 return receipts.get(receipt_hash).cloned();
             }
         } else {
-            debug!("Couldn't find last confirmed domain block execution receipt: no receipts.");
+            debug!(target: LOG_TARGET, "Couldn't find last confirmed domain block execution receipt: no receipts.");
         }
 
-        error!("Couldn't find last confirmed domain block execution receipt.");
+        error!(target: LOG_TARGET, "Couldn't find last confirmed domain block execution receipt.");
         None
     }
 }
@@ -222,16 +202,13 @@ where
 async fn send_request<NR: NetworkRequest, Block: BlockT, DomainHeader: Header>(
     protocol_name: String,
     peer_id: PeerId,
-    request: LastConfirmedBlockRequest,
+    request: DomainBlockERRequest,
     network_service: &NR,
-) -> Result<LastConfirmedBlockResponse<Block, DomainHeader>, LastConfirmedDomainBlockResponseError>
-{
+) -> Result<DomainBlockERResponse<Block, DomainHeader>, DomainBlockERResponseError> {
     let (tx, rx) = oneshot::channel();
-
-    debug!("Sending request: {request:?}  (peer={peer_id})");
+    debug!(target: LOG_TARGET, "Sending request: {request:?}  (peer={peer_id})");
 
     let encoded_request = request.encode();
-
     network_service.start_request(
         peer_id,
         protocol_name.clone().into(),
@@ -243,29 +220,19 @@ async fn send_request<NR: NetworkRequest, Block: BlockT, DomainHeader: Header>(
 
     let result = rx
         .await
-        .map_err(|_| LastConfirmedDomainBlockResponseError::RequestCanceled)?;
+        .map_err(|_| DomainBlockERResponseError::RequestCanceled)?;
 
     match result {
         Ok((data, response_protocol_name)) => {
             if response_protocol_name != protocol_name.into() {
-                return Err(LastConfirmedDomainBlockResponseError::InvalidProtocol);
+                return Err(DomainBlockERResponseError::InvalidProtocol);
             }
 
-            let response = decode_response(&data)
-                .map_err(LastConfirmedDomainBlockResponseError::DecodeFailed)?;
+            let response = DomainBlockERResponse::decode(&mut data.as_slice())
+                .map_err(DomainBlockERResponseError::DecodeFailed)?;
 
             Ok(response)
         }
         Err(error) => Err(error.into()),
     }
-}
-
-fn decode_response<Block: BlockT, DomainHeader: Header>(
-    mut response: &[u8],
-) -> Result<LastConfirmedBlockResponse<Block, DomainHeader>, String> {
-    let response = LastConfirmedBlockResponse::decode(&mut response).map_err(|error| {
-        format!("Failed to decode last confirmed domain block info response: {error}")
-    })?;
-
-    Ok(response)
 }

@@ -1,5 +1,7 @@
 //! Domain specific Host functions and Extension factory
 
+pub mod domain_block_er;
+
 use sc_client_api::execution_extensions::ExtensionsFactory as ExtensionsFactoryT;
 use sc_executor::RuntimeVersionOf;
 use sp_api::ProvideRuntimeApi;

@@ -13,6 +13,7 @@ pub mod block_tree;
 mod bundle_storage_fund;
 pub mod domain_registry;
 pub mod extensions;
+pub mod migrations;
 pub mod runtime_registry;
 mod staking;
 mod staking_epoch;
@@ -171,7 +172,7 @@ impl<O: Into<Result<RawOrigin, O>> + From<RawOrigin>> EnsureOrigin<O> for Ensure
 }
 
 /// The current storage version.
-const STORAGE_VERSION: StorageVersion = StorageVersion::new(3);
+const STORAGE_VERSION: StorageVersion = StorageVersion::new(4);
 
 /// The number of bundle of a particular domain to be included in the block is probabilistic
 /// and based on the consensus chain slot probability and domain bundle slot probability, usually
@@ -747,6 +748,11 @@ mod pallet {
     #[pallet::storage]
     pub type EvmDomainContractCreationAllowedByCalls<T: Config> =
         StorageMap<_, Identity, DomainId, EvmDomainContractCreationAllowedByCall, ValueQuery>;
+
+    /// TODO: remove once https://github.com/autonomys/subspace/issues/3466 is resolved
+    /// Storage that hold a list of all domains for which balance checks are ignored.
+    #[pallet::storage]
+    pub type SkipBalanceChecks<T> = StorageValue<_, BTreeSet<DomainId>, ValueQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {

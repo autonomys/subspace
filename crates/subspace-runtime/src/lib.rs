@@ -1102,6 +1102,8 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
+    // TODO: remove once migration has been deployed to Taurus
+    pallet_domains::migrations::VersionCheckedMigrateDomainsV3ToV4<Runtime>,
 >;
 
 impl pallet_subspace::extensions::MaybeSubspaceCall<Runtime> for RuntimeCall {
