@@ -74,7 +74,7 @@ pub(crate) mod messenger_migration {
     }
 
     pub(crate) fn remove_inbox_response_weight_tags<T: Config>(tags: Vec<(ChainId, MessageId)>) {
-        let mut maybe_weight_tags = MessageWeightTags::<T>::take();
+        let mut maybe_weight_tags = MessageWeightTags::<T>::get();
         tags.into_iter().for_each(|(chain_id, message_id)| {
             InboxResponseMessageWeightTags::<T>::remove((chain_id, message_id));
             if let Some(weight_tags) = maybe_weight_tags.as_mut() {
