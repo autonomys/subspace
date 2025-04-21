@@ -112,7 +112,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::controller::farms::stream_map::StreamMap;
+    use crate::cluster::controller::stream_map::StreamMap;
     use futures::stream::FusedStream;
     use futures::StreamExt;
     use std::task::Context;
