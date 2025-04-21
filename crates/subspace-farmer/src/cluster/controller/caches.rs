@@ -248,7 +248,7 @@ async fn collect_piece_caches(
             warn!(
                 %error,
                 %cluster_cache_id,
-                "Failed to request farmer farm details"
+                "Failed to request cache details"
             )
         })?
         .map(
