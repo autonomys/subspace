@@ -102,6 +102,9 @@ sp-session.workspace = true
 frame-system-rpc-runtime-api.workspace = true
 pallet-transaction-payment-rpc-runtime-api.workspace = true
 
+[dev-dependencies]
+static_assertions.workspace = true
+
 [features]
 runtime-benchmarks = [
     "dep:frame-benchmarking",

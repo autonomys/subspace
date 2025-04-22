@@ -4,6 +4,8 @@ RPC API for Subspace Gateway.
 
 ### Using the gateway RPCs
 
+#### Getting Object Mappings
+
 The gateway RPCs can fetch data using object mappings supplied by a node.
 
 Launch a node with `--create-object-mappings blockNumber --sync full`, and wait for mappings from
@@ -41,7 +43,9 @@ subspace_subscribeObjectMappings
 }
 ```
 
-Then use those mappings to get object data from the gateway RPCs:
+#### Using Object Mappings to get Objects
+
+Use those mappings to get object data from the gateway RPCs:
 ```sh
 $ websocat --jsonrpc ws://127.0.0.1:9955
 subspace_fetchObject {"mappings": {"v0": {"objects": [["0000000000000000000000000000000000000000000000000000000000000000", 0, 0]]}}}
@@ -53,6 +57,16 @@ subspace_fetchObject {"mappings": {"v0": {"objects": [["000000000000000000000000
   "result": ["00000000"]
 }
 ```
+
+For efficiency, objects in a batch should be sorted by increasing piece index. And objects with
+the same piece index should be sorted by increasing offset. This allows the last piece to be
+re-used for the next object in the batch.
+
+Batches should be split if the gap between object piece indexes is 6 or more. Those objects
+can't share any pieces, because a maximum-sized object only uses 6 pieces. (Batches should also
+be split so that the response stays within the RPC response size limit.)
+
+### Advanced Usage
 
 #### Missed Mappings
 

@@ -12,7 +12,6 @@ use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::segments::{
     ArchivedBlockProgress, LastArchivedBlock, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_runtime_primitives::MAX_BLOCK_LENGTH;
 
 /// The maximum amount of segment padding.
 ///
@@ -21,6 +20,10 @@ use subspace_runtime_primitives::MAX_BLOCK_LENGTH;
 /// 63 or less, and the maximum block size is in the range 2^14 to 2^30 - 1.
 /// <https://docs.substrate.io/reference/scale-codec/#fn-1>
 pub const MAX_SEGMENT_PADDING: usize = 3;
+
+/// Maximum block length for non-`Normal` extrinsic is 5 MiB.
+/// This is a copy of the constant in `subspace_runtime_primitives`.
+pub const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 
 /// The segment version this code knows how to parse.
 const SEGMENT_VERSION_VARIANT: u8 = 0;
@@ -156,7 +159,6 @@ mod test {
     use parity_scale_codec::{Compact, CompactLen};
     use subspace_archiving::archiver::Segment;
     use subspace_core_primitives::objects::BlockObjectMapping;
-    use subspace_runtime_primitives::MAX_BLOCK_LENGTH;
 
     #[test]
     fn max_segment_padding_constant() {
