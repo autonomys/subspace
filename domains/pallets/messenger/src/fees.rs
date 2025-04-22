@@ -142,14 +142,17 @@ impl<T: Config> Pallet<T> {
         let mut inbox_fees = BalanceOf::<T>::zero();
         let mut removed_weight_tags = vec![];
         while let Some(nonce) = current_nonce {
-            // note weight tags for inbox response messages
-            removed_weight_tags.push((dst_chain_id, (channel_id, nonce)));
-
-            // for every inbox response we take, distribute the reward to the operators.
             if InboxResponses::<T>::take((dst_chain_id, channel_id, nonce)).is_none() {
+                // Make the loop efficient, by breaking as soon as there are no more responses.
+                // If we didn't break here, we'd spend a lot of CPU hashing missing StorageMap
+                // keys.
                 break;
             }
 
+            // Note removed weight tags for inbox response messages.
+            removed_weight_tags.push((dst_chain_id, (channel_id, nonce)));
+
+            // For every inbox response we take, distribute the reward to the operators.
             if let Some(inbox_fee) = InboxFee::<T>::take((dst_chain_id, (channel_id, nonce))) {
                 inbox_fees = inbox_fees.saturating_add(inbox_fee);
             }
