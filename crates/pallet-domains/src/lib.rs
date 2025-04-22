@@ -754,6 +754,13 @@ mod pallet {
     #[pallet::storage]
     pub type SkipBalanceChecks<T> = StorageValue<_, BTreeSet<DomainId>, ValueQuery>;
 
+    /// TODO: remove after all "missing-share-price" withdrawal is unlocked on Taurus
+    /// Storage that hold a domain epoch, for epoch that happen before it, the share price may
+    /// be missing due to https://github.com/autonomys/subspace/issues/3459, in this case, we
+    /// use the current share price as the default.
+    #[pallet::storage]
+    pub type AllowedDefaultSharePriceEpoch<T> = StorageValue<_, DomainEpoch, OptionQuery>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.
