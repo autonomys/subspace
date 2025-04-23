@@ -21,7 +21,6 @@ use sp_runtime::{Digest, DigestItem};
 use sp_weights::constants::WEIGHT_REF_TIME_PER_MILLIS;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::info;
 
 // The slow log threshold for consensus block preprocessing
 const SLOW_PREPROCESS_MILLIS: u64 = 500;
