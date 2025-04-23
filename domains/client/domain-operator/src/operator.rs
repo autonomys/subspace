@@ -208,10 +208,10 @@ where
             params.consensus_confirmation_depth_k,
         );
 
-        let snap_sync_orchestrator = params
+        let target_block_number = params
             .consensus_chain_sync_params
             .as_ref()
-            .map(|p| p.snap_sync_orchestrator.clone());
+            .map(|p| p.last_domain_block_er.consensus_block_number);
 
         let sync_params = params
             .consensus_chain_sync_params
@@ -271,18 +271,7 @@ where
             let bundle_processor = bundle_processor.clone();
             async move {
                 // Wait for the target block to import if we are snap syncing
-                if let Some(ref snap_sync_orchestrator) = snap_sync_orchestrator {
-                    let mut target_block_receiver =
-                        snap_sync_orchestrator.consensus_snap_sync_target_block_receiver();
-
-                    let target_block_number = match target_block_receiver.recv().await {
-                        Ok(target_block) => target_block,
-                        Err(err) => {
-                            error!(?err, "Snap sync failed: can't obtain target block.");
-                            return Err(());
-                        }
-                    };
-
+                if let Some(target_block_number) = target_block_number {
                     // Wait for Subspace block importing notifications
                     let block_importing_notification_stream =
                         &mut params.operator_streams.block_importing_notification_stream;
@@ -296,7 +285,7 @@ where
                             return Err(());
                         }
 
-                        if block_number >= target_block_number.into() {
+                        if block_number >= target_block_number {
                             break;
                         }
                     }
@@ -311,7 +300,7 @@ where
                         let block_number = *import_notification.header.number();
                         trace!(%block_number, "Block imported from consensus chain.");
 
-                        if block_number >= target_block_number.into() {
+                        if block_number >= target_block_number {
                             break;
                         }
                     }

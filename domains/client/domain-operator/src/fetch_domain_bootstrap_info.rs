@@ -93,6 +93,9 @@ where
     let (domain_instance_data, domain_created_at) = 'outer: loop {
         if let Some(block_imported) = imported_block_notification_stream.next().await {
             let header = block_imported.header;
+            // TODO: cannot use digest logs when trying to snap-sync for domains.
+            //  Since the same code path is used for regular sync and snap sync.
+            //  Block which contain domain instantiation will be skipped during snap-sync
             for item in header.digest().logs.iter() {
                 if let Some(domain_id) = item.as_domain_instantiation() {
                     if domain_id == self_domain_id {

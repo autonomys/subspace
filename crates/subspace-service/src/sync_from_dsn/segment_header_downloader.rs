@@ -1,3 +1,4 @@
+use crate::sync_from_dsn::LOG_TARGET;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::collections::{BTreeSet, HashMap};
@@ -34,6 +35,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
     ) -> Result<Vec<SegmentHeader>, Box<dyn Error>> {
         let last_known_segment_index = last_known_segment_header.segment_index();
         trace!(
+            target: LOG_TARGET,
             %last_known_segment_index,
             "Searching for latest segment header"
         );
@@ -44,6 +46,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
 
         if last_segment_header.segment_index() <= last_known_segment_index {
             debug!(
+                target: LOG_TARGET,
                 %last_known_segment_index,
                 last_found_segment_index = %last_segment_header.segment_index(),
                 "No new segment headers found, nothing to download"
@@ -53,6 +56,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
         }
 
         debug!(
+            target: LOG_TARGET,
             %last_known_segment_index,
             last_segment_index = %last_segment_header.segment_index(),
             "Downloading segment headers"
@@ -84,6 +88,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
             for segment_header in segment_headers {
                 if segment_header.hash() != segment_to_download_to.prev_segment_header_hash() {
                     error!(
+                        target: LOG_TARGET,
                         %peer_id,
                         segment_index=%segment_to_download_to.segment_index() - SegmentIndex::ONE,
                         actual_hash=?segment_header.hash(),
@@ -132,7 +137,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
             .rev()
             .zip(1_usize..)
         {
-            trace!(%retry_attempt, "Downloading last segment headers");
+            trace!(target: LOG_TARGET, %retry_attempt, "Downloading last segment headers");
 
             // Get random peers. Some of them could be bootstrap nodes with no support for
             // request-response protocol for segment commitment.
@@ -154,13 +159,13 @@ impl<'a> SegmentHeaderDownloader<'a> {
                         .await
                 }
                 Err(err) => {
-                    warn!(?err, "get_closest_peers returned an error");
+                    warn!(target: LOG_TARGET, ?err, "get_closest_peers returned an error");
 
                     return Err(err.into());
                 }
             };
 
-            trace!(peers_count = %peers.len(), "Found closest peers");
+            trace!(target: LOG_TARGET, peers_count = %peers.len(), "Found closest peers");
 
             let new_last_known_segment_headers = peers
                 .into_iter()
@@ -181,6 +186,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                     match request_result {
                         Ok(SegmentHeaderResponse { segment_headers }) => {
                             trace!(
+                                target: LOG_TARGET,
                                 %peer_id,
                                 segment_headers_number=%segment_headers.len(),
                                 "Last segment headers request succeeded"
@@ -190,6 +196,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                                 .is_last_segment_headers_response_valid(peer_id, &segment_headers)
                             {
                                 warn!(
+                                    target: LOG_TARGET,
                                     %peer_id,
                                     "Received last segment headers response was invalid"
                                 );
@@ -201,7 +208,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                             Some((peer_id, segment_headers))
                         }
                         Err(error) => {
-                            debug!(%peer_id, ?error, "Last segment headers request failed");
+                            debug!(target: LOG_TARGET, %peer_id, ?error, "Last segment headers request failed");
                             None
                         }
                     }
@@ -223,6 +230,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 // If we've got nothing, we have to retry
                 if last_peers_count == 0 {
                     debug!(
+                        target: LOG_TARGET,
                         %peer_count,
                         %required_peers,
                         %retry_attempt,
@@ -234,6 +242,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 // If there are still attempts left, do more attempts
                 if required_peers > 1 {
                     debug!(
+                        target: LOG_TARGET,
                         %peer_count,
                         %required_peers,
                         %retry_attempt,
@@ -244,6 +253,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 }
 
                 debug!(
+                    target: LOG_TARGET,
                     %peer_count,
                     %required_peers,
                     %retry_attempt,
@@ -297,7 +307,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
         segment_headers: &[SegmentHeader],
     ) -> bool {
         if segment_headers.len() != segment_indexes.len() {
-            warn!(%peer_id, "Segment header and segment indexes collection differ");
+            warn!(target: LOG_TARGET, %peer_id, "Segment header and segment indexes collection differ");
 
             return false;
         }
@@ -305,7 +315,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
         let returned_segment_indexes =
             BTreeSet::from_iter(segment_headers.iter().map(|rb| rb.segment_index()));
         if returned_segment_indexes.len() != segment_headers.len() {
-            warn!(%peer_id, "Peer banned: it returned collection with duplicated segment headers");
+            warn!(target: LOG_TARGET, %peer_id, "Peer banned: it returned collection with duplicated segment headers");
 
             return false;
         }
@@ -315,7 +325,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
         );
 
         if !indexes_match {
-            warn!(%peer_id, "Segment header collection doesn't match segment indexes");
+            warn!(target: LOG_TARGET, %peer_id, "Segment header collection doesn't match segment indexes");
 
             return false;
         }
@@ -353,12 +363,12 @@ impl<'a> SegmentHeaderDownloader<'a> {
         peers: &[PeerId],
         segment_indexes: Vec<SegmentIndex>,
     ) -> Result<(PeerId, Vec<SegmentHeader>), Box<dyn Error>> {
-        trace!(?segment_indexes, "Getting segment header batch..");
+        trace!(target: LOG_TARGET, ?segment_indexes, "Getting segment header batch..");
 
         let segment_indexes = Arc::new(segment_indexes);
 
         for &peer_id in peers {
-            trace!(%peer_id, "get_closest_peers returned an item");
+            trace!(target: LOG_TARGET, %peer_id, "get_closest_peers returned an item");
 
             let request_result = self
                 .dsn_node
@@ -373,14 +383,14 @@ impl<'a> SegmentHeaderDownloader<'a> {
 
             match request_result {
                 Ok(SegmentHeaderResponse { segment_headers }) => {
-                    trace!(%peer_id, ?segment_indexes, "Segment header request succeeded");
+                    trace!(target: LOG_TARGET, %peer_id, ?segment_indexes, "Segment header request succeeded");
 
                     if !self.is_segment_headers_response_valid(
                         peer_id,
                         &segment_indexes,
                         &segment_headers,
                     ) {
-                        warn!(%peer_id, "Received segment headers were invalid");
+                        warn!(target: LOG_TARGET, %peer_id, "Received segment headers were invalid");
 
                         let _ = self.dsn_node.ban_peer(peer_id).await;
                     }
@@ -388,7 +398,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                     return Ok((peer_id, segment_headers));
                 }
                 Err(error) => {
-                    debug!(%peer_id, ?segment_indexes, ?error, "Segment header request failed");
+                    debug!(target: LOG_TARGET, %peer_id, ?segment_indexes, ?error, "Segment header request failed");
                 }
             };
         }
