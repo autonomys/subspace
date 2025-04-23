@@ -92,8 +92,8 @@ hwlocality = "1.0.0-alpha.6"
 jsonrpsee = "0.24.5"
 kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
 libc = "0.2.159"
-libp2p = { version = "0.54.2", git = "https://github.com/autonomys/rust-libp2p", rev = "04c2e649b1f5482b8c3466b0fdbd1815b3126a48", default-features = false }
-libp2p-swarm-test = { version = "0.5.0", git = "https://github.com/autonomys/rust-libp2p", rev = "04c2e649b1f5482b8c3466b0fdbd1815b3126a48" }
+libp2p = { version = "0.54.2", git = "https://github.com/subspace/rust-libp2p", rev = "399c4c7fcba821a7bac2663e090a7b155b08ebe1", default-features = false }
+libp2p-swarm-test = { version = "0.5.0", git = "https://github.com/subspace/rust-libp2p", rev = "399c4c7fcba821a7bac2663e090a7b155b08ebe1" }
 libsecp256k1 = "0.7.1"
 log = { version = "0.4.22", default-features = false }
 memmap2 = "0.9.5"
@@ -410,7 +410,18 @@ xcm-procedural = { git = "https://github.com/subspace/polkadot-sdk", rev = "ad62
 # De-duplicate extra copy that comes from Substrate repo
 substrate-bip39 = "0.6.0"
 
+[patch."https://github.com/autonomys/rust-libp2p.git"]
+# Patch away `libp2p` in our dependency tree with the git version.
+# This brings the fixes in our `libp2p` fork into substrate's dependencies.
+#
+# This is a hack: patches to the same repository are rejected by `cargo`. But it considers
+# "subspace/rust-libp2p" and "autonomys/rust-libp2p" to be different repositories, even though
+# they're redirected to the same place by GitHub, so it allows this patch.
+libp2p = { git = "https://github.com/subspace/rust-libp2p", rev = "399c4c7fcba821a7bac2663e090a7b155b08ebe1" }
+libp2p-identity = { git = "https://github.com/subspace/rust-libp2p", rev = "399c4c7fcba821a7bac2663e090a7b155b08ebe1" }
+multistream-select = { git = "https://github.com/subspace/rust-libp2p", rev = "399c4c7fcba821a7bac2663e090a7b155b08ebe1" }
+
 [patch.crates-io]
 # Patch away `libp2p-identity` in our dependency tree with the git version.
-# For details see: https://github.com/autonomys/rust-libp2p/blob/04c2e649b1f5482b8c3466b0fdbd1815b3126a48/Cargo.toml#L140-L145
-libp2p-identity = { git = "https://github.com/autonomys/rust-libp2p", rev = "04c2e649b1f5482b8c3466b0fdbd1815b3126a48" }
+# For details see: https://github.com/subspace/rust-libp2p/blob/399c4c7fcba821a7bac2663e090a7b155b08ebe1/Cargo.toml#L140-L145
+libp2p-identity = { git = "https://github.com/subspace/rust-libp2p", rev = "399c4c7fcba821a7bac2663e090a7b155b08ebe1" }
