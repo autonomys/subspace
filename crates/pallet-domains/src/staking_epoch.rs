@@ -537,7 +537,7 @@ mod tests {
     use crate::staking::tests::{register_operator, Share};
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_reward_operators, do_unlock_nominator,
-        do_withdraw_stake, WithdrawStake,
+        do_withdraw_stake, Error as TransitionError, WithdrawStake,
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, operator_take_reward_tax_and_stake,
@@ -546,8 +546,8 @@ mod tests {
     use crate::{BalanceOf, Config, HoldIdentifier, NominatorId};
     #[cfg(not(feature = "std"))]
     use alloc::vec;
-    use frame_support::assert_ok;
     use frame_support::traits::fungible::InspectHold;
+    use frame_support::{assert_err, assert_ok};
     use sp_core::Pair;
     use sp_domains::{DomainId, OperatorPair, OperatorRewardSource};
     use sp_runtime::traits::Zero;
@@ -624,6 +624,20 @@ mod tests {
             // de-register operator
             let head_domain_number = HeadDomainNumber::<Test>::get(domain_id);
             do_deregister_operator::<Test>(operator_account, operator_id).unwrap();
+
+            // After de-register both deposit and withdraw will be rejected
+            assert_err!(
+                do_nominate_operator::<Test>(operator_id, operator_account, SSC),
+                TransitionError::OperatorNotRegistered
+            );
+            assert_err!(
+                do_withdraw_stake::<Test>(
+                    operator_id,
+                    operator_account,
+                    WithdrawStake::Percent(Percent::from_percent(10))
+                ),
+                TransitionError::OperatorNotRegistered
+            );
 
             // finalize and add to pending operator unlocks
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();

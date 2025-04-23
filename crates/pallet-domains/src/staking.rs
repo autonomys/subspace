@@ -2925,12 +2925,14 @@ pub(crate) mod tests {
         let operator_free_balance = 250 * SSC;
         let operator_stake = 200 * SSC;
         let operator_extra_deposit = 40 * SSC;
+        let operator_extra_withdraw = 5 * SSC;
         let pair = OperatorPair::from_seed(&[0; 32]);
 
         let nominator_accounts: Vec<crate::tests::AccountId> = (2..22).collect();
         let nominator_free_balance = 150 * SSC;
         let nominator_stake = 100 * SSC;
         let nominator_extra_deposit = 40 * SSC;
+        let nominator_extra_withdraw = 5 * SSC;
 
         let mut nominators = vec![(operator_account, (operator_free_balance, operator_stake))];
         for nominator_account in nominator_accounts.clone() {
@@ -2946,6 +2948,10 @@ pub(crate) mod tests {
         let deposits = vec![
             (operator_account, operator_extra_deposit),
             (last_nominator_account, nominator_extra_deposit),
+        ];
+        let withdrawals = vec![
+            (operator_account, operator_extra_withdraw),
+            (last_nominator_account, nominator_extra_withdraw),
         ];
 
         let init_total_stake = STORAGE_FEE_RESERVE.left_from_one()
@@ -3037,12 +3043,22 @@ pub(crate) mod tests {
             for deposit in deposits {
                 do_nominate_operator::<Test>(operator_id, deposit.0, deposit.1).unwrap();
             }
+            for withdrawal in withdrawals {
+                do_withdraw_stake::<Test>(
+                    operator_id,
+                    withdrawal.0,
+                    WithdrawStake::Stake(withdrawal.1),
+                )
+                .unwrap();
+            }
 
             do_mark_operators_as_slashed::<Test>(
                 vec![operator_id],
                 SlashedReason::InvalidBundle(1),
             )
             .unwrap();
+
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(!domain_stake_summary.next_operators.contains(&operator_id));
