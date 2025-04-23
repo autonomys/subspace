@@ -297,8 +297,8 @@ fn create_mapping(
         // Find the next piece index with a segment header
         let segment_header_piece_index =
             start_piece_index.next_multiple_of(ArchivedHistorySegment::NUM_PIECES);
-        // And the piece before it can have padding
-        let padding_piece_index = segment_header_piece_index.checked_sub(1);
+        // And the source piece before it can have padding
+        let padding_piece_index = idx(segment_header_piece_index).prev_source_index();
 
         // Skip padding if needed
         if let Some(padding_piece_index) = padding_piece_index
@@ -307,7 +307,7 @@ fn create_mapping(
             let original_len = raw_data.len();
 
             let byte_position_in_raw_data = byte_position_in_extract_raw_data(
-                padding_piece_index,
+                u64::from(padding_piece_index) as usize,
                 start_piece_index,
                 pieces_len,
                 original_len,
@@ -327,7 +327,17 @@ fn create_mapping(
             assert_eq!(raw_data.len(), original_len - skip_padding);
             assert_eq!(
                 replaced_padding_data,
-                vec![PADDING_BYTE_VALUE; skip_padding]
+                vec![PADDING_BYTE_VALUE; skip_padding],
+                "padding bytes must be zeroed: \
+                skip_padding: {skip_padding} bytes, \
+                raw_data_after_segment_header: {} bytes, \
+                padding_piece_index: {padding_piece_index}, \
+                start_piece_index: {start_piece_index}, \
+                pieces_len: {pieces_len}, \
+                original_len: {original_len}, \
+                raw_data: {} ",
+                raw_data_after_segment_header.len(),
+                raw_data.len(),
             );
         }
 
