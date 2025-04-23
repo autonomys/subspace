@@ -344,6 +344,10 @@ pub(crate) fn do_slash_operator<T: Config>(
         },
     };
 
+    let current_domain_epoch_index = DomainStakingSummary::<T>::get(domain_id)
+        .ok_or(TransitionError::DomainNotInitialized)?
+        .current_epoch_index;
+
     Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
         // take the operator so this operator info is removed once we slash the operator.
         let mut operator = maybe_operator
@@ -367,9 +371,17 @@ pub(crate) fn do_slash_operator<T: Config>(
             let locked_amount = DepositOnHold::<T>::take((operator_id, nominator_id.clone()));
 
             // convert any previous epoch deposits
-            do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;
+            match do_convert_previous_epoch_deposits::<T>(
+                operator_id,
+                &mut deposit,
+                current_domain_epoch_index,
+            ) {
+                // Share price may be missing if there is deposit happen in the same epoch as slash
+                Ok(()) | Err(TransitionError::MissingOperatorEpochSharePrice) => {}
+                Err(err) => return Err(err),
+            }
 
-            // there maybe some withdrawals that are initiated in this epoch where operator was slashed
+            // there maybe some withdrawals that are initiated in this epoch where operator was slash
             // then collect and include them to find the final stake amount
             let (
                 amount_ready_to_withdraw,
@@ -377,7 +389,15 @@ pub(crate) fn do_slash_operator<T: Config>(
                 shares_withdrew_in_current_epoch,
             ) = Withdrawals::<T>::take(operator_id, nominator_id.clone())
                 .map(|mut withdrawal| {
-                    do_convert_previous_epoch_withdrawal::<T>(operator_id, &mut withdrawal)?;
+                    match do_convert_previous_epoch_withdrawal::<T>(
+                        operator_id,
+                        &mut withdrawal,
+                        current_domain_epoch_index,
+                    ) {
+                        // Share price may be missing if there is withdrawal happen in the same epoch as slash
+                        Ok(()) | Err(TransitionError::MissingOperatorEpochSharePrice) => {}
+                        Err(err) => return Err(err),
+                    }
                     Ok((
                         withdrawal.total_withdrawal_amount,
                         withdrawal.total_storage_fee_withdrawal,
@@ -517,7 +537,7 @@ mod tests {
     use crate::staking::tests::{register_operator, Share};
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_reward_operators, do_unlock_nominator,
-        do_withdraw_stake, WithdrawStake,
+        do_withdraw_stake, Error as TransitionError, WithdrawStake,
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, operator_take_reward_tax_and_stake,
@@ -526,8 +546,8 @@ mod tests {
     use crate::{BalanceOf, Config, HoldIdentifier, NominatorId};
     #[cfg(not(feature = "std"))]
     use alloc::vec;
-    use frame_support::assert_ok;
     use frame_support::traits::fungible::InspectHold;
+    use frame_support::{assert_err, assert_ok};
     use sp_core::Pair;
     use sp_domains::{DomainId, OperatorPair, OperatorRewardSource};
     use sp_runtime::traits::Zero;
@@ -604,6 +624,20 @@ mod tests {
             // de-register operator
             let head_domain_number = HeadDomainNumber::<Test>::get(domain_id);
             do_deregister_operator::<Test>(operator_account, operator_id).unwrap();
+
+            // After de-register both deposit and withdraw will be rejected
+            assert_err!(
+                do_nominate_operator::<Test>(operator_id, operator_account, SSC),
+                TransitionError::OperatorNotRegistered
+            );
+            assert_err!(
+                do_withdraw_stake::<Test>(
+                    operator_id,
+                    operator_account,
+                    WithdrawStake::Percent(Percent::from_percent(10))
+                ),
+                TransitionError::OperatorNotRegistered
+            );
 
             // finalize and add to pending operator unlocks
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();

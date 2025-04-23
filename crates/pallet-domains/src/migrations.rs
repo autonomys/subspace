@@ -25,12 +25,16 @@ pub struct VersionUncheckedMigrateV3ToV4<T>(sp_std::marker::PhantomData<T>);
 impl<T: Config> UncheckedOnRuntimeUpgrade for VersionUncheckedMigrateV3ToV4<T> {
     fn on_runtime_upgrade() -> Weight {
         domain_balance_check_migration_migration::migrate_domain_balance_check::<T>()
+            .saturating_add(
+                domain_balance_check_migration_migration::migrate_domain_share_price_check::<T>(),
+            )
     }
 }
 
 mod domain_balance_check_migration_migration {
     use super::{BTreeSet, Config};
-    use crate::SkipBalanceChecks;
+    use crate::staking::DomainEpoch;
+    use crate::{AllowedDefaultSharePriceEpoch, DomainStakingSummary, SkipBalanceChecks};
     use frame_support::pallet_prelude::Weight;
     use sp_core::Get;
     use sp_domains::DomainId;
@@ -40,5 +44,17 @@ mod domain_balance_check_migration_migration {
         let list = BTreeSet::from([DomainId::new(0)]);
         SkipBalanceChecks::<T>::put(list);
         T::DbWeight::get().reads_writes(0, 1)
+    }
+
+    pub(super) fn migrate_domain_share_price_check<T: Config>() -> Weight {
+        // 1 read and 1 write
+        let domain_id = DomainId::new(0);
+        if let Some(staking_summary) = DomainStakingSummary::<T>::get(domain_id) {
+            AllowedDefaultSharePriceEpoch::<T>::put(DomainEpoch::from((
+                domain_id,
+                staking_summary.current_epoch_index,
+            )));
+        }
+        T::DbWeight::get().reads_writes(1, 1)
     }
 }
