@@ -394,7 +394,7 @@ pub(crate) fn do_slash_operator<T: Config>(
                         &mut withdrawal,
                         current_domain_epoch_index,
                     ) {
-                        // Share price may be missing if there is withdrawal happen in the same epoch as de-register
+                        // Share price may be missing if there is withdrawal happen in the same epoch as slash
                         Ok(()) | Err(TransitionError::MissingOperatorEpochSharePrice) => {}
                         Err(err) => return Err(err),
                     }

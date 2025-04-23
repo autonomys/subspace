@@ -473,6 +473,7 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
     let epoch_share_price = match deposit.pending {
         None => return Ok(()),
         Some(pending_deposit) => {
+            // TODO: remove after all zero-amount deposit are processed on Taurus
             // Due to https://github.com/autonomys/subspace/issues/3459 there may be zero-amount
             // deposit being accepted, in this case, we simply remove it from the state.
             if pending_deposit.amount.is_zero() && pending_deposit.storage_fee_deposit.is_zero() {
@@ -518,6 +519,7 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
     Ok(())
 }
 
+/// TODO: remove after migration are done on Taurus
 pub(crate) fn allowed_default_share_price<T: Config>(
     operator_id: OperatorId,
     domain_epoch_index: EpochIndex,
@@ -541,7 +543,14 @@ pub(crate) fn allowed_default_share_price<T: Config>(
 }
 
 /// Converts any epoch withdrawals into balance using the operator epoch share price.
-/// If there is no share price available, this will be no-op
+///
+/// If there is withdrawal happened in the current epoch (thus share price is unavailable),
+/// this will be no-op. If there is withdrawal happened in the previous epoch and the share
+/// price is unavailable, `MissingOperatorEpochSharePrice` error will be return.
+///
+/// NOTE: On Taurus, there may be share price missing unexpectly due to https://github.com/autonomys/subspace/issues/3459
+/// in order to convert these withdrawals and unlock them, we will use the current share price
+/// as default value.
 pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
     operator_id: OperatorId,
     withdrawal: &mut Withdrawal<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
@@ -550,6 +559,7 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
     let epoch_share_price = match withdrawal.withdrawal_in_shares.as_ref() {
         None => return Ok(()),
         Some(withdraw) => {
+            // TODO: remove after all zero-amount withdrawal are processed on Taurus
             // Due to https://github.com/autonomys/subspace/issues/3459 there may be zero-amount
             // withdrawal being accepted, in this case, we simply remove it from the state.
             if withdraw.shares.is_zero() && withdraw.storage_fee_refund.is_zero() {
