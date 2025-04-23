@@ -299,7 +299,6 @@ where
             {
                 self.client
                     .finalize_block(confirmed_domain_block.1, None, true)?;
-                tracing::debug!("🔒 Finalized block: {:?}", confirmed_domain_block);
             }
         }
         Ok(())
