@@ -285,7 +285,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     impl_name: Cow::Borrowed("subspace-evm-domain"),
     authoring_version: 0,
     // The spec version can be different on Taurus and Mainnet
-    spec_version: 0,
+    spec_version: 4,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
