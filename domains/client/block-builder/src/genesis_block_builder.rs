@@ -89,6 +89,7 @@ where
             match runtime_api.genesis_state_root(consensus_best_hash, domain_id)? {
                 Some(hash) => Some(hash.into()),
                 None => {
+                    // TODO: remove this once the taurus runtime is upgraded
                     // if network is taurus, then we may not have it on runtime before runtime is
                     // upgraded, so instead return the known domain-0's state root.
                     if consensus_client.info().genesis_hash

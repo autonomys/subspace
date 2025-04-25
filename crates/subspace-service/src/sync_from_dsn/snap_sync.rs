@@ -1,4 +1,4 @@
-use crate::mmr::sync::mmr_sync;
+use crate::mmr::sync::MmrSync;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::{PieceGetter, LOG_TARGET};
 use crate::utils::wait_for_block_import;
@@ -436,6 +436,25 @@ where
             .map_err(|error| format!("Failed to import first block of target segment: {error}"))?;
     }
 
+    // download and commit MMR data before importing next set of blocks
+    // since they are imported with block verification, and we need MMR data during the verification
+    let maybe_mmr_sync = if let Some(offchain_storage) = offchain_storage {
+        let mut mmr_sync = MmrSync::new(client.clone(), offchain_storage);
+        // We sync MMR up to the last block number. All other MMR-data will be synced after
+        // resuming either DSN-sync or Substrate-sync.
+        mmr_sync
+            .sync(
+                fork_id.map(|v| v.into()),
+                network_request,
+                sync_service.clone(),
+                last_block_number,
+            )
+            .await?;
+        Some(mmr_sync)
+    } else {
+        None
+    };
+
     debug!(
         target: LOG_TARGET,
         blocks_count = %blocks.len(),
@@ -469,20 +488,9 @@ where
     // TODO: Replace this hack with actual watching of block import
     wait_for_block_import(client.as_ref(), last_block_number.into()).await;
 
-    // We sync MMR up to the last block number. All other MMR-data will be synced after
-    // resuming either DSN-sync or Substrate-sync.
-    let mmr_target_block = last_block_number;
-
-    if let Some(offchain_storage) = offchain_storage {
-        mmr_sync(
-            fork_id.map(|v| v.into()),
-            client.clone(),
-            network_request,
-            sync_service.clone(),
-            offchain_storage,
-            mmr_target_block,
-        )
-        .await?;
+    // verify the MMR sync before finishing up the block import
+    if let Some(mmr_sync) = maybe_mmr_sync {
+        mmr_sync.verify_mmr_data()?;
     }
 
     debug!(target: LOG_TARGET, info = ?client.info(), "Snap sync finished successfully");
