@@ -560,6 +560,7 @@ where
             &self.client,
             domain_hash,
             consensus_block_hash,
+            true,
         )?;
 
         Ok(())

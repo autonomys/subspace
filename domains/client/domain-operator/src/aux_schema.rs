@@ -189,6 +189,7 @@ pub(super) fn track_domain_hash_and_consensus_hash<Client, Block, CBlock>(
     domain_client: &Arc<Client>,
     best_domain_hash: Block::Hash,
     latest_consensus_hash: CBlock::Hash,
+    cleanup: bool,
 ) -> ClientResult<()>
 where
     Client: HeaderBackend<Block> + AuxStore,
@@ -232,7 +233,11 @@ where
         vec![],
     )?;
 
-    cleanup_domain_hash_and_consensus_hash::<_, Block, CBlock>(domain_client)
+    if cleanup {
+        cleanup_domain_hash_and_consensus_hash::<_, Block, CBlock>(domain_client)?;
+    }
+
+    Ok(())
 }
 
 fn cleanup_domain_hash_and_consensus_hash<Client, Block, CBlock>(

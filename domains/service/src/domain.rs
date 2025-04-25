@@ -2,6 +2,7 @@ use crate::network::build_network;
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{FullBackend, FullClient};
 use cross_domain_message_gossip::ChainMsg;
+use domain_block_builder::CustomGenesisBlockBuilder;
 use domain_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_client_operator::snap_sync::ConsensusChainSyncParams;
@@ -11,7 +12,6 @@ use domain_runtime_primitives::{Balance, Hash};
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
-use sc_chain_spec::GenesisBlockBuilder;
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ExecutorProvider,
     ProofProvider,
@@ -125,6 +125,7 @@ pub type FullPool<RuntimeApi> =
 #[allow(clippy::type_complexity)]
 #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
+    domain_id: DomainId,
     config: &ServiceConfiguration,
     consensus_client: Arc<CClient>,
     domain_backend: Arc<FullBackend<Block>>,
@@ -179,7 +180,9 @@ where
 
     let executor = sc_service::new_wasm_executor(&config.executor);
 
-    let genesis_block_builder = GenesisBlockBuilder::new(
+    let genesis_block_builder = CustomGenesisBlockBuilder::<_, CBlock, _, _, _>::new(
+        domain_id,
+        consensus_client.clone(),
         config.chain_spec.as_storage_builder(),
         !snap_sync,
         domain_backend.clone(),
@@ -371,6 +374,7 @@ where
     // domain_config.announce_block = false;
 
     let params = new_partial(
+        domain_id,
         &domain_config,
         consensus_client.clone(),
         domain_backend,
