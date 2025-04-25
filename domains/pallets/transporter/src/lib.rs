@@ -40,6 +40,7 @@ use scale_info::TypeInfo;
 use sp_domains::{DomainId, DomainsTransfersTracker, Transfers};
 use sp_messenger::endpoint::EndpointResponse;
 use sp_messenger::messages::ChainId;
+use sp_messenger::NoteChainTransfer;
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Get};
 use sp_std::vec;
 
@@ -559,6 +560,30 @@ impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> 
                 .ok_or(Error::LowBalanceOnDomain)?;
             Ok(())
         })
+    }
+}
+
+impl<T: Config> NoteChainTransfer<BalanceOf<T>> for Pallet<T> {
+    fn note_transfer_in(amount: BalanceOf<T>, from_chain_id: ChainId) -> bool {
+        if T::SelfChainId::get().is_consensus_chain() {
+            Pallet::<T>::confirm_transfer(from_chain_id, T::SelfChainId::get(), amount).is_ok()
+        } else {
+            ChainTransfers::<T>::try_mutate(|transfers| {
+                Pallet::<T>::update_transfer_in(transfers, from_chain_id, amount)
+            })
+            .is_ok()
+        }
+    }
+
+    fn note_transfer_out(amount: BalanceOf<T>, to_chain_id: ChainId) -> bool {
+        if T::SelfChainId::get().is_consensus_chain() {
+            Self::note_transfer(T::SelfChainId::get(), to_chain_id, amount).is_ok()
+        } else {
+            ChainTransfers::<T>::try_mutate(|transfers| {
+                Self::update_transfer_out(transfers, to_chain_id, amount)
+            })
+            .is_ok()
+        }
     }
 }
 

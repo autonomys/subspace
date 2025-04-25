@@ -126,6 +126,11 @@ impl<T: Config> Pallet<T> {
                         (dst_chain_id, (channel_id, nonce)),
                         collected_fee.dst_chain_fee,
                     );
+
+                    // Note `dst_chain_fee` as transfer in
+                    if !T::NoteChainTransfer::note_transfer_in(collected_fee.dst_chain_fee, dst_chain_id) {
+                        return Err(Error::<T>::FailedToNoteTransferIn.into());
+                    }
                 } else {
                     // for v0, use the weight to fee conversion to calculate the fee
                     // and store the fee

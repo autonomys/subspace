@@ -184,8 +184,8 @@ mod pallet {
         ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
-        ChannelNonce, DomainRegistration, InherentError, InherentType, OnXDMRewards, StorageKeys,
-        INHERENT_IDENTIFIER,
+        ChannelNonce, DomainRegistration, InherentError, InherentType, NoteChainTransfer,
+        OnXDMRewards, StorageKeys, INHERENT_IDENTIFIER,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{ArithmeticError, Perbill, Saturating};
@@ -251,6 +251,8 @@ mod pallet {
         /// Message version to use.
         #[pallet::constant]
         type MessageVersion: Get<crate::MessageVersion>;
+        /// Helper to note cross chain XDM fee transfer
+        type NoteChainTransfer: NoteChainTransfer<BalanceOf<Self>>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -542,6 +544,12 @@ mod pallet {
 
         /// Incorrect message version
         MessageVersionMismatch,
+
+        /// Failed to note transfer in
+        FailedToNoteTransferIn,
+
+        /// Failed to note transfer out
+        FailedToNoteTransferOut,
     }
 
     #[pallet::call]
@@ -866,6 +874,7 @@ mod pallet {
                     // collect the fees from the sender
                     let collected_fee = Self::collect_fees_for_message_v1(sender, &src_endpoint)?;
                     let src_chain_fee = collected_fee.src_chain_fee;
+                    let dst_chain_fee = collected_fee.dst_chain_fee;
                     let nonce = Self::new_outbox_message(
                         T::SelfChainId::get(),
                         dst_chain_id,
@@ -878,6 +887,10 @@ mod pallet {
                     // store src_chain, this chain, fee to OutboxFee
                     let message_id = (channel_id, nonce);
                     OutboxFee::<T>::insert((dst_chain_id, message_id), src_chain_fee);
+                    // Note `dst_chain_fee` as transfer out
+                    if !T::NoteChainTransfer::note_transfer_out(dst_chain_fee, dst_chain_id) {
+                        return Err(Error::<T>::FailedToNoteTransferOut.into());
+                    }
                     message_id
                 }
             };

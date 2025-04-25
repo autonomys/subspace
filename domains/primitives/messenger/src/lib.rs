@@ -58,6 +58,21 @@ pub trait OnXDMRewards<Balance> {
     fn on_chain_protocol_fees(chain_id: ChainId, fees: Balance);
 }
 
+/// Trait to note cross chain transfer
+pub trait NoteChainTransfer<Balance> {
+    fn note_transfer_in(amount: Balance, from_chain_id: ChainId) -> bool;
+    fn note_transfer_out(amount: Balance, to_chain_id: ChainId) -> bool;
+}
+
+impl<Balance> NoteChainTransfer<Balance> for () {
+    fn note_transfer_in(_amount: Balance, _from_chain_id: ChainId) -> bool {
+        true
+    }
+    fn note_transfer_out(_amount: Balance, _to_chain_id: ChainId) -> bool {
+        true
+    }
+}
+
 impl<Balance> OnXDMRewards<Balance> for () {
     fn on_xdm_rewards(_: Balance) {}
 

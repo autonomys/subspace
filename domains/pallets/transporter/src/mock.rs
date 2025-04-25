@@ -119,6 +119,7 @@ impl pallet_messenger::Config for MockRuntime {
         frame_support::weights::ConstantMultiplier<u64, TransactionWeightFee>;
     type FeeMultiplier = FeeMultiplier;
     type MessageVersion = MessageVersion;
+    type NoteChainTransfer = Transporter;
 }
 
 #[derive(Debug)]

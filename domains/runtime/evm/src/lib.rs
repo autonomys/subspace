@@ -594,6 +594,7 @@ impl pallet_messenger::Config for Runtime {
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
     type MessageVersion = MessageVersion;
+    type NoteChainTransfer = Transporter;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
