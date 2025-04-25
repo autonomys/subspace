@@ -2,8 +2,8 @@
 extern crate alloc;
 
 use crate::pallet::{
-    ChainAllowlist, InboxFee, InboxResponseMessageWeightTags, OutboxMessageCount,
-    OutboxMessageWeightTags, UpdatedChannels,
+    ChainAllowlist, InboxResponseMessageWeightTags, OutboxMessageCount, OutboxMessageWeightTags,
+    UpdatedChannels,
 };
 use crate::{
     BalanceOf, ChannelId, ChannelState, Channels, CloseChannelBy, Config, Error, Event,
@@ -122,15 +122,11 @@ impl<T: Config> Pallet<T> {
                 if let Some(collected_fee) = maybe_collected_fee {
                     // since v1 collects fee on behalf of dst_chain, this chain,
                     // so we do not recalculate the fee but instead use the collected fee as is
-                    InboxFee::<T>::insert(
-                        (dst_chain_id, (channel_id, nonce)),
+                    Self::store_inbox_fee(
+                        dst_chain_id,
+                        (channel_id, nonce),
                         collected_fee.dst_chain_fee,
-                    );
-
-                    // Note `dst_chain_fee` as transfer in
-                    if !T::NoteChainTransfer::note_transfer_in(collected_fee.dst_chain_fee, dst_chain_id) {
-                        return Err(Error::<T>::FailedToNoteTransferIn.into());
-                    }
+                    )?;
                 } else {
                     // for v0, use the weight to fee conversion to calculate the fee
                     // and store the fee
@@ -366,7 +362,7 @@ impl<T: Config> Pallet<T> {
             ) => {
                 // Firstly, distribute the fees for outbox message execution regardless what the result is,
                 // since the fee is already charged from the sender and the processing of the XDM is finished.
-                Self::reward_operators_for_outbox_execution(dst_chain_id, (channel_id, nonce));
+                Self::reward_operators_for_outbox_execution(dst_chain_id, (channel_id, nonce))?;
 
                 if let Some(endpoint_handler) = T::get_endpoint_handler(&req.dst_endpoint) {
                     Self::process_incoming_endpoint_message_response(

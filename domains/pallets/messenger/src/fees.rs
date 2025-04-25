@@ -1,17 +1,17 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
-use crate::pallet::{InboxFee, InboxResponses, OutboxFee};
+use crate::pallet::{InboxFee, InboxFeesOnHold, InboxResponses, OutboxFee, OutboxFeesOnHold};
 use crate::{BalanceOf, Config, Error, Pallet};
 #[cfg(not(feature = "std"))]
 use alloc::vec;
-use frame_support::traits::fungible::Mutate;
+use frame_support::traits::fungible::{Balanced, Mutate};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::weights::WeightToFee;
 use sp_core::Get;
 use sp_messenger::endpoint::{CollectedFee, Endpoint};
 use sp_messenger::messages::{ChainId, ChannelId, FeeModel, MessageId, Nonce};
 use sp_messenger::OnXDMRewards;
-use sp_runtime::traits::{CheckedAdd, CheckedMul, Zero};
+use sp_runtime::traits::{CheckedAdd, CheckedMul, CheckedSub, Zero};
 use sp_runtime::{DispatchError, DispatchResult, Saturating};
 #[cfg(feature = "std")]
 use std::vec;
@@ -161,6 +161,17 @@ impl<T: Config> Pallet<T> {
         }
 
         if !inbox_fees.is_zero() {
+            InboxFeesOnHold::<T>::mutate(|inbox_fees_on_hold| {
+                *inbox_fees_on_hold = inbox_fees_on_hold
+                    .checked_sub(&inbox_fees)
+                    .ok_or(Error::<T>::BalanceUnderflow)?;
+
+                let imbalance = T::Currency::rescind(inbox_fees);
+                core::mem::forget(imbalance);
+
+                Ok::<(), Error<T>>(())
+            })?;
+
             Self::reward_operators(inbox_fees);
         }
 
@@ -174,10 +185,22 @@ impl<T: Config> Pallet<T> {
     pub(crate) fn reward_operators_for_outbox_execution(
         dst_chain_id: ChainId,
         message_id: MessageId,
-    ) {
+    ) -> DispatchResult {
         if let Some(fee) = OutboxFee::<T>::take((dst_chain_id, message_id)) {
+            OutboxFeesOnHold::<T>::mutate(|outbox_fees_on_hold| {
+                *outbox_fees_on_hold = outbox_fees_on_hold
+                    .checked_sub(&fee)
+                    .ok_or(Error::<T>::BalanceUnderflow)?;
+
+                let imbalance = T::Currency::rescind(fee);
+                core::mem::forget(imbalance);
+
+                Ok::<(), Error<T>>(())
+            })?;
+
             Self::reward_operators(fee);
         }
+        Ok(())
     }
 
     /// Increments the current block's relayer rewards.
