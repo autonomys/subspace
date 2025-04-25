@@ -118,8 +118,9 @@ use subspace_runtime_primitives::utility::{
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, ConsensusEventSegmentSize, FindBlockRewardAddress, Hash,
-    HoldIdentifier, Moment, Nonce, Signature, XdmAdjustedWeightToFee, XdmFeeMultipler,
-    MAX_BLOCK_LENGTH, MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR, SHANNON, SSC,
+    HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, TargetBlockFullness,
+    XdmAdjustedWeightToFee, XdmFeeMultipler, MAX_BLOCK_LENGTH, MAX_CALL_RECURSION_DEPTH,
+    MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 
@@ -542,7 +543,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
-    type FeeMultiplierUpdate = ();
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime, TargetBlockFullness>;
     type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
 
@@ -1808,6 +1809,10 @@ impl_runtime_apis! {
 
         fn verify_proof_and_extract_leaf(mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, <Block as BlockT>::Hash, H256>) -> Option<mmr::Leaf> {
             <MmrProofVerifier as sp_subspace_mmr::MmrProofVerifier<_, _, _,>>::verify_proof_and_extract_leaf(mmr_leaf_proof)
+        }
+
+        fn domain_balance(domain_id: DomainId) -> Balance {
+            Transporter::domain_balances(domain_id)
         }
     }
 

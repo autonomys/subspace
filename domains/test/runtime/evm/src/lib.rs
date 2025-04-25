@@ -1726,6 +1726,10 @@ impl_runtime_apis! {
             TryInto::<[u8; 32]>::try_into(root)
                 .expect("root is a SCALE encoded hash which uses H256; qed")
         }
+
+        fn total_issuance() -> Balance {
+            Balances::total_issuance()
+        }
     }
 
     impl domain_test_primitives::EvmOnchainStateApi<Block> for Runtime {

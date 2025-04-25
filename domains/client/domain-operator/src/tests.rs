@@ -75,7 +75,7 @@ use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::{Balance, SSC};
-use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
+use subspace_test_primitives::{OnchainStateApi as _, DOMAINS_BLOCK_PRUNING_DEPTH};
 use subspace_test_runtime::Runtime;
 use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockConsensusNode,
@@ -8424,6 +8424,112 @@ async fn test_invalid_chain_reward_receipt() {
         assert_eq!(alice.client.info().best_number, post_domain_best_number);
 
         assert!(ferdie.does_receipt_exist(first_bad_receipt_hash).unwrap());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_domain_total_issuance_match_consensus_chain_bookkeeping_with_xdm() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
+
+    for i in 0..10 {
+        let transfer_amount = 123456789987654321 * i;
+        let domain_to_consensus = i % 2 == 0;
+
+        // Transfer balance from
+        let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+        let pre_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+
+        if domain_to_consensus {
+            alice
+                .construct_and_send_extrinsic(pallet_transporter::Call::transfer {
+                    dst_location: pallet_transporter::Location {
+                        chain_id: ChainId::Consensus,
+                        account_id: AccountIdConverter::convert(Sr25519Alice.into()),
+                    },
+                    amount: transfer_amount,
+                })
+                .await
+                .expect("Failed to construct and send extrinsic");
+        } else {
+            ferdie
+                .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
+                    dst_location: pallet_transporter::Location {
+                        chain_id: ChainId::Domain(EVM_DOMAIN_ID),
+                        account_id: AccountId20Converter::convert(Alice.to_account_id()),
+                    },
+                    amount: transfer_amount,
+                })
+                .await
+                .expect("Failed to construct and send extrinsic");
+        }
+
+        // Wait until transfer succeed
+        produce_blocks_until!(ferdie, alice, {
+            let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+            let post_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+
+            if domain_to_consensus {
+                post_alice_free_balance <= pre_alice_free_balance - transfer_amount
+                    && post_ferdie_free_balance == pre_ferdie_free_balance + transfer_amount
+            } else {
+                post_ferdie_free_balance <= pre_ferdie_free_balance - transfer_amount
+                    && post_alice_free_balance == pre_alice_free_balance + transfer_amount
+            }
+        })
+        .await
+        .unwrap();
+
+        let ferdie_best_hash = ferdie.client.info().best_hash;
+        let (_, confirmed_domain_hash) = ferdie
+            .client
+            .runtime_api()
+            .latest_confirmed_domain_block(ferdie_best_hash, EVM_DOMAIN_ID)
+            .unwrap()
+            .unwrap();
+        let domain_total_balance = ferdie
+            .client
+            .runtime_api()
+            .domain_balance(ferdie_best_hash, EVM_DOMAIN_ID)
+            .unwrap();
+        let domain_total_issuance = alice
+            .client
+            .runtime_api()
+            .total_issuance(confirmed_domain_hash)
+            .unwrap();
+        assert_eq!(domain_total_balance, domain_total_issuance);
+
+        ferdie.clear_tx_pool().await.unwrap();
+        alice.clear_tx_pool().await;
+        produce_blocks!(ferdie, alice, 5).await.unwrap();
     }
 }
 
