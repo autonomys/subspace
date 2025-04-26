@@ -501,6 +501,9 @@ where
         consensus_block_hash: CBlock::Hash,
         domain_block_result: Option<DomainBlockResult<Block, CBlock>>,
     ) -> sp_blockchain::Result<()> {
+        //clean up aux storage when domain imports a new block
+        let cleanup = domain_block_result.is_some();
+
         let domain_hash = match domain_block_result {
             Some(DomainBlockResult {
                 header_hash,
@@ -560,7 +563,7 @@ where
             &self.client,
             domain_hash,
             consensus_block_hash,
-            true,
+            cleanup,
         )?;
 
         Ok(())

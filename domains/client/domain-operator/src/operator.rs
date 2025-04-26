@@ -6,7 +6,7 @@ use crate::domain_bundle_producer::{
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::snap_sync::{snap_sync, SyncParams, LOG_TARGET};
-use crate::{DomainImportNotifications, NewSlotNotification, OperatorParams};
+use crate::{NewSlotNotification, OperatorParams};
 use futures::channel::mpsc;
 use futures::future::pending;
 use futures::{FutureExt, SinkExt, Stream, StreamExt};
@@ -15,7 +15,6 @@ use sc_client_api::{
     ProofProvider,
 };
 use sc_consensus::BlockImport;
-use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
@@ -337,25 +336,6 @@ where
             domain_block_processor,
             keystore: params.keystore,
         })
-    }
-
-    pub fn fraud_proof_generator(
-        &self,
-    ) -> FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E> {
-        self.fraud_proof_generator.clone()
-    }
-
-    /// Get system domain block import notification stream.
-    ///
-    /// NOTE: Unlike `BlockchainEvents::import_notification_stream()`, this notification won't be
-    /// fired until the system domain block's receipt processing is done.
-    pub fn import_notification_stream(&self) -> DomainImportNotifications<Block, CBlock> {
-        let (sink, stream) = tracing_unbounded("mpsc_domain_import_notification_stream", 100);
-        self.domain_block_processor
-            .import_notification_sinks
-            .lock()
-            .push(sink);
-        stream
     }
 
     /// Processes the bundles extracted from the consensus block.
