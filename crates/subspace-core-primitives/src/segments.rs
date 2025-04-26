@@ -353,7 +353,7 @@ impl LastArchivedBlock {
     }
 
     /// Sets new number of partially archived bytes.
-    pub fn set_partial_archived(&mut self, new_partial: BlockNumber) {
+    pub fn set_partial_archived(&mut self, new_partial: u32) {
         self.archived_progress.set_partial(new_partial);
     }
 
