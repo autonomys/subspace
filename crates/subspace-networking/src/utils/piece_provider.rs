@@ -151,15 +151,14 @@ where
             .inspect_err(|err| warn!(%piece_index,?key, ?err, "get_providers returned an error"))
             .ok()?;
 
+        let key = hex::encode(&key);
         while let Some(provider_id) = get_providers_stream.next().await {
-            trace!(
-                %piece_index,
-                key = hex::encode(&key),
-                %provider_id,
-                "get_providers returned an item"
-            );
+            trace!(%piece_index, key, %provider_id, "get_providers returned an item");
 
-            let request_result = request_batch
+            let Ok(PieceByIndexResponse {
+                piece,
+                cached_pieces: _,
+            }) = request_batch
                 .send_generic_request(
                     provider_id,
                     Vec::new(),
@@ -168,45 +167,23 @@ where
                         cached_pieces: Arc::default(),
                     },
                 )
-                .await;
+                .await
+                .inspect_err(
+                    |error| debug!(%piece_index, key, %provider_id, ?error, "Piece request failed"),
+                )
+            else {
+                continue;
+            };
 
-            match request_result {
-                Ok(PieceByIndexResponse {
-                    piece: Some(piece),
-                    cached_pieces: _,
-                }) => {
-                    trace!(
-                        %piece_index,
-                        key = hex::encode(&key),
-                        %provider_id,
-                        "Piece request succeeded"
-                    );
+            if let Some(piece) = piece {
+                trace!(%piece_index, key, %provider_id, "Piece request succeeded");
 
-                    return self
-                        .piece_validator
-                        .validate_piece(provider_id, piece_index, piece)
-                        .await;
-                }
-                Ok(PieceByIndexResponse {
-                    piece: None,
-                    cached_pieces: _,
-                }) => {
-                    debug!(
-                        %piece_index,
-                        key = hex::encode(&key),
-                        %provider_id,
-                        "Piece request returned empty piece"
-                    );
-                }
-                Err(error) => {
-                    debug!(
-                        %piece_index,
-                        key = hex::encode(&key),
-                        %provider_id,
-                        ?error,
-                        "Piece request failed"
-                    );
-                }
+                return self
+                    .piece_validator
+                    .validate_piece(provider_id, piece_index, piece)
+                    .await;
+            } else {
+                debug!(%piece_index, key, %provider_id, "Piece request returned empty piece");
             }
         }
 
@@ -220,7 +197,10 @@ where
         piece_index: PieceIndex,
     ) -> Option<Piece> {
         // TODO: Take advantage of `cached_pieces`
-        let request_result = self
+        let PieceByIndexResponse {
+            piece,
+            cached_pieces: _,
+        } = self
             .node
             .send_generic_request(
                 peer_id,
@@ -230,29 +210,19 @@ where
                     cached_pieces: Arc::default(),
                 },
             )
-            .await;
+            .await
+            .inspect_err(|error| debug!(%peer_id, %piece_index, ?error, "Piece request failed"))
+            .ok()?;
 
-        match request_result {
-            Ok(PieceByIndexResponse {
-                piece: Some(piece),
-                cached_pieces: _,
-            }) => {
-                trace!(%peer_id, %piece_index, "Piece request succeeded");
+        if let Some(piece) = piece {
+            trace!(%peer_id, %piece_index, "Piece request succeeded");
 
-                return self
-                    .piece_validator
-                    .validate_piece(peer_id, piece_index, piece)
-                    .await;
-            }
-            Ok(PieceByIndexResponse {
-                piece: None,
-                cached_pieces: _,
-            }) => {
-                debug!(%peer_id, %piece_index, "Piece request returned empty piece");
-            }
-            Err(error) => {
-                debug!(%peer_id, %piece_index, ?error, "Piece request failed");
-            }
+            return self
+                .piece_validator
+                .validate_piece(peer_id, piece_index, piece)
+                .await;
+        } else {
+            debug!(%peer_id, %piece_index, "Piece request returned empty piece");
         }
 
         None
@@ -360,7 +330,10 @@ where
         while let Some(peer_id) = get_closest_peers_stream.next().await {
             trace!(%piece_index, %peer_id, %round, "get_closest_peers returned an item");
 
-            let request_result = request_batch
+            let Ok(PieceByIndexResponse {
+                piece,
+                cached_pieces: _,
+            }) = request_batch
                 .send_generic_request(
                     peer_id,
                     Vec::new(),
@@ -369,29 +342,23 @@ where
                         cached_pieces: Arc::default(),
                     },
                 )
-                .await;
+                .await
+                .inspect_err(
+                    |error| debug!(%peer_id, %piece_index, ?key, %round, ?error, "Piece request failed."),
+                )
+            else {
+                continue;
+            };
 
-            match request_result {
-                Ok(PieceByIndexResponse {
-                    piece: Some(piece),
-                    cached_pieces: _,
-                }) => {
-                    trace!(%peer_id, %piece_index, ?key, %round,  "Piece request succeeded.");
+            if let Some(piece) = piece {
+                trace!(%peer_id, %piece_index, ?key, %round,  "Piece request succeeded.");
 
-                    return self
-                        .piece_validator
-                        .validate_piece(peer_id, piece_index, piece)
-                        .await;
-                }
-                Ok(PieceByIndexResponse {
-                    piece: None,
-                    cached_pieces: _,
-                }) => {
-                    debug!(%peer_id, %piece_index, ?key, %round, "Piece request returned empty piece.");
-                }
-                Err(error) => {
-                    debug!(%peer_id, %piece_index, ?key, %round, ?error, "Piece request failed.");
-                }
+                return self
+                    .piece_validator
+                    .validate_piece(peer_id, piece_index, piece)
+                    .await;
+            } else {
+                debug!(%peer_id, %piece_index, ?key, %round, "Piece request returned empty piece.");
             }
         }
 
