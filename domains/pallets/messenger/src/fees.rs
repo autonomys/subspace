@@ -166,6 +166,8 @@ impl<T: Config> Pallet<T> {
                     .checked_sub(&inbox_fees)
                     .ok_or(Error::<T>::BalanceUnderflow)?;
 
+                // If the `imbalance` is dropped without consuming it will increase the total issuance by
+                // the same amount as we rescinded here, thus we need to manually `mem::forget` it.
                 let imbalance = T::Currency::rescind(inbox_fees);
                 core::mem::forget(imbalance);
 
@@ -192,6 +194,8 @@ impl<T: Config> Pallet<T> {
                     .checked_sub(&fee)
                     .ok_or(Error::<T>::BalanceUnderflow)?;
 
+                // If the `imbalance` is dropped without consuming it will increase the total issuance by
+                // the same amount as we rescinded here, thus we need to manually `mem::forget` it.
                 let imbalance = T::Currency::rescind(fee);
                 core::mem::forget(imbalance);
 

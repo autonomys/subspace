@@ -1481,6 +1481,8 @@ mod pallet {
                     .checked_add(&inbox_fees)
                     .ok_or(Error::<T>::BalanceOverflow)?;
 
+                // If the `imbalance` is dropped without consuming it will reduce the total issuance by
+                // the same amount as we issued here, thus we need to manually `mem::forget` it.
                 let imbalance = T::Currency::issue(inbox_fees);
                 core::mem::forget(imbalance);
 
@@ -1508,6 +1510,8 @@ mod pallet {
                     .checked_add(&outbox_fees)
                     .ok_or(Error::<T>::BalanceOverflow)?;
 
+                // If the `imbalance` is dropped without consuming it will reduce the total issuance by
+                // the same amount as we issued here, thus we need to manually `mem::forget` it.
                 let imbalance = T::Currency::issue(outbox_fees);
                 core::mem::forget(imbalance);
 
