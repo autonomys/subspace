@@ -5,10 +5,10 @@ extern crate alloc;
 
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, Config, ConsensusBlockHash,
-    DomainBlockNumberFor, DomainHashingFor, DomainRuntimeUpgradeRecords, ExecutionInbox,
-    ExecutionReceiptOf, HeadDomainNumber, HeadReceiptNumber, InboxedBundleAuthor,
-    LatestConfirmedDomainExecutionReceipt, LatestSubmittedER, NewAddedHeadReceipt, Pallet,
-    ReceiptHashFor, SkipBalanceChecks,
+    DomainBlockNumberFor, DomainGenesisBlockExecutionReceipt, DomainHashingFor,
+    DomainRuntimeUpgradeRecords, ExecutionInbox, ExecutionReceiptOf, HeadDomainNumber,
+    HeadReceiptNumber, InboxedBundleAuthor, LatestConfirmedDomainExecutionReceipt,
+    LatestSubmittedER, NewAddedHeadReceipt, Pallet, ReceiptHashFor, SkipBalanceChecks,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -583,6 +583,7 @@ pub(crate) fn import_genesis_receipt<T: Config>(
     let domain_block_number = genesis_receipt.domain_block_number;
 
     LatestConfirmedDomainExecutionReceipt::<T>::insert(domain_id, genesis_receipt.clone());
+    DomainGenesisBlockExecutionReceipt::<T>::insert(domain_id, genesis_receipt.clone());
 
     let block_tree_node = BlockTreeNode {
         execution_receipt: genesis_receipt,

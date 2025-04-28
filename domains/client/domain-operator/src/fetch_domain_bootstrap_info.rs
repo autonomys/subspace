@@ -3,8 +3,8 @@ use sc_client_api::backend::Backend;
 use sc_client_api::{BlockchainEvents, ImportNotifications};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, DomainInstanceData, DomainsApi, DomainsDigestItem};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, Zero};
+use sp_domains::{DomainId, DomainInstanceData, DomainsApi};
+use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 
 #[derive(Debug)]
 pub struct BootstrapResult<CBlock: BlockT> {
@@ -90,33 +90,19 @@ where
     }
 
     // Check each imported consensus block to get the domain instance data
-    let (domain_instance_data, domain_created_at) = 'outer: loop {
-        if let Some(block_imported) = imported_block_notification_stream.next().await {
-            let header = block_imported.header;
-            for item in header.digest().logs.iter() {
-                if let Some(domain_id) = item.as_domain_instantiation() {
-                    if domain_id == self_domain_id {
-                        let res = consensus_client
-                            .runtime_api()
-                            .domain_instance_data(header.hash(), domain_id)?;
-
-                        match res {
-                            Some(data) => break 'outer data,
-                            None => {
-                                return Err(format!(
-                                    "Failed to get domain instance data for domain {domain_id:?}"
-                                )
-                                .into())
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
+    let (domain_instance_data, domain_created_at) = loop {
+        let Some(block_imported) = imported_block_notification_stream.next().await else {
             return Err("Imported block notification stream end unexpectedly"
                 .to_string()
                 .into());
-        }
+        };
+        let Some(data) = consensus_client
+            .runtime_api()
+            .domain_instance_data(block_imported.hash, self_domain_id)?
+        else {
+            continue;
+        };
+        break data;
     };
 
     Ok(BootstrapResult {

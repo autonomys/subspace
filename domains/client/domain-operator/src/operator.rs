@@ -5,8 +5,8 @@ use crate::domain_bundle_producer::{
 };
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
-use crate::snap_sync::{snap_sync, SyncParams};
-use crate::{DomainImportNotifications, NewSlotNotification, OperatorParams};
+use crate::snap_sync::{snap_sync, SyncParams, LOG_TARGET};
+use crate::{NewSlotNotification, OperatorParams};
 use futures::channel::mpsc;
 use futures::future::pending;
 use futures::{FutureExt, SinkExt, Stream, StreamExt};
@@ -15,7 +15,6 @@ use sc_client_api::{
     ProofProvider,
 };
 use sc_consensus::BlockImport;
-use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
@@ -208,10 +207,10 @@ where
             params.consensus_confirmation_depth_k,
         );
 
-        let snap_sync_orchestrator = params
+        let target_block_number = params
             .consensus_chain_sync_params
             .as_ref()
-            .map(|p| p.snap_sync_orchestrator.clone());
+            .map(|p| p.last_domain_block_er.consensus_block_number);
 
         let sync_params = params
             .consensus_chain_sync_params
@@ -233,25 +232,25 @@ where
                     // TODO: Support snap sync from any state once
                     //  https://github.com/paritytech/polkadot-sdk/issues/5366 is resolved
                     if info.best_hash == info.genesis_hash {
-                        info!("Starting domain snap sync...");
+                        info!(target: LOG_TARGET, "Starting domain snap sync...");
 
                         let result = snap_sync(sync_params).await;
 
                         match result {
                             Ok(_) => {
-                                info!("Domain snap sync completed.");
+                                info!(target: LOG_TARGET, "Domain snap sync completed.");
                             }
                             Err(err) => {
-                                error!(%err, "Domain snap sync failed.");
-                                info!("Wipe the DB and restart the application with --sync=full.");
+                                error!(target: LOG_TARGET, %err, "Domain snap sync failed.");
+                                info!(target: LOG_TARGET, "Wipe the DB and restart the application with --sync=full.");
 
                                 // essential task failed
                                 return;
                             }
                         };
                     } else {
-                        error!("Snap sync can only work with genesis state.");
-                        info!("Wipe the DB and restart the application with --sync=full.");
+                        error!(target: LOG_TARGET, "Snap sync can only work with genesis state.");
+                        info!(target: LOG_TARGET, "Wipe the DB and restart the application with --sync=full.");
 
                         // essential task failed
                         return;
@@ -271,18 +270,7 @@ where
             let bundle_processor = bundle_processor.clone();
             async move {
                 // Wait for the target block to import if we are snap syncing
-                if let Some(ref snap_sync_orchestrator) = snap_sync_orchestrator {
-                    let mut target_block_receiver =
-                        snap_sync_orchestrator.consensus_snap_sync_target_block_receiver();
-
-                    let target_block_number = match target_block_receiver.recv().await {
-                        Ok(target_block) => target_block,
-                        Err(err) => {
-                            error!(?err, "Snap sync failed: can't obtain target block.");
-                            return Err(());
-                        }
-                    };
-
+                if let Some(target_block_number) = target_block_number {
                     // Wait for Subspace block importing notifications
                     let block_importing_notification_stream =
                         &mut params.operator_streams.block_importing_notification_stream;
@@ -296,7 +284,7 @@ where
                             return Err(());
                         }
 
-                        if block_number >= target_block_number.into() {
+                        if block_number >= target_block_number {
                             break;
                         }
                     }
@@ -311,7 +299,7 @@ where
                         let block_number = *import_notification.header.number();
                         trace!(%block_number, "Block imported from consensus chain.");
 
-                        if block_number >= target_block_number.into() {
+                        if block_number >= target_block_number {
                             break;
                         }
                     }
@@ -348,25 +336,6 @@ where
             domain_block_processor,
             keystore: params.keystore,
         })
-    }
-
-    pub fn fraud_proof_generator(
-        &self,
-    ) -> FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E> {
-        self.fraud_proof_generator.clone()
-    }
-
-    /// Get system domain block import notification stream.
-    ///
-    /// NOTE: Unlike `BlockchainEvents::import_notification_stream()`, this notification won't be
-    /// fired until the system domain block's receipt processing is done.
-    pub fn import_notification_stream(&self) -> DomainImportNotifications<Block, CBlock> {
-        let (sink, stream) = tracing_unbounded("mpsc_domain_import_notification_stream", 100);
-        self.domain_block_processor
-            .import_notification_sinks
-            .lock()
-            .push(sink);
-        stream
     }
 
     /// Processes the bundles extracted from the consensus block.

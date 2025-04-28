@@ -15,11 +15,15 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 parity-scale-codec = { workspace = true, features = ["derive"] }
 hash-db.workspace = true
+hexlit.workspace = true
+sc-chain-spec.workspace = true
 sc-client-api.workspace = true
+sc-executor.workspace = true
 sp-api.workspace = true
 sp-blockchain.workspace = true
 sp-block-builder = { workspace = true, features = ["std"] }
 sp-core.workspace = true
+sp-domains = { workspace = true, features = ["std"] }
 sp-externalities.workspace = true
 sp-inherents.workspace = true
 sp-runtime.workspace = true

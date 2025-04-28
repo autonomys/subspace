@@ -1,5 +1,5 @@
 use parking_lot::Mutex;
-use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
+use sc_utils::mpsc::TracingUnboundedSender;
 use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
@@ -29,9 +29,6 @@ where
 
 pub type DomainImportNotificationSinks<Block, CBlock> =
     Arc<Mutex<Vec<TracingUnboundedSender<DomainBlockImportNotification<Block, CBlock>>>>>;
-
-pub type DomainImportNotifications<Block, CBlock> =
-    TracingUnboundedReceiver<DomainBlockImportNotification<Block, CBlock>>;
 
 #[derive(Clone, Debug)]
 pub struct DomainBlockImportNotification<Block: BlockT, CBlock: BlockT> {

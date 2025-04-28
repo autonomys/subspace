@@ -28,9 +28,11 @@
 #![feature(let_chains)]
 
 mod custom_api;
+mod genesis_block_builder;
 
 use crate::custom_api::{TrieBackendApi, TrieDeltaBackendFor};
 pub use custom_api::{create_delta_backend, CollectedStorageChanges, DeltaBackend};
+pub use genesis_block_builder::CustomGenesisBlockBuilder;
 use parity_scale_codec::Encode;
 use sc_client_api::{backend, ExecutorProvider};
 use sp_api::{ProvideRuntimeApi, TransactionOutcome};

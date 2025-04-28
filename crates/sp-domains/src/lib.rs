@@ -1708,7 +1708,7 @@ sp_api::decl_runtime_apis! {
         /// Returns the latest confirmed domain block number and hash.
         fn latest_confirmed_domain_block(domain_id: DomainId) -> Option<(HeaderNumberFor<DomainHeader>, HeaderHashFor<DomainHeader>)>;
 
-        /// Returns if the receipt is exist and pending to prune
+        /// Returns true if the receipt exists and is going to be pruned
         fn is_bad_er_pending_to_prune(domain_id: DomainId, receipt_hash: HeaderHashFor<DomainHeader>) -> bool;
 
         /// Returns the balance of the storage fund account.
@@ -1725,7 +1725,7 @@ sp_api::decl_runtime_apis! {
         fn evm_domain_contract_creation_allowed_by_call(domain_id: DomainId) -> Option<PermissionedActionAllowedBy<EthereumAccountId>>;
 
         /// Returns the last confirmed domain block execution receipt.
-        fn last_confirmed_domain_block_receipt(domain_id: DomainId) ->Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
+        fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
