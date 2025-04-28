@@ -1802,10 +1802,22 @@ impl_runtime_apis! {
 #[cfg(test)]
 mod tests {
     use crate::{Runtime, SubspaceBlockWeights as BlockWeights};
+    use pallet_domains::bundle_storage_fund::AccountType;
+    use sp_domains::OperatorId;
+    use sp_runtime::traits::AccountIdConversion;
     use subspace_runtime_primitives::tests_utils::FeeMultiplierUtils;
 
     #[test]
     fn multiplier_can_grow_from_zero() {
         FeeMultiplierUtils::<Runtime, BlockWeights>::multiplier_can_grow_from_zero()
+    }
+
+    #[test]
+    fn test_bundle_storage_fund_account_uniqueness() {
+        let _: <Runtime as frame_system::Config>::AccountId = <Runtime as pallet_domains::Config>::PalletId::get()
+            .try_into_sub_account((AccountType::StorageFund, OperatorId::MAX))
+            .expect(
+                "The `AccountId` type must be large enough to fit the seed of the bundle storage fund account",
+            );
     }
 }

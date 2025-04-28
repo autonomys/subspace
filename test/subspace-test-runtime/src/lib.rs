@@ -1921,3 +1921,20 @@ fn contains_balance_transfer(call: &RuntimeCall) -> bool {
 
     false
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::Runtime;
+    use pallet_domains::bundle_storage_fund::AccountType;
+    use sp_domains::OperatorId;
+    use sp_runtime::traits::AccountIdConversion;
+
+    #[test]
+    fn test_bundle_storage_fund_account_uniqueness() {
+        let _: <Runtime as frame_system::Config>::AccountId = <Runtime as pallet_domains::Config>::PalletId::get()
+            .try_into_sub_account((AccountType::StorageFund, OperatorId::MAX))
+            .expect(
+                "The `AccountId` type must be large enough to fit the seed of the bundle storage fund account",
+            );
+    }
+}

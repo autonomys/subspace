@@ -10,7 +10,7 @@ mod benchmarking;
 mod tests;
 
 pub mod block_tree;
-mod bundle_storage_fund;
+pub mod bundle_storage_fund;
 pub mod domain_registry;
 pub mod extensions;
 pub mod migrations;
@@ -2035,16 +2035,6 @@ mod pallet {
 
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
             let _ = NewAddedHeadReceipt::<T>::clear(u32::MAX, None);
-        }
-
-        fn integrity_test() {
-            use crate::bundle_storage_fund::AccountType;
-            use sp_runtime::traits::AccountIdConversion;
-            let _: T::AccountId = T::PalletId::get()
-                .try_into_sub_account((AccountType::StorageFund, OperatorId::MAX))
-                .expect(
-                    "The `AccountId` type must be large enough to fit the seed of the bundle storage fund account",
-                );
         }
     }
 }
