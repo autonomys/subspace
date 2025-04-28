@@ -1708,7 +1708,7 @@ sp_api::decl_runtime_apis! {
         /// Returns the latest confirmed domain block number and hash.
         fn latest_confirmed_domain_block(domain_id: DomainId) -> Option<(HeaderNumberFor<DomainHeader>, HeaderHashFor<DomainHeader>)>;
 
-        /// Returns if the receipt exists and pending to pruned
+        /// Returns true if the receipt exists and is going to be pruned
         fn is_bad_er_pending_to_prune(domain_id: DomainId, receipt_hash: HeaderHashFor<DomainHeader>) -> bool;
 
         /// Returns the balance of the storage fund account.

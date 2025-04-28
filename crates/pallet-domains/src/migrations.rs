@@ -80,9 +80,18 @@ mod domain_genesis_receipt {
     use hexlit::hex;
     use sp_core::{Get, H256};
     use sp_domains::DomainId;
+    use sp_runtime::traits::{NumberFor, Zero};
     use sp_runtime::Weight;
 
     pub(super) fn set_domain_genesis_receipt<T: Config>() -> Weight {
+        let taurus_genesis_hash = T::Hash::from(H256::from(hex!(
+            "0x295aeafca762a304d92ee1505548695091f6082d3f0aa4d092ac3cd6397a6c5e"
+        )));
+        let genesis_hash = frame_system::Pallet::<T>::block_hash(NumberFor::<T::Block>::zero());
+        if genesis_hash != taurus_genesis_hash {
+            return Weight::zero();
+        }
+
         let genesis_state_root = T::DomainHash::from(H256::from(hex!(
             "0x530eae1878202aa0ab5997eadf2b7245ee78f44a35ab25ff84151fab489aa334"
         )));

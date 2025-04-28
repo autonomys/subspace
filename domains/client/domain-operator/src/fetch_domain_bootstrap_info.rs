@@ -4,7 +4,7 @@ use sc_client_api::{BlockchainEvents, ImportNotifications};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, DomainInstanceData, DomainsApi};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, Zero};
+use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 
 #[derive(Debug)]
 pub struct BootstrapResult<CBlock: BlockT> {
@@ -90,28 +90,19 @@ where
     }
 
     // Check each imported consensus block to get the domain instance data
-    #[allow(clippy::never_loop)]
     let (domain_instance_data, domain_created_at) = loop {
-        if let Some(block_imported) = imported_block_notification_stream.next().await {
-            let header = block_imported.header;
-            let res = consensus_client
-                .runtime_api()
-                .domain_instance_data(header.hash(), self_domain_id)?;
-
-            match res {
-                Some(data) => break data,
-                None => {
-                    return Err(format!(
-                        "Failed to get domain instance data for domain {self_domain_id:?}"
-                    )
-                    .into())
-                }
-            }
-        } else {
+        let Some(block_imported) = imported_block_notification_stream.next().await else {
             return Err("Imported block notification stream end unexpectedly"
                 .to_string()
                 .into());
-        }
+        };
+        let Some(data) = consensus_client
+            .runtime_api()
+            .domain_instance_data(block_imported.hash, self_domain_id)?
+        else {
+            continue;
+        };
+        break data;
     };
 
     Ok(BootstrapResult {
