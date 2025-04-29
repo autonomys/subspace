@@ -1,6 +1,9 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
-use crate::pallet::{InboxFee, InboxFeesOnHold, InboxResponses, OutboxFee, OutboxFeesOnHold};
+use crate::pallet::{
+    InboxFee, InboxFeesOnHold, InboxFeesOnHoldStartAt, InboxResponses, OutboxFee, OutboxFeesOnHold,
+    OutboxFeesOnHoldStartAt,
+};
 use crate::{BalanceOf, Config, Error, Pallet};
 #[cfg(not(feature = "std"))]
 use alloc::vec;
@@ -141,6 +144,9 @@ impl<T: Config> Pallet<T> {
         let mut current_nonce = latest_confirmed_nonce;
         let mut inbox_fees = BalanceOf::<T>::zero();
         let mut removed_weight_tags = vec![];
+        let on_hold_start_at_nonce =
+            InboxFeesOnHoldStartAt::<T>::get(channel_id).unwrap_or(Nonce::MAX);
+        let mut on_hold_inbox_fees = BalanceOf::<T>::zero();
         while let Some(nonce) = current_nonce {
             if InboxResponses::<T>::take((dst_chain_id, channel_id, nonce)).is_none() {
                 // Make the loop efficient, by breaking as soon as there are no more responses.
@@ -155,24 +161,29 @@ impl<T: Config> Pallet<T> {
             // For every inbox response we take, distribute the reward to the operators.
             if let Some(inbox_fee) = InboxFee::<T>::take((dst_chain_id, (channel_id, nonce))) {
                 inbox_fees = inbox_fees.saturating_add(inbox_fee);
+                if on_hold_start_at_nonce <= nonce {
+                    on_hold_inbox_fees = on_hold_inbox_fees.saturating_add(inbox_fee);
+                }
             }
 
             current_nonce = nonce.checked_sub(Nonce::one())
         }
 
         if !inbox_fees.is_zero() {
-            InboxFeesOnHold::<T>::mutate(|inbox_fees_on_hold| {
-                *inbox_fees_on_hold = inbox_fees_on_hold
-                    .checked_sub(&inbox_fees)
-                    .ok_or(Error::<T>::BalanceUnderflow)?;
+            if !on_hold_inbox_fees.is_zero() {
+                InboxFeesOnHold::<T>::mutate(|inbox_fees_on_hold| {
+                    *inbox_fees_on_hold = inbox_fees_on_hold
+                        .checked_sub(&on_hold_inbox_fees)
+                        .ok_or(Error::<T>::BalanceUnderflow)?;
 
-                // If the `imbalance` is dropped without consuming it will increase the total issuance by
-                // the same amount as we rescinded here, thus we need to manually `mem::forget` it.
-                let imbalance = T::Currency::rescind(inbox_fees);
-                core::mem::forget(imbalance);
+                    // If the `imbalance` is dropped without consuming it will increase the total issuance by
+                    // the same amount as we rescinded here, thus we need to manually `mem::forget` it.
+                    let imbalance = T::Currency::rescind(on_hold_inbox_fees);
+                    core::mem::forget(imbalance);
 
-                Ok::<(), Error<T>>(())
-            })?;
+                    Ok::<(), Error<T>>(())
+                })?;
+            }
 
             Self::reward_operators(inbox_fees);
         }
@@ -189,18 +200,23 @@ impl<T: Config> Pallet<T> {
         message_id: MessageId,
     ) -> DispatchResult {
         if let Some(fee) = OutboxFee::<T>::take((dst_chain_id, message_id)) {
-            OutboxFeesOnHold::<T>::mutate(|outbox_fees_on_hold| {
-                *outbox_fees_on_hold = outbox_fees_on_hold
-                    .checked_sub(&fee)
-                    .ok_or(Error::<T>::BalanceUnderflow)?;
+            let update_on_hold = OutboxFeesOnHoldStartAt::<T>::get(message_id.0)
+                .map(|start_at_nonce| start_at_nonce <= message_id.1)
+                .unwrap_or(false);
+            if update_on_hold {
+                OutboxFeesOnHold::<T>::mutate(|outbox_fees_on_hold| {
+                    *outbox_fees_on_hold = outbox_fees_on_hold
+                        .checked_sub(&fee)
+                        .ok_or(Error::<T>::BalanceUnderflow)?;
 
-                // If the `imbalance` is dropped without consuming it will increase the total issuance by
-                // the same amount as we rescinded here, thus we need to manually `mem::forget` it.
-                let imbalance = T::Currency::rescind(fee);
-                core::mem::forget(imbalance);
+                    // If the `imbalance` is dropped without consuming it will increase the total issuance by
+                    // the same amount as we rescinded here, thus we need to manually `mem::forget` it.
+                    let imbalance = T::Currency::rescind(fee);
+                    core::mem::forget(imbalance);
 
-                Ok::<(), Error<T>>(())
-            })?;
+                    Ok::<(), Error<T>>(())
+                })?;
+            }
 
             Self::reward_operators(fee);
         }
