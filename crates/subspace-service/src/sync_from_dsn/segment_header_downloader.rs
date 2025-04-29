@@ -62,12 +62,11 @@ impl<'a> SegmentHeaderDownloader<'a> {
             "Downloading segment headers"
         );
 
-        let Some(new_segment_headers_count) = last_segment_header
+        let new_segment_headers_count = last_segment_header
             .segment_index()
             .checked_sub(last_known_segment_index)
-        else {
-            return Ok(Vec::new());
-        };
+            .expect("just checked last_segment_header is greater; qed");
+
         let mut new_segment_headers =
             Vec::with_capacity(u64::from(new_segment_headers_count) as usize);
         new_segment_headers.push(last_segment_header);
