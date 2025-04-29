@@ -1,9 +1,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
-use crate::pallet::{InboxFee, InboxResponses, OutboxFee};
+use crate::pallet::{InboxFee, InboxResponseMessageWeightTags, InboxResponses, OutboxFee};
 use crate::{BalanceOf, Config, Error, Pallet};
-#[cfg(not(feature = "std"))]
-use alloc::vec;
 use frame_support::traits::fungible::Mutate;
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::weights::WeightToFee;
@@ -13,8 +11,6 @@ use sp_messenger::messages::{ChainId, ChannelId, FeeModel, MessageId, Nonce};
 use sp_messenger::OnXDMRewards;
 use sp_runtime::traits::{CheckedAdd, CheckedMul, Zero};
 use sp_runtime::{DispatchError, DispatchResult, Saturating};
-#[cfg(feature = "std")]
-use std::vec;
 
 impl<T: Config> Pallet<T> {
     /// Ensures the fees from the sender per FeeModel provided for a single request for a response.
@@ -140,7 +136,6 @@ impl<T: Config> Pallet<T> {
 
         let mut current_nonce = latest_confirmed_nonce;
         let mut inbox_fees = BalanceOf::<T>::zero();
-        let mut removed_weight_tags = vec![];
         while let Some(nonce) = current_nonce {
             if InboxResponses::<T>::take((dst_chain_id, channel_id, nonce)).is_none() {
                 // Make the loop efficient, by breaking as soon as there are no more responses.
@@ -149,8 +144,8 @@ impl<T: Config> Pallet<T> {
                 break;
             }
 
-            // Note removed weight tags for inbox response messages.
-            removed_weight_tags.push((dst_chain_id, (channel_id, nonce)));
+            // Remove weight tags for inbox response messages.
+            InboxResponseMessageWeightTags::<T>::remove((dst_chain_id, (channel_id, nonce)));
 
             // For every inbox response we take, distribute the reward to the operators.
             if let Some(inbox_fee) = InboxFee::<T>::take((dst_chain_id, (channel_id, nonce))) {
@@ -163,10 +158,6 @@ impl<T: Config> Pallet<T> {
         if !inbox_fees.is_zero() {
             Self::reward_operators(inbox_fees);
         }
-
-        crate::migrations::messenger_migration::remove_inbox_response_weight_tags::<T>(
-            removed_weight_tags,
-        );
 
         Ok(())
     }
