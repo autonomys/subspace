@@ -144,7 +144,7 @@ where
     pub async fn get_piece_from_cache(&self, piece_index: PieceIndex) -> Option<Piece> {
         let key = RecordKey::from(piece_index.to_multihash());
 
-        let mut request_batch = self.node.get_requests_batch_handle().await;
+        let request_batch = self.node.get_requests_batch_handle().await;
         let mut get_providers_stream = request_batch
             .get_providers(key.clone())
             .await
@@ -320,7 +320,7 @@ where
         // Random walk key
         let key = PeerId::random();
 
-        let mut request_batch = self.node.get_requests_batch_handle().await;
+        let request_batch = self.node.get_requests_batch_handle().await;
         let mut get_closest_peers_stream = request_batch
             .get_closest_peers(key.into())
             .await

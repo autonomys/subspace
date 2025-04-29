@@ -558,7 +558,7 @@ impl NodeRunner {
                     shared.handlers.connected_peer.call_simple(&peer_id);
                 }
 
-                if let Some(metrics) = self.metrics.as_mut() {
+                if let Some(metrics) = self.metrics.as_ref() {
                     metrics.inc_established_connections()
                 }
             }
@@ -601,7 +601,7 @@ impl NodeRunner {
                     shared.handlers.disconnected_peer.call_simple(&peer_id);
                 }
 
-                if let Some(metrics) = self.metrics.as_mut() {
+                if let Some(metrics) = self.metrics.as_ref() {
                     metrics.dec_established_connections()
                 };
             }

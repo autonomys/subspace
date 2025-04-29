@@ -67,7 +67,7 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
 
     /// Invokes external protocol handler.
     async fn handle_request(
-        &mut self,
+        &self,
         peer: PeerId,
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, RequestHandlerError> {

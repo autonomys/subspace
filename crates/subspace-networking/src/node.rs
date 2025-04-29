@@ -703,7 +703,7 @@ impl NodeRequestsBatchHandle {
     ///
     /// Optional addresses will be used for dialing if connection to peer isn't established yet.
     pub async fn send_generic_request<Request>(
-        &mut self,
+        &self,
         peer_id: PeerId,
         addresses: Vec<Multiaddr>,
         request: Request,
