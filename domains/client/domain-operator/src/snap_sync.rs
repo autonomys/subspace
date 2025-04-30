@@ -305,7 +305,7 @@ where
     )
     .await?;
 
-    let Some(domain_block_header) = domain_block.header.clone() else {
+    let Some(domain_block_header) = domain_block.header else {
         return Err(sp_blockchain::Error::MissingHeader(
             "Can't obtain domain block header for snap sync".to_string(),
         ));
