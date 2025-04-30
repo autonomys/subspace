@@ -25,7 +25,6 @@ mod benchmarking;
 pub mod extensions;
 mod fees;
 mod messages;
-pub mod migrations;
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
@@ -434,12 +433,7 @@ mod pallet {
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
             UpdatedChannels::<T>::take();
-            // we will have 1 read and 5002 writes
-            // So total ref_time is 2,50,10,80,00,000
-            // which is equal to 0.25 seconds
-            let (reads, writes) =
-                crate::migrations::messenger_migration::migrate_message_weight_tags::<T>(5000);
-            T::DbWeight::get().reads_writes(reads, writes + 1)
+            T::DbWeight::get().reads_writes(0, 1)
         }
     }
 
