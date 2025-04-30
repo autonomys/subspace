@@ -178,10 +178,17 @@ where
             // seems like complexity is not worth it.
             while block_number.saturating_sub(best_block_number) >= QUEUED_BLOCKS_LIMIT.into() {
                 if !blocks_to_import.is_empty() {
+                    // This vector is quite large (~150kB), so replacing it with an uninitialized
+                    // vector with the correct capacity is faster than cloning and clearing it.
+                    // (Cloning requires a memcpy, which pages in and sets all the memory, which is
+                    // a waste just before clearing it.)
+                    let importing_blocks = std::mem::replace(
+                        &mut blocks_to_import,
+                        Vec::with_capacity(QUEUED_BLOCKS_LIMIT as usize),
+                    );
                     // Import queue handles verification and importing it into the client
                     import_queue_service
-                        .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import.clone());
-                    blocks_to_import.clear();
+                        .import_blocks(BlockOrigin::NetworkInitialSync, importing_blocks);
                 }
                 trace!(
                     target: LOG_TARGET,
