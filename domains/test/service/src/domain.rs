@@ -23,11 +23,12 @@ use sc_network::service::traits::NetworkService;
 use sc_network::{NetworkStateInfo, ReputationChange};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
-use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
+use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager, TransactionPool};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
+use sp_blockchain::HashAndNumber;
 use sp_consensus_subspace::SubspaceApi;
 use sp_core::{Encode, H256};
 use sp_domains::core_api::DomainCoreApi;
@@ -483,6 +484,34 @@ where
             tracing::error!("deleting paritydb lock file failed: {err:?}");
         }
         Ok(())
+    }
+
+    /// Remove all tx from the tx pool
+    pub async fn clear_tx_pool(&self) {
+        let tx_hashes: Vec<_> = self
+            .operator
+            .transaction_pool
+            .ready()
+            .map(|t| self.operator.transaction_pool.hash_of(&t.data))
+            .collect();
+
+        let hash_and_number = HashAndNumber {
+            number: self.client.info().best_number,
+            hash: self.client.info().best_hash,
+        };
+        self.operator
+            .transaction_pool
+            .pool()
+            .prune_known(&hash_and_number, &tx_hashes);
+
+        // `ban_time` have set to 0, explicitly wait 1ms here to ensure `clear_stale` will remove
+        // all the bans as the ban time must be passed.
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        self.operator
+            .transaction_pool
+            .pool()
+            .validated_pool()
+            .clear_stale(&hash_and_number);
     }
 }
 

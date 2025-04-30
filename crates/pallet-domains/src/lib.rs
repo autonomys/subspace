@@ -10,7 +10,7 @@ mod benchmarking;
 mod tests;
 
 pub mod block_tree;
-mod bundle_storage_fund;
+pub mod bundle_storage_fund;
 pub mod domain_registry;
 pub mod extensions;
 pub mod migrations;

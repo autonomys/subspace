@@ -445,6 +445,7 @@ impl pallet_messenger::Config for Runtime {
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
     type MessageVersion = MessageVersion;
+    type NoteChainTransfer = Transporter;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -1111,6 +1112,10 @@ impl_runtime_apis! {
             let root = sp_io::storage::root(version);
             TryInto::<[u8; 32]>::try_into(root)
                 .expect("root is a SCALE encoded hash which uses H256; qed")
+        }
+
+        fn total_issuance() -> Balance {
+            Balances::total_issuance()
         }
     }
 

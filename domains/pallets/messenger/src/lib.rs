@@ -167,7 +167,7 @@ mod pallet {
     use core::cmp::Ordering;
     use frame_support::ensure;
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
+    use frame_support::traits::fungible::{Balanced, Inspect, InspectHold, Mutate, MutateHold};
     use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
     use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
@@ -183,8 +183,8 @@ mod pallet {
         ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
-        ChannelNonce, DomainRegistration, InherentError, InherentType, OnXDMRewards, StorageKeys,
-        INHERENT_IDENTIFIER,
+        ChannelNonce, DomainRegistration, InherentError, InherentType, NoteChainTransfer,
+        OnXDMRewards, StorageKeys, INHERENT_IDENTIFIER,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{ArithmeticError, Perbill, Saturating};
@@ -203,7 +203,8 @@ mod pallet {
         /// Currency type pallet uses for fees and deposits.
         type Currency: Mutate<Self::AccountId>
             + InspectHold<Self::AccountId>
-            + MutateHold<Self::AccountId>;
+            + MutateHold<Self::AccountId>
+            + Balanced<Self::AccountId>;
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
         /// Weight to fee conversion.
@@ -250,6 +251,8 @@ mod pallet {
         /// Message version to use.
         #[pallet::constant]
         type MessageVersion: Get<crate::MessageVersion>;
+        /// Helper to note cross chain XDM fee transfer
+        type NoteChainTransfer: NoteChainTransfer<BalanceOf<Self>>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -356,6 +359,36 @@ mod pallet {
     #[pallet::storage]
     pub(super) type UpdatedChannels<T: Config> =
         StorageValue<_, BTreeSet<(ChainId, ChannelId)>, ValueQuery>;
+
+    /// Storage to track the inbox fees that is hold on the chain before distributing.
+    ///
+    /// NOTE: The inbox fees is accounted to the chain's total issuance but not hold on any account
+    /// because an account with balance below ED will be reaped, in this way, we can manage small
+    /// inbox fee that less than ED easier. It also means whenever `InboxFeesOnHold` is increase/decrease
+    /// we need to increase/decrease the total issuance manually.
+    #[pallet::storage]
+    pub(super) type InboxFeesOnHold<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+
+    /// Storage to track the outbox fees that is hold on the chain before distributing.
+    ///
+    /// NOTE: The outbox fees is accounted to the chain's total issuance but not hold on any account
+    /// because an account with balance below ED will be reaped, in this way, we can manage small
+    /// outbox fee that less than ED easier. It also means whenever `OutboxFeesOnHold` is increase/decrease
+    /// we need to increase/decrease the total issuance manually.
+    #[pallet::storage]
+    pub(super) type OutboxFeesOnHold<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+
+    /// `InboxFeesOnHoldStartAt` and `OutboxFeesOnHoldStartAt` are used to record when the inbox/outbox fee
+    /// is started to be tracked in `InboxFeesOnHold` and `OutboxFeesOnHold`. This is needed as migration on
+    /// Taurus.
+    ///
+    /// TODO: remove once the XDM V1 format is enabled on Taurus and all the untracked pending XDM is processed.
+    #[pallet::storage]
+    pub(super) type InboxFeesOnHoldStartAt<T: Config> =
+        StorageMap<_, Identity, ChannelId, Nonce, OptionQuery>;
+    #[pallet::storage]
+    pub(super) type OutboxFeesOnHoldStartAt<T: Config> =
+        StorageMap<_, Identity, ChannelId, Nonce, OptionQuery>;
 
     #[pallet::origin]
     pub type Origin = RawOrigin;
@@ -498,6 +531,9 @@ mod pallet {
         /// Emits when the there is balance overflow.
         BalanceOverflow,
 
+        /// Emits when the there is balance underflow.
+        BalanceUnderflow,
+
         /// Invalid allowed chain.
         InvalidAllowedChain,
 
@@ -536,6 +572,12 @@ mod pallet {
 
         /// Incorrect message version
         MessageVersionMismatch,
+
+        /// Failed to note transfer in
+        FailedToNoteTransferIn,
+
+        /// Failed to note transfer out
+        FailedToNoteTransferOut,
     }
 
     #[pallet::call]
@@ -860,6 +902,7 @@ mod pallet {
                     // collect the fees from the sender
                     let collected_fee = Self::collect_fees_for_message_v1(sender, &src_endpoint)?;
                     let src_chain_fee = collected_fee.src_chain_fee;
+                    let dst_chain_fee = collected_fee.dst_chain_fee;
                     let nonce = Self::new_outbox_message(
                         T::SelfChainId::get(),
                         dst_chain_id,
@@ -871,7 +914,7 @@ mod pallet {
 
                     // store src_chain, this chain, fee to OutboxFee
                     let message_id = (channel_id, nonce);
-                    OutboxFee::<T>::insert((dst_chain_id, message_id), src_chain_fee);
+                    Self::store_outbox_fee(dst_chain_id, message_id, src_chain_fee, dst_chain_fee)?;
                     message_id
                 }
             };
@@ -1432,6 +1475,69 @@ mod pallet {
                     relay_response_msg_nonce: channel.latest_response_received_message_nonce,
                 }
             })
+        }
+
+        pub fn store_inbox_fee(
+            src_chain_id: ChainId,
+            message_id: MessageId,
+            inbox_fees: BalanceOf<T>,
+        ) -> DispatchResult {
+            if !InboxFeesOnHoldStartAt::<T>::contains_key(message_id.0) {
+                InboxFeesOnHoldStartAt::<T>::insert(message_id.0, message_id.1);
+            }
+            InboxFeesOnHold::<T>::mutate(|inbox_fees_on_hold| {
+                *inbox_fees_on_hold = inbox_fees_on_hold
+                    .checked_add(&inbox_fees)
+                    .ok_or(Error::<T>::BalanceOverflow)?;
+
+                // If the `imbalance` is dropped without consuming it will reduce the total issuance by
+                // the same amount as we issued here, thus we need to manually `mem::forget` it.
+                let imbalance = T::Currency::issue(inbox_fees);
+                core::mem::forget(imbalance);
+
+                Ok::<(), Error<T>>(())
+            })?;
+
+            InboxFee::<T>::insert((src_chain_id, message_id), inbox_fees);
+
+            // Note `dst_chain_fee` as transfer in
+            if !T::NoteChainTransfer::note_transfer_in(inbox_fees, src_chain_id) {
+                return Err(Error::<T>::FailedToNoteTransferIn.into());
+            }
+
+            Ok(())
+        }
+
+        pub fn store_outbox_fee(
+            dst_chain_id: ChainId,
+            message_id: MessageId,
+            outbox_fees: BalanceOf<T>,
+            inbox_fees: BalanceOf<T>,
+        ) -> DispatchResult {
+            if !OutboxFeesOnHoldStartAt::<T>::contains_key(message_id.0) {
+                OutboxFeesOnHoldStartAt::<T>::insert(message_id.0, message_id.1);
+            }
+            OutboxFeesOnHold::<T>::mutate(|outbox_fees_on_hold| {
+                *outbox_fees_on_hold = outbox_fees_on_hold
+                    .checked_add(&outbox_fees)
+                    .ok_or(Error::<T>::BalanceOverflow)?;
+
+                // If the `imbalance` is dropped without consuming it will reduce the total issuance by
+                // the same amount as we issued here, thus we need to manually `mem::forget` it.
+                let imbalance = T::Currency::issue(outbox_fees);
+                core::mem::forget(imbalance);
+
+                Ok::<(), Error<T>>(())
+            })?;
+
+            OutboxFee::<T>::insert((dst_chain_id, message_id), outbox_fees);
+
+            // Note `dst_chain_fee` as transfer out
+            if !T::NoteChainTransfer::note_transfer_out(inbox_fees, dst_chain_id) {
+                return Err(Error::<T>::FailedToNoteTransferOut.into());
+            }
+
+            Ok(())
         }
     }
 }

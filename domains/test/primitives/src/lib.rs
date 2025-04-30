@@ -34,6 +34,9 @@ sp_api::decl_runtime_apis! {
 
         /// Get the storage root
         fn storage_root() -> [u8; 32];
+
+        /// Return the chain's total issuance
+        fn total_issuance() -> Balance;
     }
 }
 

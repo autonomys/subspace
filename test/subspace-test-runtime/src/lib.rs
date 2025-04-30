@@ -118,8 +118,9 @@ use subspace_runtime_primitives::utility::{
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, ConsensusEventSegmentSize, FindBlockRewardAddress, Hash,
-    HoldIdentifier, Moment, Nonce, Signature, XdmAdjustedWeightToFee, XdmFeeMultipler,
-    MAX_BLOCK_LENGTH, MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR, SHANNON, SSC,
+    HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, TargetBlockFullness,
+    XdmAdjustedWeightToFee, XdmFeeMultipler, MAX_BLOCK_LENGTH, MAX_CALL_RECURSION_DEPTH,
+    MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 
@@ -542,7 +543,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
-    type FeeMultiplierUpdate = ();
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime, TargetBlockFullness>;
     type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
 
@@ -731,6 +732,7 @@ impl pallet_messenger::Config for Runtime {
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
     type MessageVersion = MessageVersion;
+    type NoteChainTransfer = Transporter;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -1808,6 +1810,10 @@ impl_runtime_apis! {
         fn verify_proof_and_extract_leaf(mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, <Block as BlockT>::Hash, H256>) -> Option<mmr::Leaf> {
             <MmrProofVerifier as sp_subspace_mmr::MmrProofVerifier<_, _, _,>>::verify_proof_and_extract_leaf(mmr_leaf_proof)
         }
+
+        fn domain_balance(domain_id: DomainId) -> Balance {
+            Transporter::domain_balances(domain_id)
+        }
     }
 
     impl sp_genesis_builder::GenesisBuilder<Block> for Runtime {
@@ -1914,4 +1920,21 @@ fn contains_balance_transfer(call: &RuntimeCall) -> bool {
     }
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Runtime;
+    use pallet_domains::bundle_storage_fund::AccountType;
+    use sp_domains::OperatorId;
+    use sp_runtime::traits::AccountIdConversion;
+
+    #[test]
+    fn test_bundle_storage_fund_account_uniqueness() {
+        let _: <Runtime as frame_system::Config>::AccountId = <Runtime as pallet_domains::Config>::PalletId::get()
+            .try_into_sub_account((AccountType::StorageFund, OperatorId::MAX))
+            .expect(
+                "The `AccountId` type must be large enough to fit the seed of the bundle storage fund account",
+            );
+    }
 }

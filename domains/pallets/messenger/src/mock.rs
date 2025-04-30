@@ -112,6 +112,7 @@ macro_rules! impl_runtime {
             type AdjustedWeightToFee = frame_support::weights::IdentityFee<u64>;
             type FeeMultiplier = FeeMultiplier;
             type MessageVersion = MessageVersion;
+            type NoteChainTransfer = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 #[allow(unused_variables)] endpoint: &Endpoint,

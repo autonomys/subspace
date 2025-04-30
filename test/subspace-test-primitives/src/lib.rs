@@ -3,6 +3,7 @@
 
 use parity_scale_codec::{Decode, Encode};
 use sp_core::H256;
+use sp_domains::DomainId;
 use sp_messenger::messages::{ChainId, ChannelId};
 use sp_runtime::traits::NumberFor;
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
@@ -25,5 +26,8 @@ sp_api::decl_runtime_apis! {
 
         /// Verify the mmr proof statelessly and extract the state root.
         fn verify_proof_and_extract_leaf(proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Block::Hash, H256>) -> Option<MmrLeaf<NumberFor<Block>, Block::Hash>>;
+
+        /// Return the domain balance in the consensus chain bookkeeping
+        fn domain_balance(domain_id: DomainId) -> Balance;
     }
 }
