@@ -12,6 +12,7 @@ domain-block-preprocessor.workspace = true
 domain-runtime-primitives.workspace = true
 futures.workspace = true
 futures-timer.workspace = true
+hex.workspace = true
 parking_lot.workspace = true
 sc-client-api.workspace = true
 sc-consensus.workspace = true
