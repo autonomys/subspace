@@ -64,7 +64,7 @@ macro_rules! impl_runtime {
             pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: 1};
             pub const MaxOutgoingMessages: u32 = 25;
             pub const FeeMultiplier: u32 = 1;
-            pub const MessageVersion: crate::MessageVersion = crate::MessageVersion::V0;
+            pub const MessageVersion: crate::MessageVersion = crate::MessageVersion::V1;
         }
 
         #[derive(

@@ -22,8 +22,8 @@ use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, Verification
 use sp_domains::DomainAllowlistUpdates;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
-    ChainId, ChannelOpenParams, CrossDomainMessage, MessageWeightTag, Payload, Proof,
-    ProtocolMessageRequest, RequestResponse, VersionedPayload,
+    ChainId, ChannelOpenParams, ChannelOpenParamsV1, CrossDomainMessage, MessageWeightTag,
+    PayloadV1, Proof, ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::traits::{Convert, Zero};
@@ -64,10 +64,9 @@ fn create_channel(chain_id: ChainId, channel_id: ChannelId) {
     assert_eq!(msg.channel_id, channel_id);
     assert_eq!(
         msg.payload,
-        VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-            ProtocolMessageRequest::ChannelOpen(ChannelOpenParams {
+        VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(
+            ProtocolMessageRequest::ChannelOpen(ChannelOpenParamsV1 {
                 max_outgoing_messages: 25,
-                fee_model: <chain_a::Runtime as crate::Config>::ChannelFeeModel::get()
             })
         )))
     );
@@ -127,7 +126,7 @@ fn close_channel(chain_id: ChainId, channel_id: ChannelId, last_delivered_nonce:
     );
     assert_eq!(
         msg.payload,
-        VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
+        VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(
             ProtocolMessageRequest::ChannelClose
         )))
     );
