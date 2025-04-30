@@ -284,13 +284,14 @@ where
             .checked_sub(&self.confirmation_depth_k)
         {
             let runtime_api = self.consensus_client.runtime_api();
-            let confirmed_consensus_block_hash = self
-                .consensus_client
-                .hash(confirmed_consensus_block)?
-                .ok_or(sp_blockchain::Error::MissingHeader(format!(
-                    "Block Number: {}",
-                    confirmed_consensus_block
-                )))?;
+            let Some(confirmed_consensus_block_hash) =
+                self.consensus_client.hash(confirmed_consensus_block)?
+            else {
+                // when the consensus node snap synced, it is possible that confirmed_consensus_block is less
+                // than the first block imported during the consensus snap sync.
+                // If so, block data is not present. So we simply skip finalization for this block.
+                return Ok(());
+            };
 
             let finalized_domain_block_number = self.client.info().finalized_number;
             if let Some(confirmed_domain_block) = runtime_api
