@@ -186,7 +186,7 @@ where
             let signed_block =
                 decode_block::<Block>(&block_bytes).map_err(|error| error.to_string())?;
 
-            *last_processed_block_number = last_archived_block_number;
+            *last_processed_block_number = block_number;
 
             // No need to import blocks that are already present, if block is not present it might
             // correspond to a short fork, so we need to import it even if we already have another
