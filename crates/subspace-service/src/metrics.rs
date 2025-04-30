@@ -57,7 +57,7 @@ where
         }
     }
 
-    fn update_block_metrics(&mut self, incoming_block: BlockImportNotification<Block>) {
+    fn update_block_metrics(&self, incoming_block: BlockImportNotification<Block>) {
         let extrinsics = self
             .client
             .block_body(incoming_block.hash)

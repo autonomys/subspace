@@ -162,7 +162,7 @@ where
     }
 
     fn handle_request(
-        &mut self,
+        &self,
         payload: Vec<u8>,
         pending_response: oneshot::Sender<OutgoingResponse>,
         peer: &PeerId,

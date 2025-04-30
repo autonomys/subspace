@@ -274,7 +274,7 @@ async fn setup_evm_test_accounts(
     private_evm: bool,
     evm_owner: impl Into<Option<Sr25519Keyring>>,
 ) -> (TempDir, MockConsensusNode, EvmDomainNode, Vec<AccountInfo>) {
-    let (directory, mut ferdie, mut alice) =
+    let (directory, mut ferdie, alice) =
         setup_evm_test_nodes(ferdie_key, private_evm, evm_owner).await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -361,7 +361,7 @@ async fn open_xdm_channel(ferdie: &mut MockConsensusNode, alice: &mut EvmDomainN
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
-    let (_directory, mut ferdie, mut alice, account_infos) =
+    let (_directory, mut ferdie, alice, account_infos) =
         setup_evm_test_accounts(Sr25519Alice, true, None).await;
 
     let gas_price = alice
@@ -488,7 +488,7 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_public_evm_domain_create_contracts() {
-    let (_directory, mut ferdie, mut alice, account_infos) =
+    let (_directory, mut ferdie, alice, account_infos) =
         setup_evm_test_accounts(Sr25519Alice, false, None).await;
 
     let gas_price = alice
@@ -615,7 +615,7 @@ async fn test_public_evm_domain_create_contracts() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
-    let (_directory, mut ferdie, mut alice, account_infos) =
+    let (_directory, mut ferdie, alice, account_infos) =
         setup_evm_test_accounts(Sr25519Alice, true, Ferdie).await;
 
     let gas_price = alice
@@ -848,7 +848,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_evm_domain_create_contracts_with_allow_list_single() {
-    let (_directory, mut ferdie, mut alice, account_infos) =
+    let (_directory, mut ferdie, alice, account_infos) =
         setup_evm_test_accounts(Sr25519Alice, true, Ferdie).await;
 
     let gas_price = alice
@@ -1081,7 +1081,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
-    let (_directory, mut ferdie, mut alice, account_infos) =
+    let (_directory, mut ferdie, alice, account_infos) =
         setup_evm_test_accounts(Sr25519Alice, true, Ferdie).await;
 
     // Multiple accounts in the allow list
@@ -1265,7 +1265,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_evm_domain_gas_estimates() {
-    let (_directory, mut ferdie, mut alice, account_infos) =
+    let (_directory, mut ferdie, alice, account_infos) =
         setup_evm_test_accounts(Sr25519Alice, false, None).await;
 
     let test_estimate_gas = |evm_call, is_estimate| {
@@ -2095,7 +2095,7 @@ async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
         setup_evm_test_nodes(Ferdie, false, None).timeout().await?;
 
     // Run Bob (a evm domain full node)
-    let mut bob = domain_test_service::DomainNodeBuilder::new(
+    let bob = domain_test_service::DomainNodeBuilder::new(
         tokio::runtime::Handle::current(),
         BasePath::new(directory.path().join("bob")),
     )
@@ -2264,7 +2264,7 @@ async fn test_executor_inherent_timestamp_is_set() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
-    let (_directory, mut ferdie, mut alice) = setup_evm_test_nodes(Ferdie, false, None).await;
+    let (_directory, mut ferdie, alice) = setup_evm_test_nodes(Ferdie, false, None).await;
 
     let fraud_proof_generator = FraudProofGenerator::new(
         alice.client.clone(),
@@ -2484,8 +2484,7 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_fraud_proof_is_rejected() {
-    let (_directory, mut ferdie, mut alice) =
-        setup_evm_test_nodes(Ferdie, true, Sr25519Alice).await;
+    let (_directory, mut ferdie, alice) = setup_evm_test_nodes(Ferdie, true, Sr25519Alice).await;
 
     let fraud_proof_generator = FraudProofGenerator::new(
         alice.client.clone(),
@@ -2604,7 +2603,7 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -2859,7 +2858,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -3032,7 +3031,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -3173,7 +3172,7 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -3283,7 +3282,7 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -3422,7 +3421,7 @@ async fn test_false_invalid_bundles_undecodeable_tx_proof_creation_and_verificat
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -3684,7 +3683,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -3845,7 +3844,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -3975,7 +3974,7 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -4092,7 +4091,7 @@ async fn test_false_invalid_bundle_weight_proof_creation_and_verification() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -4200,7 +4199,7 @@ async fn test_false_invalid_bundles_non_exist_extrinsic_proof_creation_and_verif
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -4388,7 +4387,7 @@ async fn test_invalid_transfers_fraud_proof() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -4487,7 +4486,7 @@ async fn test_invalid_domain_block_hash_proof_creation() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -4581,7 +4580,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -4675,7 +4674,7 @@ async fn test_domain_block_builder_include_ext_with_failed_execution() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -4758,7 +4757,7 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -4862,7 +4861,7 @@ async fn test_valid_bundle_proof_generation_and_verification() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -5941,7 +5940,7 @@ async fn test_xdm_between_domains_should_work() {
     );
 
     // Run Alice (a system domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -5949,7 +5948,7 @@ async fn test_xdm_between_domains_should_work() {
     .await;
 
     // Run Bob (a auto-id domain authority node)
-    let mut bob = domain_test_service::DomainNodeBuilder::new(
+    let bob = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("bob")),
     )
@@ -6215,7 +6214,7 @@ async fn test_domain_transaction_fee_and_operator_reward() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -6290,7 +6289,7 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -6420,7 +6419,7 @@ async fn test_skip_empty_bundle_production() {
     );
 
     // Run Alice (a evm domain authority node) with `skip_empty_bundle_production` set to `true`
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -7497,7 +7496,7 @@ async fn test_custom_api_storage_root_match_upstream_root() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -8059,7 +8058,7 @@ async fn test_current_block_number_used_as_new_account_nonce() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -8067,7 +8066,7 @@ async fn test_current_block_number_used_as_new_account_nonce() {
     .await;
 
     // Run Bob (a auto-id domain authority node)
-    let mut bob = domain_test_service::DomainNodeBuilder::new(
+    let bob = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("bob")),
     )

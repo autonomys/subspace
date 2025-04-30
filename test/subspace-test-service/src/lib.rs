@@ -763,7 +763,7 @@ impl MockConsensusNode {
 
     /// Subscribe the block importing notification
     pub fn block_importing_notification_stream(
-        &mut self,
+        &self,
     ) -> TracingUnboundedReceiver<(NumberFor<Block>, mpsc::Sender<()>)> {
         self.block_import.block_importing_notification_stream()
     }
@@ -1002,7 +1002,7 @@ impl MockConsensusNode {
 
     /// Import block
     async fn import_block(
-        &mut self,
+        &self,
         block: Block,
         storage_changes: Option<StorageChanges>,
     ) -> Result<<Block as BlockT>::Hash, Box<dyn Error>> {
@@ -1143,7 +1143,7 @@ impl MockConsensusNode {
 
     /// Construct an extrinsic.
     pub fn construct_extrinsic(
-        &mut self,
+        &self,
         nonce: u32,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     ) -> UncheckedExtrinsic {
@@ -1160,7 +1160,7 @@ impl MockConsensusNode {
 
     /// Construct and send extrinsic through rpc
     pub async fn construct_and_send_extrinsic_with(
-        &mut self,
+        &self,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     ) -> Result<RpcTransactionOutput, RpcTransactionError> {
         let nonce = self.account_nonce();
@@ -1170,7 +1170,7 @@ impl MockConsensusNode {
 
     /// Get the nonce of the given account
     pub async fn send_extrinsic(
-        &mut self,
+        &self,
         extrinsic: impl Into<OpaqueExtrinsic>,
     ) -> Result<RpcTransactionOutput, RpcTransactionError> {
         self.rpc_handlers.send_transaction(extrinsic.into()).await
@@ -1253,7 +1253,7 @@ impl<Client, Block: BlockT> MockBlockImport<Client, Block> {
 
     // Subscribe the block importing notification
     fn block_importing_notification_stream(
-        &mut self,
+        &self,
     ) -> TracingUnboundedReceiver<(NumberFor<Block>, mpsc::Sender<()>)> {
         let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
         self.block_importing_notification_subscribers
