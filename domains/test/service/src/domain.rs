@@ -326,7 +326,7 @@ where
     }
 
     /// Sends a signed system.remark extrinsic to the pool containing the current account nonce.
-    pub async fn send_system_remark(&mut self) {
+    pub async fn send_system_remark(&self) {
         let nonce = self.account_nonce();
         let _ = self
             .construct_and_send_extrinsic(frame_system::Call::remark {
@@ -338,7 +338,7 @@ where
 
     /// Construct a signed extrinsic with the current nonce of the node account and send it to this node.
     pub async fn construct_and_send_extrinsic(
-        &mut self,
+        &self,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     ) -> Result<RpcTransactionOutput, RpcTransactionError> {
         self.construct_and_send_extrinsic_with(self.account_nonce(), 0.into(), function)
@@ -365,7 +365,7 @@ where
 
     /// Construct a signed extrinsic.
     pub fn construct_extrinsic(
-        &mut self,
+        &self,
         nonce: u32,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     ) -> UncheckedExtrinsicFor<Runtime> {
@@ -381,7 +381,7 @@ where
 
     /// Construct a signed extrinsic with the given transaction tip.
     pub fn construct_extrinsic_with_tip(
-        &mut self,
+        &self,
         nonce: u32,
         tip: BalanceOf<Runtime>,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
@@ -438,7 +438,7 @@ where
 
     /// Construct an unsigned extrinsic and send it to this node.
     pub async fn construct_and_send_unsigned_extrinsic(
-        &mut self,
+        &self,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     ) -> Result<RpcTransactionOutput, RpcTransactionError> {
         let extrinsic = self.construct_unsigned_extrinsic(function);

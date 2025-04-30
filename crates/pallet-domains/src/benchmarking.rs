@@ -759,9 +759,16 @@ mod benchmarks {
         do_finalize_domain_epoch_staking::<T>(domain_id)
             .expect("finalize domain staking should success");
 
+        let current_domain_epoch_index = DomainStakingSummary::<T>::get(domain_id)
+            .expect("domain must initialized")
+            .current_epoch_index;
         Withdrawals::<T>::try_mutate(operator_id, nominator.clone(), |maybe_withdrawal| {
             let withdrawal = maybe_withdrawal.as_mut().unwrap();
-            do_convert_previous_epoch_withdrawal::<T>(operator_id, withdrawal)?;
+            do_convert_previous_epoch_withdrawal::<T>(
+                operator_id,
+                withdrawal,
+                current_domain_epoch_index,
+            )?;
             assert_eq!(withdrawal.withdrawals.len() as u32, w);
             Ok::<(), StakingError>(())
         })

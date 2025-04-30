@@ -36,7 +36,7 @@ pub fn generate_eth_domain_sc_extrinsic(tx: EthereumTransaction) -> EvmUnchecked
 
 async fn benchmark_bundle_with_evm_tx(
     tx_to_create: u32,
-    mut alice: EvmDomainNode,
+    alice: EvmDomainNode,
     mut ferdie: MockConsensusNode,
 ) -> (Vec<Vec<u8>>, StorageProof) {
     let account_infos = (0..tx_to_create)
@@ -250,7 +250,7 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -443,7 +443,7 @@ async fn check_bundle_validity_runtime_api_should_work() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )
@@ -600,7 +600,7 @@ async fn test_evm_domain_block_fee() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         BasePath::new(directory.path().join("alice")),
     )

@@ -130,8 +130,12 @@ impl SegmentIndex {
 
     /// Checked integer subtraction. Computes `self - rhs`, returning `None` if overflow occurred.
     #[inline]
-    pub fn checked_sub(self, rhs: Self) -> Option<Self> {
-        self.0.checked_sub(rhs.0).map(Self)
+    pub const fn checked_sub(self, rhs: Self) -> Option<Self> {
+        // TODO: when Option::map becomes const, use it here
+        match self.0.checked_sub(rhs.0) {
+            Some(segment_index) => Some(Self(segment_index)),
+            None => None,
+        }
     }
 }
 
@@ -349,7 +353,7 @@ impl LastArchivedBlock {
     }
 
     /// Sets new number of partially archived bytes.
-    pub fn set_partial_archived(&mut self, new_partial: BlockNumber) {
+    pub fn set_partial_archived(&mut self, new_partial: u32) {
         self.archived_progress.set_partial(new_partial);
     }
 

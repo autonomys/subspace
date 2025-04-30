@@ -686,7 +686,7 @@ pub struct NodeRequestsBatchHandle {
 impl NodeRequestsBatchHandle {
     /// Get item providers by its key. Initiate 'providers' Kademlia operation.
     pub async fn get_providers(
-        &mut self,
+        &self,
         key: RecordKey,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
         self.node.get_providers_internal(key, false).await
@@ -694,7 +694,7 @@ impl NodeRequestsBatchHandle {
 
     /// Get closest peers by key. Initiate 'find_node' Kademlia operation.
     pub async fn get_closest_peers(
-        &mut self,
+        &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
         self.node.get_closest_peers_internal(key, false).await
@@ -703,7 +703,7 @@ impl NodeRequestsBatchHandle {
     ///
     /// Optional addresses will be used for dialing if connection to peer isn't established yet.
     pub async fn send_generic_request<Request>(
-        &mut self,
+        &self,
         peer_id: PeerId,
         addresses: Vec<Multiaddr>,
         request: Request,

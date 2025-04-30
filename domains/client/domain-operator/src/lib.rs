@@ -85,7 +85,7 @@ mod utils;
 pub use self::aux_schema::load_execution_receipt;
 pub use self::fetch_domain_bootstrap_info::{fetch_domain_bootstrap_info, BootstrapResult};
 pub use self::operator::Operator;
-pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications, OperatorSlotInfo};
+pub use self::utils::{DomainBlockImportNotification, OperatorSlotInfo};
 pub use domain_worker::OpaqueBundleFor;
 use futures::channel::mpsc;
 use futures::Stream;

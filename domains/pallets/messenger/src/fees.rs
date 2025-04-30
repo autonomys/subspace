@@ -1,8 +1,8 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 use crate::pallet::{
-    InboxFee, InboxFeesOnHold, InboxFeesOnHoldStartAt, InboxResponses, OutboxFee, OutboxFeesOnHold,
-    OutboxFeesOnHoldStartAt,
+    InboxFee, InboxFeesOnHold, InboxFeesOnHoldStartAt, InboxResponseMessageWeightTags,
+    InboxResponses, OutboxFee, OutboxFeesOnHold, OutboxFeesOnHoldStartAt,
 };
 use crate::{BalanceOf, Config, Error, Pallet};
 #[cfg(not(feature = "std"))]
@@ -16,8 +16,6 @@ use sp_messenger::messages::{ChainId, ChannelId, FeeModel, MessageId, Nonce};
 use sp_messenger::OnXDMRewards;
 use sp_runtime::traits::{CheckedAdd, CheckedMul, CheckedSub, Zero};
 use sp_runtime::{DispatchError, DispatchResult, Saturating};
-#[cfg(feature = "std")]
-use std::vec;
 
 impl<T: Config> Pallet<T> {
     /// Ensures the fees from the sender per FeeModel provided for a single request for a response.
@@ -143,7 +141,6 @@ impl<T: Config> Pallet<T> {
 
         let mut current_nonce = latest_confirmed_nonce;
         let mut inbox_fees = BalanceOf::<T>::zero();
-        let mut removed_weight_tags = vec![];
         let on_hold_start_at_nonce =
             InboxFeesOnHoldStartAt::<T>::get(channel_id).unwrap_or(Nonce::MAX);
         let mut on_hold_inbox_fees = BalanceOf::<T>::zero();
@@ -155,8 +152,8 @@ impl<T: Config> Pallet<T> {
                 break;
             }
 
-            // Note removed weight tags for inbox response messages.
-            removed_weight_tags.push((dst_chain_id, (channel_id, nonce)));
+            // Remove weight tags for inbox response messages.
+            InboxResponseMessageWeightTags::<T>::remove((dst_chain_id, (channel_id, nonce)));
 
             // For every inbox response we take, distribute the reward to the operators.
             if let Some(inbox_fee) = InboxFee::<T>::take((dst_chain_id, (channel_id, nonce))) {
@@ -187,10 +184,6 @@ impl<T: Config> Pallet<T> {
 
             Self::reward_operators(inbox_fees);
         }
-
-        crate::migrations::messenger_migration::remove_inbox_response_weight_tags::<T>(
-            removed_weight_tags,
-        );
 
         Ok(())
     }

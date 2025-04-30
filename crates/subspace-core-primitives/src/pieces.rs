@@ -173,6 +173,27 @@ impl PieceIndex {
     pub const fn next_source_index(&self) -> PieceIndex {
         PieceIndex::from_source_position(self.source_position() + 1, self.segment_index())
     }
+
+    /// Returns the previous source piece index, if there is one.
+    /// Panics if the piece is not a source piece.
+    #[inline]
+    pub const fn prev_source_index(&self) -> Option<PieceIndex> {
+        if self.source_position() == 0 {
+            // TODO: when Option::map or ? become const, use them here
+            match self.segment_index().checked_sub(SegmentIndex::ONE) {
+                Some(segment_index) => Some(PieceIndex::from_source_position(
+                    RecordedHistorySegment::NUM_RAW_RECORDS as u32 - 1,
+                    segment_index,
+                )),
+                None => None,
+            }
+        } else {
+            Some(PieceIndex::from_source_position(
+                self.source_position() - 1,
+                self.segment_index(),
+            ))
+        }
+    }
 }
 
 /// Piece offset in sector

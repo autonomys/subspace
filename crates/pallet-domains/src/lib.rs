@@ -172,7 +172,7 @@ impl<O: Into<Result<RawOrigin, O>> + From<RawOrigin>> EnsureOrigin<O> for Ensure
 }
 
 /// The current storage version.
-const STORAGE_VERSION: StorageVersion = StorageVersion::new(4);
+const STORAGE_VERSION: StorageVersion = StorageVersion::new(5);
 
 /// The number of bundle of a particular domain to be included in the block is probabilistic
 /// and based on the consensus chain slot probability and domain bundle slot probability, usually
@@ -691,6 +691,12 @@ mod pallet {
     pub type LatestConfirmedDomainExecutionReceipt<T: Config> =
         StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
 
+    /// Storage to hold all the domain's genesis execution receipt.
+    #[pallet::storage]
+    #[pallet::getter(fn domain_genesis_block_execution_receipt)]
+    pub type DomainGenesisBlockExecutionReceipt<T: Config> =
+        StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
+
     /// The latest ER submitted by the operator for a given domain. It is used to determine if the operator
     /// has submitted bad ER and is pending to slash.
     ///
@@ -753,6 +759,13 @@ mod pallet {
     /// Storage that hold a list of all domains for which balance checks are ignored.
     #[pallet::storage]
     pub type SkipBalanceChecks<T> = StorageValue<_, BTreeSet<DomainId>, ValueQuery>;
+
+    /// TODO: remove after all "missing-share-price" withdrawal is unlocked on Taurus
+    /// Storage that hold a domain epoch, for epoch that happen before it, the share price may
+    /// be missing due to https://github.com/autonomys/subspace/issues/3459, in this case, we
+    /// use the current share price as the default.
+    #[pallet::storage]
+    pub type AllowedDefaultSharePriceEpoch<T> = StorageValue<_, DomainEpoch, OptionQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -2123,9 +2136,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
-        BlockTree::<T>::get(domain_id, DomainBlockNumberFor::<T>::zero())
-            .and_then(BlockTreeNodes::<T>::get)
-            .map(|block| block.execution_receipt.final_state_root.into())
+        DomainGenesisBlockExecutionReceipt::<T>::get(domain_id).map(|er| er.final_state_root.into())
     }
 
     /// Returns the tx range for the domain.

@@ -25,7 +25,7 @@ use tokio::sync::broadcast;
 use tokio::time::sleep;
 use tracing::{debug, error, trace, Instrument};
 
-const LOG_TARGET: &str = "domain_snap_sync";
+pub(crate) const LOG_TARGET: &str = "domain_snap_sync";
 
 /// Notification with number of the block that is about to be imported and acknowledgement sender
 /// that pauses block production until the previous block is acknowledged.
@@ -197,12 +197,12 @@ async fn get_last_confirmed_block<Block: BlockT>(
                             Ok(mut blocks) => {
                                 trace!(target: LOG_TARGET, %block_number, "Domain block parsing result: {:?}", blocks);
 
-                                return blocks.pop().ok_or_else(|| {
-                                    sp_blockchain::Error::Application(
-                                        "Got empty state blocks collection for domain snap sync"
-                                            .into(),
-                                    )
-                                });
+                                if let Some(blocks) = blocks.pop() {
+                                    return Ok(blocks);
+                                } else {
+                                    trace!(target: LOG_TARGET, %current_peer_id, "Got empty state blocks",);
+                                    continue;
+                                }
                             }
                             Err(error) => {
                                 error!(target: LOG_TARGET, %block_number, ?error, "Domain block parsing error");
@@ -376,6 +376,9 @@ where
         &sync_params.domain_client,
         domain_block_hash,
         consensus_block_hash,
+        // skip cleaning up finalized hash so that operator can pick after snap sync
+        // and continue where snap sync left off
+        false,
     )?;
 
     crate::aux_schema::write_execution_receipt::<_, Block, CBlock>(

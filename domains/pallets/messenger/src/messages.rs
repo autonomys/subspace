@@ -11,6 +11,8 @@ use crate::{
 };
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
+#[cfg(not(feature = "std"))]
+use alloc::collections::BTreeMap;
 use frame_support::ensure;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_messenger::messages::{
@@ -20,6 +22,8 @@ use sp_messenger::messages::{
 };
 use sp_runtime::traits::Get;
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
+#[cfg(feature = "std")]
+use std::collections::BTreeMap;
 
 impl<T: Config> Pallet<T> {
     /// Takes a new message destined for dst_chain and adds the message to the outbox.
@@ -326,10 +330,7 @@ impl<T: Config> Pallet<T> {
         )?;
 
         // clear outbox message weight tag
-        crate::migrations::messenger_migration::remove_outbox_weight_tag::<T>((
-            dst_chain_id,
-            (channel_id, nonce),
-        ));
+        OutboxMessageWeightTags::<T>::remove((dst_chain_id, (channel_id, nonce)));
 
         let ConvertedPayload {
             payload: req,
@@ -406,15 +407,19 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn get_block_messages() -> BlockMessagesWithStorageKey {
-        let weight_tags = crate::migrations::messenger_migration::get_weight_tags::<T>();
-        if weight_tags.outbox.is_empty() && weight_tags.inbox_responses.is_empty() {
+        let inbox_responses_weight_tags: BTreeMap<(ChainId, MessageId), MessageWeightTag> =
+            InboxResponseMessageWeightTags::<T>::iter().collect();
+        let outbox_weight_tags: BTreeMap<(ChainId, MessageId), MessageWeightTag> =
+            OutboxMessageWeightTags::<T>::iter().collect();
+
+        if outbox_weight_tags.is_empty() && inbox_responses_weight_tags.is_empty() {
             return Default::default();
         }
 
         let mut messages_with_storage_key = BlockMessagesWithStorageKey::default();
 
         // create storage keys for inbox responses
-        weight_tags.inbox_responses.into_iter().for_each(
+        inbox_responses_weight_tags.into_iter().for_each(
             |((chain_id, (channel_id, nonce)), weight_tag)| {
                 let storage_key =
                     InboxResponses::<T>::hashed_key_for((chain_id, channel_id, nonce));
@@ -432,8 +437,7 @@ impl<T: Config> Pallet<T> {
         );
 
         // create storage keys for outbox
-        weight_tags
-            .outbox
+        outbox_weight_tags
             .into_iter()
             .for_each(|((chain_id, (channel_id, nonce)), weight_tag)| {
                 let storage_key = Outbox::<T>::hashed_key_for((chain_id, channel_id, nonce));

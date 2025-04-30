@@ -336,7 +336,7 @@ where
     }
 
     /// Handles the received request from the client side
-    async fn process_incoming_request(&mut self, request: IncomingRequest) {
+    async fn process_incoming_request(&self, request: IncomingRequest) {
         // Drop the request in case of errors and let the client time out.
         // This is the behavior of the current substrate block handler.
         let IncomingRequest {
@@ -392,7 +392,7 @@ where
 
     /// Handles the initial request from the client
     fn on_initial_request(
-        &mut self,
+        &self,
         initial_request: InitialRequest<Block>,
     ) -> Result<InitialResponse<Block, TxHash<Pool>>, RelayError> {
         let block_hash = self.block_hash(&initial_request.from_block)?;
@@ -422,7 +422,7 @@ where
 
     /// Handles the protocol message from the client
     fn on_protocol_message(
-        &mut self,
+        &self,
         msg: ProtocolMessage<Block, TxHash<Pool>>,
     ) -> Result<Vec<u8>, RelayError> {
         let response = match msg {
@@ -436,7 +436,7 @@ where
 
     /// Handles the full download request from the client
     fn on_full_download_request(
-        &mut self,
+        &self,
         full_download_request: FullDownloadRequest<Block>,
     ) -> Result<FullDownloadResponse<Block>, RelayError> {
         let block_request = full_download_request.0;

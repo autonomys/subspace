@@ -43,11 +43,11 @@ impl SubspaceMetrics {
         }
     }
 
-    pub(crate) fn inc_established_connections(&mut self) {
+    pub(crate) fn inc_established_connections(&self) {
         self.established_connections.inc();
     }
 
-    pub(crate) fn dec_established_connections(&mut self) {
+    pub(crate) fn dec_established_connections(&self) {
         self.established_connections.dec();
     }
 }

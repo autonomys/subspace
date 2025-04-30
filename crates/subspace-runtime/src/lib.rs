@@ -1103,8 +1103,8 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    // TODO: remove once migration has been deployed to Taurus
-    pallet_domains::migrations::VersionCheckedMigrateDomainsV3ToV4<Runtime>,
+    // TODO: remove once migration has been deployed to Taurus spec 15
+    pallet_domains::migrations::VersionCheckedMigrateDomainsV4ToV5<Runtime>,
 >;
 
 impl pallet_subspace::extensions::MaybeSubspaceCall<Runtime> for RuntimeCall {
@@ -1546,7 +1546,6 @@ impl_runtime_apis! {
         fn evm_domain_contract_creation_allowed_by_call(domain_id: DomainId) -> Option<PermissionedActionAllowedBy<EthereumAccountId>> {
             Domains::evm_domain_contract_creation_allowed_by_call(domain_id)
         }
-
 
         fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>{
             Domains::latest_confirmed_domain_execution_receipt(domain_id)
