@@ -183,15 +183,13 @@ where
         }
 
         // Find the receipt with the maximum votes
-        if let Some(max_receipt_vote) = receipts_hashes.values().max() {
-            if let Some((receipt_hash, _)) = receipts_hashes
-                .iter()
-                .find(|(_, vote)| max_receipt_vote == *vote)
-            {
-                return receipts.get(receipt_hash).cloned();
-            }
-        } else {
-            debug!(target: LOG_TARGET, "Couldn't find last confirmed domain block execution receipt: no receipts.");
+        if let Some((max_voted_receipt_hash, _max_receipt_votes)) = receipts_hashes
+            .into_iter()
+            .max_by_key(|(_receipt_hash, receipt_votes)| *receipt_votes)
+        {
+            // We're about to drop receipts, so removing the receipt saves a clone.
+            // This is always Some, because every receipt has a hash and a vote.
+            return receipts.remove(&max_voted_receipt_hash);
         }
 
         error!(target: LOG_TARGET, "Couldn't find last confirmed domain block execution receipt.");
