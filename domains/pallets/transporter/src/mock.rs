@@ -58,7 +58,7 @@ parameter_types! {
     pub TransactionWeightFee: Balance = 100_000;
     pub const MaxOutgoingMessages: u32 = 25;
     pub const FeeMultiplier: u32 = 1;
-    pub const MessageVersion: pallet_messenger::MessageVersion = pallet_messenger::MessageVersion::V0;
+    pub const MessageVersion: pallet_messenger::MessageVersion = pallet_messenger::MessageVersion::V1;
 }
 
 #[derive(
