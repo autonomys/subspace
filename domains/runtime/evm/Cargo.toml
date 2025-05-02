@@ -68,6 +68,7 @@ sp-version.workspace = true
 static_assertions.workspace = true
 subspace-core-primitives.workspace = true
 subspace-runtime-primitives.workspace = true
+hex-literal.workspace = true
 
 [dev-dependencies]
 subspace-runtime-primitives = { workspace = true, features = ["testing"] }

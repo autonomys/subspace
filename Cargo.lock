@@ -3524,6 +3524,7 @@ dependencies = [
  "frame-system",
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
+ "hex-literal",
  "pallet-balances",
  "pallet-block-fees",
  "pallet-domain-id",
