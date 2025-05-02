@@ -11,6 +11,7 @@ use sc_consensus::{
     BlockImportParams, BoxBlockImport, ForkChoiceStrategy, ImportResult, StateAction,
     StorageChanges,
 };
+use sc_executor::RuntimeVersionOf;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
@@ -722,7 +723,7 @@ where
         + FraudProofApi<CBlock, Block::Header>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>,
     Backend: sc_client_api::Backend<Block> + 'static,
-    E: CodeExecutor,
+    E: CodeExecutor + RuntimeVersionOf,
 {
     pub(crate) fn maybe_submit_fraud_proof(
         &self,

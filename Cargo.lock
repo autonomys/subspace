@@ -2902,6 +2902,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-domains",
+ "sc-executor",
  "sc-network",
  "sc-network-common",
  "sc-network-sync",

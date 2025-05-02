@@ -281,6 +281,26 @@ where
         Ok((inboxed_bundles, valid_extrinsics))
     }
 
+    fn stateless_runtime_api(
+        &self,
+        parent_domain_hash: Block::Hash,
+    ) -> sp_blockchain::Result<StatelessRuntime<CBlock, Block, Exec>> {
+        let state = self.backend.state_at(parent_domain_hash)?;
+        let trie_backend = state.as_trie_backend();
+        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
+        let runtime_code = state_runtime_code
+            .runtime_code()
+            .map_err(sp_blockchain::Error::RuntimeCode)?
+            .fetch_runtime_code()
+            .ok_or(sp_blockchain::Error::RuntimeCode("missing runtime code"))?
+            .into_owned();
+
+        Ok(StatelessRuntime::<CBlock, Block, _>::new(
+            self.executor.clone(),
+            runtime_code.into(),
+        ))
+    }
+
     fn check_bundle_validity(
         &self,
         bundle: &OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
@@ -294,6 +314,7 @@ where
         let mut extrinsics = Vec::with_capacity(bundle.extrinsics.len());
         let mut estimated_bundle_weight = Weight::default();
 
+        let stateless_runtime_api = self.stateless_runtime_api(parent_domain_hash)?;
         let runtime_api = self.client.runtime_api();
         let consensus_runtime_api = self.consensus_client.runtime_api();
 
@@ -301,8 +322,7 @@ where
         //
         // NOTE: for each extrinsic the checking order must follow `InvalidBundleType::checking_order`
         for (index, opaque_extrinsic) in bundle.extrinsics.iter().enumerate() {
-            let decode_result =
-                runtime_api.decode_extrinsic(parent_domain_hash, opaque_extrinsic.clone())?;
+            let decode_result = stateless_runtime_api.decode_extrinsic(opaque_extrinsic.clone())?;
             let extrinsic = match decode_result {
                 Ok(extrinsic) => extrinsic,
                 Err(err) => {
@@ -318,12 +338,8 @@ where
                 }
             };
 
-            let is_within_tx_range = runtime_api.is_within_tx_range(
-                parent_domain_hash,
-                &extrinsic,
-                &bundle_vrf_hash,
-                tx_range,
-            )?;
+            let is_within_tx_range =
+                stateless_runtime_api.is_within_tx_range(&extrinsic, &bundle_vrf_hash, tx_range)?;
 
             if !is_within_tx_range {
                 return Ok(BundleValidity::Invalid(InvalidBundleType::OutOfRangeTx(
@@ -341,7 +357,7 @@ where
             }
 
             if let Some(xdm_mmr_proof) =
-                runtime_api.extract_xdm_mmr_proof(parent_domain_hash, &extrinsic)?
+                stateless_runtime_api.extract_native_xdm_mmr_proof(&extrinsic)?
             {
                 let ConsensusChainMmrLeafProof {
                     opaque_mmr_leaf,
@@ -378,7 +394,7 @@ where
                 )));
             }
 
-            let tx_weight = runtime_api.extrinsic_weight(parent_domain_hash, &extrinsic)?;
+            let tx_weight = stateless_runtime_api.extrinsic_weight(&extrinsic)?;
             estimated_bundle_weight = estimated_bundle_weight.saturating_add(tx_weight);
 
             extrinsics.push(extrinsic);

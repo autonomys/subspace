@@ -16,6 +16,7 @@ parking_lot.workspace = true
 sc-client-api.workspace = true
 sc-consensus.workspace = true
 sc-domains.workspace = true
+sc-executor.workspace = true
 sc-network.workspace = true
 sc-network-common.workspace = true
 sc-network-sync.workspace = true
