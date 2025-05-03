@@ -222,10 +222,6 @@ impl<T: Config> Pallet<T> {
         msg_weight_tag: &MessageWeightTag,
         endpoint_handler: Box<dyn sp_messenger::endpoint::EndpointHandler<MessageId>>,
     ) -> EndpointResponse {
-        if !ChainAllowlist::<T>::get().contains(&dst_chain_id) {
-            return Err(Error::<T>::ChainNotAllowed.into());
-        }
-
         if msg_weight_tag != &MessageWeightTag::EndpointRequest(req.dst_endpoint.clone()) {
             return Err(Error::<T>::WeightTagNotMatch.into());
         }
@@ -236,7 +232,13 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::InvalidChannelState.into());
         }
 
-        endpoint_handler.message(dst_chain_id, (channel_id, nonce), req)
+        let pre_check_response = if !ChainAllowlist::<T>::get().contains(&dst_chain_id) {
+            Err(Error::<T>::ChainNotAllowed.into())
+        } else {
+            Ok(())
+        };
+
+        endpoint_handler.message(dst_chain_id, (channel_id, nonce), req, pre_check_response)
     }
 
     fn process_incoming_protocol_message_req(

@@ -94,6 +94,8 @@ pub trait EndpointHandler<MessageId> {
         src_chain_id: ChainId,
         message_id: MessageId,
         req: EndpointRequest,
+        // if pre_checks failed, implementation should reject the transfer
+        pre_check_result: DispatchResult,
     ) -> EndpointResponse;
 
     /// Return the maximal possible consume weight of `message`
@@ -122,6 +124,7 @@ impl<MessageId> EndpointHandler<MessageId> for BenchmarkEndpointHandler {
         _src_chain_id: ChainId,
         _message_id: MessageId,
         _req: EndpointRequest,
+        _pre_check_result: DispatchResult,
     ) -> EndpointResponse {
         Ok(Vec::new())
     }

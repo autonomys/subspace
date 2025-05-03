@@ -37,7 +37,7 @@ use frame_support::traits::Currency;
 pub use pallet::*;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_domains::{DomainId, DomainsTransfersTracker, Transfers};
+use sp_domains::{DomainId, DomainsTransfersTracker, SkipBalanceChecks, Transfers};
 use sp_messenger::endpoint::EndpointResponse;
 use sp_messenger::messages::ChainId;
 use sp_messenger::NoteChainTransfer;
@@ -83,7 +83,7 @@ mod pallet {
     use frame_support::weights::Weight;
     use frame_system::pallet_prelude::*;
     use parity_scale_codec::{Decode, Encode};
-    use sp_domains::{DomainId, DomainsTransfersTracker, Transfers};
+    use sp_domains::{DomainId, DomainsTransfersTracker, SkipBalanceChecks, Transfers};
     use sp_messenger::endpoint::{
         Endpoint, EndpointHandler as EndpointHandlerT, EndpointId, EndpointRequest,
         EndpointResponse, Sender,
@@ -114,6 +114,9 @@ mod pallet {
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
+
+        /// Skip Balance transfer checks
+        type SkipBalanceTransferChecks: SkipBalanceChecks;
     }
 
     /// Pallet transporter to move funds between chains.
@@ -284,7 +287,9 @@ mod pallet {
             // if this is consensus chain, then note the transfer
             // else add transfer to storage to send through ER to consensus chain
             if T::SelfChainId::get().is_consensus_chain() {
-                Self::note_transfer(T::SelfChainId::get(), dst_chain_id, amount)?
+                if !T::SkipBalanceTransferChecks::should_skip_balance_check(dst_chain_id) {
+                    Self::note_transfer(T::SelfChainId::get(), dst_chain_id, amount)?
+                }
             } else {
                 ChainTransfers::<T>::try_mutate(|transfers| {
                     Self::update_transfer_out(transfers, dst_chain_id, amount)
@@ -323,6 +328,7 @@ mod pallet {
             src_chain_id: ChainId,
             message_id: MessageIdOf<T>,
             req: EndpointRequest,
+            pre_check_result: DispatchResult,
         ) -> EndpointResponse {
             // ensure message is not from the self
             ensure!(
@@ -343,12 +349,18 @@ mod pallet {
             };
 
             let amount = req.amount;
-            let response = Pallet::<T>::finalize_transfer(src_chain_id, message_id, req);
+            let response = match pre_check_result {
+                Ok(_) => Pallet::<T>::finalize_transfer(src_chain_id, message_id, req),
+                Err(err) => Err(err),
+            };
+
             if response.is_err() {
                 // if this is consensus chain, then reject the transfer
                 // else update the Transfers storage with rejected transfer
                 if T::SelfChainId::get().is_consensus_chain() {
-                    Pallet::<T>::reject_transfer(src_chain_id, T::SelfChainId::get(), amount)?;
+                    if !T::SkipBalanceTransferChecks::should_skip_balance_check(src_chain_id) {
+                        Pallet::<T>::reject_transfer(src_chain_id, T::SelfChainId::get(), amount)?;
+                    }
                 } else {
                     ChainTransfers::<T>::try_mutate(|transfers| {
                         Pallet::<T>::update_transfer_rejected(transfers, src_chain_id, amount)
@@ -397,16 +409,17 @@ mod pallet {
                     let account_id =
                         T::AccountIdConverter::try_convert_back(transfer.sender.account_id)
                             .ok_or(Error::<T>::InvalidAccountId)?;
-                    let _imbalance = T::Currency::deposit_creating(&account_id, transfer.amount);
 
                     // if this is consensus chain, then revert the transfer
                     // else update the Transfers storage with reverted transfer
                     if T::SelfChainId::get().is_consensus_chain() {
-                        Pallet::<T>::claim_rejected_transfer(
-                            T::SelfChainId::get(),
-                            dst_chain_id,
-                            transfer.amount,
-                        )?;
+                        if !T::SkipBalanceTransferChecks::should_skip_balance_check(dst_chain_id) {
+                            Pallet::<T>::claim_rejected_transfer(
+                                T::SelfChainId::get(),
+                                dst_chain_id,
+                                transfer.amount,
+                            )?;
+                        }
                     } else {
                         ChainTransfers::<T>::try_mutate(|transfers| {
                             Pallet::<T>::update_transfer_revert(
@@ -417,6 +430,7 @@ mod pallet {
                         })?;
                     }
 
+                    let _imbalance = T::Currency::deposit_creating(&account_id, transfer.amount);
                     frame_system::Pallet::<T>::deposit_event(
                         Into::<<T as Config>::RuntimeEvent>::into(
                             Event::<T>::OutgoingTransferFailed {
@@ -566,7 +580,11 @@ impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> 
 impl<T: Config> NoteChainTransfer<BalanceOf<T>> for Pallet<T> {
     fn note_transfer_in(amount: BalanceOf<T>, from_chain_id: ChainId) -> bool {
         if T::SelfChainId::get().is_consensus_chain() {
-            Pallet::<T>::confirm_transfer(from_chain_id, T::SelfChainId::get(), amount).is_ok()
+            if !T::SkipBalanceTransferChecks::should_skip_balance_check(from_chain_id) {
+                Pallet::<T>::confirm_transfer(from_chain_id, T::SelfChainId::get(), amount).is_ok()
+            } else {
+                true
+            }
         } else {
             ChainTransfers::<T>::try_mutate(|transfers| {
                 Pallet::<T>::update_transfer_in(transfers, from_chain_id, amount)
@@ -577,7 +595,11 @@ impl<T: Config> NoteChainTransfer<BalanceOf<T>> for Pallet<T> {
 
     fn note_transfer_out(amount: BalanceOf<T>, to_chain_id: ChainId) -> bool {
         if T::SelfChainId::get().is_consensus_chain() {
-            Self::note_transfer(T::SelfChainId::get(), to_chain_id, amount).is_ok()
+            if !T::SkipBalanceTransferChecks::should_skip_balance_check(to_chain_id) {
+                Self::note_transfer(T::SelfChainId::get(), to_chain_id, amount).is_ok()
+            } else {
+                true
+            }
         } else {
             ChainTransfers::<T>::try_mutate(|transfers| {
                 Self::update_transfer_out(transfers, to_chain_id, amount)
@@ -606,17 +628,19 @@ impl<T: Config> Pallet<T> {
         let account_id = T::AccountIdConverter::try_convert_back(req.receiver.account_id)
             .ok_or(Error::<T>::InvalidAccountId)?;
 
-        let _imbalance = T::Currency::deposit_creating(&account_id, req.amount);
-
         // if this is consensus chain, then confirm the transfer
         // else add transfer to storage to send through ER to consensus chain
         if T::SelfChainId::get().is_consensus_chain() {
-            Pallet::<T>::confirm_transfer(src_chain_id, T::SelfChainId::get(), req.amount)?
+            if !T::SkipBalanceTransferChecks::should_skip_balance_check(src_chain_id) {
+                Pallet::<T>::confirm_transfer(src_chain_id, T::SelfChainId::get(), req.amount)?
+            }
         } else {
             ChainTransfers::<T>::try_mutate(|transfers| {
                 Pallet::<T>::update_transfer_in(transfers, src_chain_id, req.amount)
             })?;
         }
+
+        let _imbalance = T::Currency::deposit_creating(&account_id, req.amount);
 
         frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::RuntimeEvent>::into(
             Event::<T>::IncomingTransferSuccessful {

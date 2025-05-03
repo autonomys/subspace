@@ -1622,6 +1622,16 @@ pub enum OperatorRewardSource<Number> {
     Dummy,
 }
 
+pub trait SkipBalanceChecks {
+    fn should_skip_balance_check(chain_id: ChainId) -> bool;
+}
+
+impl SkipBalanceChecks for () {
+    fn should_skip_balance_check(_chain_id: ChainId) -> bool {
+        false
+    }
+}
+
 sp_api::decl_runtime_apis! {
     /// APIs used to access the domains pallet.
     // When updating this version, document new APIs with "Only present in API versions" comments.
