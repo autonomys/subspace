@@ -77,7 +77,8 @@ mod benchmarks {
             assert_ok!(EndpointHandler(PhantomData::<T>).message(
                 dst_chain_id,
                 message_id,
-                endpoint_req
+                endpoint_req,
+                Ok(())
             ));
         }
     }

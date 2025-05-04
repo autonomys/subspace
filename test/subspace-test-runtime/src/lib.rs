@@ -764,6 +764,7 @@ impl pallet_transporter::Config for Runtime {
     type Sender = Messenger;
     type AccountIdConverter = AccountIdConverter;
     type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
+    type SkipBalanceTransferChecks = ();
 }
 
 parameter_types! {

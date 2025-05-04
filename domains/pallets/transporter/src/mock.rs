@@ -171,6 +171,7 @@ impl Config for MockRuntime {
     type Sender = Messenger;
     type AccountIdConverter = MockAccountIdConverter;
     type WeightInfo = ();
+    type SkipBalanceTransferChecks = ();
 }
 
 pub const USER_ACCOUNT: AccountId = 1;

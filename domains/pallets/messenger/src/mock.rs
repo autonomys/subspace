@@ -180,6 +180,7 @@ macro_rules! impl_runtime {
             type Sender = Messenger;
             type AccountIdConverter = MockAccountIdConverter;
             type WeightInfo = ();
+            type SkipBalanceTransferChecks = ();
         }
 
         pub const USER_ACCOUNT: AccountId = 1;
@@ -213,6 +214,7 @@ impl EndpointHandler<MessageId> for MockEndpoint {
         _src_chain_id: ChainId,
         _message_id: MessageId,
         req: EndpointRequest,
+        _pre_check_result: DispatchResult,
     ) -> EndpointResponse {
         let req = req.payload;
         assert_eq!(req, vec![1, 2, 3, 4]);
