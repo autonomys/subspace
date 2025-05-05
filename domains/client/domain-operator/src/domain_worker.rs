@@ -24,6 +24,7 @@ use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ExecutorProvider, Finalizer,
     ProofProvider,
 };
+use sc_executor::RuntimeVersionOf;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -102,7 +103,7 @@ pub(super) async fn start_worker<
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
     ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
-    E: CodeExecutor,
+    E: CodeExecutor + RuntimeVersionOf,
 {
     let span = tracing::Span::current();
 
