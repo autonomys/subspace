@@ -316,7 +316,7 @@ where
 
         info!(target: LOG_TARGET, ?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
-        let import_froms_from_dsn_fut = import_blocks_from_dsn(
+        let import_blocks_from_dsn_fut = import_blocks_from_dsn(
             &segment_headers_store,
             &segment_header_downloader,
             client,
@@ -347,7 +347,7 @@ where
         };
 
         select! {
-            result = import_froms_from_dsn_fut.fuse() => {
+            result = import_blocks_from_dsn_fut.fuse() => {
                 if let Err(error) = result {
                     warn!(target: LOG_TARGET, %error, "Error when syncing blocks from DSN");
                 }

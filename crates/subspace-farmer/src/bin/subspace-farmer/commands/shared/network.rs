@@ -226,8 +226,8 @@ where
                 }
                 .in_current_span()
             }),
-            SegmentHeaderBySegmentIndexesRequestHandler::create(move |_, req| {
-                debug!(?req, "Segment headers request received.");
+            SegmentHeaderBySegmentIndexesRequestHandler::create(move |peer_id, req| {
+                debug!(%peer_id, ?req, "Segment headers request received.");
 
                 let node_client = node_client.clone();
 
@@ -238,16 +238,23 @@ where
 
                             if segment_indexes.len() > SEGMENT_HEADERS_LIMIT as usize {
                                 debug!(
-                                    "segment_indexes length exceed the limit: {} ",
-                                    segment_indexes.len()
+                                    %peer_id,
+                                    segment_indexes_count = %segment_indexes.len(),
+                                    %SEGMENT_HEADERS_LIMIT,
+                                    first_segment_index = ?segment_indexes.first(),
+                                    last_segment_index = ?segment_indexes.last(),
+                                    "segment_indexes length exceed the limit",
                                 );
 
                                 return None;
                             }
 
                             debug!(
-                                segment_indexes_count = ?segment_indexes.len(),
-                                "Segment headers request received."
+                                %peer_id,
+                                segment_indexes_count = %segment_indexes.len(),
+                                first_segment_index = ?segment_indexes.first(),
+                                last_segment_index = ?segment_indexes.last(),
+                                "Segment headers request received.",
                             );
 
                             node_client.segment_headers(segment_indexes).await
@@ -255,8 +262,10 @@ where
                         SegmentHeaderRequest::LastSegmentHeaders { mut limit } => {
                             if limit > SEGMENT_HEADERS_LIMIT {
                                 debug!(
+                                    %peer_id,
                                     %limit,
-                                    "Segment header number exceeded the limit."
+                                    %SEGMENT_HEADERS_LIMIT,
+                                    "Segment header number exceeded the limit.",
                                 );
 
                                 limit = SEGMENT_HEADERS_LIMIT;

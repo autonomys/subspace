@@ -93,8 +93,13 @@ where
     ) -> Option<ExecutionReceiptFor<Block::Header, CBlock, Balance>> {
         let info = self.consensus_client.info();
         let protocol_name = generate_protocol_name(info.genesis_hash, self.fork_id.as_deref());
+        // Used to debug failures
+        let mut peers_not_synced = 0;
+        let mut peer_request_errors = 0;
+        let mut peer_responses = 0;
 
-        debug!(target: LOG_TARGET,
+        debug!(
+            target: LOG_TARGET,
             domain_id=%self.domain_id,
             %protocol_name,
             "Started obtaining last confirmed domain block ER..."
@@ -119,6 +124,9 @@ where
             'peers: for (peer_id, peer_info) in peers_info.iter() {
                 debug!(
                     target: LOG_TARGET,
+                    %peers_not_synced,
+                    %peer_request_errors,
+                    %peer_responses,
                     "Domain block ER request. peer = {peer_id}, info = {:?}",
                     peer_info
                 );
@@ -129,7 +137,16 @@ where
                 }
 
                 if !peer_info.is_synced {
-                    trace!(target: LOG_TARGET, %attempt, %peer_id, "Domain data request skipped (not synced).");
+                    peers_not_synced += 1;
+                    trace!(
+                        target: LOG_TARGET,
+                        %attempt,
+                        %peer_id,
+                        %peers_not_synced,
+                        %peer_request_errors,
+                        %peer_responses,
+                        "Domain data request skipped (not synced).",
+                    );
                     continue 'peers;
                 }
 
@@ -145,10 +162,14 @@ where
                 match response {
                     Ok(response) => {
                         let DomainBlockERResponse::LastConfirmedER(receipt) = response;
+                        peer_responses += 1;
                         trace!(
                             target: LOG_TARGET,
                             %attempt,
-                            "Response from a peer {peer_id}: {receipt:?}"
+                            %peers_not_synced,
+                            %peer_request_errors,
+                            %peer_responses,
+                            "Response from a peer {peer_id}: {receipt:?}",
                         );
 
                         let receipt_hash = KeccakHasher::hash(&receipt.encode());
@@ -160,41 +181,64 @@ where
                             .or_insert(1u32);
                     }
                     Err(error) => {
-                        debug!(target: LOG_TARGET, %attempt, "Domain block ER request failed. peer = {peer_id}: {error}");
+                        peer_request_errors += 1;
+                        debug!(
+                            target: LOG_TARGET,
+                            %attempt,
+                            %peers_not_synced,
+                            %peer_request_errors,
+                            %peer_responses,
+                            "Domain block ER request failed. peer = {peer_id}: {error}",
+                        );
                         continue 'peers;
                     }
                 }
             }
-            debug!(
-                target: LOG_TARGET,
-                domain_id=%self.domain_id,
-                "No synced peers to handle the domain confirmed block info request. Pausing..."
-            );
 
             if peers_hashes.len() >= PEERS_THRESHOLD {
                 break;
             }
 
+            debug!(
+                target: LOG_TARGET,
+                domain_id=%self.domain_id,
+                %peers_not_synced,
+                %peer_request_errors,
+                %peer_responses,
+                "No synced peers to handle the domain confirmed block info request. Pausing..."
+            );
             sleep(REQUEST_PAUSE).await;
         }
 
         if peers_hashes.len() < PEERS_THRESHOLD {
-            debug!(target: LOG_TARGET, peers=%peers_hashes.len(), "Couldn't pass peer threshold for receipts.");
+            debug!(
+                target: LOG_TARGET,
+                peers=%peers_hashes.len(),
+                %PEERS_THRESHOLD,
+                %peers_not_synced,
+                %peer_request_errors,
+                %peer_responses,
+                "Couldn't pass peer threshold for receipts, trying snap sync anyway.",
+            );
         }
 
         // Find the receipt with the maximum votes
-        if let Some(max_receipt_vote) = receipts_hashes.values().max() {
-            if let Some((receipt_hash, _)) = receipts_hashes
-                .iter()
-                .find(|(_, vote)| max_receipt_vote == *vote)
-            {
-                return receipts.get(receipt_hash).cloned();
-            }
-        } else {
-            debug!(target: LOG_TARGET, "Couldn't find last confirmed domain block execution receipt: no receipts.");
+        if let Some((max_voted_receipt_hash, _max_receipt_votes)) = receipts_hashes
+            .into_iter()
+            .max_by_key(|(_receipt_hash, receipt_votes)| *receipt_votes)
+        {
+            // We're about to drop receipts, so removing the receipt saves a clone.
+            // This is always Some, because every receipt has a hash and a vote.
+            return receipts.remove(&max_voted_receipt_hash);
         }
 
-        error!(target: LOG_TARGET, "Couldn't find last confirmed domain block execution receipt.");
+        error!(
+            target: LOG_TARGET,
+            %peers_not_synced,
+            %peer_request_errors,
+            %peer_responses,
+            "Couldn't find last confirmed domain block execution receipt: no receipts.",
+        );
         None
     }
 }
