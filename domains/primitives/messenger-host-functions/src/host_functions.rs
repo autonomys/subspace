@@ -70,14 +70,32 @@ where
             .header(consensus_block_hash)
             .ok()
             .flatten()?;
+
+        // if we are snap syncing, it is possible that block's parent may not exist.
+        // in such cases, we would rather just pick the best hash to fetch the domain runtime
+        // This is fine to fetch the domain code since we only use it to derive the storage key.
+        // This will not be an issue unless the Storage type was changed for Outbox and Inbox Response.
+        // which might not happen but good to be aware if such situations arise.
+        let block_hash = match self
+            .consensus_client
+            .header(*consensus_block_header.parent_hash())
+            .ok()
+            .flatten()
+        {
+            // missing block body here means, we just snap synced,
+            // use the consensus block hash instead of its parent hash
+            None => consensus_block_hash,
+            Some(header) => header.hash(),
+        };
+
         let domain_runtime = runtime_api
-            .domain_runtime_code(*consensus_block_header.parent_hash(), domain_id)
+            .domain_runtime_code(block_hash, domain_id)
             .ok()
             .flatten()?;
 
         // we need the initial state here so that SelfChainId is initialised on domain
         let domain_state = runtime_api
-            .domain_instance_data(*consensus_block_header.parent_hash(), domain_id)
+            .domain_instance_data(block_hash, domain_id)
             .ok()
             .flatten()
             .map(|(data, _)| data.raw_genesis.into_storage())?;
