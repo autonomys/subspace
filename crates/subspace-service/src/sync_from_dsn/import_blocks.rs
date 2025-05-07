@@ -98,19 +98,13 @@ where
             "Checking segment header"
         );
 
-        let last_full_archived_block_number = if last_archived_block_partial {
-            // The genesis block is always fully reconstructed, so we can saturating_sub here
-            NumberFor::<Block>::from(last_archived_maybe_partial_block_number)
-                .saturating_sub(1u32.into())
-        } else {
-            NumberFor::<Block>::from(last_archived_maybe_partial_block_number)
-        };
-
         let info = client.info();
-        // We have already processed the last block that's completely in this segment, or one
-        // higher than it, so it can't change. Resetting the reconstructor loses any partial
-        // blocks, so we only reset based on fully reconstructed blocks.
-        if *last_processed_block_number >= last_full_archived_block_number {
+        let last_archived_maybe_partial_block_number =
+            NumberFor::<Block>::from(last_archived_maybe_partial_block_number);
+        // We have already processed the last block in this segment, or one higher than it,
+        // so it can't change. Resetting the reconstructor loses any partial blocks, so we
+        // only reset if the (possibly partial) last block has been processed.
+        if *last_processed_block_number >= last_archived_maybe_partial_block_number {
             *last_processed_segment_index = segment_index;
             // Reset reconstructor instance
             reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
@@ -118,8 +112,6 @@ where
         }
         // Just one partial unprocessed block and this was the last segment available, so nothing to
         // import
-        let last_archived_maybe_partial_block_number =
-            NumberFor::<Block>::from(last_archived_maybe_partial_block_number);
         if last_archived_maybe_partial_block_number == *last_processed_block_number + One::one()
             && last_archived_block_partial
             && segment_indices_iter.peek().is_none()
