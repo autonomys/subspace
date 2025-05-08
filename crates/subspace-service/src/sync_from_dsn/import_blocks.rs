@@ -105,6 +105,14 @@ where
         // so it can't change. Resetting the reconstructor loses any partial blocks, so we
         // only reset if the (possibly partial) last block has been processed.
         if *last_processed_block_number >= last_archived_maybe_partial_block_number {
+            debug!(
+                target: LOG_TARGET,
+                %segment_index,
+                %last_processed_block_number,
+                %last_archived_maybe_partial_block_number,
+                %last_archived_block_partial,
+                "Already processed last (possibly partial) block in segment, resetting reconstructor",
+            );
             *last_processed_segment_index = segment_index;
             // Reset reconstructor instance
             reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
@@ -116,8 +124,18 @@ where
             && last_archived_block_partial
             && segment_indices_iter.peek().is_none()
         {
-            // Reset reconstructor instance
-            reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
+            // We don't need to reset the reconstructor here. We've finished getting blocks, so
+            // we're about to return and drop the reconstructor and its partial block anyway.
+            // (Normally, we'd need that partial block to avoid a block gap. But we should be close
+            // enough to the tip that normal syncing will fill any gaps.)
+            debug!(
+                target: LOG_TARGET,
+                %segment_index,
+                %last_processed_block_number,
+                %last_archived_maybe_partial_block_number,
+                %last_archived_block_partial,
+                "No more segments, snap sync is about to finish",
+            );
             continue;
         }
 
