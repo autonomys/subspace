@@ -15,6 +15,7 @@ use sc_client_api::{
     ProofProvider,
 };
 use sc_consensus::BlockImport;
+use sc_executor::RuntimeVersionOf;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
@@ -108,7 +109,7 @@ where
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionPool:
         sc_transaction_pool_api::TransactionPool<Block = Block, Hash = Block::Hash> + 'static,
-    E: CodeExecutor,
+    E: CodeExecutor + RuntimeVersionOf,
 {
     /// Create a new instance.
     #[allow(clippy::type_complexity)]

@@ -1,4 +1,5 @@
 use crate::ExecutionReceiptFor;
+use domain_runtime_primitives::CheckExtrinsicsValidityError;
 use futures::{select, FutureExt};
 use parity_scale_codec::Encode;
 use sc_client_api::{AuxStore, BlockBackend};
@@ -299,6 +300,10 @@ where
                     runtime_api_instance.execute_in_transaction(|api| {
                         let transaction_validity_result = api.check_extrinsics_and_do_pre_dispatch(
                             parent_hash,
+                            // Ideally, we should pass the whole `extrinsics` to keep consistency with ER derivation
+                            // and FP verification but it will be constly, so instead we do another final check that
+                            // pass the whole `extrinsics` to `check_extrinsics_and_do_pre_dispatch` before returning
+                            // the `extrinsics` to construct bundle.
                             vec![pending_tx_data.as_ref().clone()],
                             parent_number,
                             parent_hash,
@@ -321,6 +326,28 @@ where
                 self.previous_bundled_tx
                     .add_bundled(self.transaction_pool.hash_of(pending_tx_data));
             }
+        }
+
+        // As a final check, call `check_extrinsics_and_do_pre_dispatch` with all extrinsics,
+        // this is consistent with ER derivation and FP verification
+        if let Err(CheckExtrinsicsValidityError {
+            extrinsic_index,
+            transaction_validity_error,
+        }) = self
+            .client
+            .runtime_api()
+            .check_extrinsics_and_do_pre_dispatch(
+                parent_hash,
+                extrinsics.clone(),
+                parent_number,
+                parent_hash,
+            )?
+        {
+            tracing::warn!("Unexpected error when validating all the extrinsics at once: {transaction_validity_error:?}");
+
+            // Truncate to remove the invalid extrinsic (and any extrinsic after it), so only
+            // the valid exrinsic will be used to construct bundle.
+            extrinsics.truncate(extrinsic_index as usize);
         }
 
         let extrinsics_root = HeaderHashingFor::<Block::Header>::ordered_trie_root(

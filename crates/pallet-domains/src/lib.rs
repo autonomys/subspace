@@ -35,6 +35,7 @@ use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use core::marker::PhantomData;
 use domain_runtime_primitives::EthereumAccountId;
 use frame_support::ensure;
 use frame_support::pallet_prelude::{RuntimeDebug, StorageVersion};
@@ -52,9 +53,10 @@ use sp_consensus_subspace::WrappedPotOutput;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, OperatorRewardSource, OperatorSignature, ProofOfElection, RuntimeId,
-    SealedSingletonReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
+    ChainId, DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle,
+    OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature, ProofOfElection,
+    RuntimeId, SealedSingletonReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT,
+    EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
@@ -168,6 +170,19 @@ impl<O: Into<Result<RawOrigin, O>> + From<RawOrigin>> EnsureOrigin<O> for Ensure
     #[cfg(feature = "runtime-benchmarks")]
     fn try_successful_origin() -> Result<O, ()> {
         Ok(O::from(RawOrigin::ValidatedUnsigned))
+    }
+}
+
+/// Impl the sp_domains::SkipBalanceChecks for Domains.
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct DomainsSkipBalanceChecks<T>(PhantomData<T>);
+
+impl<T: Config> sp_domains::SkipBalanceChecks for DomainsSkipBalanceChecks<T> {
+    fn should_skip_balance_check(chain_id: ChainId) -> bool {
+        match chain_id {
+            ChainId::Consensus => false,
+            ChainId::Domain(domain_id) => SkipBalanceChecks::<T>::get().contains(&domain_id),
+        }
     }
 }
 

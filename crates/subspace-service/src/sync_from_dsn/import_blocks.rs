@@ -83,7 +83,7 @@ where
             .get_segment_header(segment_index)
             .expect("Statically guaranteed to exist, see checks above; qed");
 
-        let last_archived_block_number = segment_header.last_archived_block().number;
+        let last_archived_maybe_partial_block_number = segment_header.last_archived_block().number;
         let last_archived_block_partial = segment_header
             .last_archived_block()
             .archived_progress
@@ -93,16 +93,18 @@ where
         trace!(
             target: LOG_TARGET,
             %segment_index,
-            last_archived_block_number,
+            last_archived_maybe_partial_block_number,
             last_archived_block_partial,
             "Checking segment header"
         );
 
-        let last_archived_block_number = NumberFor::<Block>::from(last_archived_block_number);
-
         let info = client.info();
-        // We have already processed this block, it can't change
-        if last_archived_block_number <= *last_processed_block_number {
+        let last_archived_maybe_partial_block_number =
+            NumberFor::<Block>::from(last_archived_maybe_partial_block_number);
+        // We have already processed the last block in this segment, or one higher than it,
+        // so it can't change. Resetting the reconstructor loses any partial blocks, so we
+        // only reset if the (possibly partial) last block has been processed.
+        if *last_processed_block_number >= last_archived_maybe_partial_block_number {
             *last_processed_segment_index = segment_index;
             // Reset reconstructor instance
             reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
@@ -110,7 +112,7 @@ where
         }
         // Just one partial unprocessed block and this was the last segment available, so nothing to
         // import
-        if last_archived_block_number == *last_processed_block_number + One::one()
+        if last_archived_maybe_partial_block_number == *last_processed_block_number + One::one()
             && last_archived_block_partial
             && segment_indices_iter.peek().is_none()
         {
@@ -150,9 +152,9 @@ where
                     .block(
                         client
                             .hash(block_number)?
-                            .expect("Block before best block number must always be found; qed"),
+                            .expect("Genesis block hash must always be found; qed"),
                     )?
-                    .expect("Block before best block number must always be found; qed");
+                    .expect("Genesis block data must always be found; qed");
 
                 if encode_block(signed_block) != block_bytes {
                     return Err(Error::Other(
@@ -167,16 +169,26 @@ where
             // insignificant. Feel free to address this in case you have a good strategy, but it
             // seems like complexity is not worth it.
             while block_number.saturating_sub(best_block_number) >= QUEUED_BLOCKS_LIMIT.into() {
+                let just_queued_blocks_count = blocks_to_import.len();
                 if !blocks_to_import.is_empty() {
+                    // This vector is quite large (~150kB), so replacing it with an uninitialized
+                    // vector with the correct capacity is faster than cloning and clearing it.
+                    // (Cloning requires a memcpy, which pages in and sets all the memory, which is
+                    // a waste just before clearing it.)
+                    let importing_blocks = std::mem::replace(
+                        &mut blocks_to_import,
+                        Vec::with_capacity(QUEUED_BLOCKS_LIMIT as usize),
+                    );
                     // Import queue handles verification and importing it into the client
                     import_queue_service
-                        .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import.clone());
-                    blocks_to_import.clear();
+                        .import_blocks(BlockOrigin::NetworkInitialSync, importing_blocks);
                 }
                 trace!(
                     target: LOG_TARGET,
                     %block_number,
                     %best_block_number,
+                    %just_queued_blocks_count,
+                    %QUEUED_BLOCKS_LIMIT,
                     "Number of importing blocks reached queue limit, waiting before retrying"
                 );
                 tokio::time::sleep(WAIT_FOR_BLOCKS_TO_IMPORT).await;
@@ -186,7 +198,7 @@ where
             let signed_block =
                 decode_block::<Block>(&block_bytes).map_err(|error| error.to_string())?;
 
-            *last_processed_block_number = last_archived_block_number;
+            *last_processed_block_number = block_number;
 
             // No need to import blocks that are already present, if block is not present it might
             // correspond to a short fork, so we need to import it even if we already have another

@@ -15,11 +15,15 @@ pub mod inherents;
 pub mod stateless_runtime;
 
 use crate::inherents::is_runtime_upgraded;
+use crate::stateless_runtime::StatelessRuntime;
 use domain_runtime_primitives::opaque::AccountId;
+use domain_runtime_primitives::CheckExtrinsicsValidityError;
 use parity_scale_codec::Encode;
-use sc_client_api::BlockBackend;
+use sc_client_api::{backend, BlockBackend};
+use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_core::traits::{CodeExecutor, FetchRuntimeCode};
 use sp_core::H256;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
@@ -30,6 +34,7 @@ use sp_domains::{
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, NumberFor};
+use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::LayoutV1;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_weights::Weight;
@@ -76,22 +81,27 @@ pub struct PreprocessResult<Block: BlockT> {
     pub bundles: Vec<InboxedBundle<Block::Hash>>,
 }
 
-pub struct DomainBlockPreprocessor<Block, CBlock, Client, CClient, ReceiptValidator> {
+pub struct DomainBlockPreprocessor<Block, CBlock, Client, CClient, Exec, Backend, ReceiptValidator>
+{
     domain_id: DomainId,
     client: Arc<Client>,
     consensus_client: Arc<CClient>,
+    executor: Arc<Exec>,
+    backend: Arc<Backend>,
     receipt_validator: ReceiptValidator,
     _phantom_data: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, CBlock, Client, CClient, ReceiptValidator: Clone> Clone
-    for DomainBlockPreprocessor<Block, CBlock, Client, CClient, ReceiptValidator>
+impl<Block, CBlock, Client, CClient, Exec, Backend, ReceiptValidator: Clone> Clone
+    for DomainBlockPreprocessor<Block, CBlock, Client, CClient, Exec, Backend, ReceiptValidator>
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
             client: self.client.clone(),
             consensus_client: self.consensus_client.clone(),
+            executor: self.executor.clone(),
+            backend: self.backend.clone(),
             receipt_validator: self.receipt_validator.clone(),
             _phantom_data: self._phantom_data,
         }
@@ -115,8 +125,8 @@ where
     ) -> sp_blockchain::Result<ReceiptValidity>;
 }
 
-impl<Block, CBlock, Client, CClient, ReceiptValidator>
-    DomainBlockPreprocessor<Block, CBlock, Client, CClient, ReceiptValidator>
+impl<Block, CBlock, Client, CClient, Exec, Backend, ReceiptValidator>
+    DomainBlockPreprocessor<Block, CBlock, Client, CClient, Exec, Backend, ReceiptValidator>
 where
     Block: BlockT,
     Block::Hash: Into<H256>,
@@ -134,18 +144,24 @@ where
     CClient::Api: DomainsApi<CBlock, Block::Header>
         + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>,
+    Backend: backend::Backend<Block>,
+    Exec: CodeExecutor + RuntimeVersionOf,
     ReceiptValidator: ValidateReceipt<Block, CBlock>,
 {
     pub fn new(
         domain_id: DomainId,
         client: Arc<Client>,
         consensus_client: Arc<CClient>,
+        executor: Arc<Exec>,
+        backend: Arc<Backend>,
         receipt_validator: ReceiptValidator,
     ) -> Self {
         Self {
             domain_id,
             client,
             consensus_client,
+            executor,
+            backend,
             receipt_validator,
             _phantom_data: Default::default(),
         }
@@ -281,6 +297,26 @@ where
         Ok((inboxed_bundles, valid_extrinsics))
     }
 
+    fn stateless_runtime_api(
+        &self,
+        parent_domain_hash: Block::Hash,
+    ) -> sp_blockchain::Result<StatelessRuntime<CBlock, Block, Exec>> {
+        let state = self.backend.state_at(parent_domain_hash)?;
+        let trie_backend = state.as_trie_backend();
+        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
+        let runtime_code = state_runtime_code
+            .runtime_code()
+            .map_err(sp_blockchain::Error::RuntimeCode)?
+            .fetch_runtime_code()
+            .ok_or(sp_blockchain::Error::RuntimeCode("missing runtime code"))?
+            .into_owned();
+
+        Ok(StatelessRuntime::<CBlock, Block, _>::new(
+            self.executor.clone(),
+            runtime_code.into(),
+        ))
+    }
+
     fn check_bundle_validity(
         &self,
         bundle: &OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
@@ -293,16 +329,16 @@ where
 
         let mut extrinsics = Vec::with_capacity(bundle.extrinsics.len());
         let mut estimated_bundle_weight = Weight::default();
+        let mut maybe_invalid_bundle_type = None;
 
-        let runtime_api = self.client.runtime_api();
+        let stateless_runtime_api = self.stateless_runtime_api(parent_domain_hash)?;
         let consensus_runtime_api = self.consensus_client.runtime_api();
 
         // Check the validity of each extrinsic
         //
         // NOTE: for each extrinsic the checking order must follow `InvalidBundleType::checking_order`
         for (index, opaque_extrinsic) in bundle.extrinsics.iter().enumerate() {
-            let decode_result =
-                runtime_api.decode_extrinsic(parent_domain_hash, opaque_extrinsic.clone())?;
+            let decode_result = stateless_runtime_api.decode_extrinsic(opaque_extrinsic.clone())?;
             let extrinsic = match decode_result {
                 Ok(extrinsic) => extrinsic,
                 Err(err) => {
@@ -312,36 +348,31 @@ where
                         "Undecodable extrinsic in bundle({})",
                         bundle.hash()
                     );
-                    return Ok(BundleValidity::Invalid(InvalidBundleType::UndecodableTx(
-                        index as u32,
-                    )));
+                    maybe_invalid_bundle_type
+                        .replace(InvalidBundleType::UndecodableTx(index as u32));
+                    break;
                 }
             };
 
-            let is_within_tx_range = runtime_api.is_within_tx_range(
-                parent_domain_hash,
-                &extrinsic,
-                &bundle_vrf_hash,
-                tx_range,
-            )?;
+            let is_within_tx_range =
+                stateless_runtime_api.is_within_tx_range(&extrinsic, &bundle_vrf_hash, tx_range)?;
 
             if !is_within_tx_range {
-                return Ok(BundleValidity::Invalid(InvalidBundleType::OutOfRangeTx(
-                    index as u32,
-                )));
+                maybe_invalid_bundle_type.replace(InvalidBundleType::OutOfRangeTx(index as u32));
+                break;
             }
 
             // Check if this extrinsic is an inherent extrinsic.
             // If so, this is an invalid bundle since these extrinsics should not be included in the
             // bundle. Extrinsic is always decodable due to the check above.
-            if runtime_api.is_inherent_extrinsic(parent_domain_hash, &extrinsic)? {
-                return Ok(BundleValidity::Invalid(
-                    InvalidBundleType::InherentExtrinsic(index as u32),
-                ));
+            if stateless_runtime_api.is_inherent_extrinsic(&extrinsic)? {
+                maybe_invalid_bundle_type
+                    .replace(InvalidBundleType::InherentExtrinsic(index as u32));
+                break;
             }
 
             if let Some(xdm_mmr_proof) =
-                runtime_api.extract_xdm_mmr_proof(parent_domain_hash, &extrinsic)?
+                stateless_runtime_api.extract_native_xdm_mmr_proof(&extrinsic)?
             {
                 let ConsensusChainMmrLeafProof {
                     opaque_mmr_leaf,
@@ -353,35 +384,45 @@ where
                     .verify_proof(at_consensus_hash, vec![opaque_mmr_leaf], proof)?
                     .is_err()
                 {
-                    return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidXDM(
-                        index as u32,
-                    )));
+                    maybe_invalid_bundle_type.replace(InvalidBundleType::InvalidXDM(index as u32));
+                    break;
                 }
             }
 
-            // Using one instance of runtime_api throughout the loop in order to maintain context
-            // between them.
-            // Using `check_extrinsics_and_do_pre_dispatch` instead of `check_transaction_validity`
-            // to maintain side-effect in the storage buffer.
-            let is_legal_tx = runtime_api
-                .check_extrinsics_and_do_pre_dispatch(
-                    parent_domain_hash,
-                    vec![extrinsic.clone()],
-                    parent_domain_number,
-                    parent_domain_hash,
-                )?
-                .is_ok();
-
-            if !is_legal_tx {
-                return Ok(BundleValidity::Invalid(InvalidBundleType::IllegalTx(
-                    index as u32,
-                )));
-            }
-
-            let tx_weight = runtime_api.extrinsic_weight(parent_domain_hash, &extrinsic)?;
+            let tx_weight = stateless_runtime_api.extrinsic_weight(&extrinsic)?;
             estimated_bundle_weight = estimated_bundle_weight.saturating_add(tx_weight);
 
             extrinsics.push(extrinsic);
+        }
+
+        // Using `check_extrinsics_and_do_pre_dispatch` instead of `check_transaction_validity`
+        // to maintain side-effect between tx in the storage buffer.
+        //
+        // Note: call `check_extrinsics_and_do_pre_dispatch` with all the extrinsics instead of
+        // calling it one by one, this is needed to keep consistency with the FP verification.
+        if let Err(CheckExtrinsicsValidityError {
+            extrinsic_index, ..
+        }) = self
+            .client
+            .runtime_api()
+            .check_extrinsics_and_do_pre_dispatch(
+                parent_domain_hash,
+                extrinsics.clone(),
+                parent_domain_number,
+                parent_domain_hash,
+            )?
+        {
+            // It is okay to return error here even if `maybe_invalid_bundle_type` can be `Some`
+            // because the loop above break earlier whenever an invalid tx is found, if there is
+            // illegal tx found here then its `extrinsic_index` must smaller than `maybe_invalid_bundle_type`'s
+            // if any, thus the illegal tx has a higher priority.
+            return Ok(BundleValidity::Invalid(InvalidBundleType::IllegalTx(
+                extrinsic_index,
+            )));
+        }
+
+        if let Some(invalid_bundle_type) = maybe_invalid_bundle_type {
+            return Ok(BundleValidity::Invalid(invalid_bundle_type));
         }
 
         if estimated_bundle_weight != bundle.estimated_weight() {

@@ -147,6 +147,7 @@ fn submit_transfer(src_chain_id: ChainId, req_payload: Vec<u8>) -> EndpointRespo
             dst_endpoint: Endpoint::Id(SelfEndpointId::get()),
             payload: req_payload,
         },
+        Ok(()),
     )
 }
 

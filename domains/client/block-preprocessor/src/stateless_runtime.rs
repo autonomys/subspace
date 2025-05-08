@@ -17,6 +17,7 @@ use sp_messenger::{MessengerApi, RelayerApi};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Storage;
 use sp_state_machine::BasicExternalities;
+use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_version::RuntimeVersion;
 use sp_weights::Weight;
 use std::borrow::Cow;
@@ -332,6 +333,21 @@ where
             extrinsic,
         )
         .map(|maybe_proof| maybe_proof.map(|p| p.encode()))
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn extract_native_xdm_mmr_proof(
+        &self,
+        extrinsic: &Block::Extrinsic,
+    ) -> Result<
+        Option<ConsensusChainMmrLeafProof<NumberFor<CBlock>, CBlock::Hash, sp_core::H256>>,
+        ApiError,
+    > {
+        <Self as MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>::extract_xdm_mmr_proof(
+            self,
+            Default::default(),
+            extrinsic,
+        )
     }
 
     pub fn decode_extrinsic(

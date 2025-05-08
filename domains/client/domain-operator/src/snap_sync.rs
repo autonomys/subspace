@@ -188,7 +188,7 @@ async fn get_last_confirmed_block<Block: BlockT>(
                     target: LOG_TARGET,
                     %block_number,
                     "Sync worker handle result: {:?}",
-                    block_response_inner_result
+                    block_response_inner_result.as_ref().map(|(block_data, protocol_name)| (hex::encode(block_data), protocol_name))
                 );
 
                 match block_response_inner_result {

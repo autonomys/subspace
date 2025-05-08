@@ -5,6 +5,7 @@ use crate::ExecutionReceiptFor;
 use domain_block_preprocessor::DomainBlockPreprocessor;
 use sc_client_api::{AuxStore, BlockBackend, ExecutorProvider, Finalizer, ProofProvider};
 use sc_consensus::{BlockImportParams, ForkChoiceStrategy, StateAction};
+use sc_executor::RuntimeVersionOf;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
@@ -48,8 +49,15 @@ where
     client: Arc<Client>,
     backend: Arc<Backend>,
     domain_receipts_checker: DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E>,
-    domain_block_preprocessor:
-        DomainBlockPreprocessor<Block, CBlock, Client, CClient, ReceiptValidator<Client>>,
+    domain_block_preprocessor: DomainBlockPreprocessor<
+        Block,
+        CBlock,
+        Client,
+        CClient,
+        E,
+        Backend,
+        ReceiptValidator<Client>,
+    >,
     domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, E>,
     confirmation_depth_k: NumberFor<CBlock>,
 }
@@ -155,7 +163,7 @@ where
         + MmrApi<CBlock, H256, NumberFor<CBlock>>
         + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
-    E: CodeExecutor,
+    E: CodeExecutor + RuntimeVersionOf,
 {
     pub(crate) fn new(
         domain_id: DomainId,
@@ -170,6 +178,8 @@ where
             domain_id,
             client.clone(),
             consensus_client.clone(),
+            domain_block_processor.domain_executor.clone(),
+            domain_block_processor.backend.clone(),
             ReceiptValidator::new(client.clone()),
         );
         Self {
