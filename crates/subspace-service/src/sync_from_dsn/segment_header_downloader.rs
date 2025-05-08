@@ -1,9 +1,7 @@
 use crate::sync_from_dsn::LOG_TARGET;
-use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
-use std::pin::pin;
 use std::sync::Arc;
 use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
@@ -18,13 +16,17 @@ const SEGMENT_HEADER_NUMBER_PER_REQUEST: u64 = 1000;
 const SEGMENT_HEADER_CONSENSUS_INITIAL_NODES: usize = 20;
 
 /// Helps downloader segment headers from DSN
-pub struct SegmentHeaderDownloader<'a> {
-    dsn_node: &'a Node,
+pub struct SegmentHeaderDownloader {
+    dsn_node: Node,
 }
 
-impl<'a> SegmentHeaderDownloader<'a> {
-    pub fn new(dsn_node: &'a Node) -> Self {
-        Self { dsn_node }
+impl SegmentHeaderDownloader {
+    pub fn new(dsn_node: &Node) -> Self {
+        // TODO: Should not be necessary to store owned copy, but it results in confusing compiler
+        //  errors otherwise
+        Self {
+            dsn_node: dsn_node.clone(),
+        }
     }
 
     /// Returns new segment headers known to DSN, ordered from 0 to the last known, but newer than
@@ -138,36 +140,20 @@ impl<'a> SegmentHeaderDownloader<'a> {
         {
             trace!(target: LOG_TARGET, %retry_attempt, "Downloading last segment headers");
 
-            // Get random peers. Some of them could be bootstrap nodes with no support for
-            // request-response protocol for segment commitment.
-            let get_peers_result = self
+            // Get random peers and acquire segments from them. Some of them could be bootstrap
+            // nodes with no support for request-response protocol for segment commitment.
+            let new_last_known_segment_headers = self
                 .dsn_node
                 .get_closest_peers(PeerId::random().into())
-                .await;
+                .await
+                .inspect_err(|error| {
+                    warn!(target: LOG_TARGET, ?error, "get_closest_peers returned an error");
+                })?
+                .filter(|peer_id| {
+                    let known_peer = peer_segment_headers.contains_key(peer_id);
 
-            // Acquire segment headers from peers.
-            let peers = match get_peers_result {
-                Ok(get_peers_stream) => {
-                    get_peers_stream
-                        .filter(|peer_id| {
-                            let known_peer = peer_segment_headers.contains_key(peer_id);
-
-                            async move { !known_peer }
-                        })
-                        .collect::<Vec<_>>()
-                        .await
-                }
-                Err(err) => {
-                    warn!(target: LOG_TARGET, ?err, "get_closest_peers returned an error");
-
-                    return Err(err.into());
-                }
-            };
-
-            trace!(target: LOG_TARGET, peers_count = %peers.len(), "Found closest peers");
-
-            let new_last_known_segment_headers = peers
-                .into_iter()
+                    async move { !known_peer }
+                })
                 .map(|peer_id| async move {
                     let request_result = self
                         .dsn_node
@@ -207,21 +193,24 @@ impl<'a> SegmentHeaderDownloader<'a> {
                             Some((peer_id, segment_headers))
                         }
                         Err(error) => {
-                            debug!(target: LOG_TARGET, %peer_id, ?error, "Last segment headers request failed");
+                            debug!(
+                                target: LOG_TARGET,
+                                %peer_id,
+                                ?error,
+                                "Last segment headers request failed"
+                            );
                             None
                         }
                     }
                 })
-                .collect::<FuturesUnordered<_>>()
-                .filter_map(|maybe_result| async move { maybe_result });
-            let mut new_last_known_segment_headers = pin!(new_last_known_segment_headers);
+                .take(SEGMENT_HEADER_CONSENSUS_INITIAL_NODES)
+                .buffer_unordered(SEGMENT_HEADER_CONSENSUS_INITIAL_NODES)
+                .filter_map(|maybe_result| async move { maybe_result })
+                .collect::<Vec<(PeerId, Vec<SegmentHeader>)>>()
+                .await;
 
             let last_peers_count = peer_segment_headers.len();
-
-            while let Some((peer_id, segment_headers)) = new_last_known_segment_headers.next().await
-            {
-                peer_segment_headers.insert(peer_id, segment_headers);
-            }
+            peer_segment_headers.extend(new_last_known_segment_headers);
 
             let peer_count = peer_segment_headers.len();
 

@@ -31,7 +31,7 @@ const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn import_blocks_from_dsn<Block, AS, Client, PG, IQS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
-    segment_header_downloader: &SegmentHeaderDownloader<'_>,
+    segment_header_downloader: &SegmentHeaderDownloader,
     client: &Client,
     piece_getter: &PG,
     import_queue_service: &mut IQS,
