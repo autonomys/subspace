@@ -1,9 +1,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::endpoint::{
-    CollectedFee, Endpoint, EndpointRequest, EndpointRequestWithCollectedFee, EndpointResponse,
-};
+use crate::endpoint::{Endpoint, EndpointRequestWithCollectedFee, EndpointResponse};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
@@ -24,6 +22,7 @@ pub type MessageId = (ChannelId, Nonce);
 /// Unique message key for Outbox and Inbox responses
 pub type MessageKey = (ChainId, ChannelId, Nonce);
 
+// TODO: remove fee model
 /// Fee model to send a request and receive a response from another chain.
 #[derive(Default, Debug, Encode, Decode, Clone, Copy, Eq, PartialEq, TypeInfo)]
 pub struct FeeModel<Balance> {
@@ -67,13 +66,6 @@ pub struct Channel<Balance, AccountId> {
     pub channel_reserve_fee: Balance,
 }
 
-/// Channel open parameters
-#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
-pub struct ChannelOpenParams<Balance> {
-    pub max_outgoing_messages: u32,
-    pub fee_model: FeeModel<Balance>,
-}
-
 /// Channel V1 open parameters
 #[derive(Debug, Encode, Decode, Eq, PartialEq, TypeInfo, Copy, Clone)]
 pub struct ChannelOpenParamsV1 {
@@ -89,38 +81,6 @@ pub enum ProtocolMessageRequest<ChannelOpenParams> {
     ChannelClose,
 }
 
-impl<Balance: Default> From<ProtocolMessageRequest<ChannelOpenParamsV1>>
-    for ProtocolMessageRequest<ChannelOpenParams<Balance>>
-{
-    fn from(value: ProtocolMessageRequest<ChannelOpenParamsV1>) -> Self {
-        match value {
-            ProtocolMessageRequest::ChannelOpen(params) => {
-                ProtocolMessageRequest::ChannelOpen(ChannelOpenParams {
-                    max_outgoing_messages: params.max_outgoing_messages,
-                    // default is okay here as fee model is empty for V1
-                    fee_model: FeeModel::default(),
-                })
-            }
-            ProtocolMessageRequest::ChannelClose => ProtocolMessageRequest::ChannelClose,
-        }
-    }
-}
-
-impl<Balance: Default> From<ProtocolMessageRequest<ChannelOpenParams<Balance>>>
-    for ProtocolMessageRequest<ChannelOpenParamsV1>
-{
-    fn from(value: ProtocolMessageRequest<ChannelOpenParams<Balance>>) -> Self {
-        match value {
-            ProtocolMessageRequest::ChannelOpen(params) => {
-                ProtocolMessageRequest::ChannelOpen(ChannelOpenParamsV1 {
-                    max_outgoing_messages: params.max_outgoing_messages,
-                })
-            }
-            ProtocolMessageRequest::ChannelClose => ProtocolMessageRequest::ChannelClose,
-        }
-    }
-}
-
 /// Defines protocol requests performed on chains.
 pub type ProtocolMessageResponse = Result<(), DispatchError>;
 
@@ -129,39 +89,6 @@ pub type ProtocolMessageResponse = Result<(), DispatchError>;
 pub enum RequestResponse<Request, Response> {
     Request(Request),
     Response(Response),
-}
-
-/// Payload of the message
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub enum Payload<Balance> {
-    /// Protocol message.
-    Protocol(
-        RequestResponse<
-            ProtocolMessageRequest<ChannelOpenParams<Balance>>,
-            ProtocolMessageResponse,
-        >,
-    ),
-    /// Endpoint message.
-    Endpoint(RequestResponse<EndpointRequest, EndpointResponse>),
-}
-
-impl<Balance: Default> From<PayloadV1<Balance>> for Payload<Balance> {
-    fn from(value: PayloadV1<Balance>) -> Self {
-        match value {
-            PayloadV1::Protocol(RequestResponse::Request(req)) => {
-                Payload::Protocol(RequestResponse::Request(req.into()))
-            }
-            PayloadV1::Protocol(RequestResponse::Response(resp)) => {
-                Payload::Protocol(RequestResponse::Response(resp))
-            }
-            PayloadV1::Endpoint(RequestResponse::Request(req)) => {
-                Payload::Endpoint(RequestResponse::Request(req.into()))
-            }
-            PayloadV1::Endpoint(RequestResponse::Response(resp)) => {
-                Payload::Endpoint(RequestResponse::Response(resp))
-            }
-        }
-    }
 }
 
 /// Payload v1 of the message
@@ -173,75 +100,11 @@ pub enum PayloadV1<Balance> {
     Endpoint(RequestResponse<EndpointRequestWithCollectedFee<Balance>, EndpointResponse>),
 }
 
-impl<Balance: Default> From<Payload<Balance>> for PayloadV1<Balance> {
-    fn from(value: Payload<Balance>) -> Self {
-        match value {
-            Payload::Protocol(RequestResponse::Request(req)) => {
-                PayloadV1::Protocol(RequestResponse::Request(req.into()))
-            }
-            Payload::Protocol(RequestResponse::Response(resp)) => {
-                PayloadV1::Protocol(RequestResponse::Response(resp))
-            }
-            Payload::Endpoint(RequestResponse::Request(req)) => {
-                PayloadV1::Endpoint(RequestResponse::Request(req.into()))
-            }
-            Payload::Endpoint(RequestResponse::Response(resp)) => {
-                PayloadV1::Endpoint(RequestResponse::Response(resp))
-            }
-        }
-    }
-}
-
 /// Versioned message payload
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub enum VersionedPayload<Balance> {
-    #[codec(index = 0)]
-    V0(Payload<Balance>),
     #[codec(index = 1)]
     V1(PayloadV1<Balance>),
-}
-
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct ConvertedPayload<Balance> {
-    pub payload: Payload<Balance>,
-    pub is_v1: bool,
-}
-
-impl<Balance> From<Payload<Balance>> for ConvertedPayload<Balance> {
-    fn from(value: Payload<Balance>) -> Self {
-        ConvertedPayload {
-            payload: value,
-            is_v1: false,
-        }
-    }
-}
-
-impl<Balance: Default> From<PayloadV1<Balance>> for ConvertedPayload<Balance> {
-    fn from(value: PayloadV1<Balance>) -> Self {
-        ConvertedPayload {
-            payload: value.into(),
-            is_v1: true,
-        }
-    }
-}
-
-impl<Balance: Default + Clone> VersionedPayload<Balance> {
-    pub fn into_payload_v0(self) -> ConvertedPayload<Balance> {
-        match self {
-            VersionedPayload::V0(payload) => payload.into(),
-            VersionedPayload::V1(payload) => payload.into(),
-        }
-    }
-
-    pub fn maybe_collected_fee(&self) -> Option<CollectedFee<Balance>> {
-        match self {
-            // collected fee is only valid in endpoint v1 request
-            VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Request(req))) => {
-                Some(req.collected_fee.clone())
-            }
-            _ => None,
-        }
-    }
 }
 
 /// Message weight tag used to indicate the consumed weight when handling the message
@@ -259,20 +122,13 @@ impl MessageWeightTag {
     // Construct the weight tag for outbox message based on the outbox payload
     pub fn outbox<Balance>(outbox_payload: &VersionedPayload<Balance>) -> Self {
         match outbox_payload {
-            VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-                ProtocolMessageRequest::ChannelOpen(_),
-            )))
-            | VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(
+            VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(
                 ProtocolMessageRequest::ChannelOpen(_),
             ))) => MessageWeightTag::ProtocolChannelOpen,
-            VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-                ProtocolMessageRequest::ChannelClose,
-            )))
-            | VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(
+            VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(
                 ProtocolMessageRequest::ChannelClose,
             ))) => MessageWeightTag::ProtocolChannelClose,
-            VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req)))
-            | VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Request(
+            VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Request(
                 EndpointRequestWithCollectedFee { req, .. },
             ))) => MessageWeightTag::EndpointRequest(req.dst_endpoint.clone()),
             _ => MessageWeightTag::None,
@@ -286,14 +142,6 @@ impl MessageWeightTag {
         resp_payload: &VersionedPayload<Balance>,
     ) -> Self {
         match (req_type, resp_payload) {
-            (
-                MessageWeightTag::ProtocolChannelOpen,
-                VersionedPayload::V0(Payload::Protocol(RequestResponse::Response(Ok(_)))),
-            ) => MessageWeightTag::ProtocolChannelOpen,
-            (
-                MessageWeightTag::EndpointRequest(endpoint),
-                VersionedPayload::V0(Payload::Endpoint(RequestResponse::Response(_))),
-            ) => MessageWeightTag::EndpointResponse(endpoint),
             (
                 MessageWeightTag::ProtocolChannelOpen,
                 VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Response(Ok(_)))),
