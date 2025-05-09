@@ -13,9 +13,11 @@ use frame_support::assert_ok;
 use frame_support::traits::fungible::Mutate;
 use frame_support::traits::Get;
 use frame_system::RawOrigin;
-use sp_messenger::endpoint::{Endpoint, EndpointRequest};
+use sp_messenger::endpoint::{
+    CollectedFee, Endpoint, EndpointRequest, EndpointRequestWithCollectedFee,
+};
 use sp_messenger::messages::{
-    ChannelOpenParams, CrossDomainMessage, Message, MessageWeightTag, Payload, Proof,
+    ChannelOpenParamsV1, CrossDomainMessage, Message, MessageWeightTag, PayloadV1, Proof,
     RequestResponse, VersionedPayload,
 };
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
@@ -59,7 +61,7 @@ mod benchmarks {
     fn close_channel() {
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
-        let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params::<T>());
+        let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params());
 
         #[extrinsic_call]
         _(RawOrigin::Root, dst_chain_id, channel_id);
@@ -80,7 +82,7 @@ mod benchmarks {
         ChainAllowlist::<T>::put(list);
         assert_ok!(Messenger::<T>::do_init_channel(
             dst_chain_id,
-            dummy_channel_params::<T>(),
+            dummy_channel_params(),
             None,
             true,
             Zero::zero(),
@@ -101,7 +103,7 @@ mod benchmarks {
     fn do_close_channel() {
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
-        let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params::<T>());
+        let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params());
 
         #[block]
         {
@@ -124,7 +126,7 @@ mod benchmarks {
         let endpoint = Endpoint::Id(100);
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
-        let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params::<T>());
+        let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params());
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
 
         // Insert a dummy inbox message which will be handled during the `relay_message` call
@@ -133,11 +135,17 @@ mod benchmarks {
             dst_chain_id: T::SelfChainId::get(),
             channel_id,
             nonce: channel.next_inbox_nonce,
-            payload: VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(
-                EndpointRequest {
-                    dst_endpoint: endpoint.clone(),
-                    src_endpoint: endpoint.clone(),
-                    payload: Vec::new(),
+            payload: VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Request(
+                EndpointRequestWithCollectedFee {
+                    req: EndpointRequest {
+                        dst_endpoint: endpoint.clone(),
+                        src_endpoint: endpoint.clone(),
+                        payload: Vec::new(),
+                    },
+                    collected_fee: CollectedFee {
+                        src_chain_fee: 1u32.into(),
+                        dst_chain_fee: 1u32.into(),
+                    },
                 },
             ))),
             last_delivered_message_response_nonce: None,
@@ -172,7 +180,7 @@ mod benchmarks {
         let endpoint = Endpoint::Id(100);
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
-        let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params::<T>());
+        let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params());
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         let resp_nonce = match channel.latest_response_received_message_nonce {
             None => Nonce::zero(),
@@ -188,11 +196,17 @@ mod benchmarks {
             dst_chain_id,
             channel_id,
             nonce: next_outbox_nonce,
-            payload: VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(
-                EndpointRequest {
-                    dst_endpoint: endpoint.clone(),
-                    src_endpoint: endpoint.clone(),
-                    payload: Vec::new(),
+            payload: VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Request(
+                EndpointRequestWithCollectedFee {
+                    req: EndpointRequest {
+                        dst_endpoint: endpoint.clone(),
+                        src_endpoint: endpoint.clone(),
+                        payload: Vec::new(),
+                    },
+                    collected_fee: CollectedFee {
+                        src_chain_fee: 1u32.into(),
+                        dst_chain_fee: 1u32.into(),
+                    },
                 },
             ))),
             last_delivered_message_response_nonce: None,
@@ -207,7 +221,7 @@ mod benchmarks {
             dst_chain_id: T::SelfChainId::get(),
             channel_id,
             nonce: resp_nonce,
-            payload: VersionedPayload::V0(Payload::Endpoint(RequestResponse::Response(Ok(
+            payload: VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Response(Ok(
                 Vec::new(),
             )))),
             last_delivered_message_response_nonce: None,
@@ -234,20 +248,13 @@ mod benchmarks {
         );
     }
 
-    fn dummy_channel_params<T: Config>() -> ChannelOpenParams<BalanceOf<T>> {
-        let fee_model = FeeModel {
-            relay_fee: 1u32.into(),
-        };
-        ChannelOpenParams {
+    fn dummy_channel_params() -> ChannelOpenParamsV1 {
+        ChannelOpenParamsV1 {
             max_outgoing_messages: 100,
-            fee_model,
         }
     }
 
-    fn open_channel<T: Config>(
-        dst_chain_id: ChainId,
-        params: ChannelOpenParams<BalanceOf<T>>,
-    ) -> ChannelId {
+    fn open_channel<T: Config>(dst_chain_id: ChainId, params: ChannelOpenParamsV1) -> ChannelId {
         let channel_id = NextChannelId::<T>::get(dst_chain_id);
         let list = BTreeSet::from([dst_chain_id]);
         ChainAllowlist::<T>::put(list);

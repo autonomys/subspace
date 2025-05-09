@@ -1,65 +1,19 @@
-#[cfg(not(feature = "std"))]
-extern crate alloc;
 use crate::pallet::{
     InboxFee, InboxFeesOnHold, InboxFeesOnHoldStartAt, InboxResponseMessageWeightTags,
     InboxResponses, OutboxFee, OutboxFeesOnHold, OutboxFeesOnHoldStartAt,
 };
 use crate::{BalanceOf, Config, Error, Pallet};
-#[cfg(not(feature = "std"))]
-use alloc::vec;
 use frame_support::traits::fungible::{Balanced, Mutate};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::weights::WeightToFee;
 use sp_core::Get;
 use sp_messenger::endpoint::{CollectedFee, Endpoint};
-use sp_messenger::messages::{ChainId, ChannelId, FeeModel, MessageId, Nonce};
+use sp_messenger::messages::{ChainId, ChannelId, MessageId, Nonce};
 use sp_messenger::OnXDMRewards;
 use sp_runtime::traits::{CheckedAdd, CheckedMul, CheckedSub, Zero};
 use sp_runtime::{DispatchError, DispatchResult, Saturating};
 
 impl<T: Config> Pallet<T> {
-    /// Ensures the fees from the sender per FeeModel provided for a single request for a response.
-    #[inline]
-    pub(crate) fn collect_fees_for_message(
-        sender: &T::AccountId,
-        message_id: (ChainId, MessageId),
-        fee_model: &FeeModel<BalanceOf<T>>,
-        endpoint: &Endpoint,
-    ) -> DispatchResult {
-        let handler = T::get_endpoint_handler(endpoint).ok_or(Error::<T>::NoMessageHandler)?;
-
-        // fees need to be paid for following
-        // - Execution on dst_chain + Relay Fee. This is burned here and minted on dst_chain
-        let dst_chain_inbox_execution_fee =
-            T::WeightToFee::weight_to_fee(&handler.message_weight());
-        let dst_chain_fee = dst_chain_inbox_execution_fee
-            .checked_add(&fee_model.relay_fee)
-            .ok_or(Error::<T>::BalanceOverflow)?;
-
-        // - Execution of response on src_chain + relay fee.
-        // - This is collected and given to operators once response is received.
-        let src_chain_outbox_response_execution_fee =
-            T::WeightToFee::weight_to_fee(&handler.message_response_weight());
-        let src_chain_fee = src_chain_outbox_response_execution_fee
-            .checked_add(&fee_model.relay_fee)
-            .ok_or(Error::<T>::BalanceOverflow)?;
-        OutboxFee::<T>::insert(message_id, src_chain_fee);
-
-        // burn the total fees
-        let total_fees = dst_chain_fee
-            .checked_add(&src_chain_fee)
-            .ok_or(Error::<T>::BalanceOverflow)?;
-        T::Currency::burn_from(
-            sender,
-            total_fees,
-            Preservation::Preserve,
-            Precision::Exact,
-            Fortitude::Polite,
-        )?;
-
-        Ok(())
-    }
-
     /// Ensures the fees from the sender to complete the XDM request and response.
     #[inline]
     pub(crate) fn collect_fees_for_message_v1(
@@ -106,25 +60,6 @@ impl<T: Config> Pallet<T> {
             src_chain_fee,
             dst_chain_fee,
         })
-    }
-
-    /// Ensures the fee paid by the sender on the src_chain for execution on this chain are stored as operator rewards
-    #[inline]
-    pub(crate) fn store_fees_for_inbox_message(
-        message_id: (ChainId, MessageId),
-        fee_model: &FeeModel<BalanceOf<T>>,
-        endpoint: &Endpoint,
-    ) {
-        let mut inbox_fee = fee_model.relay_fee;
-
-        // If the endpoint handler does not exist the message won't be handled thus it is okay
-        // to not add the execution fee in this case
-        if let Some(handler) = T::get_endpoint_handler(endpoint) {
-            let inbox_execution_fee = T::WeightToFee::weight_to_fee(&handler.message_weight());
-            inbox_fee = inbox_fee.saturating_add(inbox_execution_fee);
-        }
-
-        InboxFee::<T>::insert(message_id, inbox_fee);
     }
 
     /// Rewards operators for executing an inbox message since src_chain signalled that responses are delivered.

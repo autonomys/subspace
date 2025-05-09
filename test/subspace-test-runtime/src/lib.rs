@@ -79,8 +79,7 @@ use sp_domains_fraud_proof::storage_proof::{
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, FeeModel, MessageId,
-    MessageKey,
+    BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
 };
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
@@ -676,9 +675,7 @@ impl sp_messenger::DomainRegistration for DomainRegistration {
 parameter_types! {
     pub const ChannelReserveFee: Balance = SSC;
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
-    pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
-    pub const MessageVersion: pallet_messenger::MessageVersion = pallet_messenger::MessageVersion::V1;
 }
 
 // ensure the max outgoing messages is not 0.
@@ -728,10 +725,8 @@ impl pallet_messenger::Config for Runtime {
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = DomainRegistration;
-    type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
-    type MessageVersion = MessageVersion;
     type NoteChainTransfer = Transporter;
 }
 
@@ -1805,7 +1800,7 @@ impl_runtime_apis! {
         }
 
         fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId> {
-            Messenger::get_open_channel_for_chain(dst_chain_id).map(|(c, _)| c)
+            Messenger::get_open_channel_for_chain(dst_chain_id)
         }
 
         fn verify_proof_and_extract_leaf(mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, <Block as BlockT>::Hash, H256>) -> Option<mmr::Leaf> {
