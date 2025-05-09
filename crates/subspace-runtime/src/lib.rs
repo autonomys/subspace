@@ -1099,6 +1099,8 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
+    // TODO: remove only after migrations are run on Mainnet
+    pallet_messenger::migrations::VersionCheckedMigrateDomainsV1ToV2<Runtime>,
 >;
 
 impl pallet_subspace::extensions::MaybeSubspaceCall<Runtime> for RuntimeCall {

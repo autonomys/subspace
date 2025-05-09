@@ -159,6 +159,8 @@ pub type Executive = domain_pallet_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
+    // TODO: remove only after migrations are run on Mainnet
+    pallet_messenger::migrations::VersionCheckedMigrateDomainsV1ToV2<Runtime>,
 >;
 
 /// Returns the storage fee for `len` bytes, or an overflow error.

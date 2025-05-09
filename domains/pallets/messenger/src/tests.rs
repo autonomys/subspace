@@ -774,7 +774,6 @@ fn test_update_consensus_channel_allowlist() {
                 next_outbox_nonce: Default::default(),
                 latest_response_received_message_nonce: None,
                 max_outgoing_messages: 10,
-                fee: Default::default(),
                 maybe_owner: None,
                 channel_reserve_fee: Default::default(),
             }),

@@ -25,6 +25,7 @@ mod benchmarking;
 pub mod extensions;
 mod fees;
 mod messages;
+pub mod migrations;
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
@@ -1053,7 +1054,6 @@ mod pallet {
                     next_outbox_nonce: Default::default(),
                     latest_response_received_message_nonce: Default::default(),
                     max_outgoing_messages: init_params.max_outgoing_messages,
-                    fee: Default::default(),
                     maybe_owner,
                     channel_reserve_fee,
                 },

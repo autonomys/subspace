@@ -22,14 +22,6 @@ pub type MessageId = (ChannelId, Nonce);
 /// Unique message key for Outbox and Inbox responses
 pub type MessageKey = (ChainId, ChannelId, Nonce);
 
-// TODO: remove fee model
-/// Fee model to send a request and receive a response from another chain.
-#[derive(Default, Debug, Encode, Decode, Clone, Copy, Eq, PartialEq, TypeInfo)]
-pub struct FeeModel<Balance> {
-    /// Fee to relay message from one chain to another
-    pub relay_fee: Balance,
-}
-
 /// State of a channel.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub enum ChannelState {
@@ -57,8 +49,6 @@ pub struct Channel<Balance, AccountId> {
     pub latest_response_received_message_nonce: Option<Nonce>,
     /// Maximum outgoing non-delivered messages.
     pub max_outgoing_messages: u32,
-    /// Fee model for this channel between the chains.
-    pub fee: FeeModel<Balance>,
     /// Owner of the channel
     /// Owner maybe None if the channel was initiated on the other chain.
     pub maybe_owner: Option<AccountId>,
