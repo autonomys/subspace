@@ -222,23 +222,29 @@ impl<T: Config> Pallet<T> {
         msg_weight_tag: &MessageWeightTag,
         endpoint_handler: Box<dyn sp_messenger::endpoint::EndpointHandler<MessageId>>,
     ) -> EndpointResponse {
-        if msg_weight_tag != &MessageWeightTag::EndpointRequest(req.dst_endpoint.clone()) {
-            return Err(Error::<T>::WeightTagNotMatch.into());
-        }
+        let dst_endpoint = req.dst_endpoint.clone();
+        let pre_check_handler = || {
+            ensure!(
+                msg_weight_tag == &MessageWeightTag::EndpointRequest(dst_endpoint),
+                Error::<T>::WeightTagNotMatch
+            );
 
-        let channel =
-            Channels::<T>::get(dst_chain_id, channel_id).ok_or(Error::<T>::MissingChannel)?;
-        if channel.state != ChannelState::Open {
-            return Err(Error::<T>::InvalidChannelState.into());
-        }
+            let channel =
+                Channels::<T>::get(dst_chain_id, channel_id).ok_or(Error::<T>::MissingChannel)?;
+            ensure!(
+                channel.state == ChannelState::Open,
+                Error::<T>::InvalidChannelState
+            );
 
-        let pre_check_response = if !ChainAllowlist::<T>::get().contains(&dst_chain_id) {
-            Err(Error::<T>::ChainNotAllowed.into())
-        } else {
+            ensure!(
+                ChainAllowlist::<T>::get().contains(&dst_chain_id),
+                Error::<T>::ChainNotAllowed
+            );
+
             Ok(())
         };
 
-        endpoint_handler.message(dst_chain_id, (channel_id, nonce), req, pre_check_response)
+        endpoint_handler.message(dst_chain_id, (channel_id, nonce), req, pre_check_handler())
     }
 
     fn process_incoming_protocol_message_req(

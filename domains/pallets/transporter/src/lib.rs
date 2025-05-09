@@ -330,26 +330,31 @@ mod pallet {
             req: EndpointRequest,
             pre_check_result: DispatchResult,
         ) -> EndpointResponse {
-            // ensure message is not from the self
-            ensure!(
-                T::SelfChainId::get() != src_chain_id,
-                Error::<T>::InvalidTransferRequest
-            );
-
-            // check the endpoint id
-            ensure!(
-                req.dst_endpoint == Endpoint::Id(T::SelfEndpointId::get()),
-                Error::<T>::UnexpectedMessage
-            );
-
-            // decode payload and process message
+            // decode payload
+            let dst_endpoint = req.dst_endpoint;
             let req = match Transfer::decode(&mut req.payload.as_slice()) {
                 Ok(req) => req,
                 Err(_) => return Err(Error::<T>::InvalidPayload.into()),
             };
 
+            let pre_check_handler = || {
+                // ensure message is not from the self
+                ensure!(
+                    T::SelfChainId::get() != src_chain_id,
+                    Error::<T>::InvalidTransferRequest
+                );
+
+                // check the endpoint id
+                ensure!(
+                    dst_endpoint == Endpoint::Id(T::SelfEndpointId::get()),
+                    Error::<T>::UnexpectedMessage
+                );
+
+                pre_check_result
+            };
+
             let amount = req.amount;
-            let response = match pre_check_result {
+            let response = match pre_check_handler() {
                 Ok(_) => Pallet::<T>::finalize_transfer(src_chain_id, message_id, req),
                 Err(err) => Err(err),
             };
