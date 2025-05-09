@@ -21,7 +21,7 @@ use domain_runtime_primitives::{opaque, CheckExtrinsicsValidityError};
 use parity_scale_codec::Encode;
 use sc_client_api::{backend, BlockBackend};
 use sc_executor::RuntimeVersionOf;
-use sp_api::{ApiError, ProvideRuntimeApi};
+use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode};
 use sp_core::H256;
@@ -215,6 +215,30 @@ where
         }))
     }
 
+    /// NOTE: this is needed for compatible with Taurus
+    fn is_batch_api_available(
+        &self,
+        parent_domain_hash: Block::Hash,
+    ) -> sp_blockchain::Result<bool> {
+        let domain_runtime_api = self.client.runtime_api();
+
+        let domain_core_api_version = domain_runtime_api
+            .api_version::<dyn DomainCoreApi<Block>>(parent_domain_hash)?
+            .ok_or(sp_blockchain::Error::Application(Box::from(format!(
+                "DomainCoreApi not found at {parent_domain_hash:?}"
+            ))))?;
+
+        let messenger_api_version = domain_runtime_api
+            .api_version::<dyn MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>(
+                parent_domain_hash,
+            )?
+            .ok_or(sp_blockchain::Error::Application(Box::from(format!(
+                "MessengerApi not found at {parent_domain_hash:?}"
+            ))))?;
+
+        Ok(domain_core_api_version >= 2 && messenger_api_version >= 3)
+    }
+
     /// Filter out the invalid bundles first and then convert the remaining valid ones to
     /// a list of extrinsics.
     #[allow(clippy::type_complexity)]
@@ -256,12 +280,22 @@ where
             }
 
             let extrinsic_root = bundle.extrinsics_root();
-            match self.check_bundle_validity(
-                &bundle,
-                &tx_range,
-                (parent_domain_hash, parent_domain_number),
-                at_consensus_hash,
-            )? {
+            let bundle_validity = if self.is_batch_api_available(parent_domain_hash)? {
+                self.batch_check_bundle_validity(
+                    bundle,
+                    &tx_range,
+                    (parent_domain_hash, parent_domain_number),
+                    at_consensus_hash,
+                )?
+            } else {
+                self.check_bundle_validity(
+                    &bundle,
+                    &tx_range,
+                    (parent_domain_hash, parent_domain_number),
+                    at_consensus_hash,
+                )?
+            };
+            match bundle_validity {
                 BundleValidity::Valid(extrinsics) => {
                     let extrinsics: Vec<_> = match runtime_api
                         .extract_signer(parent_domain_hash, extrinsics)
