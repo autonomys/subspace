@@ -35,6 +35,7 @@ use messages::{BlockMessagesWithStorageKey, ChannelId, CrossDomainMessage, Messa
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
+use sp_std::collections::btree_map::BTreeMap;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
@@ -251,7 +252,7 @@ sp_api::decl_runtime_apis! {
     }
 
     /// Api to provide XDM extraction from Runtime Calls.
-    #[api_version(2)]
+    #[api_version(3)]
     pub trait MessengerApi<CNumber, CHash>
     where
         CNumber: Encode + Decode,
@@ -265,6 +266,12 @@ sp_api::decl_runtime_apis! {
 
         // Extract the MMR proof from the XDM
         fn extract_xdm_mmr_proof(ext: &Block::Extrinsic) -> Option<ConsensusChainMmrLeafProof<CNumber, CHash, sp_core::H256>>;
+
+        // Extract the MMR proofs a the given batch of XDM
+        // `allow(clippy::ptr_arg` is needed because Clippy complains to replace `&Vec<T>` with `&[T]`
+        // but the latter fails to compile.
+        #[allow(clippy::ptr_arg)]
+        fn batch_extract_xdm_mmr_proof(ext: &Vec<Block::Extrinsic>) -> BTreeMap<u32, ConsensusChainMmrLeafProof<CNumber, CHash, sp_core::H256>>;
 
         /// Returns the confirmed domain block storage for given domain.
         fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8>;

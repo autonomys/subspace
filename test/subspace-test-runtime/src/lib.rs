@@ -1676,6 +1676,20 @@ impl_runtime_apis! {
             }
         }
 
+        fn batch_extract_xdm_mmr_proof(extrinsics: &Vec<<Block as BlockT>::Extrinsic>) -> BTreeMap<u32, ConsensusChainMmrLeafProof<BlockNumber, <Block as BlockT>::Hash, sp_core::H256>> {
+            let mut mmr_proofs = BTreeMap::new();
+            for (index, ext) in extrinsics.iter().enumerate() {
+                match &ext.function {
+                    RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
+                    | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                        mmr_proofs.insert(index as u32, msg.proof.consensus_mmr_proof());
+                    }
+                    _ => {},
+                }
+            }
+            mmr_proofs
+        }
+
         fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8> {
             Domains::confirmed_domain_block_storage_key(domain_id)
         }
