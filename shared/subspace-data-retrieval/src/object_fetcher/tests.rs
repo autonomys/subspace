@@ -521,6 +521,105 @@ async fn get_single_piece_object_no_padding() {
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }
 
+/// This test covers objects that are in multiple pieces with no segment padding.
+#[tokio::test(flavor = "multi_thread")]
+async fn get_multi_piece_object_no_padding() {
+    init_logger();
+
+    // We need to cover 3 known good cases:
+
+    // Set up the test case
+    // - start of segment, offset already excludes segment header
+    let object_len = 100;
+    let offset = RawRecord::SIZE - (object_len + compact_encoded(object_len).len()) / 2;
+    let start_piece_index = 0;
+
+    // Generate random piece data
+    let mut piece1 = random_piece();
+    let piece2 = random_piece();
+
+    // Set up the object, mapping, and object fetcher
+    write_object_length(vec![&mut piece1], offset, object_len, None);
+    let (mapping, object_data) = create_mapping(
+        vec![&piece1, &piece2],
+        start_piece_index,
+        offset,
+        object_len,
+        None,
+        None,
+    );
+    let object_fetcher = create_object_fetcher(
+        vec![piece1.clone(), piece2.clone()],
+        start_piece_index,
+        None,
+        None,
+    );
+
+    // Now get the object back
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
+    assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
+
+    // - middle of segment
+    let object_len = 1000;
+    let offset = RawRecord::SIZE - object_len / 2;
+    let start_piece_index = 60;
+
+    let mut piece1 = random_piece();
+    let piece2 = random_piece();
+
+    write_object_length(vec![&mut piece1], offset, object_len, None);
+    let (mapping, object_data) = create_mapping(
+        vec![&piece1, &piece2],
+        start_piece_index,
+        offset,
+        object_len,
+        None,
+        None,
+    );
+    let object_fetcher = create_object_fetcher(
+        vec![piece1.clone(), piece2.clone()],
+        start_piece_index,
+        None,
+        None,
+    );
+
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
+    assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
+
+    // - end of segment, no padding
+    let object_len = 10_000;
+    let offset = RawRecord::SIZE - object_len / 2;
+    let start_piece_index = ArchivedHistorySegment::NUM_PIECES - 4;
+
+    let mut piece1 = random_piece();
+    let piece2 = random_piece();
+
+    write_object_length(vec![&mut piece1], offset, object_len, None);
+    let (mapping, object_data) = create_mapping(
+        vec![&piece1, &piece2],
+        start_piece_index,
+        offset,
+        object_len,
+        None,
+        None,
+    );
+    let object_fetcher = create_object_fetcher(
+        vec![piece1.clone(), piece2.clone()],
+        start_piece_index,
+        None,
+        None,
+    );
+
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
+    assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn get_single_piece_object_potential_padding() {
     init_logger();
@@ -621,6 +720,109 @@ async fn get_single_piece_object_potential_padding() {
     let mut cache = None;
     let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
     assert_eq!(cache, Some((idx(piece_index), piece)));
+    assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
+}
+
+/// This test covers objects that end in the last piece of a segment, with potential padding.
+#[tokio::test(flavor = "multi_thread")]
+async fn get_multi_piece_object_potential_padding() {
+    init_logger();
+
+    // We need to cover one known good case:
+
+    // - end of segment, end of object goes into padding (but not into the next segment)
+    // 3 sub-cases:
+    // - - potential padding that has the wrong byte value for padding
+    let object_len = 100 + RawRecord::SIZE;
+    let offset = 2 * RawRecord::SIZE - object_len - compact_encoded(object_len).len();
+    let start_piece_index = ArchivedHistorySegment::NUM_PIECES - 4;
+
+    let mut piece1 = random_piece();
+    let piece2 = random_piece();
+
+    write_object_length(vec![&mut piece1], offset, object_len, None);
+    let (mapping, object_data) = create_mapping(
+        vec![&piece1, &piece2],
+        start_piece_index,
+        offset,
+        object_len,
+        None,
+        None,
+    );
+    let object_fetcher = create_object_fetcher(
+        vec![piece1.clone(), piece2.clone()],
+        start_piece_index,
+        None,
+        None,
+    );
+
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
+    assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
+
+    // - - potential padding that has the right byte value for padding, but is part of the object
+    let object_len = 1000 + RawRecord::SIZE;
+    let offset = 2 * RawRecord::SIZE - object_len - compact_encoded(object_len).len();
+    let start_piece_index = ArchivedHistorySegment::NUM_PIECES - 4;
+
+    // Generate random piece data, but put potential padding at the end
+    let mut piece1 = random_piece();
+    let mut piece2 = random_piece();
+    write_potential_padding(&mut piece2, MAX_SEGMENT_PADDING);
+
+    write_object_length(vec![&mut piece1], offset, object_len, None);
+    let (mapping, object_data) = create_mapping(
+        vec![&piece1, &piece2],
+        start_piece_index,
+        offset,
+        object_len,
+        None,
+        None,
+    );
+    let object_fetcher = create_object_fetcher(
+        vec![piece1.clone(), piece2.clone()],
+        start_piece_index,
+        None,
+        None,
+    );
+
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
+    assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
+
+    // - - potential padding that has the right byte value for padding, but only some is part of the object
+    let object_len = 10_000 + RawRecord::SIZE;
+    let unused_padding = 1;
+    let offset =
+        2 * RawRecord::SIZE - object_len - compact_encoded(object_len).len() - unused_padding;
+    let start_piece_index = ArchivedHistorySegment::NUM_PIECES - 4;
+
+    // Generate random piece data, but put potential padding at the end
+    let mut piece1 = random_piece();
+    let mut piece2 = random_piece();
+    write_potential_padding(&mut piece2, MAX_SEGMENT_PADDING);
+
+    write_object_length(vec![&mut piece1], offset, object_len, None);
+    let (mapping, object_data) = create_mapping(
+        vec![&piece1, &piece2],
+        start_piece_index,
+        offset,
+        object_len,
+        None,
+        None,
+    );
+    let object_fetcher = create_object_fetcher(
+        vec![piece1.clone(), piece2.clone()],
+        start_piece_index,
+        None,
+        None,
+    );
+
+    let mut cache = None;
+    let fetched_data = object_fetcher.fetch_object(mapping, &mut cache).await;
+    assert_eq!(cache, Some((idx(start_piece_index + 2), piece2)));
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }
 
