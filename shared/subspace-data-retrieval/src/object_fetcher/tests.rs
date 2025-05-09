@@ -459,6 +459,7 @@ fn max_object_length_constant() {
     );
 }
 
+/// This test covers objects that are in a single piece with no segment padding.
 #[tokio::test(flavor = "multi_thread")]
 async fn get_single_piece_object_no_padding() {
     init_logger();
@@ -620,6 +621,8 @@ async fn get_multi_piece_object_no_padding() {
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }
 
+/// This test covers objects that are in the last piece of a segment, with potential segment
+/// padding.
 #[tokio::test(flavor = "multi_thread")]
 async fn get_single_piece_object_potential_padding() {
     init_logger();
@@ -826,6 +829,8 @@ async fn get_multi_piece_object_potential_padding() {
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }
 
+/// This test covers objects that are split across multiple segments, including padding and segment
+/// headers. They all have their lengths outside the padding.
 #[tokio::test(flavor = "multi_thread")]
 async fn get_multi_piece_object_length_outside_padding() {
     init_logger();
@@ -1040,6 +1045,8 @@ async fn get_multi_piece_object_length_outside_padding() {
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }
 
+/// This test covers objects that are split across multiple segments, including padding and
+/// segment headers. They all have their lengths overlapping the padding.
 #[tokio::test(flavor = "multi_thread")]
 async fn get_multi_piece_object_length_overlaps_padding() {
     init_logger();
@@ -1174,6 +1181,7 @@ async fn get_multi_piece_object_length_overlaps_padding() {
     assert_eq!(fetched_data.map(hex::encode), Ok(hex::encode(object_data)));
 }
 
+/// Does the last piece cache work as expected?
 #[tokio::test(flavor = "multi_thread")]
 async fn last_piece_cache_works() {
     init_logger();
