@@ -154,16 +154,22 @@ impl RawPieceData {
                 .segment_data_length
                 .expect("already checked for None; qed");
 
-            // If the object starts outside the padding, the padding is only limited by the
-            // archiving algorithm. Otherwise, if the object starts inside the padding, the
-            // padding is limited to the remaining segment bytes.
-            let maybe_padding_data_length = min(segment_data_length, MAX_SEGMENT_PADDING);
+            // The offset has already been skipped, but the available segment data could still
+            // truncate bytes from the end of the piece. So each byte we truncate removes one byte
+            // of possible padding.
+            let truncated_byte_len = piece_data.len().saturating_sub(segment_data_length);
+            let possible_padding_data_length =
+                MAX_SEGMENT_PADDING.saturating_sub(truncated_byte_len);
 
-            // We only download whole pieces, and we only strip data off the front of pieces.
-            // So if we have any padding, we have all remaining padding in the segment.
-            assert_eq!(segment_data_length, piece_data.len());
-            let maybe_padding_data =
-                piece_data.split_off(piece_data.len().saturating_sub(maybe_padding_data_length));
+            // There's no header in this piece, so we can just truncate the data.
+            piece_data.truncate(segment_data_length);
+
+            // Now split off the padding, if any.
+            let maybe_padding_data = piece_data.split_off(
+                piece_data
+                    .len()
+                    .saturating_sub(possible_padding_data_length),
+            );
 
             // Segment headers are variable length, so we don't know how much data is in the next
             // segment
@@ -179,7 +185,7 @@ impl RawPieceData {
             // There's no header and no padding in this piece - the typical case.
             // (If we started at the first piece in a segment, the offset has already skipped the header.)
             piece_data.truncate(*segment_data_length);
-            *segment_data_length -= piece_data.len();
+            *segment_data_length = segment_data_length.saturating_sub(piece_data.len());
 
             self.add_piece_data_without_padding(piece_data);
         }
