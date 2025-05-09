@@ -1,7 +1,11 @@
 //! Migration module for pallet-messenger
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
 use crate::migrations::v1_to_v2::migrate_channels::migrate_channels;
 use crate::{BalanceOf, Channels as ChannelStorageV1, Config, Pallet};
+#[cfg(not(feature = "std"))]
+use alloc::collections::BTreeSet;
 use core::marker::PhantomData;
 use frame_support::migrations::VersionedMigration;
 use frame_support::pallet_prelude::{Decode, Encode, OptionQuery, TypeInfo};
@@ -10,6 +14,8 @@ use frame_support::weights::Weight;
 use frame_support::{storage_alias, Identity};
 use sp_domains::{ChainId, ChannelId};
 use sp_messenger::messages::{Channel as ChannelV1, ChannelState, Nonce};
+#[cfg(feature = "std")]
+use std::collections::BTreeSet;
 
 pub type VersionCheckedMigrateDomainsV1ToV2<T> = VersionedMigration<
     1,
@@ -94,6 +100,26 @@ pub(crate) mod migrate_channels {
         });
 
         T::DbWeight::get().reads_writes(count, count)
+    }
+
+    pub(crate) fn get_channel<T: Config>(
+        chain_id: ChainId,
+        channel_id: ChannelId,
+    ) -> Option<ChannelV1<BalanceOf<T>, T::AccountId>> {
+        ChannelStorageV1::<T>::get(chain_id, channel_id).or_else(|| {
+            Channels::<T>::get(chain_id, channel_id).map(|old_channel| old_channel.into())
+        })
+    }
+
+    pub(crate) fn get_open_channels<T: Config>() -> BTreeSet<(ChainId, ChannelId)> {
+        let keys: BTreeSet<(ChainId, ChannelId)> = ChannelStorageV1::<T>::iter_keys().collect();
+        keys.into_iter()
+            .filter(|(chain_id, channel_id)| {
+                get_channel::<T>(*chain_id, *channel_id)
+                    .map(|channel| channel.state != ChannelState::Closed)
+                    .unwrap_or_default()
+            })
+            .collect()
     }
 }
 
