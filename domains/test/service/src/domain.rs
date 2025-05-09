@@ -160,7 +160,15 @@ where
 
         let domain_backend = sc_service::new_db_backend::<Block>(domain_config.db_config())
             .unwrap_or_else(
-                |err| panic!("Failed to create domain backend: {domain_id:?} {role:?} {base_path:?} error: {err:?}")
+                |err| {
+                    tracing::error!("Failed to create domain backend: {domain_id:?} {role:?} {base_path:?} error: {err:?}");
+
+                    // Find out which directory got deleted too soon
+                    for dir_path in base_path.path().ancestors() {
+                        tracing::error!("{dir_path:?} try_exists: {:?}", dir_path.try_exists());
+                    }
+                    panic!("Failed to create domain backend: {domain_id:?} {role:?} {base_path:?} error: {err:?}")
+                }
             );
 
         let BootstrapResult {
