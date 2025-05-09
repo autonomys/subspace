@@ -12768,6 +12768,7 @@ dependencies = [
  "sp-inherents",
  "sp-mmr-primitives",
  "sp-runtime",
+ "sp-std",
  "sp-subspace-mmr",
  "sp-trie",
 ]
