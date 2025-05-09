@@ -8172,10 +8172,6 @@ async fn test_current_block_number_used_as_new_account_nonce() {
 
 // This test is unstable on Windows, it likely contains a filesystem race condition between stopping
 // the node `bob`, and restarting that node with the same data directory.
-// TODO:
-// - log both domain-0 paths used by `bob`, check they are the same, or
-// - work out which part of the second path isn't available
-#[cfg(not(windows))]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_domain_node_starting_check() {
     use futures::FutureExt;
