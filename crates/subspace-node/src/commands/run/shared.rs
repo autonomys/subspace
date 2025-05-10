@@ -60,7 +60,7 @@ pub(super) struct RpcOptions<const DEFAULT_PORT: u16> {
     #[arg(long)]
     pub(super) rpc_rate_limit_trust_proxy_headers: bool,
 
-    /// Set the the maximum concurrent subscriptions per connection.
+    /// Set the maximum concurrent subscriptions per connection.
     #[arg(long, default_value_t = RPC_DEFAULT_MAX_SUBS_PER_CONN)]
     pub(super) rpc_max_subscriptions_per_connection: u32,
 
