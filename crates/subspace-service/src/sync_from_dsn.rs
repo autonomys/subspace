@@ -20,8 +20,9 @@ use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
 use std::fmt;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::SegmentIndex;
 use subspace_core_primitives::PublicKey;
@@ -310,6 +311,7 @@ where
     //  finality: https://github.com/paritytech/polkadot-sdk/issues/1570
     let mut last_processed_block_number = info.best_number;
     let segment_header_downloader = SegmentHeaderDownloader::new(node);
+    let mut reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
 
     while let Some(reason) = notifications.next().await {
         pause_sync.store(true, Ordering::Release);
@@ -325,6 +327,7 @@ where
             &mut last_processed_segment_index,
             &mut last_processed_block_number,
             erasure_coding,
+            &mut reconstructor,
         );
         let wait_almost_synced_fut = async {
             loop {

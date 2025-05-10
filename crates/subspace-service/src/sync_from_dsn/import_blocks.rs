@@ -38,6 +38,7 @@ pub(super) async fn import_blocks_from_dsn<Block, AS, Client, PG, IQS>(
     last_processed_segment_index: &mut SegmentIndex,
     last_processed_block_number: &mut <Block::Header as Header>::Number,
     erasure_coding: &ErasureCoding,
+    reconstructor: &mut Arc<Mutex<Reconstructor>>,
 ) -> Result<u64, Error>
 where
     Block: BlockT,
@@ -68,7 +69,6 @@ where
     }
 
     let mut imported_blocks = 0;
-    let mut reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
     // Start from the first unprocessed segment and process all segments known so far
     let segment_indices_iter = (*last_processed_segment_index + SegmentIndex::ONE)
         ..=segment_headers_store
@@ -105,9 +105,16 @@ where
         // so it can't change. Resetting the reconstructor loses any partial blocks, so we
         // only reset if the (possibly partial) last block has been processed.
         if *last_processed_block_number >= last_archived_maybe_partial_block_number {
+            debug!(
+                target: LOG_TARGET,
+                %segment_index,
+                %last_processed_block_number,
+                %last_archived_maybe_partial_block_number,
+                %last_archived_block_partial,
+                "Already processed last (possibly partial) block in segment, resetting reconstructor",
+            );
             *last_processed_segment_index = segment_index;
-            // Reset reconstructor instance
-            reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
+            *reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
             continue;
         }
         // Just one partial unprocessed block and this was the last segment available, so nothing to
@@ -116,8 +123,18 @@ where
             && last_archived_block_partial
             && segment_indices_iter.peek().is_none()
         {
-            // Reset reconstructor instance
-            reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
+            // We can't reset the reconstructor here, because we need to keep the partial block
+            // for the next segment, which we don't have yet. If snap sync continues, we'll need
+            // that partial block to avoid a block gap. If snap sync finishes, the caller will
+            // return and drop the reconstructor and that partial block anyway.
+            debug!(
+                target: LOG_TARGET,
+                %segment_index,
+                %last_processed_block_number,
+                %last_archived_maybe_partial_block_number,
+                %last_archived_block_partial,
+                "No more segments, keeping reconstructor for partial block in case snap sync continues",
+            );
             continue;
         }
 
