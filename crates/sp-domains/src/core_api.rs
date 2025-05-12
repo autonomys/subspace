@@ -75,8 +75,8 @@ sp_api::decl_runtime_apis! {
             opaque_extrinsic: sp_runtime::OpaqueExtrinsic,
         ) -> Result<Block::Extrinsic, DecodeExtrinsicError>;
 
-        /// Decodes a list of domain extrinsics from opaque extrinsic, when an undecodable tx is met,
-        /// stop and return the decoded extrinsics before the undecodable tx.
+        /// Decodes a list of domain extrinsics from opaque extrinsics, returning all extrinsics
+        /// up to the first undecodable tx. (Or the full list if all are decodable.)
         fn decode_extrinsics_prefix(
             opaque_extrinsics: Vec<sp_runtime::OpaqueExtrinsic>,
         ) -> Vec<Block::Extrinsic>;
