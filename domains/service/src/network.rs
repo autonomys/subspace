@@ -18,6 +18,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::block_validation::{Chain, DefaultBlockAnnounceValidator};
 use sp_runtime::traits::BlockIdTo;
 use std::sync::Arc;
+use subspace_runtime_primitives::BlockHashFor;
 
 /// Build the network service, the network status sinks and an RPC sender.
 #[allow(clippy::type_complexity)]
@@ -28,7 +29,7 @@ pub fn build_network<Block, Net, TxPool, IQ, Client>(
     (
         Arc<dyn sc_network::service::traits::NetworkService>,
         TracingUnboundedSender<sc_rpc::system::Request<Block>>,
-        sc_network_transactions::TransactionsHandlerController<<Block as BlockT>::Hash>,
+        sc_network_transactions::TransactionsHandlerController<BlockHashFor<Block>>,
         NetworkStarter,
         Arc<SyncingService<Block>>,
         NetworkServiceHandle,
@@ -48,9 +49,9 @@ where
         + BlockchainEvents<Block>
         + AuxStore
         + 'static,
-    TxPool: TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash> + 'static,
+    TxPool: TransactionPool<Block = Block, Hash = BlockHashFor<Block>> + 'static,
     IQ: ImportQueue<Block> + 'static,
-    Net: NetworkBackend<Block, <Block as BlockT>::Hash>,
+    Net: NetworkBackend<Block, BlockHashFor<Block>>,
 {
     let BuildNetworkParams {
         config,

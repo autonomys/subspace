@@ -21,11 +21,8 @@ use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use sp_runtime::{RuntimeAppPublic, Saturating};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
-use subspace_runtime_primitives::{Balance, ExtrinsicFor};
+use subspace_runtime_primitives::{Balance, BlockHashFor, ExtrinsicFor};
 use tracing::info;
-
-/// Type alias for block hash.
-pub type BlockHashFor<Block> = <Block as BlockT>::Hash;
 
 /// Type alias for block header.
 pub type HeaderFor<Block> = <Block as BlockT>::Header;
@@ -36,14 +33,14 @@ pub type BundleHeaderFor<Block, CBlock> =
 
 type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
     NumberFor<CBlock>,
-    <CBlock as BlockT>::Hash,
+    BlockHashFor<CBlock>,
     <Block as BlockT>::Header,
     Balance,
 >;
 
 type SealedSingletonReceiptFor<Block, CBlock> = SealedSingletonReceipt<
     NumberFor<CBlock>,
-    <CBlock as BlockT>::Hash,
+    BlockHashFor<CBlock>,
     <Block as BlockT>::Header,
     Balance,
 >;

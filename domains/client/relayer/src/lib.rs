@@ -27,6 +27,7 @@ use sp_runtime::ArithmeticError;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_runtime_primitives::BlockHashFor;
 use tracing::log;
 
 /// The logging target.
@@ -94,7 +95,7 @@ impl From<sp_api::ApiError> for Error {
     }
 }
 
-type ProofOf<Block> = Proof<NumberFor<Block>, <Block as BlockT>::Hash, H256>;
+type ProofOf<Block> = Proof<NumberFor<Block>, BlockHashFor<Block>, H256>;
 
 fn construct_consensus_mmr_proof<Client, Block>(
     consensus_chain_client: &Arc<Client>,

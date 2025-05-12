@@ -32,7 +32,9 @@ use subspace_core_primitives::segments::{
 };
 use subspace_core_primitives::{PublicKey, Randomness, U256};
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, ExtrinsicFor, Moment, Nonce};
+use subspace_runtime_primitives::{
+    AccountId, Balance, BlockHashFor, BlockNumber, ExtrinsicFor, Moment, Nonce,
+};
 
 mod mmr {
     pub use pallet_mmr::primitives::*;
@@ -98,7 +100,7 @@ sp_api::impl_runtime_apis! {
         fn validate_transaction(
             _source: TransactionSource,
             _tx: ExtrinsicFor<Block>,
-            _block_hash: <Block as BlockT>::Hash,
+            _block_hash: BlockHashFor<Block>,
         ) -> TransactionValidity {
             unreachable!()
         }
@@ -126,7 +128,7 @@ sp_api::impl_runtime_apis! {
         }
 
         fn submit_vote_extrinsic(
-            _signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, PublicKey>,
+            _signed_vote: SignedVote<NumberFor<Block>, BlockHashFor<Block>, PublicKey>,
         ) {
             unreachable!()
         }
@@ -166,13 +168,13 @@ sp_api::impl_runtime_apis! {
 
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
-            _opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
+            _opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
         ) {
             unreachable!()
         }
 
         fn submit_receipt_unsigned(
-            _singleton_receipt: sp_domains::SealedSingletonReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
+            _singleton_receipt: sp_domains::SealedSingletonReceipt<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
         ) {
             unreachable!()
         }
@@ -338,14 +340,14 @@ sp_api::impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::MessengerApi<Block, BlockNumber, <Block as BlockT>::Hash> for Runtime {
+    impl sp_messenger::MessengerApi<Block, BlockNumber, BlockHashFor<Block>> for Runtime {
         fn is_xdm_mmr_proof_valid(
             _ext: &ExtrinsicFor<Block>
         ) -> Option<bool> {
             unreachable!()
         }
 
-        fn extract_xdm_mmr_proof(_ext: &ExtrinsicFor<Block>) -> Option<ConsensusChainMmrLeafProof<BlockNumber, <Block as BlockT>::Hash, sp_core::H256>> {
+        fn extract_xdm_mmr_proof(_ext: &ExtrinsicFor<Block>) -> Option<ConsensusChainMmrLeafProof<BlockNumber, BlockHashFor<Block>, sp_core::H256>> {
             unreachable!()
         }
 
@@ -374,16 +376,16 @@ sp_api::impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::RelayerApi<Block, BlockNumber, BlockNumber, <Block as BlockT>::Hash> for Runtime {
+    impl sp_messenger::RelayerApi<Block, BlockNumber, BlockNumber, BlockHashFor<Block>> for Runtime {
         fn block_messages() -> BlockMessagesWithStorageKey {
             unreachable!()
         }
 
-        fn outbox_message_unsigned(_msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<ExtrinsicFor<Block>> {
+        fn outbox_message_unsigned(_msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             unreachable!()
         }
 
-        fn inbox_response_message_unsigned(_msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<ExtrinsicFor<Block>> {
+        fn inbox_response_message_unsigned(_msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             unreachable!()
         }
 
@@ -409,7 +411,7 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(_fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>) {
+        fn submit_fraud_proof_unsigned(_fraud_proof: FraudProof<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, H256>) {
             unreachable!()
         }
 

@@ -92,7 +92,7 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_runtime_primitives::utility::{MaybeNestedCall, MaybeUtilityCall};
 use subspace_runtime_primitives::{
-    BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, ExtrinsicFor,
+    BlockHashFor, BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, ExtrinsicFor,
     Hash as ConsensusBlockHash, Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee,
     XdmFeeMultipler, MAX_CALL_RECURSION_DEPTH, SHANNON, SSC,
 };
@@ -1241,7 +1241,7 @@ impl_runtime_apis! {
         fn validate_transaction(
             source: TransactionSource,
             tx: ExtrinsicFor<Block>,
-            block_hash: <Block as BlockT>::Hash,
+            block_hash: BlockHashFor<Block>,
         ) -> TransactionValidity {
             Executive::validate_transaction(source, tx, block_hash)
         }
@@ -1362,7 +1362,7 @@ impl_runtime_apis! {
         fn check_extrinsics_and_do_pre_dispatch(
             uxts: Vec<ExtrinsicFor<Block>>,
             block_number: BlockNumber,
-            block_hash: <Block as BlockT>::Hash) -> Result<(), CheckExtrinsicsValidityError> {
+            block_hash: BlockHashFor<Block>) -> Result<(), CheckExtrinsicsValidityError> {
             // Initializing block related storage required for validation
             System::initialize(
                 &(block_number + BlockNumber::one()),
@@ -1494,11 +1494,11 @@ impl_runtime_apis! {
             Messenger::get_block_messages()
         }
 
-        fn outbox_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<ExtrinsicFor<Block>> {
+        fn outbox_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             Messenger::outbox_message_unsigned(msg)
         }
 
-        fn inbox_response_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<ExtrinsicFor<Block>> {
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             Messenger::inbox_response_message_unsigned(msg)
         }
 
