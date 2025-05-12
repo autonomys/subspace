@@ -21,29 +21,18 @@ use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use sp_runtime::{RuntimeAppPublic, Saturating};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
-use subspace_runtime_primitives::{Balance, BlockHashFor, ExtrinsicFor};
+use subspace_runtime_primitives::{Balance, BlockHashFor, ExtrinsicFor, HeaderFor};
 use tracing::info;
-
-/// Type alias for block header.
-pub type HeaderFor<Block> = <Block as BlockT>::Header;
 
 /// Type alias for bundle header.
 pub type BundleHeaderFor<Block, CBlock> =
     BundleHeader<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
-type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
-    NumberFor<CBlock>,
-    BlockHashFor<CBlock>,
-    <Block as BlockT>::Header,
-    Balance,
->;
+type OpaqueBundle<Block, CBlock> =
+    sp_domains::OpaqueBundle<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
-type SealedSingletonReceiptFor<Block, CBlock> = SealedSingletonReceipt<
-    NumberFor<CBlock>,
-    BlockHashFor<CBlock>,
-    <Block as BlockT>::Header,
-    Balance,
->;
+type SealedSingletonReceiptFor<Block, CBlock> =
+    SealedSingletonReceipt<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
 pub enum DomainProposal<Block: BlockT, CBlock: BlockT> {
     Bundle(OpaqueBundle<Block, CBlock>),

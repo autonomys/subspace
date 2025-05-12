@@ -56,9 +56,7 @@ use sp_messenger::messages::{CrossDomainMessage, Proof};
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
-use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Convert, Hash as HashT, Header as HeaderT, Zero,
-};
+use sp_runtime::traits::{BlakeTwo256, Convert, Hash as HashT, Header as HeaderT, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidityError,
 };
@@ -74,7 +72,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::{Balance, BlockHashFor, SSC};
+use subspace_runtime_primitives::{Balance, BlockHashFor, HeaderFor, SSC};
 use subspace_test_primitives::{OnchainStateApi as _, DOMAINS_BLOCK_PRUNING_DEPTH};
 use subspace_test_runtime::Runtime;
 use subspace_test_service::{
@@ -7559,7 +7557,7 @@ async fn test_custom_api_storage_root_match_upstream_root() {
     let mut roots = vec![];
     let runtime_api_instance = alice.client.runtime_api();
 
-    let init_header = <<DomainBlock as BlockT>::Header as HeaderT>::new(
+    let init_header = <HeaderFor<DomainBlock> as HeaderT>::new(
         domain_parent_number + 1u32,
         Default::default(),
         Default::default(),

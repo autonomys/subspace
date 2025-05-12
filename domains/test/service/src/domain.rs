@@ -36,14 +36,14 @@ use sp_domains::{DomainId, OperatorId, PermissionedActionAllowedBy};
 use sp_messenger::messages::{ChainId, ChannelId};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
-use sp_runtime::traits::{AsSystemOriginSigner, Block as BlockT, Dispatchable, NumberFor};
+use sp_runtime::traits::{AsSystemOriginSigner, Dispatchable, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::future::Future;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::{BlockHashFor, Nonce};
+use subspace_runtime_primitives::{BlockHashFor, HeaderFor, Nonce};
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 use subspace_test_service::MockConsensusNode;
 use substrate_frame_rpc_system::AccountNonceApi;
@@ -236,9 +236,7 @@ where
             maybe_operator_id,
             confirmation_depth_k: chain_constants.confirmation_depth_k(),
             challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
-            consensus_chain_sync_params: None::<
-                ConsensusChainSyncParams<_, <Block as BlockT>::Header>,
-            >,
+            consensus_chain_sync_params: None::<ConsensusChainSyncParams<_, HeaderFor<Block>>>,
             domain_backend,
         };
 

@@ -12426,6 +12426,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-kzg",
  "subspace-proof-of-space",
+ "subspace-runtime-primitives",
  "subspace-verification",
  "thiserror 2.0.12",
 ]

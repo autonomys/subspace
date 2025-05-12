@@ -96,6 +96,9 @@ pub type ExtrinsicFor<Block> = <Block as BlockT>::Extrinsic;
 /// Type alias for block hash.
 pub type BlockHashFor<Block> = <Block as BlockT>::Hash;
 
+/// Type alias for block header.
+pub type HeaderFor<Block> = <Block as BlockT>::Header;
+
 parameter_types! {
     /// Event segments are disabled on the consensus chain.
     pub const ConsensusEventSegmentSize: u32 = 0;

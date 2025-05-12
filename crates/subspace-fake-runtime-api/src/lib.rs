@@ -19,7 +19,7 @@ use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
 };
 use sp_messenger::{ChannelNonce, XdmId};
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::traits::NumberFor;
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
@@ -33,7 +33,7 @@ use subspace_core_primitives::segments::{
 use subspace_core_primitives::{PublicKey, Randomness, U256};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockHashFor, BlockNumber, ExtrinsicFor, Moment, Nonce,
+    AccountId, Balance, BlockHashFor, BlockNumber, ExtrinsicFor, HeaderFor, Moment, Nonce,
 };
 
 mod mmr {
@@ -56,7 +56,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn initialize_block(_header: &<Block as BlockT>::Header) -> ExtrinsicInclusionMode {
+        fn initialize_block(_header: &HeaderFor<Block>) -> ExtrinsicInclusionMode {
             unreachable!()
         }
     }
@@ -80,7 +80,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn finalize_block() -> <Block as BlockT>::Header {
+        fn finalize_block() -> HeaderFor<Block> {
             unreachable!()
         }
 
@@ -107,7 +107,7 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
-        fn offchain_worker(_header: &<Block as BlockT>::Header) {
+        fn offchain_worker(_header: &HeaderFor<Block>) {
             unreachable!()
         }
     }

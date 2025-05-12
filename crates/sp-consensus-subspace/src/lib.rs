@@ -19,7 +19,7 @@ use scale_info::TypeInfo;
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_core::H256;
 use sp_io::hashing;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
+use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::{ConsensusEngineId, Justification};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
@@ -39,6 +39,7 @@ use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::PosTableType;
 #[cfg(feature = "std")]
 use subspace_proof_of_space::Table;
+use subspace_runtime_primitives::HeaderFor;
 use subspace_verification::VerifySolutionParams;
 
 /// The `ConsensusEngineId` of Subspace.
@@ -585,7 +586,7 @@ sp_api::decl_runtime_apis! {
         /// acceptable for block authoring. Only useful in an offchain context.
         fn submit_vote_extrinsic(
             signed_vote: SignedVote<
-                <<Block as BlockT>::Header as HeaderT>::Number,
+                <HeaderFor<Block> as HeaderT>::Number,
                 Block::Hash,
                 RewardAddress,
             >,

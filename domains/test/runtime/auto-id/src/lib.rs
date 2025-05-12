@@ -50,8 +50,8 @@ use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::generic::{Era, ExtrinsicFormat, Preamble};
 use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, Block as BlockT, Checkable, DispatchTransaction, Keccak256,
-    NumberFor, One, TransactionExtension, ValidateUnsigned, Zero,
+    AccountIdLookup, BlakeTwo256, Checkable, DispatchTransaction, Keccak256, NumberFor, One,
+    TransactionExtension, ValidateUnsigned, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -71,7 +71,7 @@ use static_assertions::const_assert;
 use subspace_runtime_primitives::utility::DefaultNonceProvider;
 use subspace_runtime_primitives::{
     BlockHashFor, BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, ExtrinsicFor,
-    Hash as ConsensusBlockHash, Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee,
+    Hash as ConsensusBlockHash, HeaderFor, Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee,
     XdmFeeMultipler, MAX_CALL_RECURSION_DEPTH, SSC,
 };
 
@@ -745,7 +745,7 @@ impl_runtime_apis! {
             Executive::execute_block(block)
         }
 
-        fn initialize_block(header: &<Block as BlockT>::Header) -> ExtrinsicInclusionMode {
+        fn initialize_block(header: &HeaderFor<Block>) -> ExtrinsicInclusionMode {
             Executive::initialize_block(header)
         }
     }
@@ -769,7 +769,7 @@ impl_runtime_apis! {
             Executive::apply_extrinsic(extrinsic)
         }
 
-        fn finalize_block() -> <Block as BlockT>::Header {
+        fn finalize_block() -> HeaderFor<Block> {
             Executive::finalize_block()
         }
 
@@ -796,7 +796,7 @@ impl_runtime_apis! {
     }
 
     impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
-        fn offchain_worker(header: &<Block as BlockT>::Header) {
+        fn offchain_worker(header: &HeaderFor<Block>) {
             Executive::offchain_worker(header)
         }
     }
@@ -868,7 +868,7 @@ impl_runtime_apis! {
             }
         }
 
-        fn initialize_block_with_post_state_root(header: &<Block as BlockT>::Header) -> Vec<u8> {
+        fn initialize_block_with_post_state_root(header: &HeaderFor<Block>) -> Vec<u8> {
             Executive::initialize_block(header);
             Executive::storage_root()
         }

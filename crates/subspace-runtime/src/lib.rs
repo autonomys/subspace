@@ -77,8 +77,7 @@ use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::traits::{
-    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, ConstU128, Keccak256,
-    NumberFor,
+    AccountIdConversion, AccountIdLookup, BlakeTwo256, ConstU128, Keccak256, NumberFor,
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::type_with_default::TypeWithDefault;
@@ -105,10 +104,11 @@ use subspace_runtime_primitives::utility::{
 };
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockHashFor, BlockNumber,
-    ConsensusEventSegmentSize, ExtrinsicFor, FindBlockRewardAddress, Hash, HoldIdentifier, Moment,
-    Nonce, Signature, SlowAdjustingFeeUpdate, TargetBlockFullness, XdmAdjustedWeightToFee,
-    XdmFeeMultipler, BLOCK_WEIGHT_FOR_2_SEC, DOMAINS_BLOCK_PRUNING_DEPTH, MAX_BLOCK_LENGTH,
-    MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY, SSC,
+    ConsensusEventSegmentSize, ExtrinsicFor, FindBlockRewardAddress, Hash, HeaderFor,
+    HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, TargetBlockFullness,
+    XdmAdjustedWeightToFee, XdmFeeMultipler, BLOCK_WEIGHT_FOR_2_SEC, DOMAINS_BLOCK_PRUNING_DEPTH,
+    MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY,
+    SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -1279,7 +1279,7 @@ impl_runtime_apis! {
             Executive::execute_block(block);
         }
 
-        fn initialize_block(header: &<Block as BlockT>::Header) -> ExtrinsicInclusionMode {
+        fn initialize_block(header: &HeaderFor<Block>) -> ExtrinsicInclusionMode {
             Executive::initialize_block(header)
         }
     }
@@ -1303,7 +1303,7 @@ impl_runtime_apis! {
             Executive::apply_extrinsic(extrinsic)
         }
 
-        fn finalize_block() -> <Block as BlockT>::Header {
+        fn finalize_block() -> HeaderFor<Block> {
             Executive::finalize_block()
         }
 
@@ -1330,7 +1330,7 @@ impl_runtime_apis! {
     }
 
     impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
-        fn offchain_worker(header: &<Block as BlockT>::Header) {
+        fn offchain_worker(header: &HeaderFor<Block>) {
             Executive::offchain_worker(header)
         }
     }

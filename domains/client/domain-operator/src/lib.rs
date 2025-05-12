@@ -110,7 +110,7 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
-use subspace_runtime_primitives::{Balance, BlockHashFor, ExtrinsicFor};
+use subspace_runtime_primitives::{Balance, BlockHashFor, ExtrinsicFor, HeaderFor};
 
 /// Domain sync oracle.
 ///
@@ -156,17 +156,10 @@ where
     }
 }
 
-pub type ExecutionReceiptFor<Block, CBlock> =
-    ExecutionReceipt<<Block as BlockT>::Header, CBlock, Balance>;
+pub type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<HeaderFor<Block>, CBlock, Balance>;
 
 type BundleSender<Block, CBlock> = TracingUnboundedSender<
-    Bundle<
-        ExtrinsicFor<Block>,
-        NumberFor<CBlock>,
-        BlockHashFor<CBlock>,
-        <Block as BlockT>::Header,
-        Balance,
-    >,
+    Bundle<ExtrinsicFor<Block>, NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>,
 >;
 
 /// Notification streams from the consensus chain driving the executor.

@@ -32,6 +32,7 @@ sp-timestamp.workspace = true
 subspace-core-primitives.workspace = true
 subspace-kzg = { workspace = true, optional = true }
 subspace-proof-of-space.workspace = true
+subspace-runtime-primitives.workspace = true
 subspace-verification.workspace = true
 thiserror.workspace = true
 

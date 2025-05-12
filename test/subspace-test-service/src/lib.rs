@@ -91,7 +91,7 @@ use subspace_core_primitives::solutions::Solution;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockHashFor, ExtrinsicFor, Hash, Signature,
+    AccountId, Balance, BlockHashFor, ExtrinsicFor, Hash, HeaderFor, Signature,
 };
 use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{chain_spec, Backend, Client};
@@ -104,7 +104,7 @@ use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{RpcHandlersExt, RpcTransactionError, RpcTransactionOutput};
 
 type FraudProofFor<Block, DomainBlock> =
-    FraudProof<NumberFor<Block>, BlockHashFor<Block>, <DomainBlock as BlockT>::Header, H256>;
+    FraudProof<NumberFor<Block>, BlockHashFor<Block>, HeaderFor<DomainBlock>, H256>;
 
 const MAX_PRODUCE_BUNDLE_TRY: usize = 10;
 

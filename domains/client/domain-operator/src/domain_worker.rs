@@ -41,11 +41,11 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use subspace_runtime_primitives::{Balance, BlockHashFor};
+use subspace_runtime_primitives::{Balance, BlockHashFor, HeaderFor};
 use tracing::{info, Instrument};
 
 pub type OpaqueBundleFor<Block, CBlock> =
-    OpaqueBundle<NumberFor<CBlock>, BlockHashFor<CBlock>, <Block as BlockT>::Header, Balance>;
+    OpaqueBundle<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) async fn start_worker<

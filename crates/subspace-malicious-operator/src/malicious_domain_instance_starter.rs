@@ -24,11 +24,10 @@ use sp_core::crypto::AccountId32;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::{DomainInstanceData, RuntimeType};
 use sp_keystore::KeystorePtr;
-use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::{AccountId, DOMAINS_BLOCK_PRUNING_DEPTH};
+use subspace_runtime_primitives::{AccountId, HeaderFor, DOMAINS_BLOCK_PRUNING_DEPTH};
 use subspace_service::FullClient as CFullClient;
 
 /// `DomainInstanceStarter` used to start a domain instance node based on the given
@@ -155,7 +154,7 @@ impl DomainInstanceStarter {
                     maybe_operator_id: None,
                     confirmation_depth_k: chain_constants.confirmation_depth_k(),
                     consensus_chain_sync_params: None::<
-                        ConsensusChainSyncParams<_, <DomainBlock as BlockT>::Header>,
+                        ConsensusChainSyncParams<_, HeaderFor<DomainBlock>>,
                     >,
                     challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
                     domain_backend,
@@ -218,7 +217,7 @@ impl DomainInstanceStarter {
                     maybe_operator_id: None,
                     confirmation_depth_k: chain_constants.confirmation_depth_k(),
                     consensus_chain_sync_params: None::<
-                        ConsensusChainSyncParams<_, <DomainBlock as BlockT>::Header>,
+                        ConsensusChainSyncParams<_, HeaderFor<DomainBlock>>,
                     >,
                     challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
                     domain_backend,

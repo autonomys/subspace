@@ -20,10 +20,8 @@ use sc_network_common::sync::message::{BlockAttributes, BlockData, BlockRequest}
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Justifications;
-use subspace_runtime_primitives::{BlockHashFor, ExtrinsicFor};
+use subspace_runtime_primitives::{BlockHashFor, ExtrinsicFor, HeaderFor};
 use substrate_prometheus_endpoint::{PrometheusError, Registry};
-
-pub(crate) type BlockHeader<Block> = <Block as BlockT>::Header;
 
 const STATUS_LABEL: &str = "status";
 const STATUS_SUCCESS: &str = "success";
@@ -144,7 +142,7 @@ pub(crate) struct PartialBlock<Block: BlockT> {
     pub(crate) parent_hash: BlockHashFor<Block>,
     pub(crate) block_number: NumberFor<Block>,
     pub(crate) block_header_hash: BlockHashFor<Block>,
-    pub(crate) header: Option<BlockHeader<Block>>,
+    pub(crate) header: Option<HeaderFor<Block>>,
     pub(crate) indexed_body: Option<Vec<Vec<u8>>>,
     pub(crate) justifications: Option<Justifications>,
 }
