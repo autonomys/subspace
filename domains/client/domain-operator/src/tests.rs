@@ -6170,8 +6170,8 @@ async fn test_restart_domain_operator() {
     let next_slot = ferdie.next_slot();
 
     // Stop Ferdie and Alice and delete their database lock files
-    ferdie.stop().unwrap();
-    alice.stop().unwrap();
+    ferdie.stop().await.unwrap();
+    alice.stop().await.unwrap();
 
     // Restart Ferdie
     let mut ferdie = MockConsensusNode::run(
@@ -6510,7 +6510,7 @@ async fn test_bad_receipt_chain() {
     produce_blocks!(ferdie, alice, 15).await.unwrap();
 
     // Stop `Bob` so it won't generate fraud proof for the incoming bad ER
-    bob.stop().unwrap();
+    bob.stop().await.unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
@@ -8221,7 +8221,8 @@ async fn test_domain_node_starting_check() {
 
     // Stop `Bob`, produce more domain blocks, then restart `Bob` with the same
     // consensus node should be fine
-    bob.stop().unwrap();
+    bob.stop().await.unwrap();
+
     produce_blocks!(ferdie, alice, 3).await.unwrap();
     assert_eq!(alice.client.info().best_number, 6);
 
@@ -8263,7 +8264,7 @@ async fn test_domain_node_starting_check() {
         BasePath::new(directory.path().join("eve")),
     );
     let alice_base_path = alice.base_path.clone();
-    alice.stop().unwrap();
+    alice.stop().await.unwrap();
     let result = async move {
         std::panic::AssertUnwindSafe(
             domain_test_service::DomainNodeBuilder::new(tokio_handle, alice_base_path)

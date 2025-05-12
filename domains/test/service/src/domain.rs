@@ -42,6 +42,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::Nonce;
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
@@ -50,6 +51,7 @@ use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
+use tokio::time::sleep;
 
 /// The backend type used by the test service.
 pub type Backend = TFullBackend<Block>;
@@ -482,11 +484,20 @@ where
         );
     }
 
-    /// Take and stop the domain node and delete its database lock file
-    pub fn stop(self) -> Result<(), std::io::Error> {
+    /// Take and stop the domain node and delete its database lock file.
+    ///
+    /// Stopping and restarting a node can cause weird race conditions, with errors like:
+    /// "The system cannot find the path specified".
+    /// If this happens, try increasing the wait time in this method.
+    pub async fn stop(self) -> Result<(), std::io::Error> {
         let lock_file_path = self.base_path.path().join("paritydb").join("lock");
         // On Windows, sometimes open files can’t be deleted so `drop` first then delete
         std::mem::drop(self);
+
+        // Give the node time to cleanup, exit, and release the lock file.
+        // TODO: fix the underlying issue or wait for the actual shutdown instead
+        sleep(Duration::from_secs(2)).await;
+
         // The lock file already being deleted is not a fatal test error, so just log it
         if let Err(err) = std::fs::remove_file(lock_file_path) {
             tracing::error!("deleting paritydb lock file failed: {err:?}");
