@@ -60,8 +60,7 @@ use sp_evm_tracker::{
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, FeeModel, MessageId,
-    MessageKey,
+    BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
 };
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
@@ -572,9 +571,7 @@ impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
 parameter_types! {
     pub const ChannelReserveFee: Balance = SSC;
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
-    pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
-    pub const MessageVersion: pallet_messenger::MessageVersion = pallet_messenger::MessageVersion::V1;
 }
 
 // ensure the max outgoing messages is not 0.
@@ -628,10 +625,8 @@ impl pallet_messenger::Config for Runtime {
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = ();
-    type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
-    type MessageVersion = MessageVersion;
     type NoteChainTransfer = Transporter;
 }
 
@@ -1714,7 +1709,7 @@ impl_runtime_apis! {
         }
 
         fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId> {
-            Messenger::get_open_channel_for_chain(dst_chain_id).map(|(c, _)| c)
+            Messenger::get_open_channel_for_chain(dst_chain_id)
         }
 
         fn consensus_transaction_byte_fee() -> Balance {

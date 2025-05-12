@@ -13,7 +13,6 @@ pub mod block_tree;
 pub mod bundle_storage_fund;
 pub mod domain_registry;
 pub mod extensions;
-pub mod migrations;
 pub mod runtime_registry;
 mod staking;
 mod staking_epoch;
