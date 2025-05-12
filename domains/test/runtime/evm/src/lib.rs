@@ -28,10 +28,10 @@ pub use domain_runtime_primitives::{
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::genesis_builder_helper::{build_state, get_preset};
-use frame_support::inherent::ProvideInherent;
 use frame_support::pallet_prelude::TypeInfo;
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, OnFinalize, Time, VariantCount,
+    ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, IsInherent, OnFinalize, Time,
+    VariantCount,
 };
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, Weight};
@@ -1377,27 +1377,12 @@ impl_runtime_apis! {
         }
 
         fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool {
-            match &extrinsic.0.function {
-                RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
-                RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(call),
-                RuntimeCall::Messenger(call) => Messenger::is_inherent(call),
-                RuntimeCall::Sudo(call) => Sudo::is_inherent(call),
-                RuntimeCall::EVMNoncetracker(call) => EVMNoncetracker::is_inherent(call),
-                _ => false,
-            }
+            <Self as IsInherent<_>>::is_inherent(extrinsic)
         }
 
         fn find_first_inherent_extrinsic(extrinsics: &Vec<<Block as BlockT>::Extrinsic>) -> Option<u32> {
             for (index, extrinsic) in extrinsics.iter().enumerate() {
-                let is_inherent_extrinsic = match &extrinsic.0.function {
-                    RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
-                    RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(call),
-                    RuntimeCall::Messenger(call) => Messenger::is_inherent(call),
-                    RuntimeCall::Sudo(call) => Sudo::is_inherent(call),
-                    RuntimeCall::EVMNoncetracker(call) => EVMNoncetracker::is_inherent(call),
-                    _ => false,
-                };
-                if is_inherent_extrinsic {
+                if <Self as IsInherent<_>>::is_inherent(extrinsic) {
                     return Some(index as u32)
                 }
             }
