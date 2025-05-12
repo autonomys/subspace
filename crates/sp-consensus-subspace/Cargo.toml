@@ -60,6 +60,7 @@ std = [
     "subspace-proof-of-space/std",
     "subspace-verification/kzg",
     "subspace-verification/std",
+    "subspace-runtime-primitives/std",
     "thiserror/std",
 ]
 
