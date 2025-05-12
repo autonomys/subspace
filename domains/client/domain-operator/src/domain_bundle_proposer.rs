@@ -22,7 +22,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::U256;
-use subspace_runtime_primitives::Balance;
+use subspace_runtime_primitives::{Balance, ExtrinsicFor};
 
 /// If the bundle utilization is below `BUNDLE_UTILIZATION_THRESHOLD` we will attempt to push
 /// at most `MAX_SKIPPED_TRANSACTIONS` number of transactions before quitting for real.
@@ -87,7 +87,7 @@ impl<Block: BlockT, Client, CBlock: BlockT, CClient, TransactionPool> Clone
 
 pub(super) type ProposeBundleOutput<Block, CBlock> = (
     BundleHeader<NumberFor<CBlock>, <CBlock as BlockT>::Hash, <Block as BlockT>::Header, Balance>,
-    Vec<<Block as BlockT>::Extrinsic>,
+    Vec<ExtrinsicFor<Block>>,
 );
 
 impl<Block, Client, CBlock, CClient, TransactionPool>

@@ -90,7 +90,7 @@ use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::solutions::Solution;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Hash, Signature};
+use subspace_runtime_primitives::{AccountId, Balance, ExtrinsicFor, Hash, Signature};
 use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{chain_spec, Backend, Client};
 use subspace_test_primitives::OnchainStateApi;
@@ -934,7 +934,7 @@ impl MockConsensusNode {
 }
 
 impl MockConsensusNode {
-    async fn collect_txn_from_pool(&self, parent_hash: Hash) -> Vec<<Block as BlockT>::Extrinsic> {
+    async fn collect_txn_from_pool(&self, parent_hash: Hash) -> Vec<ExtrinsicFor<Block>> {
         self.transaction_pool
             .ready_at(parent_hash)
             .await
@@ -975,7 +975,7 @@ impl MockConsensusNode {
         &self,
         slot: Slot,
         parent_hash: <Block as BlockT>::Hash,
-        extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        extrinsics: Vec<ExtrinsicFor<Block>>,
     ) -> Result<(Block, StorageChanges), Box<dyn Error>> {
         let inherent_digest = self.mock_subspace_digest(slot);
 
@@ -1052,7 +1052,7 @@ impl MockConsensusNode {
         &mut self,
         new_slot: NewSlot,
         parent_hash: <Block as BlockT>::Hash,
-        maybe_extrinsics: Option<Vec<<Block as BlockT>::Extrinsic>>,
+        maybe_extrinsics: Option<Vec<ExtrinsicFor<Block>>>,
     ) -> Result<<Block as BlockT>::Hash, Box<dyn Error>> {
         let block_timer = time::Instant::now();
 
@@ -1097,7 +1097,7 @@ impl MockConsensusNode {
     #[sc_tracing::logging::prefix_logs_with(self.log_prefix)]
     pub async fn produce_block_with_extrinsics(
         &mut self,
-        extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        extrinsics: Vec<ExtrinsicFor<Block>>,
     ) -> Result<(), Box<dyn Error>> {
         let slot = self.produce_slot();
         self.produce_block_with_slot_at(slot, self.client.info().best_hash, Some(extrinsics))

@@ -110,7 +110,7 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
-use subspace_runtime_primitives::Balance;
+use subspace_runtime_primitives::{Balance, ExtrinsicFor};
 
 /// Domain sync oracle.
 ///
@@ -161,7 +161,7 @@ pub type ExecutionReceiptFor<Block, CBlock> =
 
 type BundleSender<Block, CBlock> = TracingUnboundedSender<
     Bundle<
-        <Block as BlockT>::Extrinsic,
+        ExtrinsicFor<Block>,
         NumberFor<CBlock>,
         <CBlock as BlockT>::Hash,
         <Block as BlockT>::Header,

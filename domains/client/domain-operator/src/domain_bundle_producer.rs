@@ -21,7 +21,7 @@ use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use sp_runtime::{RuntimeAppPublic, Saturating};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
-use subspace_runtime_primitives::Balance;
+use subspace_runtime_primitives::{Balance, ExtrinsicFor};
 use tracing::info;
 
 /// Type alias for block hash.
@@ -33,9 +33,6 @@ pub type HeaderFor<Block> = <Block as BlockT>::Header;
 /// Type alias for bundle header.
 pub type BundleHeaderFor<Block, CBlock> =
     BundleHeader<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
-
-/// Type alias for extrinsics.
-pub type ExtrinsicFor<Block> = <Block as BlockT>::Extrinsic;
 
 type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
     NumberFor<CBlock>,

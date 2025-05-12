@@ -24,7 +24,7 @@ use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{BlockHash, BlockNumber, U256};
-use subspace_runtime_primitives::Moment;
+use subspace_runtime_primitives::{ExtrinsicFor, Moment};
 
 /// Stateless runtime api based on the runtime code and partial state if provided.
 ///
@@ -150,7 +150,7 @@ impl<CBlock, Block, Executor> FetchRuntimeCode for StatelessRuntime<CBlock, Bloc
     }
 }
 
-pub type ExtractSignerResult<Block> = Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
+pub type ExtractSignerResult<Block> = Vec<(Option<AccountId>, ExtrinsicFor<Block>)>;
 
 impl<CBlock, Block, Executor> StatelessRuntime<CBlock, Block, Executor>
 where

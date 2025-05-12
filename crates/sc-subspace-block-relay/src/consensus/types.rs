@@ -20,11 +20,11 @@ use sc_network_common::sync::message::{BlockAttributes, BlockData, BlockRequest}
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Justifications;
+use subspace_runtime_primitives::ExtrinsicFor;
 use substrate_prometheus_endpoint::{PrometheusError, Registry};
 
 pub(crate) type BlockHash<Block> = <Block as BlockT>::Hash;
 pub(crate) type BlockHeader<Block> = <Block as BlockT>::Header;
-pub(crate) type Extrinsic<Block> = <Block as BlockT>::Extrinsic;
 
 const STATUS_LABEL: &str = "status";
 const STATUS_SUCCESS: &str = "success";
@@ -100,7 +100,7 @@ pub(crate) enum ProtocolInitialRequest {
 #[derive(From, Encode, Decode)]
 pub(crate) enum ProtocolInitialResponse<Block: BlockT, TxHash> {
     #[codec(index = 0)]
-    CompactBlock(CompactBlockInitialResponse<BlockHash<Block>, TxHash, Extrinsic<Block>>),
+    CompactBlock(CompactBlockInitialResponse<BlockHash<Block>, TxHash, ExtrinsicFor<Block>>),
     // New protocol goes here:
     // #[codec(index = 1)]
 }
@@ -152,7 +152,7 @@ pub(crate) struct PartialBlock<Block: BlockT> {
 
 impl<Block: BlockT> PartialBlock<Block> {
     /// Builds the full block data.
-    pub(crate) fn block_data(self, body: Option<Vec<Extrinsic<Block>>>) -> BlockData<Block> {
+    pub(crate) fn block_data(self, body: Option<Vec<ExtrinsicFor<Block>>>) -> BlockData<Block> {
         BlockData::<Block> {
             hash: self.block_header_hash,
             header: self.header,

@@ -32,7 +32,7 @@ use subspace_core_primitives::segments::{
 };
 use subspace_core_primitives::{PublicKey, Randomness, U256};
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Moment, Nonce};
+use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, ExtrinsicFor, Moment, Nonce};
 
 mod mmr {
     pub use pallet_mmr::primitives::*;
@@ -74,7 +74,7 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_block_builder::BlockBuilder<Block> for Runtime {
-        fn apply_extrinsic(_extrinsic: <Block as BlockT>::Extrinsic) -> ApplyExtrinsicResult {
+        fn apply_extrinsic(_extrinsic: ExtrinsicFor<Block>) -> ApplyExtrinsicResult {
             unreachable!()
         }
 
@@ -82,7 +82,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn inherent_extrinsics(_data: sp_inherents::InherentData) -> Vec<<Block as BlockT>::Extrinsic> {
+        fn inherent_extrinsics(_data: sp_inherents::InherentData) -> Vec<ExtrinsicFor<Block>> {
             unreachable!()
         }
 
@@ -97,7 +97,7 @@ sp_api::impl_runtime_apis! {
     impl sp_transaction_pool::runtime_api::TaggedTransactionQueue<Block> for Runtime {
         fn validate_transaction(
             _source: TransactionSource,
-            _tx: <Block as BlockT>::Extrinsic,
+            _tx: ExtrinsicFor<Block>,
             _block_hash: <Block as BlockT>::Hash,
         ) -> TransactionValidity {
             unreachable!()
@@ -143,11 +143,11 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn extract_segment_headers(_ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<SegmentHeader >> {
+        fn extract_segment_headers(_ext: &ExtrinsicFor<Block>) -> Option<Vec<SegmentHeader >> {
             unreachable!()
         }
 
-        fn is_inherent(_ext: &<Block as BlockT>::Extrinsic) -> bool {
+        fn is_inherent(_ext: &ExtrinsicFor<Block>) -> bool {
             unreachable!()
         }
 
@@ -179,7 +179,7 @@ sp_api::impl_runtime_apis! {
 
         fn extract_successful_bundles(
             _domain_id: DomainId,
-            _extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            _extrinsics: Vec<ExtrinsicFor<Block>>,
         ) -> sp_domains::OpaqueBundles<Block, DomainHeader, Balance> {
             unreachable!()
         }
@@ -319,13 +319,13 @@ sp_api::impl_runtime_apis! {
 
     impl pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi<Block, Balance> for Runtime {
         fn query_info(
-            _uxt: <Block as BlockT>::Extrinsic,
+            _uxt: ExtrinsicFor<Block>,
             _len: u32,
         ) -> pallet_transaction_payment_rpc_runtime_api::RuntimeDispatchInfo<Balance> {
             unreachable!()
         }
         fn query_fee_details(
-            _uxt: <Block as BlockT>::Extrinsic,
+            _uxt: ExtrinsicFor<Block>,
             _len: u32,
         ) -> pallet_transaction_payment::FeeDetails<Balance> {
             unreachable!()
@@ -340,12 +340,12 @@ sp_api::impl_runtime_apis! {
 
     impl sp_messenger::MessengerApi<Block, BlockNumber, <Block as BlockT>::Hash> for Runtime {
         fn is_xdm_mmr_proof_valid(
-            _ext: &<Block as BlockT>::Extrinsic
+            _ext: &ExtrinsicFor<Block>
         ) -> Option<bool> {
             unreachable!()
         }
 
-        fn extract_xdm_mmr_proof(_ext: &<Block as BlockT>::Extrinsic) -> Option<ConsensusChainMmrLeafProof<BlockNumber, <Block as BlockT>::Hash, sp_core::H256>> {
+        fn extract_xdm_mmr_proof(_ext: &ExtrinsicFor<Block>) -> Option<ConsensusChainMmrLeafProof<BlockNumber, <Block as BlockT>::Hash, sp_core::H256>> {
             unreachable!()
         }
 
@@ -365,7 +365,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn xdm_id(_ext: &<Block as BlockT>::Extrinsic) -> Option<XdmId> {
+        fn xdm_id(_ext: &ExtrinsicFor<Block>) -> Option<XdmId> {
             unreachable!()
         }
 
@@ -379,11 +379,11 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn outbox_message_unsigned(_msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn outbox_message_unsigned(_msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<ExtrinsicFor<Block>> {
             unreachable!()
         }
 
-        fn inbox_response_message_unsigned(_msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn inbox_response_message_unsigned(_msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<ExtrinsicFor<Block>> {
             unreachable!()
         }
 

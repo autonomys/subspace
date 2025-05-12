@@ -1,7 +1,7 @@
 //! Consensus block relay implementation.
 
 use crate::consensus::types::{
-    BlockHash, ConsensusClientMetrics, ConsensusRequest, ConsensusServerMetrics, Extrinsic,
+    BlockHash, ConsensusClientMetrics, ConsensusRequest, ConsensusServerMetrics,
     FullDownloadRequest, FullDownloadResponse, InitialRequest, InitialResponse, PartialBlock,
     ProtocolInitialRequest, ProtocolInitialResponse, ProtocolMessage,
 };
@@ -36,6 +36,7 @@ use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::PublicKey;
+use subspace_runtime_primitives::ExtrinsicFor;
 use substrate_prometheus_endpoint::{PrometheusError, Registry};
 use tracing::{debug, info, trace, warn};
 
@@ -62,7 +63,7 @@ where
 {
     network: Arc<NetworkWrapper>,
     protocol_name: ProtocolName,
-    compact_block: CompactBlockClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+    compact_block: CompactBlockClient<BlockHash<Block>, TxHash<Pool>, ExtrinsicFor<Block>>,
     backend: Arc<ConsensusClientBackend<Pool>>,
     metrics: ConsensusClientMetrics,
     _phantom_data: std::marker::PhantomData<(Block, Pool)>,
@@ -90,7 +91,7 @@ where
     fn new(
         network: Arc<NetworkWrapper>,
         protocol_name: ProtocolName,
-        compact_block: CompactBlockClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+        compact_block: CompactBlockClient<BlockHash<Block>, TxHash<Pool>, ExtrinsicFor<Block>>,
         backend: Arc<ConsensusClientBackend<Pool>>,
         metrics: ConsensusClientMetrics,
     ) -> Self {
@@ -195,7 +196,7 @@ where
         &self,
         protocol_response: ProtocolInitialResponse<Block, TxHash<Pool>>,
         network_peer_handle: &NetworkPeerHandle,
-    ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError>
+    ) -> Result<(Vec<ExtrinsicFor<Block>>, usize), RelayError>
     where
         Request: From<CompactBlockHandshake<BlockHash<Block>, TxHash<Pool>>> + Encode + Send + Sync,
     {
@@ -303,7 +304,7 @@ where
 /// The server side of the consensus block relay
 struct ConsensusRelayServer<Block: BlockT, Client, Pool: TransactionPool> {
     client: Arc<Client>,
-    compact_block: CompactBlockServer<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+    compact_block: CompactBlockServer<BlockHash<Block>, TxHash<Pool>, ExtrinsicFor<Block>>,
     request_receiver: async_channel::Receiver<IncomingRequest>,
     backend: Arc<ConsensusServerBackend<Client, Pool>>,
     metrics: ConsensusServerMetrics,
@@ -320,7 +321,7 @@ where
     /// Creates the consensus relay server.
     fn new(
         client: Arc<Client>,
-        compact_block: CompactBlockServer<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+        compact_block: CompactBlockServer<BlockHash<Block>, TxHash<Pool>, ExtrinsicFor<Block>>,
         request_receiver: async_channel::Receiver<IncomingRequest>,
         backend: Arc<ConsensusServerBackend<Client, Pool>>,
         metrics: ConsensusServerMetrics,
@@ -591,12 +592,12 @@ struct ConsensusClientBackend<Pool> {
     transaction_pool: Arc<Pool>,
 }
 
-impl<Block, Pool> ClientBackend<TxHash<Pool>, Extrinsic<Block>> for ConsensusClientBackend<Pool>
+impl<Block, Pool> ClientBackend<TxHash<Pool>, ExtrinsicFor<Block>> for ConsensusClientBackend<Pool>
 where
     Block: BlockT,
     Pool: TransactionPool<Block = Block> + 'static,
 {
-    fn protocol_unit(&self, tx_hash: &TxHash<Pool>) -> Option<Extrinsic<Block>> {
+    fn protocol_unit(&self, tx_hash: &TxHash<Pool>) -> Option<ExtrinsicFor<Block>> {
         // Look up the transaction pool.
         self.transaction_pool
             .ready_transaction(tx_hash)
@@ -610,7 +611,7 @@ struct ConsensusServerBackend<Client, Pool> {
     transaction_pool: Arc<Pool>,
 }
 
-impl<Block, Client, Pool> ServerBackend<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>
+impl<Block, Client, Pool> ServerBackend<BlockHash<Block>, TxHash<Pool>, ExtrinsicFor<Block>>
     for ConsensusServerBackend<Client, Pool>
 where
     Block: BlockT,
@@ -621,7 +622,7 @@ where
     fn download_unit_members(
         &self,
         block_hash: &BlockHash<Block>,
-    ) -> Result<Vec<ProtocolUnitInfo<TxHash<Pool>, Extrinsic<Block>>>, RelayError> {
+    ) -> Result<Vec<ProtocolUnitInfo<TxHash<Pool>, ExtrinsicFor<Block>>>, RelayError> {
         let txns = block_transactions(block_hash, self.client.as_ref())?;
         Ok(txns
             .into_iter()
@@ -644,7 +645,7 @@ where
         &self,
         block_hash: &BlockHash<Block>,
         tx_hash: &TxHash<Pool>,
-    ) -> Option<Extrinsic<Block>> {
+    ) -> Option<ExtrinsicFor<Block>> {
         // Look up the block extrinsics.
         match block_transactions(block_hash, self.client.as_ref()) {
             Ok(extrinsics) => {
@@ -676,7 +677,7 @@ where
 fn block_transactions<Block, Client>(
     block_hash: &BlockHash<Block>,
     client: &Client,
-) -> Result<Vec<Extrinsic<Block>>, RelayError>
+) -> Result<Vec<ExtrinsicFor<Block>>, RelayError>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block>,
