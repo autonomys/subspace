@@ -93,7 +93,7 @@ where
         {
             // Calculate how much refund we should return
             let refund_amount = imbalance.peek().saturating_sub(corrected_fee);
-            // Refund to the the account that paid the fees. If this fails, the account might have
+            // Refund to the account that paid the fees. If this fails, the account might have
             // dropped below the existential balance. In that case we don't refund anything.
             let refund_imbalance = C::deposit_into_existing(who, refund_amount)
                 .unwrap_or_else(|_| C::PositiveImbalance::zero());

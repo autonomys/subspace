@@ -136,7 +136,7 @@ pub fn refund_storage_fee<T: Config>(
     Ok(())
 }
 
-/// Split the new deposit into 2 parts: the staking deposit and the the storage fee deposit,
+/// Split the new deposit into 2 parts: the staking deposit and the storage fee deposit,
 /// add the storage fee deposit to the bundle storage fund.
 pub fn deposit_reserve_for_storage_fund<T: Config>(
     operator_id: OperatorId,
