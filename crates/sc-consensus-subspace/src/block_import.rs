@@ -297,7 +297,7 @@ where
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey> + ApiExt<Block>,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    BlockNumber: From<<Block::Header as HeaderT>::Number>,
+    BlockNumber: From<NumberFor<Block>>,
 {
     /// Produce a Subspace block-import object to be used later on in the construction of an import-queue.
     pub fn new(
@@ -552,7 +552,7 @@ where
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey> + ApiExt<Block>,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    BlockNumber: From<<Block::Header as HeaderT>::Number>,
+    BlockNumber: From<NumberFor<Block>>,
 {
     type Error = Error<Block::Header>;
 

@@ -90,7 +90,9 @@ use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::solutions::Solution;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Hash, Signature};
+use subspace_runtime_primitives::{
+    AccountId, Balance, BlockHashFor, ExtrinsicFor, Hash, HeaderFor, Signature,
+};
 use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{chain_spec, Backend, Client};
 use subspace_test_primitives::OnchainStateApi;
@@ -102,7 +104,7 @@ use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{RpcHandlersExt, RpcTransactionError, RpcTransactionOutput};
 
 type FraudProofFor<Block, DomainBlock> =
-    FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, <DomainBlock as BlockT>::Header, H256>;
+    FraudProof<NumberFor<Block>, BlockHashFor<Block>, HeaderFor<DomainBlock>, H256>;
 
 const MAX_PRODUCE_BUNDLE_TRY: usize = 10;
 
@@ -820,7 +822,7 @@ impl MockConsensusNode {
 
     async fn prune_txs_from_pool(
         &self,
-        tx_hashes: &[<Block as BlockT>::Hash],
+        tx_hashes: &[BlockHashFor<Block>],
     ) -> Result<(), Box<dyn Error>> {
         let hash_and_number = HashAndNumber {
             number: self.client.info().best_number,
@@ -842,7 +844,7 @@ impl MockConsensusNode {
     /// Return if the given ER exist in the consensus state
     pub fn does_receipt_exist(
         &self,
-        er_hash: <DomainBlock as BlockT>::Hash,
+        er_hash: BlockHashFor<DomainBlock>,
     ) -> Result<bool, Box<dyn Error>> {
         Ok(self
             .client
@@ -934,7 +936,7 @@ impl MockConsensusNode {
 }
 
 impl MockConsensusNode {
-    async fn collect_txn_from_pool(&self, parent_hash: Hash) -> Vec<<Block as BlockT>::Extrinsic> {
+    async fn collect_txn_from_pool(&self, parent_hash: Hash) -> Vec<ExtrinsicFor<Block>> {
         self.transaction_pool
             .ready_at(parent_hash)
             .await
@@ -974,8 +976,8 @@ impl MockConsensusNode {
     async fn build_block(
         &self,
         slot: Slot,
-        parent_hash: <Block as BlockT>::Hash,
-        extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        parent_hash: BlockHashFor<Block>,
+        extrinsics: Vec<ExtrinsicFor<Block>>,
     ) -> Result<(Block, StorageChanges), Box<dyn Error>> {
         let inherent_digest = self.mock_subspace_digest(slot);
 
@@ -1005,7 +1007,7 @@ impl MockConsensusNode {
         &self,
         block: Block,
         storage_changes: Option<StorageChanges>,
-    ) -> Result<<Block as BlockT>::Hash, Box<dyn Error>> {
+    ) -> Result<BlockHashFor<Block>, Box<dyn Error>> {
         let (header, body) = block.deconstruct();
 
         let header_hash = header.hash();
@@ -1051,9 +1053,9 @@ impl MockConsensusNode {
     pub async fn produce_block_with_slot_at(
         &mut self,
         new_slot: NewSlot,
-        parent_hash: <Block as BlockT>::Hash,
-        maybe_extrinsics: Option<Vec<<Block as BlockT>::Extrinsic>>,
-    ) -> Result<<Block as BlockT>::Hash, Box<dyn Error>> {
+        parent_hash: BlockHashFor<Block>,
+        maybe_extrinsics: Option<Vec<ExtrinsicFor<Block>>>,
+    ) -> Result<BlockHashFor<Block>, Box<dyn Error>> {
         let block_timer = time::Instant::now();
 
         let extrinsics = match maybe_extrinsics {
@@ -1097,7 +1099,7 @@ impl MockConsensusNode {
     #[sc_tracing::logging::prefix_logs_with(self.log_prefix)]
     pub async fn produce_block_with_extrinsics(
         &mut self,
-        extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        extrinsics: Vec<ExtrinsicFor<Block>>,
     ) -> Result<(), Box<dyn Error>> {
         let slot = self.produce_slot();
         self.produce_block_with_slot_at(slot, self.client.info().best_hash, Some(extrinsics))

@@ -51,7 +51,7 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
-use subspace_runtime_primitives::Nonce;
+use subspace_runtime_primitives::{HeaderFor, Nonce};
 use substrate_frame_rpc_system::AccountNonceApi;
 
 pub type DomainOperator<Block, CBlock, CClient, RuntimeApi> = Operator<
@@ -274,8 +274,7 @@ where
     pub skip_out_of_order_slot: bool,
     pub confirmation_depth_k: NumberFor<CBlock>,
     pub challenge_period: NumberFor<CBlock>,
-    pub consensus_chain_sync_params:
-        Option<ConsensusChainSyncParams<CBlock, <Block as BlockT>::Header>>,
+    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, HeaderFor<Block>>>,
     pub domain_backend: Arc<FullBackend<Block>>,
 }
 

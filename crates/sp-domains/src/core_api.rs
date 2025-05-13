@@ -8,18 +8,18 @@ use domain_runtime_primitives::{
     opaque, Balance, CheckExtrinsicsValidityError, DecodeExtrinsicError,
 };
 use sp_runtime::generic::Era;
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::traits::NumberFor;
 use sp_runtime::Digest;
 use sp_weights::Weight;
 use subspace_core_primitives::U256;
-use subspace_runtime_primitives::Moment;
+use subspace_runtime_primitives::{ExtrinsicFor, Moment};
 
 sp_api::decl_runtime_apis! {
     /// Base API that every domain runtime must implement.
     pub trait DomainCoreApi {
         /// Extracts the optional signer per extrinsic.
         fn extract_signer(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            extrinsics: Vec<ExtrinsicFor<Block>>,
         ) -> Vec<(Option<opaque::AccountId>, Block::Extrinsic)>;
 
         fn is_within_tx_range(

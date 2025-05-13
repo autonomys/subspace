@@ -28,4 +28,5 @@ sp-externalities.workspace = true
 sp-inherents.workspace = true
 sp-runtime.workspace = true
 sp-state-machine.workspace = true
+subspace-runtime-primitives = { workspace = true, features = ["std"] }
 tracing.workspace = true

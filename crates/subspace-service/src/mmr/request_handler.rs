@@ -38,6 +38,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::BlockNumber;
+use subspace_runtime_primitives::BlockHashFor;
 use tracing::{debug, error, trace};
 
 const MAX_NUMBER_OF_SAME_REQUESTS_PER_PEER: usize = 2;
@@ -157,7 +158,7 @@ where
         offchain_storage: OS,
     ) -> (Self, NB::RequestResponseProtocolConfig)
     where
-        NB: NetworkBackend<Block, <Block as BlockT>::Hash>,
+        NB: NetworkBackend<Block, BlockHashFor<Block>>,
     {
         // Reserve enough request slots for one request per peer when we are at the maximum
         // number of peers.

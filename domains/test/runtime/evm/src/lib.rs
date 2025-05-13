@@ -67,9 +67,9 @@ use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::generic::{Era, ExtrinsicFormat, Preamble, SignedPayload};
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Checkable, DispatchInfoOf, DispatchTransaction, Dispatchable,
-    IdentityLookup, Keccak256, NumberFor, One, PostDispatchInfoOf, TransactionExtension,
-    UniqueSaturatedInto, ValidateUnsigned, Zero,
+    BlakeTwo256, Checkable, DispatchInfoOf, DispatchTransaction, Dispatchable, IdentityLookup,
+    Keccak256, NumberFor, One, PostDispatchInfoOf, TransactionExtension, UniqueSaturatedInto,
+    ValidateUnsigned, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -91,9 +91,9 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_runtime_primitives::utility::{MaybeNestedCall, MaybeUtilityCall};
 use subspace_runtime_primitives::{
-    BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, Hash as ConsensusBlockHash,
-    Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee, XdmFeeMultipler,
-    MAX_CALL_RECURSION_DEPTH, SHANNON, SSC,
+    BlockHashFor, BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, ExtrinsicFor,
+    Hash as ConsensusBlockHash, HeaderFor, Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee,
+    XdmFeeMultipler, MAX_CALL_RECURSION_DEPTH, SHANNON, SSC,
 };
 
 /// The address format for describing accounts.
@@ -935,7 +935,7 @@ impl fp_rpc::ConvertTransaction<opaque::UncheckedExtrinsic> for TransactionConve
     }
 }
 
-fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
+fn is_xdm_mmr_proof_valid(ext: &ExtrinsicFor<Block>) -> Option<bool> {
     match &ext.0.function {
         RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
         | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
@@ -966,7 +966,7 @@ fn is_valid_sudo_call(encoded_ext: Vec<u8>) -> bool {
 }
 
 /// Constructs a domain-sudo call extrinsic from the given encoded extrinsic.
-fn construct_sudo_call_extrinsic(encoded_ext: Vec<u8>) -> <Block as BlockT>::Extrinsic {
+fn construct_sudo_call_extrinsic(encoded_ext: Vec<u8>) -> ExtrinsicFor<Block> {
     let ext = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()).expect(
         "must always be a valid extrinsic due to the check above and storage proof check; qed",
     );
@@ -981,7 +981,7 @@ fn construct_sudo_call_extrinsic(encoded_ext: Vec<u8>) -> <Block as BlockT>::Ext
 /// Constructs an evm-tracker call extrinsic from the given extrinsic.
 fn construct_evm_contract_creation_allowed_by_extrinsic(
     decoded_argument: PermissionedActionAllowedBy<AccountId>,
-) -> <Block as BlockT>::Extrinsic {
+) -> ExtrinsicFor<Block> {
     UncheckedExtrinsic::new_bare(
         pallet_evm_tracker::Call::set_contract_creation_allowed_by {
             contract_creation_allowed_by: decoded_argument,
@@ -1027,7 +1027,7 @@ pub fn extract_signer(
         .collect()
 }
 
-fn extrinsic_era(extrinsic: &<Block as BlockT>::Extrinsic) -> Option<Era> {
+fn extrinsic_era(extrinsic: &ExtrinsicFor<Block>) -> Option<Era> {
     match &extrinsic.0.preamble {
         Preamble::Bare(_) | Preamble::General(_, _) => None,
         Preamble::Signed(_, _, extra) => Some(extra.4 .0),
@@ -1094,7 +1094,7 @@ fn pre_dispatch_evm_transaction(
 }
 
 fn check_transaction_and_do_pre_dispatch_inner(
-    uxt: &<Block as BlockT>::Extrinsic,
+    uxt: &ExtrinsicFor<Block>,
 ) -> Result<(), TransactionValidityError> {
     let lookup = frame_system::ChainContext::<Runtime>::default();
 
@@ -1192,7 +1192,7 @@ impl_runtime_apis! {
             Executive::execute_block(block)
         }
 
-        fn initialize_block(header: &<Block as BlockT>::Header) -> ExtrinsicInclusionMode {
+        fn initialize_block(header: &HeaderFor<Block>) -> ExtrinsicInclusionMode {
             Executive::initialize_block(header)
         }
     }
@@ -1212,15 +1212,15 @@ impl_runtime_apis! {
     }
 
     impl sp_block_builder::BlockBuilder<Block> for Runtime {
-        fn apply_extrinsic(extrinsic: <Block as BlockT>::Extrinsic) -> ApplyExtrinsicResult {
+        fn apply_extrinsic(extrinsic: ExtrinsicFor<Block>) -> ApplyExtrinsicResult {
             Executive::apply_extrinsic(extrinsic)
         }
 
-        fn finalize_block() -> <Block as BlockT>::Header {
+        fn finalize_block() -> HeaderFor<Block> {
             Executive::finalize_block()
         }
 
-        fn inherent_extrinsics(data: sp_inherents::InherentData) -> Vec<<Block as BlockT>::Extrinsic> {
+        fn inherent_extrinsics(data: sp_inherents::InherentData) -> Vec<ExtrinsicFor<Block>> {
             data.create_extrinsics()
         }
 
@@ -1235,15 +1235,15 @@ impl_runtime_apis! {
     impl sp_transaction_pool::runtime_api::TaggedTransactionQueue<Block> for Runtime {
         fn validate_transaction(
             source: TransactionSource,
-            tx: <Block as BlockT>::Extrinsic,
-            block_hash: <Block as BlockT>::Hash,
+            tx: ExtrinsicFor<Block>,
+            block_hash: BlockHashFor<Block>,
         ) -> TransactionValidity {
             Executive::validate_transaction(source, tx, block_hash)
         }
     }
 
     impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
-        fn offchain_worker(header: &<Block as BlockT>::Header) {
+        fn offchain_worker(header: &HeaderFor<Block>) {
             Executive::offchain_worker(header)
         }
     }
@@ -1268,13 +1268,13 @@ impl_runtime_apis! {
 
     impl pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi<Block, Balance> for Runtime {
         fn query_info(
-            uxt: <Block as BlockT>::Extrinsic,
+            uxt: ExtrinsicFor<Block>,
             len: u32,
         ) -> pallet_transaction_payment_rpc_runtime_api::RuntimeDispatchInfo<Balance> {
             TransactionPayment::query_info(uxt, len)
         }
         fn query_fee_details(
-            uxt: <Block as BlockT>::Extrinsic,
+            uxt: ExtrinsicFor<Block>,
             len: u32,
         ) -> pallet_transaction_payment::FeeDetails<Balance> {
             TransactionPayment::query_fee_details(uxt, len)
@@ -1289,13 +1289,13 @@ impl_runtime_apis! {
 
     impl sp_domains::core_api::DomainCoreApi<Block> for Runtime {
         fn extract_signer(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<(Option<opaque::AccountId>, <Block as BlockT>::Extrinsic)> {
+            extrinsics: Vec<ExtrinsicFor<Block>>,
+        ) -> Vec<(Option<opaque::AccountId>, ExtrinsicFor<Block>)> {
             extract_signer(extrinsics)
         }
 
         fn is_within_tx_range(
-            extrinsic: &<Block as BlockT>::Extrinsic,
+            extrinsic: &ExtrinsicFor<Block>,
             bundle_vrf_hash: &subspace_core_primitives::U256,
             tx_range: &subspace_core_primitives::U256
         ) -> bool {
@@ -1313,12 +1313,12 @@ impl_runtime_apis! {
             }
         }
 
-        fn initialize_block_with_post_state_root(header: &<Block as BlockT>::Header) -> Vec<u8> {
+        fn initialize_block_with_post_state_root(header: &HeaderFor<Block>) -> Vec<u8> {
             Executive::initialize_block(header);
             Executive::storage_root()
         }
 
-        fn apply_extrinsic_with_post_state_root(extrinsic: <Block as BlockT>::Extrinsic) -> Vec<u8> {
+        fn apply_extrinsic_with_post_state_root(extrinsic: ExtrinsicFor<Block>) -> Vec<u8> {
             let _ = Executive::apply_extrinsic(extrinsic);
             Executive::storage_root()
         }
@@ -1331,19 +1331,19 @@ impl_runtime_apis! {
             ).encode()
         }
 
-        fn construct_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
+        fn construct_timestamp_extrinsic(moment: Moment) -> ExtrinsicFor<Block> {
             UncheckedExtrinsic::new_bare(
                 pallet_timestamp::Call::set{ now: moment }.into()
             )
         }
 
-        fn construct_domain_update_chain_allowlist_extrinsic(updates: DomainAllowlistUpdates) -> <Block as BlockT>::Extrinsic {
+        fn construct_domain_update_chain_allowlist_extrinsic(updates: DomainAllowlistUpdates) -> ExtrinsicFor<Block> {
              UncheckedExtrinsic::new_bare(
                 pallet_messenger::Call::update_domain_allowlist{ updates }.into()
             )
         }
 
-        fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool {
+        fn is_inherent_extrinsic(extrinsic: &ExtrinsicFor<Block>) -> bool {
             match &extrinsic.0.function {
                 RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
                 RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(call),
@@ -1355,9 +1355,9 @@ impl_runtime_apis! {
         }
 
         fn check_extrinsics_and_do_pre_dispatch(
-            uxts: Vec<<Block as BlockT>::Extrinsic>,
+            uxts: Vec<ExtrinsicFor<Block>>,
             block_number: BlockNumber,
-            block_hash: <Block as BlockT>::Hash) -> Result<(), CheckExtrinsicsValidityError> {
+            block_hash: BlockHashFor<Block>) -> Result<(), CheckExtrinsicsValidityError> {
             // Initializing block related storage required for validation
             System::initialize(
                 &(block_number + BlockNumber::one()),
@@ -1379,7 +1379,7 @@ impl_runtime_apis! {
 
         fn decode_extrinsic(
             opaque_extrinsic: sp_runtime::OpaqueExtrinsic,
-        ) -> Result<<Block as BlockT>::Extrinsic, DecodeExtrinsicError> {
+        ) -> Result<ExtrinsicFor<Block>, DecodeExtrinsicError> {
             let encoded = opaque_extrinsic.encode();
 
             UncheckedExtrinsic::decode_with_depth_limit(
@@ -1389,12 +1389,12 @@ impl_runtime_apis! {
         }
 
         fn extrinsic_era(
-          extrinsic: &<Block as BlockT>::Extrinsic
+          extrinsic: &ExtrinsicFor<Block>
         ) -> Option<Era> {
             extrinsic_era(extrinsic)
         }
 
-        fn extrinsic_weight(ext: &<Block as BlockT>::Extrinsic) -> Weight {
+        fn extrinsic_weight(ext: &ExtrinsicFor<Block>) -> Weight {
             let len = ext.encoded_size() as u64;
             let info = ext.get_dispatch_info();
             info.call_weight.saturating_add(info.extension_weight)
@@ -1414,7 +1414,7 @@ impl_runtime_apis! {
             System::block_weight().total()
         }
 
-        fn construct_consensus_chain_byte_fee_extrinsic(transaction_byte_fee: Balance) -> <Block as BlockT>::Extrinsic {
+        fn construct_consensus_chain_byte_fee_extrinsic(transaction_byte_fee: Balance) -> ExtrinsicFor<Block> {
             UncheckedExtrinsic::new_bare(
                 pallet_block_fees::Call::set_next_consensus_chain_byte_fee{ transaction_byte_fee }.into()
             )
@@ -1435,12 +1435,12 @@ impl_runtime_apis! {
 
     impl sp_messenger::MessengerApi<Block, ConsensusBlockNumber, ConsensusBlockHash> for Runtime {
         fn is_xdm_mmr_proof_valid(
-            extrinsic: &<Block as BlockT>::Extrinsic
+            extrinsic: &ExtrinsicFor<Block>
         ) -> Option<bool> {
             is_xdm_mmr_proof_valid(extrinsic)
         }
 
-        fn extract_xdm_mmr_proof(ext: &<Block as BlockT>::Extrinsic) -> Option<ConsensusChainMmrLeafProof<ConsensusBlockNumber, ConsensusBlockHash, sp_core::H256>> {
+        fn extract_xdm_mmr_proof(ext: &ExtrinsicFor<Block>) -> Option<ConsensusChainMmrLeafProof<ConsensusBlockNumber, ConsensusBlockHash, sp_core::H256>> {
             match &ext.0.function {
                 RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
                 | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
@@ -1467,7 +1467,7 @@ impl_runtime_apis! {
             None
         }
 
-        fn xdm_id(ext: &<Block as BlockT>::Extrinsic) -> Option<XdmId> {
+        fn xdm_id(ext: &ExtrinsicFor<Block>) -> Option<XdmId> {
             match &ext.0.function {
                 RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })=> {
                     Some(XdmId::RelayMessage((msg.src_chain_id, msg.channel_id, msg.nonce)))
@@ -1489,11 +1489,11 @@ impl_runtime_apis! {
             Messenger::get_block_messages()
         }
 
-        fn outbox_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn outbox_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             Messenger::outbox_message_unsigned(msg)
         }
 
-        fn inbox_response_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             Messenger::inbox_response_message_unsigned(msg)
         }
 
@@ -1655,7 +1655,7 @@ impl_runtime_apis! {
         }
 
         fn extrinsic_filter(
-            xts: Vec<<Block as BlockT>::Extrinsic>,
+            xts: Vec<ExtrinsicFor<Block>>,
         ) -> Vec<EthereumTransaction> {
             xts.into_iter().filter_map(|xt| match xt.0.function {
                 RuntimeCall::Ethereum(transact { transaction }) => Some(transaction),
@@ -1670,7 +1670,7 @@ impl_runtime_apis! {
         fn gas_limit_multiplier_support() {}
 
         fn pending_block(
-            xts: Vec<<Block as BlockT>::Extrinsic>,
+            xts: Vec<ExtrinsicFor<Block>>,
         ) -> (Option<pallet_ethereum::Block>, Option<Vec<TransactionStatus>>) {
             for ext in xts.into_iter() {
                 let _ = Executive::apply_extrinsic(ext);
@@ -1684,13 +1684,13 @@ impl_runtime_apis! {
             )
         }
 
-        fn initialize_pending_block(header: &<Block as BlockT>::Header) {
+        fn initialize_pending_block(header: &HeaderFor<Block>) {
             Executive::initialize_block(header);
         }
     }
 
     impl fp_rpc::ConvertTransactionRuntimeApi<Block> for Runtime {
-        fn convert_transaction(transaction: EthereumTransaction) -> <Block as BlockT>::Extrinsic {
+        fn convert_transaction(transaction: EthereumTransaction) -> ExtrinsicFor<Block> {
             UncheckedExtrinsic::new_bare(
                 pallet_ethereum::Call::<Runtime>::transact { transaction }.into(),
             )
@@ -1739,13 +1739,13 @@ impl_runtime_apis! {
             is_valid_sudo_call(extrinsic)
         }
 
-        fn construct_domain_sudo_extrinsic(inner: Vec<u8>) -> <Block as BlockT>::Extrinsic {
+        fn construct_domain_sudo_extrinsic(inner: Vec<u8>) -> ExtrinsicFor<Block> {
             construct_sudo_call_extrinsic(inner)
         }
     }
 
     impl sp_evm_tracker::EvmTrackerApi<Block> for Runtime {
-        fn construct_evm_contract_creation_allowed_by_extrinsic(decoded_argument: PermissionedActionAllowedBy<AccountId>) -> <Block as BlockT>::Extrinsic {
+        fn construct_evm_contract_creation_allowed_by_extrinsic(decoded_argument: PermissionedActionAllowedBy<AccountId>) -> ExtrinsicFor<Block> {
             construct_evm_contract_creation_allowed_by_extrinsic(decoded_argument)
         }
     }

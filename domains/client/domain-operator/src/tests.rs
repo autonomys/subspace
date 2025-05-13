@@ -56,9 +56,7 @@ use sp_messenger::messages::{CrossDomainMessage, Proof};
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
-use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Convert, Hash as HashT, Header as HeaderT, Zero,
-};
+use sp_runtime::traits::{BlakeTwo256, Convert, Hash as HashT, Header as HeaderT, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidityError,
 };
@@ -74,7 +72,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::{Balance, SSC};
+use subspace_runtime_primitives::{Balance, BlockHashFor, HeaderFor, SSC};
 use subspace_test_primitives::{OnchainStateApi as _, DOMAINS_BLOCK_PRUNING_DEPTH};
 use subspace_test_runtime::Runtime;
 use subspace_test_service::{
@@ -6361,7 +6359,7 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     // The domain block header should contain a digest that points to the consensus block, which
     // derives the domain block
     let get_header = |hash| alice.client.header(hash).unwrap().unwrap();
-    let get_digest_consensus_block_hash = |header: &Header| -> <CBlock as BlockT>::Hash {
+    let get_digest_consensus_block_hash = |header: &Header| -> BlockHashFor<CBlock> {
         header
             .digest()
             .convert_first(DigestItem::as_consensus_block_info)
@@ -7559,7 +7557,7 @@ async fn test_custom_api_storage_root_match_upstream_root() {
     let mut roots = vec![];
     let runtime_api_instance = alice.client.runtime_api();
 
-    let init_header = <<DomainBlock as BlockT>::Header as HeaderT>::new(
+    let init_header = <HeaderFor<DomainBlock> as HeaderT>::new(
         domain_parent_number + 1u32,
         Default::default(),
         Default::default(),
@@ -7605,9 +7603,9 @@ async fn test_custom_api_storage_root_match_upstream_root() {
         .unwrap();
     roots.push((*finalized_header.state_root()).into());
 
-    let roots: Vec<<DomainBlock as BlockT>::Hash> = roots
+    let roots: Vec<BlockHashFor<DomainBlock>> = roots
         .into_iter()
-        .map(|r| <DomainBlock as BlockT>::Hash::decode(&mut r.as_slice()).unwrap())
+        .map(|r| BlockHashFor::<DomainBlock>::decode(&mut r.as_slice()).unwrap())
         .collect();
 
     assert_eq!(receipt.execution_trace, roots);

@@ -12,7 +12,7 @@ use sp_runtime::Saturating;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
-use subspace_runtime_primitives::DOMAINS_PRUNING_DEPTH_MULTIPLIER;
+use subspace_runtime_primitives::{BlockHashFor, DOMAINS_PRUNING_DEPTH_MULTIPLIER};
 
 const EXECUTION_RECEIPT: &[u8] = b"execution_receipt";
 const EXECUTION_RECEIPT_START: &[u8] = b"execution_receipt_start";
@@ -166,7 +166,7 @@ where
 }
 
 type MaybeTrackedDomainHashes<Block, CBlock> =
-    Option<BTreeSet<(<Block as BlockT>::Hash, <CBlock as BlockT>::Hash)>>;
+    Option<BTreeSet<(BlockHashFor<Block>, BlockHashFor<CBlock>)>>;
 
 fn get_tracked_domain_hash_keys<Backend, Block, CBlock>(
     backend: &Backend,

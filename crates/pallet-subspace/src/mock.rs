@@ -11,7 +11,6 @@ use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestP
 use sp_consensus_subspace::{KzgExtension, PosExtension, PotExtension, SignedVote, Vote};
 use sp_io::TestExternalities;
 use sp_runtime::testing::{Digest, DigestItem, TestXt};
-use sp_runtime::traits::Block as BlockT;
 use sp_runtime::BuildStorage;
 use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
@@ -38,7 +37,7 @@ use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_kzg::Kzg;
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::{Table, TableGenerator};
-use subspace_runtime_primitives::ConsensusEventSegmentSize;
+use subspace_runtime_primitives::{BlockHashFor, ConsensusEventSegmentSize};
 use subspace_verification::is_within_solution_range;
 
 type PosTable = ShimTable;
@@ -287,7 +286,7 @@ pub fn create_archived_segment() -> &'static NewArchivedSegment {
 pub fn create_signed_vote(
     keypair: &Keypair,
     height: u64,
-    parent_hash: <Block as BlockT>::Hash,
+    parent_hash: BlockHashFor<Block>,
     slot: Slot,
     proof_of_time: PotOutput,
     future_proof_of_time: PotOutput,
@@ -295,7 +294,7 @@ pub fn create_signed_vote(
     reward_address: <Test as frame_system::Config>::AccountId,
     solution_range: SolutionRange,
     vote_solution_range: SolutionRange,
-) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
+) -> SignedVote<u64, BlockHashFor<Block>, <Test as frame_system::Config>::AccountId> {
     let kzg = kzg_instance();
     let erasure_coding = erasure_coding_instance();
     let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
@@ -391,7 +390,7 @@ pub fn create_signed_vote(
             continue;
         }
 
-        let vote = Vote::<u64, <Block as BlockT>::Hash, _>::V0 {
+        let vote = Vote::<u64, BlockHashFor<Block>, _>::V0 {
             height,
             parent_hash,
             slot,

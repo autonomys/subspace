@@ -42,9 +42,9 @@ use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{Randomness, U256};
-use subspace_runtime_primitives::Balance;
+use subspace_runtime_primitives::{Balance, ExtrinsicFor};
 
-type DomainBlockElements<CBlock> = (Vec<<CBlock as BlockT>::Extrinsic>, Randomness);
+type DomainBlockElements<CBlock> = (Vec<ExtrinsicFor<CBlock>>, Randomness);
 
 /// A wrapper indicating a valid bundle contents, or an invalid bundle reason.
 enum BundleValidity<Extrinsic> {

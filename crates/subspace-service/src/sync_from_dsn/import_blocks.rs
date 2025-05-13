@@ -36,7 +36,7 @@ pub(super) async fn import_blocks_from_dsn<Block, AS, Client, PG, IQS>(
     piece_getter: &PG,
     import_queue_service: &mut IQS,
     last_processed_segment_index: &mut SegmentIndex,
-    last_processed_block_number: &mut <Block::Header as Header>::Number,
+    last_processed_block_number: &mut NumberFor<Block>,
     erasure_coding: &ErasureCoding,
 ) -> Result<u64, Error>
 where
