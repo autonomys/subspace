@@ -24,11 +24,10 @@ use domain_runtime_primitives::{
 };
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::genesis_builder_helper::{build_state, get_preset};
-use frame_support::inherent::ProvideInherent;
 use frame_support::pallet_prelude::TypeInfo;
 use frame_support::traits::fungible::Credit;
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, Everything, Imbalance, OnUnbalanced, VariantCount,
+    ConstU16, ConstU32, ConstU64, Everything, Imbalance, IsInherent, OnUnbalanced, VariantCount,
 };
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, Weight};
@@ -59,6 +58,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{generic, impl_opaque_keys, ApplyExtrinsicResult, Digest, ExtrinsicInclusionMode};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
+use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
@@ -867,6 +867,33 @@ impl_runtime_apis! {
             }
         }
 
+        fn extract_signer_if_all_within_tx_range(
+            extrinsics: &Vec<ExtrinsicFor<Block>>,
+            bundle_vrf_hash: &subspace_core_primitives::U256,
+            tx_range: &subspace_core_primitives::U256
+        ) -> Result<Vec<Option<opaque::AccountId>> , u32> {
+            use subspace_core_primitives::U256;
+            use subspace_core_primitives::hashes::blake3_hash;
+
+            let mut signers = Vec::with_capacity(extrinsics.len());
+            let lookup = frame_system::ChainContext::<Runtime>::default();
+            for (index, extrinsic) in extrinsics.iter().enumerate() {
+                let maybe_signer = extract_signer_inner(extrinsic, &lookup).and_then(|account_result| {
+                    account_result.ok().map(|account_id| account_id.encode())
+                });
+                if let Some(signer) = &maybe_signer {
+                    // Check if the signer Id hash is within the tx range
+                    let signer_id_hash = U256::from_be_bytes(*blake3_hash(&signer.encode()));
+                    if !sp_domains::signer_in_tx_range(bundle_vrf_hash, &signer_id_hash, tx_range) {
+                        return Err(index as u32)
+                    }
+                }
+                signers.push(maybe_signer);
+            }
+
+            Ok(signers)
+        }
+
         fn initialize_block_with_post_state_root(header: &HeaderFor<Block>) -> Vec<u8> {
             Executive::initialize_block(header);
             Executive::storage_root()
@@ -892,13 +919,16 @@ impl_runtime_apis! {
         }
 
         fn is_inherent_extrinsic(extrinsic: &ExtrinsicFor<Block>) -> bool {
-            match &extrinsic.function {
-                RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
-                RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(call),
-                RuntimeCall::Messenger(call) => Messenger::is_inherent(call),
-                RuntimeCall::Sudo(call) => Sudo::is_inherent(call),
-                _ => false,
+            <Self as IsInherent<_>>::is_inherent(extrinsic)
+        }
+
+        fn find_first_inherent_extrinsic(extrinsics: &Vec<ExtrinsicFor<Block>>) -> Option<u32> {
+            for (index, extrinsic) in extrinsics.iter().enumerate() {
+                if <Self as IsInherent<_>>::is_inherent(extrinsic) {
+                    return Some(index as u32)
+                }
             }
+            None
         }
 
         fn check_extrinsics_and_do_pre_dispatch(uxts: Vec<ExtrinsicFor<Block>>, block_number: BlockNumber,
@@ -933,6 +963,22 @@ impl_runtime_apis! {
             ).map_err(|err| DecodeExtrinsicError(format!("{}", err)))
         }
 
+        fn decode_extrinsics_prefix(
+            opaque_extrinsics: Vec<sp_runtime::OpaqueExtrinsic>,
+        ) -> Vec<ExtrinsicFor<Block>> {
+            let mut extrinsics = Vec::with_capacity(opaque_extrinsics.len());
+            for opaque_ext in opaque_extrinsics {
+                match UncheckedExtrinsic::decode_with_depth_limit(
+                    MAX_CALL_RECURSION_DEPTH,
+                    &mut opaque_ext.encode().as_slice(),
+                ) {
+                    Ok(tx) => extrinsics.push(tx),
+                    Err(_) => return extrinsics,
+                }
+            }
+            extrinsics
+        }
+
         fn extrinsic_era(
           extrinsic: &ExtrinsicFor<Block>
         ) -> Option<Era> {
@@ -945,6 +991,21 @@ impl_runtime_apis! {
             info.call_weight.saturating_add(info.extension_weight)
                 .saturating_add(<Runtime as frame_system::Config>::BlockWeights::get().get(info.class).base_extrinsic)
                 .saturating_add(Weight::from_parts(0, len))
+        }
+
+        fn extrinsics_weight(extrinsics: &Vec<ExtrinsicFor<Block>>) -> Weight {
+            let mut total_weight = Weight::zero();
+            for ext in extrinsics {
+                let ext_weight = {
+                    let len = ext.encoded_size() as u64;
+                    let info = ext.get_dispatch_info();
+                    info.call_weight.saturating_add(info.extension_weight)
+                        .saturating_add(<Runtime as frame_system::Config>::BlockWeights::get().get(info.class).base_extrinsic)
+                        .saturating_add(Weight::from_parts(0, len))
+                };
+                total_weight = total_weight.saturating_add(ext_weight);
+            }
+            total_weight
         }
 
         fn block_fees() -> sp_domains::BlockFees<Balance> {
@@ -999,6 +1060,20 @@ impl_runtime_apis! {
                 }
                 _ => None,
             }
+        }
+
+        fn batch_extract_xdm_mmr_proof(extrinsics: &Vec<ExtrinsicFor<Block>>) -> BTreeMap<u32, ConsensusChainMmrLeafProof<ConsensusBlockNumber, ConsensusBlockHash, sp_core::H256>> {
+            let mut mmr_proofs = BTreeMap::new();
+            for (index, ext) in extrinsics.iter().enumerate() {
+                match &ext.function {
+                    RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
+                    | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                        mmr_proofs.insert(index as u32, msg.proof.consensus_mmr_proof());
+                    }
+                    _ => {},
+                }
+            }
+            mmr_proofs
         }
 
         fn confirmed_domain_block_storage_key(_domain_id: DomainId) -> Vec<u8> {

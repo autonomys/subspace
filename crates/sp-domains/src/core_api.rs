@@ -16,6 +16,10 @@ use subspace_runtime_primitives::{ExtrinsicFor, Moment};
 
 sp_api::decl_runtime_apis! {
     /// Base API that every domain runtime must implement.
+    #[api_version(2)]
+    // `allow(clippy::ptr_arg` is needed because Clippy complains to replace `&Vec<T>` with `&[T]`
+    // but the latter fails to compile.
+    #[allow(clippy::ptr_arg)]
     pub trait DomainCoreApi {
         /// Extracts the optional signer per extrinsic.
         fn extract_signer(
@@ -27,6 +31,14 @@ sp_api::decl_runtime_apis! {
             bundle_vrf_hash: &U256,
             tx_range: &U256,
         ) -> bool;
+
+        /// Extract signer of a given list of extrinsic if all of them are within the
+        /// tx range, otherwise return the index if the first tx not in the tx range.
+        fn extract_signer_if_all_within_tx_range(
+            extrinsic: &Vec<Block::Extrinsic>,
+            bundle_vrf_hash: &U256,
+            tx_range: &U256,
+        ) -> Result<Vec<Option<opaque::AccountId>> , u32>;
 
         /// Returns the storage root after initializing the block.
         fn initialize_block_with_post_state_root(header: &Block::Header) -> Vec<u8>;
@@ -49,6 +61,9 @@ sp_api::decl_runtime_apis! {
         /// Returns true if the extrinsic is an inherent extrinsic.
         fn is_inherent_extrinsic(extrinsic: &Block::Extrinsic) -> bool;
 
+        /// Find the first inherent extrinsic
+        fn find_first_inherent_extrinsic(extrinsics: &Vec<Block::Extrinsic>) -> Option<u32>;
+
         /// Checks the validity of array of extrinsics + pre_dispatch
         /// returning failure on first extrinsic that fails runtime call.
         /// IMPORTANT: Change `CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME` constant when this method name is changed
@@ -60,6 +75,12 @@ sp_api::decl_runtime_apis! {
             opaque_extrinsic: sp_runtime::OpaqueExtrinsic,
         ) -> Result<Block::Extrinsic, DecodeExtrinsicError>;
 
+        /// Decodes a list of domain extrinsics from opaque extrinsics, returning all extrinsics
+        /// up to the first undecodable tx. (Or the full list if all are decodable.)
+        fn decode_extrinsics_prefix(
+            opaque_extrinsics: Vec<sp_runtime::OpaqueExtrinsic>,
+        ) -> Vec<Block::Extrinsic>;
+
         /// Returns extrinsic Era if present.
         fn extrinsic_era(
           extrinsic: &Block::Extrinsic
@@ -67,6 +88,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the extrinsic weight.
         fn extrinsic_weight(ext: &Block::Extrinsic) -> Weight;
+
+        /// Returns the sum of a given set of extrinsics weight.
+        fn extrinsics_weight(ext: &Vec<Block::Extrinsic>) -> Weight;
 
         /// The accumulated transaction fee of all transactions included in the block.
         fn block_fees() -> BlockFees<Balance>;

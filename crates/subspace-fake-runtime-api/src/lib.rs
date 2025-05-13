@@ -351,6 +351,10 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
+        fn batch_extract_xdm_mmr_proof(_extrinsics: &Vec<ExtrinsicFor<Block>>) -> BTreeMap<u32, ConsensusChainMmrLeafProof<BlockNumber, BlockHashFor<Block>, sp_core::H256>> {
+            unreachable!()
+        }
+
         fn confirmed_domain_block_storage_key(_domain_id: DomainId) -> Vec<u8> {
             unreachable!()
         }
