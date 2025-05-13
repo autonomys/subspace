@@ -9,8 +9,8 @@ use crate::mock::{
 use crate::pallet::OutboxMessageCount;
 use crate::{
     ChainAllowlist, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, Channels,
-    CloseChannelBy, Error, FeeModel, Inbox, InboxFee, InboxResponses, Nonce, Outbox,
-    OutboxMessageResult, OutboxResponses, Pallet, U256,
+    CloseChannelBy, Error, Inbox, InboxFee, InboxResponses, Nonce, Outbox, OutboxMessageResult,
+    OutboxResponses, Pallet, U256,
 };
 use frame_support::traits::fungible::Inspect;
 use frame_support::traits::tokens::{Fortitude, Preservation};
@@ -22,8 +22,8 @@ use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, Verification
 use sp_domains::DomainAllowlistUpdates;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
-    ChainId, ChannelOpenParams, ChannelOpenParamsV1, CrossDomainMessage, MessageWeightTag,
-    PayloadV1, Proof, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+    ChainId, ChannelOpenParamsV1, CrossDomainMessage, MessageWeightTag, PayloadV1, Proof,
+    ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::traits::{Convert, Zero};
@@ -485,12 +485,8 @@ fn force_toggle_channel_state<Runtime: crate::Config>(
     toggle: bool,
     add_to_allow_list: bool,
 ) {
-    let fee_model = FeeModel {
-        relay_fee: Default::default(),
-    };
-    let init_params = ChannelOpenParams {
+    let init_params = ChannelOpenParamsV1 {
         max_outgoing_messages: 100,
-        fee_model,
     };
 
     let channel = Pallet::<Runtime>::channels(dst_chain_id, channel_id).unwrap_or_else(|| {
@@ -778,9 +774,6 @@ fn test_update_consensus_channel_allowlist() {
                 next_outbox_nonce: Default::default(),
                 latest_response_received_message_nonce: None,
                 max_outgoing_messages: 10,
-                fee: FeeModel {
-                    relay_fee: Default::default(),
-                },
                 maybe_owner: None,
                 channel_reserve_fee: Default::default(),
             }),

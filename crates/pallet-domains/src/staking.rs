@@ -404,7 +404,7 @@ pub(crate) struct DepositInfo<Balance> {
     first_deposit_in_epoch: bool,
 }
 
-/// Calculates shares for any pending deposit for previous epoch using the the epoch share price and
+/// Calculates shares for any pending deposit for previous epoch using the epoch share price and
 /// then create a new pending deposit in the current epoch.
 /// If there is a pending deposit for the current epoch, then simply increment the amount.
 /// Returns updated deposit info

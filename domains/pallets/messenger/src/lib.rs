@@ -25,6 +25,7 @@ mod benchmarking;
 pub mod extensions;
 mod fees;
 mod messages;
+pub mod migrations;
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
@@ -44,8 +45,7 @@ use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::{DomainAllowlistUpdates, DomainId};
 use sp_messenger::messages::{
-    ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, FeeModel, Message, MessageId,
-    Nonce,
+    ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, Message, MessageId, Nonce,
 };
 use sp_runtime::traits::Hash;
 use sp_runtime::DispatchError;
@@ -121,13 +121,6 @@ impl ChainAllowlistUpdate {
     }
 }
 
-/// Type enum for XDM message version to use.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
-pub enum MessageVersion {
-    V0,
-    V1,
-}
-
 #[derive(Debug, Encode, Decode, TypeInfo)]
 pub struct ValidatedRelayMessage<T: Config> {
     pub message: Message<BalanceOf<T>>,
@@ -155,8 +148,8 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
-        FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, RawOrigin, StateRootOf,
-        ValidatedRelayMessage, STORAGE_VERSION, U256,
+        HoldIdentifier, Nonce, OutboxMessageResult, RawOrigin, StateRootOf, ValidatedRelayMessage,
+        STORAGE_VERSION, U256,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -178,9 +171,8 @@ mod pallet {
         Endpoint, EndpointHandler, EndpointRequest, EndpointRequestWithCollectedFee, Sender,
     };
     use sp_messenger::messages::{
-        ChainId, ChannelOpenParams, ChannelOpenParamsV1, ConvertedPayload, CrossDomainMessage,
-        Message, MessageId, MessageKey, MessageWeightTag, Payload, PayloadV1,
-        ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        ChainId, ChannelOpenParamsV1, CrossDomainMessage, Message, MessageId, MessageKey,
+        MessageWeightTag, PayloadV1, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
         ChannelNonce, DomainRegistration, InherentError, InherentType, NoteChainTransfer,
@@ -241,16 +233,11 @@ mod pallet {
         type ChannelInitReservePortion: Get<Perbill>;
         /// Type to check if a given domain is registered on Consensus chain.
         type DomainRegistration: DomainRegistration;
-        /// Channels fee model
-        type ChannelFeeModel: Get<FeeModel<BalanceOf<Self>>>;
         /// Maximum outgoing messages from a given channel
         #[pallet::constant]
         type MaxOutgoingMessages: Get<u32>;
         /// Origin for messenger call.
         type MessengerOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = ()>;
-        /// Message version to use.
-        #[pallet::constant]
-        type MessageVersion: Get<crate::MessageVersion>;
         /// Helper to note cross chain XDM fee transfer
         type NoteChainTransfer: NoteChainTransfer<BalanceOf<Self>>;
     }
@@ -570,9 +557,6 @@ mod pallet {
         /// Message count underflow
         MessageCountUnderflow,
 
-        /// Incorrect message version
-        MessageVersionMismatch,
-
         /// Failed to note transfer in
         FailedToNoteTransferIn,
 
@@ -603,9 +587,8 @@ mod pallet {
             T::Currency::hold(&hold_id, &owner, amount).map_err(|_| Error::<T>::BalanceHold)?;
 
             // initiate the channel config
-            let channel_open_params = ChannelOpenParams {
+            let channel_open_params = ChannelOpenParamsV1 {
                 max_outgoing_messages: T::MaxOutgoingMessages::get(),
-                fee_model: T::ChannelFeeModel::get(),
             };
             let channel_id = Self::do_init_channel(
                 dst_chain_id,
@@ -615,20 +598,11 @@ mod pallet {
                 amount,
             )?;
 
-            let payload = match T::MessageVersion::get() {
-                crate::MessageVersion::V0 => {
-                    VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-                        ProtocolMessageRequest::ChannelOpen(channel_open_params),
-                    )))
-                }
-                crate::MessageVersion::V1 => {
-                    VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(
-                        ProtocolMessageRequest::ChannelOpen(ChannelOpenParamsV1 {
-                            max_outgoing_messages: channel_open_params.max_outgoing_messages,
-                        }),
-                    )))
-                }
-            };
+            let payload = VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(
+                ProtocolMessageRequest::ChannelOpen(ChannelOpenParamsV1 {
+                    max_outgoing_messages: channel_open_params.max_outgoing_messages,
+                }),
+            )));
 
             // send message to dst_chain
             Self::new_outbox_message(T::SelfChainId::get(), dst_chain_id, channel_id, payload)?;
@@ -653,14 +627,9 @@ mod pallet {
             };
             Self::do_close_channel(chain_id, channel_id, close_channel_by)?;
 
-            let payload = match T::MessageVersion::get() {
-                crate::MessageVersion::V0 => VersionedPayload::V0(Payload::Protocol(
-                    RequestResponse::Request(ProtocolMessageRequest::ChannelClose),
-                )),
-                crate::MessageVersion::V1 => VersionedPayload::V1(PayloadV1::Protocol(
-                    RequestResponse::Request(ProtocolMessageRequest::ChannelClose),
-                )),
-            };
+            let payload = VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(
+                ProtocolMessageRequest::ChannelClose,
+            )));
 
             Self::new_outbox_message(T::SelfChainId::get(), chain_id, channel_id, payload)?;
 
@@ -875,48 +844,29 @@ mod pallet {
                 Error::<T>::ChainNotAllowed
             );
 
-            let (channel_id, fee_model) =
+            let channel_id =
                 Self::get_open_channel_for_chain(dst_chain_id).ok_or(Error::<T>::NoOpenChannel)?;
 
             let src_endpoint = req.src_endpoint.clone();
 
-            let message_id = match T::MessageVersion::get() {
-                crate::MessageVersion::V0 => {
-                    let nonce = Self::new_outbox_message(
-                        T::SelfChainId::get(),
-                        dst_chain_id,
-                        channel_id,
-                        VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
-                    )?;
+            let message_id = {
+                // collect the fees from the sender
+                let collected_fee = Self::collect_fees_for_message_v1(sender, &src_endpoint)?;
+                let src_chain_fee = collected_fee.src_chain_fee;
+                let dst_chain_fee = collected_fee.dst_chain_fee;
+                let nonce = Self::new_outbox_message(
+                    T::SelfChainId::get(),
+                    dst_chain_id,
+                    channel_id,
+                    VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Request(
+                        EndpointRequestWithCollectedFee { req, collected_fee },
+                    ))),
+                )?;
 
-                    // ensure fees are paid by the sender
-                    Self::collect_fees_for_message(
-                        sender,
-                        (dst_chain_id, (channel_id, nonce)),
-                        &fee_model,
-                        &src_endpoint,
-                    )?;
-                    (channel_id, nonce)
-                }
-                crate::MessageVersion::V1 => {
-                    // collect the fees from the sender
-                    let collected_fee = Self::collect_fees_for_message_v1(sender, &src_endpoint)?;
-                    let src_chain_fee = collected_fee.src_chain_fee;
-                    let dst_chain_fee = collected_fee.dst_chain_fee;
-                    let nonce = Self::new_outbox_message(
-                        T::SelfChainId::get(),
-                        dst_chain_id,
-                        channel_id,
-                        VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Request(
-                            EndpointRequestWithCollectedFee { req, collected_fee },
-                        ))),
-                    )?;
-
-                    // store src_chain, this chain, fee to OutboxFee
-                    let message_id = (channel_id, nonce);
-                    Self::store_outbox_fee(dst_chain_id, message_id, src_chain_fee, dst_chain_fee)?;
-                    message_id
-                }
+                // store src_chain, this chain, fee to OutboxFee
+                let message_id = (channel_id, nonce);
+                Self::store_outbox_fee(dst_chain_id, message_id, src_chain_fee, dst_chain_fee)?;
+                message_id
             };
 
             Ok(message_id)
@@ -926,12 +876,8 @@ mod pallet {
         /// ensure it will succeed.
         #[cfg(feature = "runtime-benchmarks")]
         fn unchecked_open_channel(dst_chain_id: ChainId) -> Result<(), DispatchError> {
-            let fee_model = FeeModel {
-                relay_fee: Default::default(),
-            };
-            let init_params = ChannelOpenParams {
+            let init_params = ChannelOpenParamsV1 {
                 max_outgoing_messages: 100,
-                fee_model,
             };
             ChainAllowlist::<T>::mutate(|list| list.insert(dst_chain_id));
             let channel_id =
@@ -964,9 +910,7 @@ mod pallet {
         }
 
         /// Returns the last open channel for a given chain.
-        pub fn get_open_channel_for_chain(
-            dst_chain_id: ChainId,
-        ) -> Option<(ChannelId, FeeModel<BalanceOf<T>>)> {
+        pub fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId> {
             let mut next_channel_id = NextChannelId::<T>::get(dst_chain_id);
 
             // loop through channels in descending order until open channel is found.
@@ -977,7 +921,7 @@ mod pallet {
                     if channel.state == ChannelState::Open
                         && message_count < channel.max_outgoing_messages
                     {
-                        return Some((channel_id, channel.fee));
+                        return Some(channel_id);
                     }
                 }
 
@@ -1064,7 +1008,7 @@ mod pallet {
 
         pub(crate) fn do_init_channel(
             dst_chain_id: ChainId,
-            init_params: ChannelOpenParams<BalanceOf<T>>,
+            init_params: ChannelOpenParamsV1,
             maybe_owner: Option<T::AccountId>,
             check_allowlist: bool,
             channel_reserve_fee: BalanceOf<T>,
@@ -1110,7 +1054,6 @@ mod pallet {
                     next_outbox_nonce: Default::default(),
                     latest_response_received_message_nonce: Default::default(),
                     max_outgoing_messages: init_params.max_outgoing_messages,
-                    fee: init_params.fee_model,
                     maybe_owner,
                     channel_reserve_fee,
                 },
@@ -1162,26 +1105,27 @@ mod pallet {
             // verify and decode message
             let msg = Self::do_verify_xdm(next_nonce, key, consensus_state_root, xdm)?;
 
-            let ConvertedPayload { payload, is_v1: _ } = msg.payload.clone().into_payload_v0();
-            let is_valid_call = match &payload {
-                Payload::Protocol(RequestResponse::Request(req)) => match req {
-                    // channel open should ensure there is no Channel present already
-                    ProtocolMessageRequest::ChannelOpen(_) => maybe_channel.is_none(),
-                    // we allow channel close only if it is init or open state
-                    ProtocolMessageRequest::ChannelClose => {
-                        if let Some(ref channel) = maybe_channel {
-                            !(channel.state == ChannelState::Closed)
-                        } else {
-                            false
+            let is_valid_call = match &msg.payload {
+                VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(req))) => {
+                    match req {
+                        // channel open should ensure there is no Channel present already
+                        ProtocolMessageRequest::ChannelOpen(_) => maybe_channel.is_none(),
+                        // we allow channel close only if it is init or open state
+                        ProtocolMessageRequest::ChannelClose => {
+                            if let Some(ref channel) = maybe_channel {
+                                !(channel.state == ChannelState::Closed)
+                            } else {
+                                false
+                            }
                         }
                     }
-                },
+                }
                 // endpoint request messages are only allowed when
                 // channel is open, or
                 // channel is closed. Channel can be closed by dst_chain simultaneously
                 // while src_chain already sent a message. We allow the message but return an
                 // error in the response so that src_chain can revert any necessary actions
-                Payload::Endpoint(RequestResponse::Request(_)) => {
+                VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Request(_))) => {
                     if let Some(ref channel) = maybe_channel {
                         !(channel.state == ChannelState::Initiated)
                     } else {
@@ -1216,10 +1160,9 @@ mod pallet {
             should_init_channel: bool,
         ) -> Result<(), TransactionValidityError> {
             if should_init_channel {
-                let ConvertedPayload { payload, is_v1: _ } = msg.payload.clone().into_payload_v0();
-                if let Payload::Protocol(RequestResponse::Request(
+                if let VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(
                     ProtocolMessageRequest::ChannelOpen(params),
-                )) = payload
+                ))) = msg.payload
                 {
                     // channel is being opened without an owner since this is a relay message
                     // from other chain
@@ -1455,20 +1398,11 @@ mod pallet {
         }
 
         pub fn open_channels() -> BTreeSet<(ChainId, ChannelId)> {
-            Channels::<T>::iter().fold(
-                BTreeSet::new(),
-                |mut acc, (dst_chain_id, channel_id, channel)| {
-                    if channel.state != ChannelState::Closed {
-                        acc.insert((dst_chain_id, channel_id));
-                    }
-
-                    acc
-                },
-            )
+            crate::migrations::get_open_channels::<T>()
         }
 
         pub fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce> {
-            Channels::<T>::get(chain_id, channel_id).map(|channel| {
+            crate::migrations::get_channel::<T>(chain_id, channel_id).map(|channel| {
                 let last_inbox_nonce = channel.next_inbox_nonce.checked_sub(U256::one());
                 ChannelNonce {
                     relay_msg_nonce: last_inbox_nonce,

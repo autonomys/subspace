@@ -44,7 +44,7 @@ use sp_core::sr25519::vrf::{VrfPreOutput, VrfProof};
 use sp_core::H256;
 use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, Header as HeaderT, NumberFor, Zero,
+    BlakeTwo256, CheckedAdd, Hash as HashT, Header as HeaderT, NumberFor, Zero,
 };
 use sp_runtime::{Digest, DigestItem, OpaqueExtrinsic, Percent};
 use sp_runtime_interface::pass_by;
@@ -60,7 +60,7 @@ use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::solutions::bidirectional_distance;
 use subspace_core_primitives::{Randomness, U256};
-use subspace_runtime_primitives::{Balance, Moment};
+use subspace_runtime_primitives::{Balance, BlockHashFor, Moment};
 
 /// Key type for Operator.
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"oper");
@@ -484,7 +484,7 @@ pub type OpaqueBundle<Number, Hash, DomainHeader, Balance> =
 
 /// List of [`OpaqueBundle`].
 pub type OpaqueBundles<Block, DomainHeader, Balance> =
-    Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>>;
+    Vec<OpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>>;
 
 impl<Extrinsic: Encode, Number, Hash, DomainHeader: HeaderT, Balance>
     Bundle<Extrinsic, Number, Hash, DomainHeader, Balance>
@@ -1524,7 +1524,7 @@ impl OnDomainInstantiated for () {
 
 pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     NumberFor<CBlock>,
-    <CBlock as BlockT>::Hash,
+    BlockHashFor<CBlock>,
     <DomainHeader as HeaderT>::Number,
     <DomainHeader as HeaderT>::Hash,
     Balance,

@@ -120,7 +120,7 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
+use subspace_runtime_primitives::{AccountId, Balance, BlockHashFor, Hash, Nonce};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, Instrument};
 pub use utils::wait_for_block_import;
@@ -488,7 +488,7 @@ where
         + BundleProducerElectionApi<Block, Balance>
         + ObjectsApi<Block>
         + MmrApi<Block, H256, NumberFor<Block>>
-        + MessengerApi<Block, NumberFor<Block>, <Block as BlockT>::Hash>,
+        + MessengerApi<Block, NumberFor<Block>, BlockHashFor<Block>>,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -688,7 +688,7 @@ where
         + FraudProofApi<Block, DomainHeader>
         + SubspaceApi<Block, PublicKey>
         + MmrApi<Block, H256, NumberFor<Block>>
-        + MessengerApi<Block, NumberFor<Block>, <Block as BlockT>::Hash>,
+        + MessengerApi<Block, NumberFor<Block>, BlockHashFor<Block>>,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -754,7 +754,7 @@ where
         + FraudProofApi<Block, DomainHeader>
         + ObjectsApi<Block>
         + MmrApi<Block, Hash, BlockNumber>
-        + MessengerApi<Block, NumberFor<Block>, <Block as BlockT>::Hash>,
+        + MessengerApi<Block, NumberFor<Block>, BlockHashFor<Block>>,
 {
     let PartialComponents {
         client,
@@ -927,7 +927,7 @@ where
 
     // enable domain block ER request handler
     let (handler, protocol_config) = DomainBlockERRequestHandler::new::<
-        NetworkWorker<Block, <Block as BlockT>::Hash>,
+        NetworkWorker<Block, BlockHashFor<Block>>,
     >(fork_id, client.clone(), num_peer_hint);
     task_manager.spawn_handle().spawn(
         "domain-block-er-request-handler",
@@ -939,7 +939,7 @@ where
     if let Some(offchain_storage) = backend.offchain_storage() {
         // Allow both outgoing and incoming requests.
         let (handler, protocol_config) =
-            MmrRequestHandler::new::<NetworkWorker<Block, <Block as BlockT>::Hash>>(
+            MmrRequestHandler::new::<NetworkWorker<Block, BlockHashFor<Block>>>(
                 &config.base.protocol_id(),
                 fork_id,
                 client.clone(),

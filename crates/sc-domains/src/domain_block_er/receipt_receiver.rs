@@ -22,8 +22,8 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{debug, error, trace};
 
-const REQUEST_PAUSE: Duration = Duration::from_secs(5);
-const ATTEMPTS_NUMBER: u32 = 10;
+const REQUEST_PAUSE: Duration = Duration::from_secs(15);
+const ATTEMPTS_NUMBER: u32 = 20;
 const PEERS_THRESHOLD: usize = 20;
 
 /// Last confirmed domain block info error.

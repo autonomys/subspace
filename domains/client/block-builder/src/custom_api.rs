@@ -17,6 +17,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_runtime_primitives::ExtrinsicFor;
 
 type TrieBackendStorageFor<State, Block> =
     <State as StateBackend<HashingFor<Block>>>::TrieBackendStorage;
@@ -332,7 +333,7 @@ where
 
     pub(crate) fn apply_extrinsic(
         &self,
-        extrinsic: <Block as BlockT>::Extrinsic,
+        extrinsic: ExtrinsicFor<Block>,
         backend: &TrieDeltaBackendFor<Backend::State, Block>,
         overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>,
     ) -> Result<ApplyExtrinsicResult, sp_blockchain::Error> {
@@ -363,7 +364,7 @@ where
         inherent: InherentData,
         backend: &TrieDeltaBackendFor<Backend::State, Block>,
         overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>,
-    ) -> Result<Vec<<Block as BlockT>::Extrinsic>, sp_blockchain::Error> {
+    ) -> Result<Vec<ExtrinsicFor<Block>>, sp_blockchain::Error> {
         let call_data = inherent.encode();
         self.call_function(
             "BlockBuilder_inherent_extrinsics",

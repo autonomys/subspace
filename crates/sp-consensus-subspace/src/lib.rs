@@ -19,7 +19,7 @@ use scale_info::TypeInfo;
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_core::H256;
 use sp_io::hashing;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
+use sp_runtime::traits::NumberFor;
 use sp_runtime::{ConsensusEngineId, Justification};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
@@ -585,7 +585,7 @@ sp_api::decl_runtime_apis! {
         /// acceptable for block authoring. Only useful in an offchain context.
         fn submit_vote_extrinsic(
             signed_vote: SignedVote<
-                <<Block as BlockT>::Header as HeaderT>::Number,
+                NumberFor<Block>,
                 Block::Hash,
                 RewardAddress,
             >,

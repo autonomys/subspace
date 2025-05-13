@@ -971,10 +971,11 @@ mod tests {
     use super::*;
     use domain_test_service::evm_domain_test_runtime::Block;
     use sp_domains::{InboxedBundle, InvalidBundleType};
+    use subspace_runtime_primitives::BlockHashFor;
     use subspace_test_runtime::Block as CBlock;
 
     fn create_test_execution_receipt(
-        inboxed_bundles: Vec<InboxedBundle<<Block as BlockT>::Hash>>,
+        inboxed_bundles: Vec<InboxedBundle<BlockHashFor<Block>>>,
     ) -> ExecutionReceiptFor<Block, CBlock>
     where
         Block: BlockT,

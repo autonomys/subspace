@@ -28,7 +28,7 @@ macro_rules! impl_runtime {
         use pallet_balances::AccountData;
         use sp_core::H256;
         use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId};
-        use sp_messenger::messages::{ChainId, FeeModel};
+        use sp_messenger::messages::ChainId;
         use sp_runtime::traits::Convert;
         use sp_runtime::BuildStorage;
         use scale_info::TypeInfo;
@@ -61,10 +61,8 @@ macro_rules! impl_runtime {
             pub SelfChainId: ChainId = $chain_id.into();
             pub const ChannelReserveFee: Balance = 10;
             pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
-            pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: 1};
             pub const MaxOutgoingMessages: u32 = 25;
             pub const FeeMultiplier: u32 = 1;
-            pub const MessageVersion: crate::MessageVersion = crate::MessageVersion::V1;
         }
 
         #[derive(
@@ -106,12 +104,10 @@ macro_rules! impl_runtime {
             type ChannelInitReservePortion = ChannelInitReservePortion;
             type HoldIdentifier = MockHoldIdentifier;
             type DomainRegistration = DomainRegistration;
-            type ChannelFeeModel = ChannelFeeModel;
             type MaxOutgoingMessages = MaxOutgoingMessages;
             type MessengerOrigin = crate::EnsureMessengerOrigin;
             type AdjustedWeightToFee = frame_support::weights::IdentityFee<u64>;
             type FeeMultiplier = FeeMultiplier;
-            type MessageVersion = MessageVersion;
             type NoteChainTransfer = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
