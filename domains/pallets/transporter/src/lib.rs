@@ -482,16 +482,16 @@ impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> 
     ) -> Result<(), Self::Error> {
         Self::ensure_consensus_chain()?;
 
-        if let Some(domain_id) = from_chain_id.maybe_domain_chain() {
-            DomainBalances::<T>::try_mutate(domain_id, |current_balance| {
-                *current_balance = current_balance
-                    .checked_sub(&amount)
-                    .ok_or(Error::LowBalanceOnDomain)?;
-                Ok(())
-            })?;
-        }
-
         UnconfirmedTransfers::<T>::try_mutate(from_chain_id, to_chain_id, |total_amount| {
+            if let Some(domain_id) = from_chain_id.maybe_domain_chain() {
+                DomainBalances::<T>::try_mutate(domain_id, |current_balance| {
+                    *current_balance = current_balance
+                        .checked_sub(&amount)
+                        .ok_or(Error::LowBalanceOnDomain)?;
+                    Ok(())
+                })?;
+            }
+
             *total_amount = total_amount
                 .checked_add(&amount)
                 .ok_or(Error::BalanceOverflow)?;
@@ -511,17 +511,18 @@ impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> 
             *total_amount = total_amount
                 .checked_sub(&amount)
                 .ok_or(Error::BalanceUnderflow)?;
+
+            if let Some(domain_id) = to_chain_id.maybe_domain_chain() {
+                DomainBalances::<T>::try_mutate(domain_id, |current_balance| {
+                    *current_balance = current_balance
+                        .checked_add(&amount)
+                        .ok_or(Error::BalanceOverflow)?;
+                    Ok(())
+                })?;
+            }
+
             Ok(())
         })?;
-
-        if let Some(domain_id) = to_chain_id.maybe_domain_chain() {
-            DomainBalances::<T>::try_mutate(domain_id, |current_balance| {
-                *current_balance = current_balance
-                    .checked_add(&amount)
-                    .ok_or(Error::BalanceOverflow)?;
-                Ok(())
-            })?;
-        }
 
         Ok(())
     }
@@ -536,17 +537,19 @@ impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> 
             *total_amount = total_amount
                 .checked_sub(&amount)
                 .ok_or(Error::BalanceUnderflow)?;
+
+            if let Some(domain_id) = from_chain_id.maybe_domain_chain() {
+                DomainBalances::<T>::try_mutate(domain_id, |current_balance| {
+                    *current_balance = current_balance
+                        .checked_add(&amount)
+                        .ok_or(Error::BalanceOverflow)?;
+                    Ok(())
+                })?;
+            }
+
             Ok(())
         })?;
 
-        if let Some(domain_id) = from_chain_id.maybe_domain_chain() {
-            DomainBalances::<T>::try_mutate(domain_id, |current_balance| {
-                *current_balance = current_balance
-                    .checked_add(&amount)
-                    .ok_or(Error::BalanceOverflow)?;
-                Ok(())
-            })?;
-        }
         Ok(())
     }
 
@@ -560,15 +563,17 @@ impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> 
             *total_amount = total_amount
                 .checked_sub(&amount)
                 .ok_or(Error::BalanceUnderflow)?;
+
+            CancelledTransfers::<T>::try_mutate(from_chain_id, to_chain_id, |total_amount| {
+                *total_amount = total_amount
+                    .checked_add(&amount)
+                    .ok_or(Error::BalanceOverflow)?;
+                Ok(())
+            })?;
+
             Ok(())
         })?;
 
-        CancelledTransfers::<T>::try_mutate(from_chain_id, to_chain_id, |total_amount| {
-            *total_amount = total_amount
-                .checked_add(&amount)
-                .ok_or(Error::BalanceOverflow)?;
-            Ok(())
-        })?;
         Ok(())
     }
 
