@@ -25,6 +25,8 @@ extern crate alloc;
 
 use crate::messages::{MessageKey, Nonce};
 #[cfg(not(feature = "std"))]
+use alloc::collections::BTreeMap;
+#[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -35,8 +37,9 @@ use messages::{BlockMessagesWithStorageKey, ChannelId, CrossDomainMessage, Messa
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
-use sp_std::collections::btree_map::BTreeMap;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
+#[cfg(feature = "std")]
+use std::collections::BTreeMap;
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
 

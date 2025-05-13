@@ -27,7 +27,6 @@ sp-inherents.workspace = true
 sp-mmr-primitives.workspace = true
 sp-runtime.workspace = true
 sp-trie.workspace = true
-sp-std.workspace = true
 sp-subspace-mmr.workspace = true
 
 [features]
