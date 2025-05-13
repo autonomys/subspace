@@ -160,6 +160,7 @@ mod pallet {
     use core::cmp::Ordering;
     use frame_support::ensure;
     use frame_support::pallet_prelude::*;
+    use frame_support::storage::with_storage_layer;
     use frame_support::traits::fungible::{Balanced, Inspect, InspectHold, Mutate, MutateHold};
     use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
     use frame_support::weights::WeightToFee;
@@ -973,12 +974,18 @@ mod pallet {
                 if let Some(owner) = &channel.maybe_owner {
                     let hold_id = T::HoldIdentifier::messenger_channel();
                     let locked_amount = channel.channel_reserve_fee;
-                    let amount_to_release = {
+                    let (amount_to_release, maybe_amount_to_burn) = {
                         if channel.state == ChannelState::Open {
-                            locked_amount
+                            (locked_amount, None)
                         } else {
                             let protocol_fee = T::ChannelInitReservePortion::get() * locked_amount;
                             let release_amount = locked_amount.saturating_sub(protocol_fee);
+                            (release_amount, Some(protocol_fee))
+                        }
+                    };
+
+                    with_storage_layer(|| {
+                        if let Some(protocol_fee) = maybe_amount_to_burn {
                             T::Currency::burn_held(
                                 &hold_id,
                                 owner,
@@ -987,11 +994,13 @@ mod pallet {
                                 Fortitude::Force,
                             )?;
                             T::OnXDMRewards::on_chain_protocol_fees(chain_id, protocol_fee);
-                            release_amount
                         }
-                    };
-                    T::Currency::release(&hold_id, owner, amount_to_release, Precision::Exact)
-                        .map_err(|_| Error::<T>::BalanceUnlock)?;
+
+                        T::Currency::release(&hold_id, owner, amount_to_release, Precision::Exact)
+                            .map_err(|_| Error::<T>::BalanceUnlock)?;
+
+                        Ok::<(), DispatchError>(())
+                    })?;
                 }
 
                 channel.state = ChannelState::Closed;
