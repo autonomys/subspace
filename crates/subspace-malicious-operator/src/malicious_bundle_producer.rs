@@ -22,7 +22,7 @@ use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, Op
 use sp_keyring::Sr25519Keyring;
 use sp_keystore::{Keystore, KeystorePtr};
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::traits::NumberFor;
 use sp_runtime::{generic, RuntimeAppPublic};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::error::Error;
@@ -30,7 +30,7 @@ use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime::{DisablePallets, Runtime, RuntimeCall, SignedExtra, UncheckedExtrinsic};
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::{AccountId, Balance, Nonce};
+use subspace_runtime_primitives::{AccountId, Balance, BlockHashFor, HeaderFor, Nonce};
 
 const MALICIOUS_OPR_STAKE_MULTIPLIER: Balance = 3;
 
@@ -98,15 +98,15 @@ where
         + 'static,
     Client::Api: BlockBuilder<DomainBlock>
         + DomainCoreApi<DomainBlock>
-        + MessengerApi<DomainBlock, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
+        + MessengerApi<DomainBlock, NumberFor<CBlock>, BlockHashFor<CBlock>>
         + TaggedTransactionQueue<DomainBlock>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
-    CClient::Api: DomainsApi<CBlock, <DomainBlock as BlockT>::Header>
+    CClient::Api: DomainsApi<CBlock, HeaderFor<DomainBlock>>
         + BundleProducerElectionApi<CBlock, Balance>
         + AccountNonceApi<CBlock, AccountId, Nonce>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<
             Block = DomainBlock,
-            Hash = <DomainBlock as BlockT>::Hash,
+            Hash = BlockHashFor<DomainBlock>,
         > + 'static,
 {
     pub fn new(

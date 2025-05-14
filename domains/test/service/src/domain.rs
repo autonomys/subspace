@@ -36,20 +36,22 @@ use sp_domains::{DomainId, OperatorId, PermissionedActionAllowedBy};
 use sp_messenger::messages::{ChainId, ChannelId};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
-use sp_runtime::traits::{AsSystemOriginSigner, Block as BlockT, Dispatchable, NumberFor};
+use sp_runtime::traits::{AsSystemOriginSigner, Dispatchable, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::Nonce;
+use subspace_runtime_primitives::{BlockHashFor, HeaderFor, Nonce};
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 use subspace_test_service::MockConsensusNode;
 use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
+use tokio::time::sleep;
 
 /// The backend type used by the test service.
 pub type Backend = TFullBackend<Block>;
@@ -71,11 +73,11 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + DomainCoreApi<Block>
-        + MessengerApi<Block, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
+        + MessengerApi<Block, NumberFor<CBlock>, BlockHashFor<CBlock>>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, Runtime::AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, <CBlock as BlockT>::Hash>,
+        + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, BlockHashFor<CBlock>>,
 {
     /// The domain id
     pub domain_id: DomainId,
@@ -127,8 +129,8 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, <Runtime as DomainRuntime>::AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + MessengerApi<Block, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
-        + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
+        + MessengerApi<Block, NumberFor<CBlock>, BlockHashFor<CBlock>>
+        + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, BlockHashFor<CBlock>>
         + OnchainStateApi<Block, <Runtime as DomainRuntime>::AccountId, Balance>,
     <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
         AsSystemOriginSigner<<Runtime as frame_system::Config>::AccountId> + Clone,
@@ -160,7 +162,15 @@ where
 
         let domain_backend = sc_service::new_db_backend::<Block>(domain_config.db_config())
             .unwrap_or_else(
-                |err| panic!("Failed to create domain backend: {domain_id:?} {role:?} {base_path:?} error: {err:?}")
+                |err| {
+                    tracing::error!("Failed to create domain backend: {domain_id:?} {role:?} {base_path:?} error: {err:?}");
+
+                    // Find out which directory got deleted too soon
+                    for dir_path in base_path.path().ancestors() {
+                        tracing::error!("{dir_path:?} try_exists: {:?}", dir_path.try_exists());
+                    }
+                    panic!("Failed to create domain backend: {domain_id:?} {role:?} {base_path:?} error: {err:?}")
+                }
             );
 
         let BootstrapResult {
@@ -236,9 +246,7 @@ where
             maybe_operator_id,
             confirmation_depth_k: chain_constants.confirmation_depth_k(),
             challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
-            consensus_chain_sync_params: None::<
-                ConsensusChainSyncParams<_, <Block as BlockT>::Header>,
-            >,
+            consensus_chain_sync_params: None::<ConsensusChainSyncParams<_, HeaderFor<Block>>>,
             domain_backend,
         };
 
@@ -474,11 +482,20 @@ where
         );
     }
 
-    /// Take and stop the domain node and delete its database lock file
-    pub fn stop(self) -> Result<(), std::io::Error> {
+    /// Take and stop the domain node and delete its database lock file.
+    ///
+    /// Stopping and restarting a node can cause weird race conditions, with errors like:
+    /// "The system cannot find the path specified".
+    /// If this happens, try increasing the wait time in this method.
+    pub async fn stop(self) -> Result<(), std::io::Error> {
         let lock_file_path = self.base_path.path().join("paritydb").join("lock");
         // On Windows, sometimes open files can’t be deleted so `drop` first then delete
         std::mem::drop(self);
+
+        // Give the node time to cleanup, exit, and release the lock file.
+        // TODO: fix the underlying issue or wait for the actual shutdown instead
+        sleep(Duration::from_secs(2)).await;
+
         // The lock file already being deleted is not a fatal test error, so just log it
         if let Err(err) = std::fs::remove_file(lock_file_path) {
             tracing::error!("deleting paritydb lock file failed: {err:?}");
@@ -531,8 +548,8 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, <Runtime as DomainRuntime>::AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + MessengerApi<Block, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
-        + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
+        + MessengerApi<Block, NumberFor<CBlock>, BlockHashFor<CBlock>>
+        + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, BlockHashFor<CBlock>>
         + EvmOnchainStateApi<Block>,
 {
     /// Returns the current EVM contract creation allow list.

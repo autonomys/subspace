@@ -313,7 +313,7 @@ where
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    BlockNumber: From<<Block::Header as Header>::Number>,
+    BlockNumber: From<NumberFor<Block>>,
 {
     type BlockImport = BoxBlockImport<Block>;
     type SyncOracle = SubspaceSyncOracle<SO>;
@@ -757,7 +757,7 @@ where
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    BlockNumber: From<<Block::Header as Header>::Number>,
+    BlockNumber: From<NumberFor<Block>>,
 {
     /// Create new Subspace slot worker
     pub fn new(

@@ -16,9 +16,9 @@ use alloc::collections::BTreeMap;
 use frame_support::ensure;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_messenger::messages::{
-    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, ChannelOpenParams,
-    ConvertedPayload, Message, MessageId, MessageWeightTag, Payload, ProtocolMessageRequest,
-    ProtocolMessageResponse, RequestResponse, VersionedPayload,
+    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, ChannelOpenParamsV1, Message,
+    MessageId, MessageWeightTag, PayloadV1, ProtocolMessageRequest, ProtocolMessageResponse,
+    RequestResponse, VersionedPayload,
 };
 use sp_runtime::traits::Get;
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
@@ -102,76 +102,60 @@ impl<T: Config> Pallet<T> {
         msg_weight_tag: MessageWeightTag,
     ) -> DispatchResult {
         let (dst_chain_id, channel_id, nonce) = (msg.src_chain_id, msg.channel_id, msg.nonce);
-        let channel =
-            Channels::<T>::get(dst_chain_id, channel_id).ok_or(Error::<T>::MissingChannel)?;
 
-        let maybe_collected_fee = msg.payload.maybe_collected_fee();
-        let ConvertedPayload { payload, is_v1 } = msg.payload.into_payload_v0();
-        let response = match payload {
+        let resp_payload = VersionedPayload::V1(match msg.payload {
             // process incoming protocol message.
-            Payload::Protocol(RequestResponse::Request(req)) => Payload::Protocol(
-                RequestResponse::Response(Self::process_incoming_protocol_message_req(
-                    dst_chain_id,
-                    channel_id,
-                    req,
-                    &msg_weight_tag,
-                )),
-            ),
+            VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(req))) => {
+                PayloadV1::Protocol(RequestResponse::Response(
+                    Self::process_incoming_protocol_message_req(
+                        dst_chain_id,
+                        channel_id,
+                        req,
+                        &msg_weight_tag,
+                    ),
+                ))
+            }
 
             // process incoming endpoint message.
-            Payload::Endpoint(RequestResponse::Request(req)) => {
+            VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Request(req))) => {
                 // Firstly, store fees for inbox message execution regardless what the execution result is,
                 // since the fee is already charged from the sender of the src chain and processing of the
                 // XDM in this end is finished.
-                if let Some(collected_fee) = maybe_collected_fee {
-                    // since v1 collects fee on behalf of dst_chain, this chain,
-                    // so we do not recalculate the fee but instead use the collected fee as is
-                    Self::store_inbox_fee(
+
+                // since v1 collects fee on behalf of dst_chain, this chain,
+                // so we do not recalculate the fee but instead use the collected fee as is
+                Self::store_inbox_fee(
+                    dst_chain_id,
+                    (channel_id, nonce),
+                    req.collected_fee.dst_chain_fee,
+                )?;
+
+                let response = if let Some(endpoint_handler) =
+                    T::get_endpoint_handler(&req.req.dst_endpoint)
+                {
+                    Self::process_incoming_endpoint_message_req(
                         dst_chain_id,
-                        (channel_id, nonce),
-                        collected_fee.dst_chain_fee,
-                    )?;
+                        req.req,
+                        channel_id,
+                        nonce,
+                        &msg_weight_tag,
+                        endpoint_handler,
+                    )
                 } else {
-                    // for v0, use the weight to fee conversion to calculate the fee
-                    // and store the fee
-                    Self::store_fees_for_inbox_message(
-                        (dst_chain_id, (channel_id, nonce)),
-                        &channel.fee,
-                        &req.src_endpoint,
-                    );
-                }
+                    Err(Error::<T>::NoMessageHandler.into())
+                };
 
-                let response =
-                    if let Some(endpoint_handler) = T::get_endpoint_handler(&req.dst_endpoint) {
-                        Self::process_incoming_endpoint_message_req(
-                            dst_chain_id,
-                            req,
-                            channel_id,
-                            nonce,
-                            &msg_weight_tag,
-                            endpoint_handler,
-                        )
-                    } else {
-                        Err(Error::<T>::NoMessageHandler.into())
-                    };
-
-                Payload::Endpoint(RequestResponse::Response(response))
+                PayloadV1::Endpoint(RequestResponse::Response(response))
             }
 
             // return error for all the remaining branches
-            Payload::Protocol(_) => Payload::Protocol(RequestResponse::Response(Err(
-                Error::<T>::InvalidMessagePayload.into(),
-            ))),
-            Payload::Endpoint(_) => Payload::Endpoint(RequestResponse::Response(Err(
-                Error::<T>::InvalidMessagePayload.into(),
-            ))),
-        };
-
-        let resp_payload = if is_v1 {
-            VersionedPayload::V1(response.into())
-        } else {
-            VersionedPayload::V0(response)
-        };
+            VersionedPayload::V1(PayloadV1::Protocol(_)) => PayloadV1::Protocol(
+                RequestResponse::Response(Err(Error::<T>::InvalidMessagePayload.into())),
+            ),
+            VersionedPayload::V1(PayloadV1::Endpoint(_)) => PayloadV1::Endpoint(
+                RequestResponse::Response(Err(Error::<T>::InvalidMessagePayload.into())),
+            ),
+        });
 
         let weight_tag = MessageWeightTag::inbox_response(msg_weight_tag, &resp_payload);
 
@@ -222,29 +206,35 @@ impl<T: Config> Pallet<T> {
         msg_weight_tag: &MessageWeightTag,
         endpoint_handler: Box<dyn sp_messenger::endpoint::EndpointHandler<MessageId>>,
     ) -> EndpointResponse {
-        if msg_weight_tag != &MessageWeightTag::EndpointRequest(req.dst_endpoint.clone()) {
-            return Err(Error::<T>::WeightTagNotMatch.into());
-        }
+        let dst_endpoint = req.dst_endpoint.clone();
+        let pre_check_handler = || {
+            ensure!(
+                msg_weight_tag == &MessageWeightTag::EndpointRequest(dst_endpoint),
+                Error::<T>::WeightTagNotMatch
+            );
 
-        let channel =
-            Channels::<T>::get(dst_chain_id, channel_id).ok_or(Error::<T>::MissingChannel)?;
-        if channel.state != ChannelState::Open {
-            return Err(Error::<T>::InvalidChannelState.into());
-        }
+            let channel =
+                Channels::<T>::get(dst_chain_id, channel_id).ok_or(Error::<T>::MissingChannel)?;
+            ensure!(
+                channel.state == ChannelState::Open,
+                Error::<T>::InvalidChannelState
+            );
 
-        let pre_check_response = if !ChainAllowlist::<T>::get().contains(&dst_chain_id) {
-            Err(Error::<T>::ChainNotAllowed.into())
-        } else {
+            ensure!(
+                ChainAllowlist::<T>::get().contains(&dst_chain_id),
+                Error::<T>::ChainNotAllowed
+            );
+
             Ok(())
         };
 
-        endpoint_handler.message(dst_chain_id, (channel_id, nonce), req, pre_check_response)
+        endpoint_handler.message(dst_chain_id, (channel_id, nonce), req, pre_check_handler())
     }
 
     fn process_incoming_protocol_message_req(
         chain_id: ChainId,
         channel_id: ChannelId,
-        req: ProtocolMessageRequest<ChannelOpenParams<BalanceOf<T>>>,
+        req: ProtocolMessageRequest<ChannelOpenParamsV1>,
         weight_tag: &MessageWeightTag,
     ) -> Result<(), DispatchError> {
         let is_chain_allowed = ChainAllowlist::<T>::get().contains(&chain_id);
@@ -273,7 +263,7 @@ impl<T: Config> Pallet<T> {
     fn process_incoming_protocol_message_response(
         chain_id: ChainId,
         channel_id: ChannelId,
-        req: ProtocolMessageRequest<ChannelOpenParams<BalanceOf<T>>>,
+        req: ProtocolMessageRequest<ChannelOpenParamsV1>,
         resp: ProtocolMessageResponse,
         weight_tag: &MessageWeightTag,
     ) -> DispatchResult {
@@ -334,22 +324,11 @@ impl<T: Config> Pallet<T> {
         // clear outbox message weight tag
         OutboxMessageWeightTags::<T>::remove((dst_chain_id, (channel_id, nonce)));
 
-        let ConvertedPayload {
-            payload: req,
-            is_v1: is_v1_req,
-        } = req_msg.payload.into_payload_v0();
-        let ConvertedPayload {
-            payload: resp,
-            is_v1: is_v1_resp,
-        } = resp_msg.payload.into_payload_v0();
-
-        ensure!(is_v1_req == is_v1_resp, Error::<T>::MessageVersionMismatch);
-
-        let resp = match (req, resp) {
+        let resp = match (req_msg.payload, resp_msg.payload) {
             // process incoming protocol outbox message response.
             (
-                Payload::Protocol(RequestResponse::Request(req)),
-                Payload::Protocol(RequestResponse::Response(resp)),
+                VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Request(req))),
+                VersionedPayload::V1(PayloadV1::Protocol(RequestResponse::Response(resp))),
             ) => Self::process_incoming_protocol_message_response(
                 dst_chain_id,
                 channel_id,
@@ -360,20 +339,20 @@ impl<T: Config> Pallet<T> {
 
             // process incoming endpoint outbox message response.
             (
-                Payload::Endpoint(RequestResponse::Request(req)),
-                Payload::Endpoint(RequestResponse::Response(resp)),
+                VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Request(req))),
+                VersionedPayload::V1(PayloadV1::Endpoint(RequestResponse::Response(resp))),
             ) => {
                 // Firstly, distribute the fees for outbox message execution regardless what the result is,
                 // since the fee is already charged from the sender and the processing of the XDM is finished.
                 Self::reward_operators_for_outbox_execution(dst_chain_id, (channel_id, nonce))?;
 
-                if let Some(endpoint_handler) = T::get_endpoint_handler(&req.dst_endpoint) {
+                if let Some(endpoint_handler) = T::get_endpoint_handler(&req.req.dst_endpoint) {
                     Self::process_incoming_endpoint_message_response(
                         dst_chain_id,
                         channel_id,
                         nonce,
                         &resp_msg_weight_tag,
-                        req,
+                        req.req,
                         resp,
                         endpoint_handler,
                     )

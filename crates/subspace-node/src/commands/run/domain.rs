@@ -33,13 +33,14 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::SubspaceApi;
 use sp_core::crypto::{AccountId32, SecretString};
 use sp_domains::{DomainId, DomainInstanceData, OperatorId, RuntimeType};
-use sp_runtime::traits::Block as BlockT;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::{DOMAINS_BLOCK_PRUNING_DEPTH, DOMAINS_PRUNING_DEPTH_MULTIPLIER};
+use subspace_runtime_primitives::{
+    HeaderFor, DOMAINS_BLOCK_PRUNING_DEPTH, DOMAINS_PRUNING_DEPTH_MULTIPLIER,
+};
 use subspace_service::FullClient as CFullClient;
 use tokio::sync::broadcast::Receiver;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
@@ -453,9 +454,7 @@ pub(super) async fn run_domain(
     bootstrap_result: BootstrapResult<CBlock>,
     domain_configuration: DomainConfiguration,
     domain_start_options: DomainStartOptions,
-    consensus_chain_sync_params: Option<
-        ConsensusChainSyncParams<CBlock, <DomainBlock as BlockT>::Header>,
-    >,
+    consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, HeaderFor<DomainBlock>>>,
 ) -> Result<(), Error> {
     let BootstrapResult {
         domain_instance_data,

@@ -27,6 +27,7 @@ sc-transaction-pool-api.workspace = true
 sp-runtime = { workspace = true, features = ["std"] }
 strum_macros.workspace = true
 subspace-core-primitives = { workspace = true, features = ["std"] }
+subspace-runtime-primitives = { workspace = true, features = ["std"] }
 substrate-prometheus-endpoint.workspace = true
 thiserror.workspace = true
 tracing = { workspace = true, features = ["std"] }

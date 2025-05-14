@@ -79,16 +79,15 @@ use sp_domains_fraud_proof::storage_proof::{
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, FeeModel, MessageId,
-    MessageKey,
+    BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
 };
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::traits::{
-    AccountIdConversion, AccountIdLookup, AsSystemOriginSigner, BlakeTwo256, Block as BlockT,
-    ConstBool, DispatchInfoOf, Keccak256, NumberFor, PostDispatchInfoOf, TransactionExtension,
-    ValidateResult, Zero,
+    AccountIdConversion, AccountIdLookup, AsSystemOriginSigner, BlakeTwo256, ConstBool,
+    DispatchInfoOf, Keccak256, NumberFor, PostDispatchInfoOf, TransactionExtension, ValidateResult,
+    Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -117,10 +116,10 @@ use subspace_runtime_primitives::utility::{
     nested_call_iter, DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
 };
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockNumber, ConsensusEventSegmentSize, FindBlockRewardAddress, Hash,
-    HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, TargetBlockFullness,
-    XdmAdjustedWeightToFee, XdmFeeMultipler, MAX_BLOCK_LENGTH, MAX_CALL_RECURSION_DEPTH,
-    MIN_REPLICATION_FACTOR, SHANNON, SSC,
+    AccountId, Balance, BlockHashFor, BlockNumber, ConsensusEventSegmentSize, ExtrinsicFor,
+    FindBlockRewardAddress, Hash, HeaderFor, HoldIdentifier, Moment, Nonce, Signature,
+    SlowAdjustingFeeUpdate, TargetBlockFullness, XdmAdjustedWeightToFee, XdmFeeMultipler,
+    MAX_BLOCK_LENGTH, MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 
@@ -495,7 +494,7 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
         {
             // Calculate how much refund we should return
             let refund_amount = imbalance.peek().saturating_sub(corrected_fee);
-            // Refund to the the account that paid the fees. If this fails, the account might have
+            // Refund to the account that paid the fees. If this fails, the account might have
             // dropped below the existential balance. In that case we don't refund anything.
             let refund_imbalance = Balances::deposit_into_existing(who, refund_amount)
                 .unwrap_or_else(|_| <Balances as Currency<AccountId>>::PositiveImbalance::zero());
@@ -676,9 +675,7 @@ impl sp_messenger::DomainRegistration for DomainRegistration {
 parameter_types! {
     pub const ChannelReserveFee: Balance = SSC;
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
-    pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
-    pub const MessageVersion: pallet_messenger::MessageVersion = pallet_messenger::MessageVersion::V1;
 }
 
 // ensure the max outgoing messages is not 0.
@@ -728,10 +725,8 @@ impl pallet_messenger::Config for Runtime {
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = DomainRegistration;
-    type ChannelFeeModel = ChannelFeeModel;
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
-    type MessageVersion = MessageVersion;
     type NoteChainTransfer = Transporter;
 }
 
@@ -1084,7 +1079,7 @@ fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader
     }
 }
 
-fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
+fn is_xdm_mmr_proof_valid(ext: &ExtrinsicFor<Block>) -> Option<bool> {
     match &ext.function {
         RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
         | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
@@ -1336,7 +1331,7 @@ impl_runtime_apis! {
             Executive::execute_block(block);
         }
 
-        fn initialize_block(header: &<Block as BlockT>::Header) -> ExtrinsicInclusionMode {
+        fn initialize_block(header: &HeaderFor<Block>) -> ExtrinsicInclusionMode {
             Executive::initialize_block(header)
         }
     }
@@ -1356,15 +1351,15 @@ impl_runtime_apis! {
     }
 
     impl sp_block_builder::BlockBuilder<Block> for Runtime {
-        fn apply_extrinsic(extrinsic: <Block as BlockT>::Extrinsic) -> ApplyExtrinsicResult {
+        fn apply_extrinsic(extrinsic: ExtrinsicFor<Block>) -> ApplyExtrinsicResult {
             Executive::apply_extrinsic(extrinsic)
         }
 
-        fn finalize_block() -> <Block as BlockT>::Header {
+        fn finalize_block() -> HeaderFor<Block> {
             Executive::finalize_block()
         }
 
-        fn inherent_extrinsics(data: sp_inherents::InherentData) -> Vec<<Block as BlockT>::Extrinsic> {
+        fn inherent_extrinsics(data: sp_inherents::InherentData) -> Vec<ExtrinsicFor<Block>> {
             data.create_extrinsics()
         }
 
@@ -1379,15 +1374,15 @@ impl_runtime_apis! {
     impl sp_transaction_pool::runtime_api::TaggedTransactionQueue<Block> for Runtime {
         fn validate_transaction(
             source: TransactionSource,
-            tx: <Block as BlockT>::Extrinsic,
-            block_hash: <Block as BlockT>::Hash,
+            tx: ExtrinsicFor<Block>,
+            block_hash: BlockHashFor<Block>,
         ) -> TransactionValidity {
             Executive::validate_transaction(source, tx, block_hash)
         }
     }
 
     impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
-        fn offchain_worker(header: &<Block as BlockT>::Header) {
+        fn offchain_worker(header: &HeaderFor<Block>) {
             Executive::offchain_worker(header)
         }
     }
@@ -1408,7 +1403,7 @@ impl_runtime_apis! {
         }
 
         fn submit_vote_extrinsic(
-            signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, PublicKey>,
+            signed_vote: SignedVote<NumberFor<Block>, BlockHashFor<Block>, PublicKey>,
         ) {
             let SignedVote { vote, signature } = signed_vote;
             let Vote::V0 {
@@ -1445,11 +1440,11 @@ impl_runtime_apis! {
             Subspace::segment_commitment(segment_index)
         }
 
-        fn extract_segment_headers(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<SegmentHeader >> {
+        fn extract_segment_headers(ext: &ExtrinsicFor<Block>) -> Option<Vec<SegmentHeader >> {
             extract_segment_headers(ext)
         }
 
-        fn is_inherent(ext: &<Block as BlockT>::Extrinsic) -> bool {
+        fn is_inherent(ext: &ExtrinsicFor<Block>) -> bool {
             match &ext.function {
                 RuntimeCall::Subspace(call) => Subspace::is_inherent(call),
                 RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
@@ -1481,20 +1476,20 @@ impl_runtime_apis! {
 
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
+            opaque_bundle: OpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
         fn submit_receipt_unsigned(
-            singleton_receipt: sp_domains::SealedSingletonReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
+            singleton_receipt: sp_domains::SealedSingletonReceipt<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
         ) {
             Domains::submit_receipt_unsigned(singleton_receipt)
         }
 
         fn extract_successful_bundles(
             domain_id: DomainId,
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            extrinsics: Vec<ExtrinsicFor<Block>>,
         ) -> OpaqueBundles<Block, DomainHeader, Balance> {
             extract_successful_bundles(domain_id, extrinsics)
         }
@@ -1640,13 +1635,13 @@ impl_runtime_apis! {
 
     impl pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi<Block, Balance> for Runtime {
         fn query_info(
-            uxt: <Block as BlockT>::Extrinsic,
+            uxt: ExtrinsicFor<Block>,
             len: u32,
         ) -> pallet_transaction_payment_rpc_runtime_api::RuntimeDispatchInfo<Balance> {
             TransactionPayment::query_info(uxt, len)
         }
         fn query_fee_details(
-            uxt: <Block as BlockT>::Extrinsic,
+            uxt: ExtrinsicFor<Block>,
             len: u32,
         ) -> pallet_transaction_payment::FeeDetails<Balance> {
             TransactionPayment::query_fee_details(uxt, len)
@@ -1659,14 +1654,14 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::MessengerApi<Block, BlockNumber, <Block as BlockT>::Hash> for Runtime {
+    impl sp_messenger::MessengerApi<Block, BlockNumber, BlockHashFor<Block>> for Runtime {
         fn is_xdm_mmr_proof_valid(
-            extrinsic: &<Block as BlockT>::Extrinsic
+            extrinsic: &ExtrinsicFor<Block>
         ) -> Option<bool> {
             is_xdm_mmr_proof_valid(extrinsic)
         }
 
-        fn extract_xdm_mmr_proof(ext: &<Block as BlockT>::Extrinsic) -> Option<ConsensusChainMmrLeafProof<BlockNumber, <Block as BlockT>::Hash, sp_core::H256>> {
+        fn extract_xdm_mmr_proof(ext: &ExtrinsicFor<Block>) -> Option<ConsensusChainMmrLeafProof<BlockNumber, BlockHashFor<Block>, sp_core::H256>> {
             match &ext.function {
                 RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
                 | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
@@ -1674,6 +1669,20 @@ impl_runtime_apis! {
                 }
                 _ => None,
             }
+        }
+
+        fn batch_extract_xdm_mmr_proof(extrinsics: &Vec<ExtrinsicFor<Block>>) -> BTreeMap<u32, ConsensusChainMmrLeafProof<BlockNumber, BlockHashFor<Block>, sp_core::H256>> {
+            let mut mmr_proofs = BTreeMap::new();
+            for (index, ext) in extrinsics.iter().enumerate() {
+                match &ext.function {
+                    RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
+                    | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                        mmr_proofs.insert(index as u32, msg.proof.consensus_mmr_proof());
+                    }
+                    _ => {},
+                }
+            }
+            mmr_proofs
         }
 
         fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8> {
@@ -1692,7 +1701,7 @@ impl_runtime_apis! {
             Messenger::domain_chains_allowlist_update(domain_id)
         }
 
-        fn xdm_id(ext: &<Block as BlockT>::Extrinsic) -> Option<XdmId> {
+        fn xdm_id(ext: &ExtrinsicFor<Block>) -> Option<XdmId> {
             match &ext.function {
                 RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })=> {
                     Some(XdmId::RelayMessage((msg.src_chain_id, msg.channel_id, msg.nonce)))
@@ -1709,16 +1718,16 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::RelayerApi<Block, BlockNumber, BlockNumber, <Block as BlockT>::Hash> for Runtime {
+    impl sp_messenger::RelayerApi<Block, BlockNumber, BlockNumber, BlockHashFor<Block>> for Runtime {
         fn block_messages() -> BlockMessagesWithStorageKey {
             Messenger::get_block_messages()
         }
 
-        fn outbox_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn outbox_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             Messenger::outbox_message_unsigned(msg)
         }
 
-        fn inbox_response_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             Messenger::inbox_response_message_unsigned(msg)
         }
 
@@ -1744,7 +1753,7 @@ impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>) {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, H256>) {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 
@@ -1805,10 +1814,10 @@ impl_runtime_apis! {
         }
 
         fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId> {
-            Messenger::get_open_channel_for_chain(dst_chain_id).map(|(c, _)| c)
+            Messenger::get_open_channel_for_chain(dst_chain_id)
         }
 
-        fn verify_proof_and_extract_leaf(mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, <Block as BlockT>::Hash, H256>) -> Option<mmr::Leaf> {
+        fn verify_proof_and_extract_leaf(mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, BlockHashFor<Block>, H256>) -> Option<mmr::Leaf> {
             <MmrProofVerifier as sp_subspace_mmr::MmrProofVerifier<_, _, _,>>::verify_proof_and_extract_leaf(mmr_leaf_proof)
         }
 

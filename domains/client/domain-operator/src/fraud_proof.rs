@@ -33,6 +33,7 @@ use sp_runtime::{Digest, DigestItem};
 use sp_trie::LayoutV1;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_runtime_primitives::BlockHashFor;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum TraceDiffType {
@@ -105,7 +106,7 @@ impl<Block: BlockT, CBlock, Client, CClient, Backend, E> Clone
 }
 
 type FraudProofFor<CBlock, DomainHeader> =
-    FraudProof<NumberFor<CBlock>, <CBlock as BlockT>::Hash, DomainHeader, H256>;
+    FraudProof<NumberFor<CBlock>, BlockHashFor<CBlock>, DomainHeader, H256>;
 
 impl<Block, CBlock, Client, CClient, Backend, E>
     FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>

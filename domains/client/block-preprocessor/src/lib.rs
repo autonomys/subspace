@@ -17,11 +17,11 @@ pub mod stateless_runtime;
 use crate::inherents::is_runtime_upgraded;
 use crate::stateless_runtime::StatelessRuntime;
 use domain_runtime_primitives::opaque::AccountId;
-use domain_runtime_primitives::CheckExtrinsicsValidityError;
+use domain_runtime_primitives::{opaque, CheckExtrinsicsValidityError};
 use parity_scale_codec::Encode;
 use sc_client_api::{backend, BlockBackend};
 use sc_executor::RuntimeVersionOf;
-use sp_api::{ApiError, ProvideRuntimeApi};
+use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode};
 use sp_core::H256;
@@ -42,14 +42,16 @@ use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{Randomness, U256};
-use subspace_runtime_primitives::Balance;
+use subspace_runtime_primitives::{Balance, ExtrinsicFor};
 
-type DomainBlockElements<CBlock> = (Vec<<CBlock as BlockT>::Extrinsic>, Randomness);
+type DomainBlockElements<CBlock> = (Vec<ExtrinsicFor<CBlock>>, Randomness);
 
 /// A wrapper indicating a valid bundle contents, or an invalid bundle reason.
 enum BundleValidity<Extrinsic> {
     /// A valid bundle contents.
     Valid(Vec<Extrinsic>),
+    /// A valid bundle contents with signer of each extrinsic.
+    ValidWithSigner(Vec<(Option<opaque::AccountId>, Extrinsic)>),
     /// An invalid bundle reason.
     Invalid(InvalidBundleType),
 }
@@ -213,6 +215,30 @@ where
         }))
     }
 
+    /// NOTE: this is needed for compatible with Taurus
+    fn is_batch_api_available(
+        &self,
+        parent_domain_hash: Block::Hash,
+    ) -> sp_blockchain::Result<bool> {
+        let domain_runtime_api = self.client.runtime_api();
+
+        let domain_core_api_version = domain_runtime_api
+            .api_version::<dyn DomainCoreApi<Block>>(parent_domain_hash)?
+            .ok_or(sp_blockchain::Error::Application(Box::from(format!(
+                "DomainCoreApi not found at {parent_domain_hash:?}"
+            ))))?;
+
+        let messenger_api_version = domain_runtime_api
+            .api_version::<dyn MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>(
+                parent_domain_hash,
+            )?
+            .ok_or(sp_blockchain::Error::Application(Box::from(format!(
+                "MessengerApi not found at {parent_domain_hash:?}"
+            ))))?;
+
+        Ok(domain_core_api_version >= 2 && messenger_api_version >= 3)
+    }
+
     /// Filter out the invalid bundles first and then convert the remaining valid ones to
     /// a list of extrinsics.
     #[allow(clippy::type_complexity)]
@@ -254,12 +280,22 @@ where
             }
 
             let extrinsic_root = bundle.extrinsics_root();
-            match self.check_bundle_validity(
-                &bundle,
-                &tx_range,
-                (parent_domain_hash, parent_domain_number),
-                at_consensus_hash,
-            )? {
+            let bundle_validity = if self.is_batch_api_available(parent_domain_hash)? {
+                self.batch_check_bundle_validity(
+                    bundle,
+                    &tx_range,
+                    (parent_domain_hash, parent_domain_number),
+                    at_consensus_hash,
+                )?
+            } else {
+                self.check_bundle_validity(
+                    &bundle,
+                    &tx_range,
+                    (parent_domain_hash, parent_domain_number),
+                    at_consensus_hash,
+                )?
+            };
+            match bundle_validity {
                 BundleValidity::Valid(extrinsics) => {
                     let extrinsics: Vec<_> = match runtime_api
                         .extract_signer(parent_domain_hash, extrinsics)
@@ -286,6 +322,24 @@ where
                         extrinsic_root,
                     ));
                     valid_extrinsics.extend(extrinsics);
+                }
+                BundleValidity::ValidWithSigner(signer_and_extrinsics) => {
+                    let bundle_digest: Vec<_> = signer_and_extrinsics
+                        .iter()
+                        .map(|(signer, tx)| {
+                            (
+                                signer.clone(),
+                                ExtrinsicDigest::new::<LayoutV1<HeaderHashingFor<Block::Header>>>(
+                                    tx.encode(),
+                                ),
+                            )
+                        })
+                        .collect();
+                    inboxed_bundles.push(InboxedBundle::valid(
+                        HeaderHashingFor::<Block::Header>::hash_of(&bundle_digest),
+                        extrinsic_root,
+                    ));
+                    valid_extrinsics.extend(signer_and_extrinsics);
                 }
                 BundleValidity::Invalid(invalid_bundle_type) => {
                     inboxed_bundles
@@ -432,6 +486,111 @@ where
         }
 
         Ok(BundleValidity::Valid(extrinsics))
+    }
+
+    fn batch_check_bundle_validity(
+        &self,
+        bundle: OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
+        tx_range: &U256,
+        (parent_domain_hash, parent_domain_number): (Block::Hash, NumberFor<Block>),
+        at_consensus_hash: CBlock::Hash,
+    ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic>> {
+        let bundle_vrf_hash =
+            U256::from_be_bytes(*bundle.sealed_header.header.proof_of_election.vrf_hash());
+        let bundle_length = bundle.extrinsics.len();
+        let bundle_estimated_weight = bundle.estimated_weight();
+        let mut maybe_invalid_bundle_type = None;
+
+        let stateless_runtime_api = self.stateless_runtime_api(parent_domain_hash)?;
+        let consensus_runtime_api = self.consensus_client.runtime_api();
+
+        // Check the validity of extrinsic inside the bundle, the goal is trying to find the first
+        // invalid tx and the first check it failed to pass, thus even an invalid tx that failed to
+        // pass a given check is found we still continue the following check for other txs that before
+        // it.
+        //
+        // NOTE: the checking order must follow `InvalidBundleType::checking_order`
+
+        let mut extrinsics = stateless_runtime_api.decode_extrinsics_prefix(bundle.extrinsics)?;
+        if extrinsics.len() != bundle_length {
+            // If the length changed meaning there is undecodable tx at index `extrinsics.len()`
+            maybe_invalid_bundle_type
+                .replace(InvalidBundleType::UndecodableTx(extrinsics.len() as u32));
+        }
+
+        let signers = match stateless_runtime_api.extract_signer_if_all_within_tx_range(
+            &extrinsics,
+            &bundle_vrf_hash,
+            tx_range,
+        )? {
+            Err(index) => {
+                maybe_invalid_bundle_type.replace(InvalidBundleType::OutOfRangeTx(index));
+                extrinsics.truncate(index as usize);
+
+                // This will never used since there is an invalid tx
+                Vec::default()
+            }
+            Ok(signers) => signers,
+        };
+
+        // Check if this extrinsic is an inherent extrinsic.
+        // If so, this is an invalid bundle since these extrinsics should not be included in the
+        // bundle. Extrinsic is always decodable due to the check above.
+        if let Some(index) = stateless_runtime_api.find_first_inherent_extrinsic(&extrinsics)? {
+            maybe_invalid_bundle_type.replace(InvalidBundleType::InherentExtrinsic(index));
+            extrinsics.truncate(index as usize);
+        }
+
+        let batch_xdm_mmr_proof =
+            stateless_runtime_api.batch_extract_native_xdm_mmr_proof(&extrinsics)?;
+        for (index, xdm_mmr_proof) in batch_xdm_mmr_proof {
+            let ConsensusChainMmrLeafProof {
+                opaque_mmr_leaf,
+                proof,
+                ..
+            } = xdm_mmr_proof;
+
+            if consensus_runtime_api
+                .verify_proof(at_consensus_hash, vec![opaque_mmr_leaf], proof)?
+                .is_err()
+            {
+                maybe_invalid_bundle_type.replace(InvalidBundleType::InvalidXDM(index));
+                extrinsics.truncate(index as usize);
+                break;
+            }
+        }
+
+        // Using `check_extrinsics_and_do_pre_dispatch` instead of `check_transaction_validity`
+        // to maintain side-effect between tx in the storage buffer.
+        if let Err(CheckExtrinsicsValidityError {
+            extrinsic_index, ..
+        }) = self
+            .client
+            .runtime_api()
+            .check_extrinsics_and_do_pre_dispatch(
+                parent_domain_hash,
+                extrinsics.clone(),
+                parent_domain_number,
+                parent_domain_hash,
+            )?
+        {
+            maybe_invalid_bundle_type.replace(InvalidBundleType::IllegalTx(extrinsic_index));
+        }
+
+        // If there is any invalid tx then return the error before checking the bundle weight,
+        // which is a check of the whole bundle and should only perform when all tx are valid.
+        if let Some(invalid_bundle_type) = maybe_invalid_bundle_type {
+            return Ok(BundleValidity::Invalid(invalid_bundle_type));
+        }
+
+        if bundle_estimated_weight != stateless_runtime_api.extrinsics_weight(&extrinsics)? {
+            return Ok(BundleValidity::Invalid(
+                InvalidBundleType::InvalidBundleWeight,
+            ));
+        }
+
+        let signer_and_extrinsics = signers.into_iter().zip(extrinsics).collect();
+        Ok(BundleValidity::ValidWithSigner(signer_and_extrinsics))
     }
 }
 

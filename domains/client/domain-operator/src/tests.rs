@@ -56,9 +56,7 @@ use sp_messenger::messages::{CrossDomainMessage, Proof};
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
-use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Convert, Hash as HashT, Header as HeaderT, Zero,
-};
+use sp_runtime::traits::{BlakeTwo256, Convert, Hash as HashT, Header as HeaderT, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidityError,
 };
@@ -74,7 +72,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::{Balance, SSC};
+use subspace_runtime_primitives::{Balance, BlockHashFor, HeaderFor, SSC};
 use subspace_test_primitives::{OnchainStateApi as _, DOMAINS_BLOCK_PRUNING_DEPTH};
 use subspace_test_runtime::Runtime;
 use subspace_test_service::{
@@ -6170,8 +6168,8 @@ async fn test_restart_domain_operator() {
     let next_slot = ferdie.next_slot();
 
     // Stop Ferdie and Alice and delete their database lock files
-    ferdie.stop().unwrap();
-    alice.stop().unwrap();
+    ferdie.stop().await.unwrap();
+    alice.stop().await.unwrap();
 
     // Restart Ferdie
     let mut ferdie = MockConsensusNode::run(
@@ -6361,7 +6359,7 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     // The domain block header should contain a digest that points to the consensus block, which
     // derives the domain block
     let get_header = |hash| alice.client.header(hash).unwrap().unwrap();
-    let get_digest_consensus_block_hash = |header: &Header| -> <CBlock as BlockT>::Hash {
+    let get_digest_consensus_block_hash = |header: &Header| -> BlockHashFor<CBlock> {
         header
             .digest()
             .convert_first(DigestItem::as_consensus_block_info)
@@ -6510,7 +6508,7 @@ async fn test_bad_receipt_chain() {
     produce_blocks!(ferdie, alice, 15).await.unwrap();
 
     // Stop `Bob` so it won't generate fraud proof for the incoming bad ER
-    bob.stop().unwrap();
+    bob.stop().await.unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
@@ -7559,7 +7557,7 @@ async fn test_custom_api_storage_root_match_upstream_root() {
     let mut roots = vec![];
     let runtime_api_instance = alice.client.runtime_api();
 
-    let init_header = <<DomainBlock as BlockT>::Header as HeaderT>::new(
+    let init_header = <HeaderFor<DomainBlock> as HeaderT>::new(
         domain_parent_number + 1u32,
         Default::default(),
         Default::default(),
@@ -7605,9 +7603,9 @@ async fn test_custom_api_storage_root_match_upstream_root() {
         .unwrap();
     roots.push((*finalized_header.state_root()).into());
 
-    let roots: Vec<<DomainBlock as BlockT>::Hash> = roots
+    let roots: Vec<BlockHashFor<DomainBlock>> = roots
         .into_iter()
-        .map(|r| <DomainBlock as BlockT>::Hash::decode(&mut r.as_slice()).unwrap())
+        .map(|r| BlockHashFor::<DomainBlock>::decode(&mut r.as_slice()).unwrap())
         .collect();
 
     assert_eq!(receipt.execution_trace, roots);
@@ -8172,10 +8170,6 @@ async fn test_current_block_number_used_as_new_account_nonce() {
 
 // This test is unstable on Windows, it likely contains a filesystem race condition between stopping
 // the node `bob`, and restarting that node with the same data directory.
-// TODO:
-// - log both domain-0 paths used by `bob`, check they are the same, or
-// - work out which part of the second path isn't available
-#[cfg(not(windows))]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_domain_node_starting_check() {
     use futures::FutureExt;
@@ -8225,7 +8219,8 @@ async fn test_domain_node_starting_check() {
 
     // Stop `Bob`, produce more domain blocks, then restart `Bob` with the same
     // consensus node should be fine
-    bob.stop().unwrap();
+    bob.stop().await.unwrap();
+
     produce_blocks!(ferdie, alice, 3).await.unwrap();
     assert_eq!(alice.client.info().best_number, 6);
 
@@ -8267,7 +8262,7 @@ async fn test_domain_node_starting_check() {
         BasePath::new(directory.path().join("eve")),
     );
     let alice_base_path = alice.base_path.clone();
-    alice.stop().unwrap();
+    alice.stop().await.unwrap();
     let result = async move {
         std::panic::AssertUnwindSafe(
             domain_test_service::DomainNodeBuilder::new(tokio_handle, alice_base_path)

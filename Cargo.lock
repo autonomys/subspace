@@ -2783,6 +2783,7 @@ dependencies = [
  "sp-inherents",
  "sp-runtime",
  "sp-state-machine",
+ "subspace-runtime-primitives",
  "tracing",
 ]
 
@@ -2861,6 +2862,7 @@ dependencies = [
  "sp-mmr-primitives",
  "sp-runtime",
  "sp-subspace-mmr",
+ "subspace-runtime-primitives",
  "tracing",
 ]
 
@@ -11221,6 +11223,7 @@ dependencies = [
  "sp-runtime",
  "strum_macros 0.26.4",
  "subspace-core-primitives",
+ "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "thiserror 2.0.12",
  "tracing",

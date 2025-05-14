@@ -24,7 +24,7 @@ use pallet_transaction_payment::{
 use parity_scale_codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::parameter_types;
-use sp_runtime::traits::{Bounded, IdentifyAccount, Verify};
+use sp_runtime::traits::{Block as BlockT, Bounded, IdentifyAccount, Verify};
 use sp_runtime::{FixedPointNumber, MultiSignature, Perbill, Perquintill};
 pub use subspace_core_primitives::BlockNumber;
 
@@ -89,6 +89,15 @@ pub type Hash = sp_core::H256;
 
 /// Type used for expressing timestamp.
 pub type Moment = u64;
+
+/// Type alias for extrinsics.
+pub type ExtrinsicFor<Block> = <Block as BlockT>::Extrinsic;
+
+/// Type alias for block hash.
+pub type BlockHashFor<Block> = <Block as BlockT>::Hash;
+
+/// Type alias for block header.
+pub type HeaderFor<Block> = <Block as BlockT>::Header;
 
 parameter_types! {
     /// Event segments are disabled on the consensus chain.

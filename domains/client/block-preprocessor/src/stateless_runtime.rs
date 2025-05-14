@@ -1,6 +1,6 @@
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::{
-    Balance, CheckExtrinsicsValidityError, DecodeExtrinsicError, EthereumAccountId,
+    opaque, Balance, CheckExtrinsicsValidityError, DecodeExtrinsicError, EthereumAccountId,
 };
 use parity_scale_codec::{Codec, Encode};
 use sc_client_api::execution_extensions::ExtensionsFactory;
@@ -21,10 +21,11 @@ use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_version::RuntimeVersion;
 use sp_weights::Weight;
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{BlockHash, BlockNumber, U256};
-use subspace_runtime_primitives::Moment;
+use subspace_runtime_primitives::{ExtrinsicFor, Moment};
 
 /// Stateless runtime api based on the runtime code and partial state if provided.
 ///
@@ -150,7 +151,7 @@ impl<CBlock, Block, Executor> FetchRuntimeCode for StatelessRuntime<CBlock, Bloc
     }
 }
 
-pub type ExtractSignerResult<Block> = Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
+pub type ExtractSignerResult<Block> = Vec<(Option<AccountId>, ExtrinsicFor<Block>)>;
 
 impl<CBlock, Block, Executor> StatelessRuntime<CBlock, Block, Executor>
 where
@@ -312,6 +313,17 @@ where
         <Self as DomainCoreApi<Block>>::is_inherent_extrinsic(self, Default::default(), extrinsic)
     }
 
+    pub fn find_first_inherent_extrinsic(
+        &self,
+        extrinsics: &Vec<Block::Extrinsic>,
+    ) -> Result<Option<u32>, ApiError> {
+        <Self as DomainCoreApi<Block>>::find_first_inherent_extrinsic(
+            self,
+            Default::default(),
+            extrinsics,
+        )
+    }
+
     pub fn is_xdm_mmr_proof_valid(
         &self,
         extrinsic: &Block::Extrinsic,
@@ -336,6 +348,21 @@ where
     }
 
     #[allow(clippy::type_complexity)]
+    pub fn batch_extract_native_xdm_mmr_proof(
+        &self,
+        extrinsics: &Vec<Block::Extrinsic>,
+    ) -> Result<
+        BTreeMap<u32, ConsensusChainMmrLeafProof<NumberFor<CBlock>, CBlock::Hash, sp_core::H256>>,
+        ApiError,
+    > {
+        <Self as MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>::batch_extract_xdm_mmr_proof(
+            self,
+            Default::default(),
+            extrinsics,
+        )
+    }
+
+    #[allow(clippy::type_complexity)]
     pub fn extract_native_xdm_mmr_proof(
         &self,
         extrinsic: &Block::Extrinsic,
@@ -357,6 +384,17 @@ where
         <Self as DomainCoreApi<Block>>::decode_extrinsic(self, Default::default(), opaque_extrinsic)
     }
 
+    pub fn decode_extrinsics_prefix(
+        &self,
+        opaque_extrinsics: Vec<sp_runtime::OpaqueExtrinsic>,
+    ) -> Result<Vec<Block::Extrinsic>, ApiError> {
+        <Self as DomainCoreApi<Block>>::decode_extrinsics_prefix(
+            self,
+            Default::default(),
+            opaque_extrinsics,
+        )
+    }
+
     pub fn is_within_tx_range(
         &self,
         extrinsic: &Block::Extrinsic,
@@ -367,6 +405,21 @@ where
             self,
             Default::default(),
             extrinsic,
+            bundle_vrf_hash,
+            tx_range,
+        )
+    }
+
+    pub fn extract_signer_if_all_within_tx_range(
+        &self,
+        extrinsics: &Vec<Block::Extrinsic>,
+        bundle_vrf_hash: &U256,
+        tx_range: &U256,
+    ) -> Result<Result<Vec<Option<opaque::AccountId>>, u32>, ApiError> {
+        <Self as DomainCoreApi<Block>>::extract_signer_if_all_within_tx_range(
+            self,
+            Default::default(),
+            extrinsics,
             bundle_vrf_hash,
             tx_range,
         )
@@ -398,6 +451,13 @@ where
 
     pub fn extrinsic_weight(&self, extrinsic: &Block::Extrinsic) -> Result<Weight, ApiError> {
         <Self as DomainCoreApi<Block>>::extrinsic_weight(self, Default::default(), extrinsic)
+    }
+
+    pub fn extrinsics_weight(
+        &self,
+        extrinsics: &Vec<Block::Extrinsic>,
+    ) -> Result<Weight, ApiError> {
+        <Self as DomainCoreApi<Block>>::extrinsics_weight(self, Default::default(), extrinsics)
     }
 
     pub fn is_valid_sudo_call(&self, extrinsic: Vec<u8>) -> Result<bool, ApiError> {

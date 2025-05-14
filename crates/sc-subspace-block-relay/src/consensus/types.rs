@@ -20,11 +20,8 @@ use sc_network_common::sync::message::{BlockAttributes, BlockData, BlockRequest}
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Justifications;
+use subspace_runtime_primitives::{BlockHashFor, ExtrinsicFor, HeaderFor};
 use substrate_prometheus_endpoint::{PrometheusError, Registry};
-
-pub(crate) type BlockHash<Block> = <Block as BlockT>::Hash;
-pub(crate) type BlockHeader<Block> = <Block as BlockT>::Header;
-pub(crate) type Extrinsic<Block> = <Block as BlockT>::Extrinsic;
 
 const STATUS_LABEL: &str = "status";
 const STATUS_SUCCESS: &str = "success";
@@ -75,7 +72,7 @@ pub(crate) struct InitialRequest<Block: BlockT> {
 #[derive(Encode, Decode)]
 pub(crate) struct InitialResponse<Block: BlockT, TxHash> {
     ///  Hash of the block being downloaded.
-    pub(crate) block_hash: BlockHash<Block>,
+    pub(crate) block_hash: BlockHashFor<Block>,
 
     /// The partial block, without the extrinsics.
     pub(crate) partial_block: PartialBlock<Block>,
@@ -100,7 +97,7 @@ pub(crate) enum ProtocolInitialRequest {
 #[derive(From, Encode, Decode)]
 pub(crate) enum ProtocolInitialResponse<Block: BlockT, TxHash> {
     #[codec(index = 0)]
-    CompactBlock(CompactBlockInitialResponse<BlockHash<Block>, TxHash, Extrinsic<Block>>),
+    CompactBlock(CompactBlockInitialResponse<BlockHashFor<Block>, TxHash, ExtrinsicFor<Block>>),
     // New protocol goes here:
     // #[codec(index = 1)]
 }
@@ -109,16 +106,16 @@ pub(crate) enum ProtocolInitialResponse<Block: BlockT, TxHash> {
 #[derive(From, Encode, Decode)]
 pub(crate) enum ProtocolMessage<Block: BlockT, TxHash> {
     #[codec(index = 0)]
-    CompactBlock(CompactBlockHandshake<BlockHash<Block>, TxHash>),
+    CompactBlock(CompactBlockHandshake<BlockHashFor<Block>, TxHash>),
     // New protocol goes here:
     // #[codec(index = 1)]
 }
 
-impl<Block: BlockT, TxHash> From<CompactBlockHandshake<BlockHash<Block>, TxHash>>
+impl<Block: BlockT, TxHash> From<CompactBlockHandshake<BlockHashFor<Block>, TxHash>>
     for ConsensusRequest<Block, TxHash>
 {
     fn from(
-        inner: CompactBlockHandshake<BlockHash<Block>, TxHash>,
+        inner: CompactBlockHandshake<BlockHashFor<Block>, TxHash>,
     ) -> ConsensusRequest<Block, TxHash> {
         ConsensusRequest::ProtocolMessageV0(ProtocolMessage::CompactBlock(inner))
     }
@@ -142,17 +139,17 @@ pub(crate) struct FullDownloadResponse<Block: BlockT>(pub(crate) Vec<BlockData<B
 /// are handled by the protocol.
 #[derive(Encode, Decode)]
 pub(crate) struct PartialBlock<Block: BlockT> {
-    pub(crate) parent_hash: BlockHash<Block>,
+    pub(crate) parent_hash: BlockHashFor<Block>,
     pub(crate) block_number: NumberFor<Block>,
-    pub(crate) block_header_hash: BlockHash<Block>,
-    pub(crate) header: Option<BlockHeader<Block>>,
+    pub(crate) block_header_hash: BlockHashFor<Block>,
+    pub(crate) header: Option<HeaderFor<Block>>,
     pub(crate) indexed_body: Option<Vec<Vec<u8>>>,
     pub(crate) justifications: Option<Justifications>,
 }
 
 impl<Block: BlockT> PartialBlock<Block> {
     /// Builds the full block data.
-    pub(crate) fn block_data(self, body: Option<Vec<Extrinsic<Block>>>) -> BlockData<Block> {
+    pub(crate) fn block_data(self, body: Option<Vec<ExtrinsicFor<Block>>>) -> BlockData<Block> {
         BlockData::<Block> {
             hash: self.block_header_hash,
             header: self.header,

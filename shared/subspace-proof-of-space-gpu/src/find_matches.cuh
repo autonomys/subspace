@@ -100,7 +100,7 @@ void find_matches(uint2* out, const uint2* ys, const uint2* histogram,
             uint32_t left_idx = participate ? left_bucket_start + left_iter : 0;
 
             // Calculate the first "dest" value and perform a binary search
-            // even if there isn't an exact find, we obtain the the index of the
+            // even if there isn't an exact find, we obtain the index of the
             // right y value which is the closest to (but still smaller than)
             // the dest value
             uint32_t dest = calculate_destination(left_bucket_idx % 2, left_y, 0);

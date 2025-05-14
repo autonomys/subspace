@@ -520,5 +520,7 @@ where
         sleep(loop_pause).await;
     }
 
-    Err(sp_blockchain::Error::Backend("All retries failed".into()))
+    Err(sp_blockchain::Error::Backend(
+        "All connected peer retries failed".into(),
+    ))
 }
