@@ -583,6 +583,9 @@ impl pallet_messenger::Config for Runtime {
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = MmrHash;
     type MmrProofVerifier = MmrProofVerifier;
+    #[cfg(feature = "runtime-benchmarks")]
+    type StorageKeys = sp_messenger::BenchmarkStorageKeys;
+    #[cfg(not(feature = "runtime-benchmarks"))]
     type StorageKeys = StorageKeys;
     type DomainOwner = ();
     type HoldIdentifier = HoldIdentifierWrapper;
@@ -963,6 +966,7 @@ mod benches {
         [frame_system, SystemBench::<Runtime>]
         [domain_pallet_executive, ExecutivePallet]
         [pallet_messenger, Messenger]
+        [pallet_messenger_extension, MessengerExtensionBench::<Runtime>]
     );
 }
 
@@ -1786,8 +1790,9 @@ impl_runtime_apis! {
             build_state::<RuntimeGenesisConfig>(config)
         }
 
-        fn get_preset(id: &Option<sp_genesis_builder::PresetId>) -> Option<Vec<u8>> {
-            get_preset::<RuntimeGenesisConfig>(id, |_| None)
+        fn get_preset(_id: &Option<sp_genesis_builder::PresetId>) -> Option<Vec<u8>> {
+            // By passing `None` the upstream `get_preset` will return the default value of `RuntimeGenesisConfig`
+            get_preset::<RuntimeGenesisConfig>(&None, |_| None)
         }
 
         fn preset_names() -> Vec<sp_genesis_builder::PresetId> {
@@ -1805,6 +1810,7 @@ impl_runtime_apis! {
             use frame_support::traits::StorageInfoTrait;
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
+            use pallet_messenger::extensions::benchmarking::Pallet as MessengerExtensionBench;
 
             let mut list = Vec::<BenchmarkList>::new();
 
@@ -1823,6 +1829,7 @@ impl_runtime_apis! {
             use frame_system_benchmarking::Pallet as SystemBench;
             use frame_support::traits::WhitelistedStorageKeys;
             use baseline::Pallet as BaselineBench;
+            use pallet_messenger::extensions::benchmarking::Pallet as MessengerExtensionBench;
 
             let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
 

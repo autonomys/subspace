@@ -143,6 +143,7 @@ runtime-benchmarks = [
     "pallet-evm/runtime-benchmarks",
     "pallet-messenger/runtime-benchmarks",
     "pallet-utility/runtime-benchmarks",
+    "sp-messenger/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",
     "sp-storage",
 ]

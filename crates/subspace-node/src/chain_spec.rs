@@ -3,6 +3,7 @@
 use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
 use crate::domain::auto_id_chain_spec;
 use crate::domain::cli::{GenesisDomain, SpecId};
+#[cfg(not(feature = "runtime-benchmarks"))]
 use crate::domain::evm_chain_spec::{self};
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
@@ -10,7 +11,9 @@ use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, MAINNET_CHAIN_SPEC, TAURUS_CHAI
 use sc_telemetry::TelemetryEndpoints;
 use serde::Deserialize;
 use sp_core::crypto::Ss58Codec;
-use sp_domains::{EvmType, PermissionedActionAllowedBy};
+#[cfg(not(feature = "runtime-benchmarks"))]
+use sp_domains::EvmType;
+use sp_domains::PermissionedActionAllowedBy;
 use sp_runtime::{BoundedVec, Percent};
 use std::marker::PhantomData;
 use std::num::{NonZeroU128, NonZeroU32};
@@ -356,6 +359,9 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
                         sudo_account.clone(),
                     ]),
+                    #[cfg(feature = "runtime-benchmarks")]
+                    genesis_domains: vec![],
+                    #[cfg(not(feature = "runtime-benchmarks"))]
                     genesis_domains: vec![evm_chain_spec::get_genesis_domain(
                         SpecId::Dev,
                         sudo_account,

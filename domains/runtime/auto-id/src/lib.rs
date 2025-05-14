@@ -1160,8 +1160,9 @@ impl_runtime_apis! {
             build_state::<RuntimeGenesisConfig>(config)
         }
 
-        fn get_preset(id: &Option<sp_genesis_builder::PresetId>) -> Option<Vec<u8>> {
-            get_preset::<RuntimeGenesisConfig>(id, |_| None)
+        fn get_preset(_id: &Option<sp_genesis_builder::PresetId>) -> Option<Vec<u8>> {
+            // By passing `None` the upstream `get_preset` will return the default value of `RuntimeGenesisConfig`
+            get_preset::<RuntimeGenesisConfig>(&None, |_| None)
         }
 
         fn preset_names() -> Vec<sp_genesis_builder::PresetId> {

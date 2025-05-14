@@ -1,27 +1,44 @@
 //! EVM domain configurations.
 
-use crate::chain_spec_utils::{chain_spec_properties, get_public_key_from_seed};
-use crate::domain::cli::{GenesisDomain, GenesisOperatorParams, SpecId};
+use crate::chain_spec_utils::chain_spec_properties;
+#[cfg(not(feature = "runtime-benchmarks"))]
+use crate::chain_spec_utils::get_public_key_from_seed;
+use crate::domain::cli::SpecId;
+#[cfg(not(feature = "runtime-benchmarks"))]
+use crate::domain::cli::{GenesisDomain, GenesisOperatorParams};
+#[cfg(not(feature = "runtime-benchmarks"))]
 use domain_runtime_primitives::{AccountId20Converter, MultiAccountId};
+#[cfg(not(feature = "runtime-benchmarks"))]
+use evm_domain_runtime::AccountId;
 use evm_domain_runtime::{
-    AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, Precompiles, RuntimeGenesisConfig,
-    SystemConfig, WASM_BINARY,
+    BalancesConfig, EVMChainIdConfig, EVMConfig, Precompiles, RuntimeGenesisConfig, SystemConfig,
+    WASM_BINARY,
 };
+#[cfg(not(feature = "runtime-benchmarks"))]
 use hex_literal::hex;
+#[cfg(not(feature = "runtime-benchmarks"))]
 use parity_scale_codec::Encode;
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
+#[cfg(not(feature = "runtime-benchmarks"))]
 use sp_core::crypto::UncheckedFrom;
+#[cfg(not(feature = "runtime-benchmarks"))]
 use sp_domains::storage::RawGenesis;
-use sp_domains::{
-    EvmDomainRuntimeConfig, EvmType, OperatorAllowList, OperatorPublicKey, RuntimeType,
-};
+#[cfg(not(feature = "runtime-benchmarks"))]
+use sp_domains::{EvmDomainRuntimeConfig, EvmType, RuntimeType};
+#[cfg(not(feature = "runtime-benchmarks"))]
+use sp_domains::{OperatorAllowList, OperatorPublicKey};
+#[cfg(not(feature = "runtime-benchmarks"))]
 use sp_runtime::traits::Convert;
+#[cfg(not(feature = "runtime-benchmarks"))]
 use sp_runtime::BuildStorage;
+#[cfg(not(feature = "runtime-benchmarks"))]
 use std::collections::BTreeSet;
+#[cfg(not(feature = "runtime-benchmarks"))]
 use subspace_runtime_primitives::{Balance, SSC};
 
 /// Development keys that will be injected automatically on polkadotjs apps
+#[cfg(not(feature = "runtime-benchmarks"))]
 fn get_dev_accounts() -> Vec<AccountId> {
     vec![
         // Alith key
@@ -109,6 +126,7 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
     }
 }
 
+#[cfg(not(feature = "runtime-benchmarks"))]
 pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAccountId, Balance)> {
     match spec_id {
         SpecId::Dev => get_dev_accounts()
@@ -155,6 +173,7 @@ fn testnet_genesis() -> RuntimeGenesisConfig {
     }
 }
 
+#[cfg(not(feature = "runtime-benchmarks"))]
 fn get_operator_params(
     spec_id: SpecId,
     sudo_account: subspace_runtime_primitives::AccountId,
@@ -181,6 +200,7 @@ fn get_operator_params(
     }
 }
 
+#[cfg(not(feature = "runtime-benchmarks"))]
 pub fn get_genesis_domain(
     spec_id: SpecId,
     sudo_account: subspace_runtime_primitives::AccountId,

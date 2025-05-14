@@ -1,5 +1,8 @@
 //! Extensions for unsigned general extrinsics
 
+#[cfg(feature = "runtime-benchmarks")]
+pub mod benchmarking;
+
 use crate::pallet::Call as MessengerCall;
 use crate::{
     Call, Config, Origin, Pallet as Messenger, ValidatedRelayMessage, XDM_TRANSACTION_LONGEVITY,
