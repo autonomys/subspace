@@ -35,7 +35,7 @@ pub(super) async fn import_blocks_from_dsn<Block, AS, Client, PG, IQS>(
     client: &Client,
     piece_getter: &PG,
     import_queue_service: &mut IQS,
-    last_processed_segment_index: &mut SegmentIndex,
+    last_completed_segment_index: &mut SegmentIndex,
     last_processed_block_number: &mut <Block::Header as Header>::Number,
     erasure_coding: &ErasureCoding,
 ) -> Result<u64, Error>
@@ -70,7 +70,7 @@ where
     let mut imported_blocks = 0;
     let mut reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
     // Start from the first unprocessed segment and process all segments known so far
-    let segment_indices_iter = (*last_processed_segment_index + SegmentIndex::ONE)
+    let segment_indices_iter = (*last_completed_segment_index + SegmentIndex::ONE)
         ..=segment_headers_store
             .max_segment_index()
             .expect("Exists, we have inserted segment headers above; qed");
@@ -113,7 +113,7 @@ where
                 %last_archived_block_partial,
                 "Already processed last (possibly partial) block in segment, resetting reconstructor",
             );
-            *last_processed_segment_index = segment_index;
+            *last_completed_segment_index = segment_index;
             // Reset reconstructor instance
             reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
             continue;
@@ -125,7 +125,7 @@ where
         {
             if segment_indices_iter.peek().is_none() {
                 // We haven't fully processed this segment yet, because it ends with a partial block.
-                *last_processed_segment_index = segment_index.saturating_sub(SegmentIndex::ONE);
+                *last_completed_segment_index = segment_index.saturating_sub(SegmentIndex::ONE);
 
                 // We don't need to reset the reconstructor here. We've finished getting blocks, so
                 // we're about to return and drop the reconstructor and its partial block anyway.
@@ -277,9 +277,9 @@ where
 
         // Segments are only fully processed when all their blocks are fully processed.
         if last_archived_block_partial {
-            *last_processed_segment_index = segment_index.saturating_sub(SegmentIndex::ONE);
+            *last_completed_segment_index = segment_index.saturating_sub(SegmentIndex::ONE);
         } else {
-            *last_processed_segment_index = segment_index;
+            *last_completed_segment_index = segment_index;
         }
     }
 

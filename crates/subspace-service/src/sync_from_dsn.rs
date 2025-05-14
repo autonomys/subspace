@@ -309,7 +309,7 @@ where
     //
     // Segment zero corresponds to contents of block one, everyone has it, so we consider it as
     // processed right away.
-    let mut last_processed_segment_index = SegmentIndex::ZERO;
+    let mut last_completed_segment_index = SegmentIndex::ZERO;
 
     // This is the last block number that has been queued for import by DSN sync.
     // (Or we've checked for its header and it has already been imported.)
@@ -330,7 +330,7 @@ where
             client,
             piece_getter,
             import_queue_service,
-            &mut last_processed_segment_index,
+            &mut last_completed_segment_index,
             &mut last_processed_block_number,
             erasure_coding,
         );
