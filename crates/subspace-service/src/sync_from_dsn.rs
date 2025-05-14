@@ -303,9 +303,17 @@ where
         .chain_constants(info.best_hash)
         .map_err(|error| error.to_string())?;
 
-    // Corresponds to contents of block one, everyone has it, so we consider it being processed
-    // right away
+    // This is the last segment index that has been fully processed by DSN sync.
+    // If a segment has a partial block at the end, it is not fully processed until that block is
+    // processed.
+    //
+    // Segment zero corresponds to contents of block one, everyone has it, so we consider it as
+    // processed right away.
     let mut last_processed_segment_index = SegmentIndex::ZERO;
+
+    // This is the last block number that has been queued for import by DSN sync.
+    // (Or we've checked for its header and it has already been imported.)
+    //
     // TODO: We'll be able to just take finalized block once we are able to decouple pruning from
     //  finality: https://github.com/paritytech/polkadot-sdk/issues/1570
     let mut last_processed_block_number = info.best_number;
