@@ -2,7 +2,7 @@ use subspace_archiving::piece_reconstructor::{PiecesReconstructor, Reconstructor
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_data_retrieval::segment_downloading::{
-    SegmentDownloadingError, download_segment_pieces,
+    SegmentDownloadingError, download_segment_pieces_once,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::Kzg;
@@ -38,7 +38,7 @@ where
     let segment_index = missing_piece_index.segment_index();
     let position = missing_piece_index.position();
 
-    let segment_pieces = download_segment_pieces(segment_index, piece_getter).await?;
+    let segment_pieces = download_segment_pieces_once(segment_index, piece_getter).await?;
 
     let result = tokio::task::spawn_blocking(move || {
         let reconstructor = PiecesReconstructor::new(kzg, erasure_coding);
