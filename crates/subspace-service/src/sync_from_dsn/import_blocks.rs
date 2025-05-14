@@ -153,7 +153,7 @@ where
             }
         }
 
-        let segment_pieces = download_segment_pieces(segment_index, piece_getter)
+        let segment_pieces = download_segment_pieces(segment_index, piece_getter, 0, None)
             .await
             .map_err(|error| format!("Failed to download segment pieces: {error}"))?;
         // CPU-intensive piece and segment reconstruction code can block the async executor.

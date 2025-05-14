@@ -2,6 +2,7 @@
 
 use crate::piece_getter::PieceGetter;
 use futures::StreamExt;
+use std::time::Duration;
 use subspace_archiving::archiver::Segment;
 use subspace_archiving::reconstructor::{Reconstructor, ReconstructorError};
 use subspace_core_primitives::pieces::Piece;
@@ -10,7 +11,13 @@ use subspace_core_primitives::segments::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use tokio::task::spawn_blocking;
+use tokio::time::sleep;
 use tracing::debug;
+
+/// An array representing no available pieces for a segment.
+/// Pass this to low-level methods that require existing pieces.
+pub const NO_EXISTING_PIECES: [Option<Piece>; ArchivedHistorySegment::NUM_PIECES] =
+    [const { None }; ArchivedHistorySegment::NUM_PIECES];
 
 /// Segment getter errors.
 #[derive(Debug, thiserror::Error)]
@@ -54,13 +61,16 @@ pub async fn download_segment<PG>(
     segment_index: SegmentIndex,
     piece_getter: &PG,
     erasure_coding: ErasureCoding,
+    retries: usize,
+    retry_delay: Option<Duration>,
 ) -> Result<Segment, SegmentDownloadingError>
 where
     PG: PieceGetter,
 {
     let reconstructor = Reconstructor::new(erasure_coding);
 
-    let segment_pieces = download_segment_pieces(segment_index, piece_getter).await?;
+    let segment_pieces =
+        download_segment_pieces(segment_index, piece_getter, retries, retry_delay).await?;
 
     let segment = spawn_blocking(move || reconstructor.reconstruct_segment(&segment_pieces))
         .await
@@ -69,18 +79,84 @@ where
     Ok(segment)
 }
 
-/// Downloads pieces of the segment such that segment can be reconstructed afterward.
+/// Downloads pieces of a segment so that segment can be reconstructed afterward.
+/// Repeatedly attempts to download pieces until the required number of pieces is reached.
 ///
-/// Prefers source pieces if available, on error returns number of downloaded pieces.
+/// Prefers source pieces if available, on error returns the number of available pieces.
 pub async fn download_segment_pieces<PG>(
     segment_index: SegmentIndex,
     piece_getter: &PG,
+    retries: usize,
+    retry_delay: Option<Duration>,
 ) -> Result<Vec<Option<Piece>>, SegmentDownloadingError>
 where
     PG: PieceGetter,
 {
+    let mut existing_pieces = NO_EXISTING_PIECES;
+
+    for retry in 0..=retries {
+        match download_missing_segment_pieces(segment_index, piece_getter, existing_pieces).await {
+            Ok(segment_pieces) => return Ok(segment_pieces),
+            Err((error, incomplete_segment_pieces)) => {
+                existing_pieces = incomplete_segment_pieces;
+
+                if retry < retries {
+                    debug!(
+                        %segment_index,
+                        %retry,
+                        ?retry_delay,
+                        ?error,
+                        "Failed to download segment pieces once, retrying"
+                    );
+                    if let Some(retry_delay) = retry_delay {
+                        // Wait before retrying to give the node a chance to find other peers
+                        sleep(retry_delay).await;
+                    }
+                }
+            }
+        }
+    }
+
+    debug!(
+        %segment_index,
+        %retries,
+        "Failed to download segment pieces"
+    );
+
+    Err(SegmentDownloadingError::NotEnoughPieces {
+        segment_index,
+        downloaded_pieces: existing_pieces
+            .iter()
+            .filter(|piece| piece.is_some())
+            .count(),
+    })
+}
+
+/// Tries to download pieces of a segment once, so that segment can be reconstructed afterward.
+/// Pass existing pieces in `existing_pieces`, or use `NO_EXISTING_PIECES` if no pieces are
+/// available.
+///
+/// Prefers source pieces if available, on error returns the incomplete piece download (including
+/// existing pieces).
+pub async fn download_missing_segment_pieces<PG>(
+    segment_index: SegmentIndex,
+    piece_getter: &PG,
+    existing_pieces: [Option<Piece>; ArchivedHistorySegment::NUM_PIECES],
+) -> Result<
+    Vec<Option<Piece>>,
+    (
+        SegmentDownloadingError,
+        [Option<Piece>; ArchivedHistorySegment::NUM_PIECES],
+    ),
+>
+where
+    PG: PieceGetter,
+{
     let required_pieces_number = RecordedHistorySegment::NUM_RAW_RECORDS;
-    let mut downloaded_pieces = 0_usize;
+    let mut downloaded_pieces = existing_pieces
+        .iter()
+        .filter(|piece| piece.is_some())
+        .count();
 
     // Debugging failure patterns in piece downloads
     let mut first_success = None;
@@ -88,7 +164,7 @@ where
     let mut first_failure = None;
     let mut last_failure = None;
 
-    let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
+    let mut segment_pieces = existing_pieces;
 
     let mut pieces_iter = segment_index
         .segment_piece_indexes_source_first()
@@ -99,10 +175,14 @@ where
     while !pieces_iter.is_empty() && downloaded_pieces != required_pieces_number {
         let piece_indices = pieces_iter
             .by_ref()
+            .filter(|piece_index| segment_pieces[piece_index.position() as usize].is_none())
             .take(required_pieces_number - downloaded_pieces)
             .collect();
 
-        let mut received_segment_pieces = piece_getter.get_pieces(piece_indices).await?;
+        let mut received_segment_pieces = match piece_getter.get_pieces(piece_indices).await {
+            Ok(pieces) => pieces,
+            Err(error) => return Err((error.into(), segment_pieces)),
+        };
 
         while let Some((piece_index, result)) = received_segment_pieces.next().await {
             match result {
@@ -153,11 +233,17 @@ where
             "Failed to retrieve pieces for segment"
         );
 
-        return Err(SegmentDownloadingError::NotEnoughPieces {
-            segment_index,
-            downloaded_pieces,
-        });
+        return Err((
+            SegmentDownloadingError::NotEnoughPieces {
+                segment_index,
+                downloaded_pieces: segment_pieces
+                    .iter()
+                    .filter(|piece| piece.is_some())
+                    .count(),
+            },
+            segment_pieces,
+        ));
     }
 
-    Ok(segment_pieces)
+    Ok(segment_pieces.to_vec())
 }
