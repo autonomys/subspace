@@ -320,9 +320,15 @@ where
     let segment_header_downloader = SegmentHeaderDownloader::new(node);
 
     while let Some(reason) = notifications.next().await {
+        info!(
+            target: LOG_TARGET,
+            ?reason,
+            ?last_completed_segment_index,
+            ?last_processed_block_number,
+            "Received notification to sync from DSN, deactivating substrate sync"
+        );
         pause_sync.store(true, Ordering::Release);
 
-        info!(target: LOG_TARGET, ?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
         let import_blocks_from_dsn_fut = import_blocks_from_dsn(
             &segment_headers_store,
@@ -349,6 +355,12 @@ where
                     .map(|diff| diff < chain_constants.confirmation_depth_k().into())
                     .unwrap_or_default()
                 {
+                    debug!(
+                        target: LOG_TARGET,
+                        best_block = ?info.best_number,
+                        ?target_block_number,
+                        "Node is almost synced, stopping DSN sync until the next notification"
+                    );
                     break;
                 }
             }
@@ -357,7 +369,13 @@ where
         select! {
             result = import_blocks_from_dsn_fut.fuse() => {
                 if let Err(error) = result {
-                    warn!(target: LOG_TARGET, %error, "Error when syncing blocks from DSN");
+                    warn!(
+                        target: LOG_TARGET,
+                        %error,
+                        ?last_completed_segment_index,
+                        ?last_processed_block_number,
+                        "Error when syncing blocks from DSN, stopping DSN sync until the next notification"
+                    );
                 }
             }
             _ = wait_almost_synced_fut.fuse() => {
