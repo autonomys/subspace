@@ -416,7 +416,7 @@ where
 {
     let block_number = *header.number();
 
-    const STATE_SYNC_RETRIES: u32 = 5;
+    const STATE_SYNC_RETRIES: u32 = 20;
     const LOOP_PAUSE: Duration = Duration::from_secs(20);
     const MAX_GET_PEERS_ATTEMPT_NUMBER: usize = 30;
 
