@@ -365,19 +365,24 @@ where
             }
         }
 
-        debug!(target: LOG_TARGET, "Finished DSN sync");
+        while notifications.try_next().is_ok() {
+            // Just drain extra messages if there are any
+        }
 
-        // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue
-        // gracefully
+        // Notify Substrate's sync mechanism to allow regular Substrate sync to continue
+        // gracefully. We do this at the end of the loop, to minimise race conditions which can
+        // hide DSN sync bugs.
+        debug!(
+            target: LOG_TARGET,
+            ?last_completed_segment_index,
+            ?last_processed_block_number,
+            "Finished DSN sync, activating substrate sync"
+        );
         {
             let info = client.info();
             network_block.new_best_block_imported(info.best_hash, info.best_number);
         }
         pause_sync.store(false, Ordering::Release);
-
-        while notifications.try_next().is_ok() {
-            // Just drain extra messages if there are any
-        }
     }
 
     Ok(())
