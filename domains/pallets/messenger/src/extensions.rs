@@ -8,27 +8,29 @@ pub mod weights;
 mod weights_from_consensus;
 mod weights_from_domains;
 
+use crate::extensions::weights::{FromConsensusWeightInfo, FromDomainWeightInfo};
 use crate::pallet::Call as MessengerCall;
 use crate::{
-    Call, Config, Origin, Pallet as Messenger, ValidatedRelayMessage, XDM_TRANSACTION_LONGEVITY,
+    Call, Config, ExtensionWeightInfo, Origin, Pallet as Messenger, ValidatedRelayMessage,
+    XDM_TRANSACTION_LONGEVITY,
 };
 use core::cmp::Ordering;
-use frame_support::pallet_prelude::{PhantomData, TypeInfo};
+use frame_support::pallet_prelude::{PhantomData, TypeInfo, Weight};
 use frame_support::RuntimeDebugNoBound;
 use frame_system::pallet_prelude::RuntimeCallFor;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
-use sp_messenger::messages::{Message, Nonce};
+use sp_messenger::messages::{Message, Nonce, Proof};
 use sp_messenger::MAX_FUTURE_ALLOWED_NONCES;
-use sp_runtime::impl_tx_ext_default;
 use sp_runtime::traits::{
-    AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, Dispatchable, Implication,
-    TransactionExtension, ValidateResult,
+    AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, Dispatchable, Get, Implication,
+    PostDispatchInfoOf, TransactionExtension, ValidateResult,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidityError, ValidTransaction,
     ValidTransactionBuilder,
 };
+use sp_runtime::DispatchResult;
 use sp_subspace_mmr::MmrProofVerifier;
 
 /// Trait to convert Runtime call to possible Messenger call.
@@ -46,6 +48,12 @@ pub enum Val<T: Config + fmt::Debug> {
     None,
     /// Validated data
     ValidatedRelayMessage(ValidatedRelayMessage<T>),
+}
+
+/// Data passed from prepare to post_dispatch.
+#[derive(RuntimeDebugNoBound)]
+pub enum Pre {
+    Refund(Weight),
 }
 
 /// Extensions for pallet-messenger unsigned extrinsics.
@@ -190,7 +198,7 @@ where
     fn do_prepare(
         call: &MessengerCall<Runtime>,
         val: ValidatedRelayMessage<Runtime>,
-    ) -> Result<(), TransactionValidityError> {
+    ) -> Result<Pre, TransactionValidityError> {
         let ValidatedRelayMessage {
             message,
             should_init_channel,
@@ -202,15 +210,87 @@ where
             return Err(InvalidTransaction::Future.into());
         }
 
-        match call {
-            Call::relay_message { .. } => {
-                Messenger::<Runtime>::pre_dispatch_relay_message(message, should_init_channel)
+        let pre = match call {
+            Call::relay_message { msg } => {
+                Messenger::<Runtime>::pre_dispatch_relay_message(message, should_init_channel)?;
+                if should_init_channel {
+                    // if this is a channel init,
+                    // there is no further refund of weight
+                    Pre::Refund(Weight::zero())
+                } else {
+                    match msg.proof {
+                        Proof::Consensus { .. } => Pre::Refund(Self::refund_weight_for_consensus()),
+                        Proof::Domain { .. } => Pre::Refund(Self::refund_weight_for_domains()),
+                    }
+                }
             }
             Call::relay_message_response { .. } => {
-                Messenger::<Runtime>::pre_dispatch_relay_message_response(message)
+                Messenger::<Runtime>::pre_dispatch_relay_message_response(message)?;
+                // no refund for relay response message.
+                Pre::Refund(Weight::zero())
             }
-            _ => Err(InvalidTransaction::Call.into()),
-        }
+            _ => return Err(InvalidTransaction::Call.into()),
+        };
+
+        Ok(pre)
+    }
+
+    fn do_calculate_weight(call: &RuntimeCallFor<Runtime>) -> Weight
+    where
+        RuntimeCallFor<Runtime>: MaybeMessengerCall<Runtime>,
+        Runtime: Config,
+    {
+        let messenger_call = match call.maybe_messenger_call() {
+            Some(messenger_call) => messenger_call,
+            None => return Weight::zero(),
+        };
+
+        let mmr_proof_weight = if Runtime::SelfChainId::get().is_consensus_chain() {
+            Runtime::ExtensionWeightInfo::mmr_proof_verification_on_consensus()
+        } else {
+            Runtime::ExtensionWeightInfo::mmr_proof_verification_on_domain()
+        };
+
+        let verification_weight = match messenger_call {
+            Call::relay_message { msg } => match msg.proof {
+                Proof::Consensus { .. } => {
+                    Runtime::ExtensionWeightInfo::from_consensus_relay_message().max(
+                        Runtime::ExtensionWeightInfo::from_consensus_relay_message_channel_open(),
+                    )
+                }
+                Proof::Domain { .. } => {
+                    Runtime::ExtensionWeightInfo::from_domains_relay_message_channel_open()
+                        .max(Runtime::ExtensionWeightInfo::from_domains_relay_message())
+                }
+            },
+            Call::relay_message_response { msg } => match msg.proof {
+                Proof::Consensus { .. } => {
+                    Runtime::ExtensionWeightInfo::from_consensus_relay_message_response()
+                }
+                Proof::Domain { .. } => {
+                    Runtime::ExtensionWeightInfo::from_domains_relay_message_response()
+                }
+            },
+            _ => return Weight::zero(),
+        };
+
+        mmr_proof_weight.saturating_add(verification_weight)
+    }
+
+    fn refund_weight_for_consensus() -> Weight {
+        let min = Runtime::ExtensionWeightInfo::from_consensus_relay_message_channel_open()
+            .min(Runtime::ExtensionWeightInfo::from_consensus_relay_message());
+        let max = Runtime::ExtensionWeightInfo::from_consensus_relay_message_channel_open()
+            .max(Runtime::ExtensionWeightInfo::from_consensus_relay_message());
+        max.saturating_sub(min)
+    }
+
+    fn refund_weight_for_domains() -> Weight {
+        let min = Runtime::ExtensionWeightInfo::from_domains_relay_message_channel_open()
+            .min(Runtime::ExtensionWeightInfo::from_domains_relay_message());
+        let max = Runtime::ExtensionWeightInfo::from_domains_relay_message_channel_open()
+            .max(Runtime::ExtensionWeightInfo::from_domains_relay_message());
+        max.saturating_sub(min)
     }
 }
 
@@ -224,7 +304,11 @@ where
     const IDENTIFIER: &'static str = "MessengerExtension";
     type Implicit = ();
     type Val = Val<Runtime>;
-    type Pre = ();
+    type Pre = Pre;
+
+    fn weight(&self, call: &RuntimeCallFor<Runtime>) -> Weight {
+        Self::do_calculate_weight(call)
+    }
 
     fn validate(
         &self,
@@ -267,13 +351,21 @@ where
             (Some(messenger_call), Val::ValidatedRelayMessage(validated_relay_message)) => {
                 Self::do_prepare(messenger_call, validated_relay_message)
             }
-            // return Ok for the rest of the call types
-            (_, _) => Ok(()),
+            // return Ok for the rest of the call types and a full refund
+            (_, _) => Ok(Pre::Refund(Self::do_calculate_weight(call))),
         }
     }
 
-    // TODO: need benchmarking for this extension.
-    impl_tx_ext_default!(RuntimeCallFor<Runtime>; weight);
+    fn post_dispatch_details(
+        pre: Self::Pre,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _post_info: &PostDispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+        _result: &DispatchResult,
+    ) -> Result<Weight, TransactionValidityError> {
+        let Pre::Refund(weight) = pre;
+        Ok(weight)
+    }
 }
 
 /// Extensions for pallet-messenger unsigned extrinsics with trusted MMR verification.
@@ -359,8 +451,9 @@ where
     type Val = Val<Runtime>;
     type Pre = ();
 
-    // TODO: need benchmarking for this extension.
-    impl_tx_ext_default!(RuntimeCallFor<Runtime>; weight);
+    fn weight(&self, call: &RuntimeCallFor<Runtime>) -> Weight {
+        MessengerExtension::<Runtime>::do_calculate_weight(call)
+    }
 
     fn validate(
         &self,
@@ -402,6 +495,7 @@ where
             // prepare if this is a messenger call and has been validated
             (Some(messenger_call), Val::ValidatedRelayMessage(validated_relay_message)) => {
                 MessengerExtension::<Runtime>::do_prepare(messenger_call, validated_relay_message)
+                    .map(|_| ())
             }
             // return Ok for the rest of the call types
             (_, _) => Ok(()),
