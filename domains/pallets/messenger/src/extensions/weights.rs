@@ -6,7 +6,10 @@ use core::marker::PhantomData;
 use frame_support::pallet_prelude::Weight;
 
 /// Weight functions needed for pallet messenger extension.
-pub trait WeightInfo: FromConsensusWeightInfo + FromDomainWeightInfo {}
+pub trait WeightInfo: FromConsensusWeightInfo + FromDomainWeightInfo {
+    fn mmr_proof_verification_on_consensus() -> Weight;
+    fn mmr_proof_verification_on_domain() -> Weight;
+}
 
 pub trait FromConsensusWeightInfo {
     fn from_consensus_relay_message_channel_open() -> Weight;
@@ -51,4 +54,16 @@ impl<T: frame_system::Config> FromDomainWeightInfo for SubstrateWeight<T> {
     }
 }
 
-impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {}
+impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
+    fn mmr_proof_verification_on_consensus() -> Weight {
+        // Execution time to verify a given MMR proof on consensus chain
+        // is around 153_000_000 pico seconds
+        Weight::from_parts(153_000_000, 0)
+    }
+
+    fn mmr_proof_verification_on_domain() -> Weight {
+        // Execution time to verify a given MMR proof on domain chain
+        // using a host function is around 595_000_000 pico seconds
+        Weight::from_parts(595_000_000, 0)
+    }
+}
