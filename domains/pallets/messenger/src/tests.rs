@@ -1113,7 +1113,6 @@ mod benchmark_fixtures_gen {
     use crate::{Config, Pallet};
     use frame_support::assert_ok;
     use frame_support::pallet_prelude::{Decode, Encode};
-    use sp_core::bytes::to_hex;
     use sp_core::H256;
     use sp_domains::{BlockFees, ChannelId, ExecutionReceipt, Transfers};
     use sp_messenger::messages::{CrossDomainMessage, MessageWeightTag, Nonce, Proof};
