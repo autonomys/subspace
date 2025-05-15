@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ChainId","ChannelState","MessageWeightTag","PayloadV1","Proof","ProtocolMessageRequest","RequestResponse","VersionedPayload"],"struct":["BlockMessageWithStorageKey","BlockMessagesWithStorageKey","Channel","ChannelOpenParamsV1","CrossDomainMessage","Message"],"type":["ChannelId","MessageId","MessageKey","Nonce","ProtocolMessageResponse"]};
