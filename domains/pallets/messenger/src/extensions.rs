@@ -4,6 +4,9 @@
 pub mod benchmarking_from_consensus;
 #[cfg(feature = "runtime-benchmarks")]
 pub mod benchmarking_from_domains;
+pub mod weights;
+mod weights_from_consensus;
+mod weights_from_domains;
 
 use crate::pallet::Call as MessengerCall;
 use crate::{

@@ -7,8 +7,6 @@ use crate::pallet::ChainAllowlist;
 use crate::{Config, Pallet as Messenger, ValidatedRelayMessage};
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
 use frame_benchmarking::v2::*;
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use frame_system::pallet_prelude::BlockNumberFor;
