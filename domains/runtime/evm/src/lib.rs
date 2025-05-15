@@ -966,7 +966,7 @@ mod benches {
         [frame_system, SystemBench::<Runtime>]
         [domain_pallet_executive, ExecutivePallet]
         [pallet_messenger, Messenger]
-        [pallet_messenger_extension, MessengerExtensionBench::<Runtime>]
+        [pallet_messenger_from_consensus_extension, MessengerFromConsensusExtensionBench::<Runtime>]
     );
 }
 
@@ -1810,7 +1810,7 @@ impl_runtime_apis! {
             use frame_support::traits::StorageInfoTrait;
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
-            use pallet_messenger::extensions::benchmarking::Pallet as MessengerExtensionBench;
+            use pallet_messenger::extensions::benchmarking_from_consensus::Pallet as MessengerFromConsensusExtensionBench;
 
             let mut list = Vec::<BenchmarkList>::new();
 
@@ -1829,7 +1829,7 @@ impl_runtime_apis! {
             use frame_system_benchmarking::Pallet as SystemBench;
             use frame_support::traits::WhitelistedStorageKeys;
             use baseline::Pallet as BaselineBench;
-            use pallet_messenger::extensions::benchmarking::Pallet as MessengerExtensionBench;
+            use pallet_messenger::extensions::benchmarking_from_consensus::Pallet as MessengerFromConsensusExtensionBench;
 
             let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
 

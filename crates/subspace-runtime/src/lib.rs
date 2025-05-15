@@ -1262,7 +1262,7 @@ mod benches {
         [pallet_messenger, Messenger]
         [pallet_transporter, Transporter]
         [pallet_subspace_extension, SubspaceExtensionBench::<Runtime>]
-        [pallet_messenger_extension, MessengerExtensionBench::<Runtime>]
+        [pallet_messenger_from_domains_extension, MessengerFromDomainsExtensionBench::<Runtime>]
     );
 }
 
@@ -1785,7 +1785,7 @@ impl_runtime_apis! {
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
             use pallet_subspace::extensions::benchmarking::Pallet as SubspaceExtensionBench;
-            use pallet_messenger::extensions::benchmarking::Pallet as MessengerExtensionBench;
+            use pallet_messenger::extensions::benchmarking_from_domains::Pallet as MessengerFromDomainsExtensionBench;
 
             let mut list = Vec::<BenchmarkList>::new();
             list_benchmarks!(list, extra);
@@ -1804,7 +1804,7 @@ impl_runtime_apis! {
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
             use pallet_subspace::extensions::benchmarking::Pallet as SubspaceExtensionBench;
-            use pallet_messenger::extensions::benchmarking::Pallet as MessengerExtensionBench;
+            use pallet_messenger::extensions::benchmarking_from_domains::Pallet as MessengerFromDomainsExtensionBench;
 
             use frame_support::traits::WhitelistedStorageKeys;
             let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();

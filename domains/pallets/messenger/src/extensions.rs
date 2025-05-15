@@ -1,7 +1,9 @@
 //! Extensions for unsigned general extrinsics
 
 #[cfg(feature = "runtime-benchmarks")]
-pub mod benchmarking;
+pub mod benchmarking_from_consensus;
+#[cfg(feature = "runtime-benchmarks")]
+pub mod benchmarking_from_domains;
 
 use crate::pallet::Call as MessengerCall;
 use crate::{

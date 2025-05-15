@@ -23,21 +23,20 @@ use std::collections::BTreeSet;
 pub struct Pallet<T: Config>(Messenger<T>);
 
 #[derive(Encode, Decode)]
-pub(crate) struct FromConsensusRelayMessage<T: Config> {
+pub(crate) struct RelayMessage<T: Config> {
     pub(crate) state_root: T::Hash,
     pub(crate) xdm: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
 }
 
 // From consensus relay message channel open data.
-const FCRMCO: &'static [u8; 738] =
+const FCRMCO: &[u8; 738] =
     include_bytes!("./fixtures/from_consensus_relay_message_channel_open.data");
 
 // From consensus relay message.
-const FCRM: &'static [u8; 806] = include_bytes!("./fixtures/from_consensus_relay_message.data");
+const FCRM: &[u8; 806] = include_bytes!("./fixtures/from_consensus_relay_message.data");
 
 // From consensus relay message response.
-const FCRMR: &'static [u8; 697] =
-    include_bytes!("./fixtures/from_consensus_relay_message_response.data");
+const FCRMR: &[u8; 697] = include_bytes!("./fixtures/from_consensus_relay_message_response.data");
 
 #[allow(clippy::multiple_bound_locations)]
 #[benchmarks(where
@@ -50,8 +49,8 @@ mod benchmarks {
 
     #[benchmark]
     fn from_consensus_relay_message_channel_open() {
-        let FromConsensusRelayMessage { state_root, xdm } =
-            FromConsensusRelayMessage::<T>::decode(&mut FCRMCO.as_slice()).unwrap();
+        let RelayMessage { state_root, xdm } =
+            RelayMessage::<T>::decode(&mut FCRMCO.as_slice()).unwrap();
         #[block]
         {
             let ValidatedRelayMessage {
@@ -66,8 +65,8 @@ mod benchmarks {
 
     #[benchmark]
     fn from_consensus_relay_message() {
-        let FromConsensusRelayMessage { state_root, xdm } =
-            FromConsensusRelayMessage::<T>::decode(&mut FCRMCO.as_slice()).unwrap();
+        let RelayMessage { state_root, xdm } =
+            RelayMessage::<T>::decode(&mut FCRMCO.as_slice()).unwrap();
 
         // channel init and open
         let ValidatedRelayMessage {
@@ -78,8 +77,8 @@ mod benchmarks {
         Messenger::<T>::pre_dispatch_relay_message(message, should_init_channel).unwrap();
         Messenger::<T>::do_open_channel(xdm.src_chain_id, xdm.channel_id).unwrap();
 
-        let FromConsensusRelayMessage { state_root, xdm } =
-            FromConsensusRelayMessage::<T>::decode(&mut FCRM.as_slice()).unwrap();
+        let RelayMessage { state_root, xdm } =
+            RelayMessage::<T>::decode(&mut FCRM.as_slice()).unwrap();
 
         #[block]
         {
@@ -95,8 +94,8 @@ mod benchmarks {
 
     #[benchmark]
     fn from_consensus_relay_message_response() {
-        let FromConsensusRelayMessage { state_root, xdm } =
-            FromConsensusRelayMessage::<T>::decode(&mut FCRMR.as_slice()).unwrap();
+        let RelayMessage { state_root, xdm } =
+            RelayMessage::<T>::decode(&mut FCRMR.as_slice()).unwrap();
 
         // channel init
         set_channel_init_state::<T>(xdm.src_chain_id, xdm.channel_id);
@@ -116,7 +115,7 @@ mod benchmarks {
     );
 }
 
-fn set_channel_init_state<T: Config>(dst_chain_id: ChainId, channel_id: ChannelId) {
+pub(crate) fn set_channel_init_state<T: Config>(dst_chain_id: ChainId, channel_id: ChannelId) {
     let init_params = ChannelOpenParamsV1 {
         max_outgoing_messages: 100,
     };
