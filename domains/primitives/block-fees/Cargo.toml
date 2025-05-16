@@ -2,7 +2,7 @@
 name = "sp-block-fees"
 version = "0.1.0"
 authors = ["Subspace Labs <https://subspace.network>"]
-edition = "2021"
+edition.workspace = true
 license = "Apache-2.0"
 homepage = "https://subspace.network"
 repository = "https://github.com/autonomys/subspace"
