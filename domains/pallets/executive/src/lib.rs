@@ -318,7 +318,7 @@ where
 
         match ExecutiveConfig::ensure_inherents_are_first(block) {
             Ok(num) => num,
-            Err(i) => panic!("Invalid inherent position for extrinsic at index {}", i),
+            Err(i) => panic!("Invalid inherent position for extrinsic at index {i}"),
         }
     }
 

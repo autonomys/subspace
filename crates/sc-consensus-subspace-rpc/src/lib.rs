@@ -806,8 +806,7 @@ where
             );
 
             return Err(Error::StringError(format!(
-                "Request limit ({}) exceed the server limit: {} ",
-                limit, MAX_SEGMENT_HEADERS_PER_REQUEST
+                "Request limit ({limit}) exceed the server limit: {MAX_SEGMENT_HEADERS_PER_REQUEST} "
             )));
         };
 

@@ -26,9 +26,8 @@ pub fn init_logger() {
         // In production, this might be a bug in the logging setup.
         // In some tests, it is expected.
         eprintln!(
-            "Failed to initialize logger: {}. \
-            This is expected when running nexttest test functions under `cargo test`.",
-            e
+            "Failed to initialize logger: {e}. \
+            This is expected when running nexttest test functions under `cargo test`."
         );
     }
 }

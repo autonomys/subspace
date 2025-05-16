@@ -144,15 +144,14 @@ where
                 .spawn(move || {
                     let _guard = span.enter();
 
-                    if let Some(core) = timekeeper_cpu_cores.into_iter().next() {
-                        if !core_affinity::set_for_current(CoreId { id: core }) {
+                    if let Some(core) = timekeeper_cpu_cores.into_iter().next()
+                        && !core_affinity::set_for_current(CoreId { id: core }) {
                             warn!(
                                 %core,
                                 "Failed to set core affinity, timekeeper will run on random CPU \
                                 core",
                             );
                         }
-                    }
 
                     if let Err(error) = set_current_thread_priority(ThreadPriority::Max) {
                         warn!(

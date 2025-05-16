@@ -271,8 +271,7 @@ where
                 return Err(sp_blockchain::Error::RuntimeApiError(
                     ApiError::Application(
                         format!(
-                            "Unexpected bundle in consensus block: {:?}, something must be wrong",
-                            at_consensus_hash
+                            "Unexpected bundle in consensus block: {at_consensus_hash:?}, something must be wrong"
                         )
                         .into(),
                     ),

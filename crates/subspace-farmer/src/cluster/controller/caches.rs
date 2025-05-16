@@ -143,12 +143,11 @@ pub async fn maintain_caches(
                 let sync_finish_sender = Mutex::new(Some(sync_finish_sender));
 
                 let _handler_id = farmer_cache.on_sync_progress(Arc::new(move |&progress| {
-                    if progress == 100.0 {
-                        if let Some(sync_finish_sender) = sync_finish_sender.lock().take() {
+                    if progress == 100.0
+                        && let Some(sync_finish_sender) = sync_finish_sender.lock().take() {
                             // Result doesn't matter
                             let _ = sync_finish_sender.send(());
                         }
-                    }
                 }));
 
                 farmer_cache

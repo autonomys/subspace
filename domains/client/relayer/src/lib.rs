@@ -247,8 +247,7 @@ where
     let current_block_id: BlockId<Block> = client.info().into();
     if let Ok(maybe_submitted_block_id) =
         get_xdm_processed_block_number::<_, Block>(backend, &prefix, xdm_id)
-    {
-        if !can_allow_xdm_submission(
+        && !can_allow_xdm_submission(
             client,
             xdm_id,
             maybe_submitted_block_id,
@@ -263,7 +262,6 @@ where
             );
             return false;
         }
-    }
 
     if let Err(err) = set_xdm_message_processed_at(backend, &prefix, xdm_id, current_block_id) {
         log::error!(

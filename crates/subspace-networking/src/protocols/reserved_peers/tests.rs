@@ -160,7 +160,7 @@ async fn test_reserved_peers_dial_event() {
     let identity2 = Keypair::generate_ed25519();
 
     let peer2_id = identity2.public().to_peer_id();
-    let peer2_address = format!("/memory/0/p2p/{}", peer2_id);
+    let peer2_address = format!("/memory/0/p2p/{peer2_id}");
 
     let mut peer1 = new_ephemeral(
         identity1,

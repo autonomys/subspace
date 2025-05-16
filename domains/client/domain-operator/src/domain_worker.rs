@@ -173,8 +173,8 @@ pub(super) async fn start_worker<
                     }
                 }
                 Some(maybe_block_info) = throttled_block_import_notification_stream.next() => {
-                    if let Some(block_info) = maybe_block_info {
-                        if let Err(error) = bundle_processor
+                    if let Some(block_info) = maybe_block_info
+                        && let Err(error) = bundle_processor
                             .clone()
                             .process_bundles((
                                 block_info.hash,
@@ -189,7 +189,6 @@ pub(super) async fn start_worker<
                             // TODO: more graceful shutdown.
                             break;
                         }
-                    }
                 }
                 // In production the `acknowledgement_sender_stream` is an empty stream, it only set to
                 // real stream in test
@@ -209,8 +208,8 @@ pub(super) async fn start_worker<
         drop(new_slot_notification_stream);
         drop(acknowledgement_sender_stream);
         while let Some(maybe_block_info) = throttled_block_import_notification_stream.next().await {
-            if let Some(block_info) = maybe_block_info {
-                if let Err(error) = bundle_processor
+            if let Some(block_info) = maybe_block_info
+                && let Err(error) = bundle_processor
                     .clone()
                     .process_bundles((block_info.hash, block_info.number, block_info.is_new_best))
                     .instrument(span.clone())
@@ -221,7 +220,6 @@ pub(super) async fn start_worker<
                     // TODO: more graceful shutdown.
                     break;
                 }
-            }
         }
     }
 }

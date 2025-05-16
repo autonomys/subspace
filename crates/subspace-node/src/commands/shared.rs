@@ -37,7 +37,7 @@ pub(super) fn derive_keypair(
             .map(|password| password.expose_secret().as_str()),
     );
 
-    keypair_result.map_err(|err| Error::Input(format!("Invalid password {:?}", err)))
+    keypair_result.map_err(|err| Error::Input(format!("Invalid password {err:?}")))
 }
 
 #[expect(clippy::result_large_err, reason = "Comes from Substrate")]

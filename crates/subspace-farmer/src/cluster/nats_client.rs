@@ -856,11 +856,10 @@ impl NatsClient {
 
         loop {
             // Try to fill the buffer
-            if buffer.is_empty() {
-                if let Some(element) = response_stream.next().await {
+            if buffer.is_empty()
+                && let Some(element) = response_stream.next().await {
                     buffer.push_back(element);
                 }
-            }
             while buffer.encoded_size() < approximate_max_message_size
                 && let Some(element) = response_stream.next().now_or_never().flatten()
             {

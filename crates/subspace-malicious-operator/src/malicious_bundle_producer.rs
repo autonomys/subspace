@@ -462,8 +462,7 @@ pub fn construct_signed_extrinsic(
                         .sr25519_sign(OperatorPublicKey::ID, &public_key, e)
                 })?
                 .ok_or(format!(
-                    "Failed to sign extrinsic, sudo key pair missing from keystore?, public_key {:?}",
-                    public_key
+                    "Failed to sign extrinsic, sudo key pair missing from keystore?, public_key {public_key:?}"
                 ))?
         }
     };

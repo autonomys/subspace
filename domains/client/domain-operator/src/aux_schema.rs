@@ -200,8 +200,7 @@ where
         domain_client
             .number(best_domain_hash)?
             .ok_or(sp_blockchain::Error::MissingHeader(format!(
-                "Block hash: {:?}",
-                best_domain_hash
+                "Block hash: {best_domain_hash:?}"
             )))?;
     let mut domain_hash_keys =
         get_tracked_domain_hash_keys::<_, Block, CBlock>(&**domain_client, best_domain_number)?
