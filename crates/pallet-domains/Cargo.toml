@@ -2,7 +2,7 @@
 name = "pallet-domains"
 version = "0.1.0"
 authors = ["Subspace Labs <https://subspace.network>"]
-edition = "2021"
+edition.workspace = true
 license = "0BSD"
 homepage = "https://subspace.network"
 repository = "https://github.com/autonomys/subspace"

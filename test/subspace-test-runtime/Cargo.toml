@@ -2,7 +2,7 @@
 name = "subspace-test-runtime"
 version = "0.1.0"
 authors = ["Subspace Labs <https://subspace.network>"]
-edition = "2021"
+edition.workspace = true
 license = "GPL-3.0-or-later"
 homepage = "https://subspace.network"
 repository = "https://github.com/autonomys/subspace"
