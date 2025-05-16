@@ -3,7 +3,6 @@
     duration_constructors_lite,
     impl_trait_in_assoc_type,
     int_roundings,
-    let_chains,
     type_alias_impl_trait,
     type_changing_struct_update
 )]
