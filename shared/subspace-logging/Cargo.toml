@@ -4,7 +4,7 @@ description = "Ensure all logging uilities are centralized for the whole project
 license = "0BSD"
 version = "0.0.1"
 authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
-edition = "2021"
+edition.workspace = true
 include = [
     "/src",
     "/Cargo.toml",

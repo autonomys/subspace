@@ -1,7 +1,7 @@
 [package]
 name = "sc-subspace-sync-common"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 authors = [
     "Shamil Gadelshin <shamilgadelshin@gmail.com>"
 ]
