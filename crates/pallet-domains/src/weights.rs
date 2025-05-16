@@ -12,7 +12,7 @@
 // benchmark
 // pallet
 // --runtime=./target/release/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm
-// --genesis-builder=runtime
+// --genesis-builder=none
 // --steps=50
 // --repeat=20
 // --pallet=pallet_domains
@@ -50,6 +50,8 @@ pub trait WeightInfo {
 	fn update_domain_operator_allow_list() -> Weight;
 	fn transfer_treasury_funds() -> Weight;
 	fn submit_receipt() -> Weight;
+	fn validate_submit_bundle() -> Weight;
+	fn validate_singleton_receipt() -> Weight;
 }
 
 /// Weights for pallet_domains using the Substrate node and recommended hardware.
@@ -520,6 +522,110 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(5_u64))
 			.saturating_add(T::DbWeight::get().writes(5_u64))
 	}
+	/// Storage: `Domains::DomainRegistry` (r:1 w:0)
+	/// Proof: `Domains::DomainRegistry` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::HeadDomainNumber` (r:1 w:0)
+	/// Proof: `Domains::HeadDomainNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::ExecutionInbox` (r:2 w:0)
+	/// Proof: `Domains::ExecutionInbox` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DomainRuntimeUpgradeRecords` (r:1 w:0)
+	/// Proof: `Domains::DomainRuntimeUpgradeRecords` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::HeadReceiptNumber` (r:1 w:0)
+	/// Proof: `Domains::HeadReceiptNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::FrozenDomains` (r:1 w:0)
+	/// Proof: `Domains::FrozenDomains` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::Operators` (r:1 w:0)
+	/// Proof: `Domains::Operators` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestSubmittedER` (r:1 w:0)
+	/// Proof: `Domains::LatestSubmittedER` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::OperatorHighestSlot` (r:1 w:0)
+	/// Proof: `Domains::OperatorHighestSlot` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::OperatorBundleSlot` (r:1 w:0)
+	/// Proof: `Domains::OperatorBundleSlot` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LastEpochStakingDistribution` (r:1 w:0)
+	/// Proof: `Domains::LastEpochStakingDistribution` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DomainStakingSummary` (r:1 w:0)
+	/// Proof: `Domains::DomainStakingSummary` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Subspace::BlockSlots` (r:1 w:0)
+	/// Proof: `Subspace::BlockSlots` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
+	/// Storage: `System::BlockHash` (r:1 w:0)
+	/// Proof: `System::BlockHash` (`max_values`: None, `max_size`: Some(44), added: 2519, mode: `MaxEncodedLen`)
+	/// Storage: `Domains::NewAddedHeadReceipt` (r:1 w:0)
+	/// Proof: `Domains::NewAddedHeadReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestConfirmedDomainExecutionReceipt` (r:1 w:0)
+	/// Proof: `Domains::LatestConfirmedDomainExecutionReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::ConsensusBlockHash` (r:1 w:0)
+	/// Proof: `Domains::ConsensusBlockHash` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::BlockTree` (r:1 w:0)
+	/// Proof: `Domains::BlockTree` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `RuntimeConfigs::EnableDynamicCostOfStorage` (r:1 w:0)
+	/// Proof: `RuntimeConfigs::EnableDynamicCostOfStorage` (`max_values`: Some(1), `max_size`: Some(1), added: 496, mode: `MaxEncodedLen`)
+	/// Storage: `System::Account` (r:1 w:1)
+	/// Proof: `System::Account` (`max_values`: None, `max_size`: Some(128), added: 2603, mode: `MaxEncodedLen`)
+	/// Storage: `TransactionFees::CollectedBlockFees` (r:1 w:1)
+	/// Proof: `TransactionFees::CollectedBlockFees` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
+	fn validate_submit_bundle() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `1411`
+		//  Estimated: `7351`
+		// Minimum execution time: 500_000_000 picoseconds.
+		Weight::from_parts(516_000_000, 0)
+			.saturating_add(Weight::from_parts(0, 7351))
+			.saturating_add(T::DbWeight::get().reads(22))
+			.saturating_add(T::DbWeight::get().writes(2))
+	}
+	/// Storage: `Domains::DomainRegistry` (r:1 w:0)
+	/// Proof: `Domains::DomainRegistry` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::HeadDomainNumber` (r:1 w:0)
+	/// Proof: `Domains::HeadDomainNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::ExecutionInbox` (r:2 w:0)
+	/// Proof: `Domains::ExecutionInbox` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DomainRuntimeUpgradeRecords` (r:1 w:0)
+	/// Proof: `Domains::DomainRuntimeUpgradeRecords` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::HeadReceiptNumber` (r:1 w:0)
+	/// Proof: `Domains::HeadReceiptNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::FrozenDomains` (r:1 w:0)
+	/// Proof: `Domains::FrozenDomains` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::Operators` (r:1 w:0)
+	/// Proof: `Domains::Operators` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestSubmittedER` (r:1 w:0)
+	/// Proof: `Domains::LatestSubmittedER` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::OperatorHighestSlot` (r:1 w:0)
+	/// Proof: `Domains::OperatorHighestSlot` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::OperatorBundleSlot` (r:1 w:0)
+	/// Proof: `Domains::OperatorBundleSlot` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LastEpochStakingDistribution` (r:1 w:0)
+	/// Proof: `Domains::LastEpochStakingDistribution` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DomainStakingSummary` (r:1 w:0)
+	/// Proof: `Domains::DomainStakingSummary` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Subspace::BlockSlots` (r:1 w:0)
+	/// Proof: `Subspace::BlockSlots` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
+	/// Storage: `System::BlockHash` (r:1 w:0)
+	/// Proof: `System::BlockHash` (`max_values`: None, `max_size`: Some(44), added: 2519, mode: `MaxEncodedLen`)
+	/// Storage: `Domains::NewAddedHeadReceipt` (r:1 w:0)
+	/// Proof: `Domains::NewAddedHeadReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestConfirmedDomainExecutionReceipt` (r:1 w:0)
+	/// Proof: `Domains::LatestConfirmedDomainExecutionReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::ConsensusBlockHash` (r:1 w:0)
+	/// Proof: `Domains::ConsensusBlockHash` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::BlockTree` (r:1 w:0)
+	/// Proof: `Domains::BlockTree` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `RuntimeConfigs::EnableDynamicCostOfStorage` (r:1 w:0)
+	/// Proof: `RuntimeConfigs::EnableDynamicCostOfStorage` (`max_values`: Some(1), `max_size`: Some(1), added: 496, mode: `MaxEncodedLen`)
+	/// Storage: `System::Account` (r:1 w:1)
+	/// Proof: `System::Account` (`max_values`: None, `max_size`: Some(128), added: 2603, mode: `MaxEncodedLen`)
+	/// Storage: `TransactionFees::CollectedBlockFees` (r:1 w:1)
+	/// Proof: `TransactionFees::CollectedBlockFees` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
+	fn validate_singleton_receipt() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `1441`
+		//  Estimated: `7381`
+		// Minimum execution time: 494_000_000 picoseconds.
+		Weight::from_parts(510_000_000, 0)
+			.saturating_add(Weight::from_parts(0, 7381))
+			.saturating_add(T::DbWeight::get().reads(22))
+			.saturating_add(T::DbWeight::get().writes(2))
+	}
 }
 
 // For backwards compatibility and tests
@@ -988,5 +1094,109 @@ impl WeightInfo for () {
 		Weight::from_parts(61_214_000, 4120)
 			.saturating_add(ParityDbWeight::get().reads(5_u64))
 			.saturating_add(ParityDbWeight::get().writes(5_u64))
+	}
+	/// Storage: `Domains::DomainRegistry` (r:1 w:0)
+	/// Proof: `Domains::DomainRegistry` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::HeadDomainNumber` (r:1 w:0)
+	/// Proof: `Domains::HeadDomainNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::ExecutionInbox` (r:2 w:0)
+	/// Proof: `Domains::ExecutionInbox` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DomainRuntimeUpgradeRecords` (r:1 w:0)
+	/// Proof: `Domains::DomainRuntimeUpgradeRecords` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::HeadReceiptNumber` (r:1 w:0)
+	/// Proof: `Domains::HeadReceiptNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::FrozenDomains` (r:1 w:0)
+	/// Proof: `Domains::FrozenDomains` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::Operators` (r:1 w:0)
+	/// Proof: `Domains::Operators` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestSubmittedER` (r:1 w:0)
+	/// Proof: `Domains::LatestSubmittedER` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::OperatorHighestSlot` (r:1 w:0)
+	/// Proof: `Domains::OperatorHighestSlot` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::OperatorBundleSlot` (r:1 w:0)
+	/// Proof: `Domains::OperatorBundleSlot` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LastEpochStakingDistribution` (r:1 w:0)
+	/// Proof: `Domains::LastEpochStakingDistribution` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DomainStakingSummary` (r:1 w:0)
+	/// Proof: `Domains::DomainStakingSummary` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Subspace::BlockSlots` (r:1 w:0)
+	/// Proof: `Subspace::BlockSlots` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
+	/// Storage: `System::BlockHash` (r:1 w:0)
+	/// Proof: `System::BlockHash` (`max_values`: None, `max_size`: Some(44), added: 2519, mode: `MaxEncodedLen`)
+	/// Storage: `Domains::NewAddedHeadReceipt` (r:1 w:0)
+	/// Proof: `Domains::NewAddedHeadReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestConfirmedDomainExecutionReceipt` (r:1 w:0)
+	/// Proof: `Domains::LatestConfirmedDomainExecutionReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::ConsensusBlockHash` (r:1 w:0)
+	/// Proof: `Domains::ConsensusBlockHash` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::BlockTree` (r:1 w:0)
+	/// Proof: `Domains::BlockTree` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `RuntimeConfigs::EnableDynamicCostOfStorage` (r:1 w:0)
+	/// Proof: `RuntimeConfigs::EnableDynamicCostOfStorage` (`max_values`: Some(1), `max_size`: Some(1), added: 496, mode: `MaxEncodedLen`)
+	/// Storage: `System::Account` (r:1 w:1)
+	/// Proof: `System::Account` (`max_values`: None, `max_size`: Some(128), added: 2603, mode: `MaxEncodedLen`)
+	/// Storage: `TransactionFees::CollectedBlockFees` (r:1 w:1)
+	/// Proof: `TransactionFees::CollectedBlockFees` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
+	fn validate_submit_bundle() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `1411`
+		//  Estimated: `7351`
+		// Minimum execution time: 500_000_000 picoseconds.
+		Weight::from_parts(516_000_000, 0)
+			.saturating_add(Weight::from_parts(0, 7351))
+			.saturating_add(ParityDbWeight::get().reads(22))
+			.saturating_add(ParityDbWeight::get().writes(2))
+	}
+	/// Storage: `Domains::DomainRegistry` (r:1 w:0)
+	/// Proof: `Domains::DomainRegistry` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::HeadDomainNumber` (r:1 w:0)
+	/// Proof: `Domains::HeadDomainNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::ExecutionInbox` (r:2 w:0)
+	/// Proof: `Domains::ExecutionInbox` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DomainRuntimeUpgradeRecords` (r:1 w:0)
+	/// Proof: `Domains::DomainRuntimeUpgradeRecords` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::HeadReceiptNumber` (r:1 w:0)
+	/// Proof: `Domains::HeadReceiptNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::FrozenDomains` (r:1 w:0)
+	/// Proof: `Domains::FrozenDomains` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::Operators` (r:1 w:0)
+	/// Proof: `Domains::Operators` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestSubmittedER` (r:1 w:0)
+	/// Proof: `Domains::LatestSubmittedER` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::OperatorHighestSlot` (r:1 w:0)
+	/// Proof: `Domains::OperatorHighestSlot` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::OperatorBundleSlot` (r:1 w:0)
+	/// Proof: `Domains::OperatorBundleSlot` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LastEpochStakingDistribution` (r:1 w:0)
+	/// Proof: `Domains::LastEpochStakingDistribution` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DomainStakingSummary` (r:1 w:0)
+	/// Proof: `Domains::DomainStakingSummary` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Subspace::BlockSlots` (r:1 w:0)
+	/// Proof: `Subspace::BlockSlots` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
+	/// Storage: `System::BlockHash` (r:1 w:0)
+	/// Proof: `System::BlockHash` (`max_values`: None, `max_size`: Some(44), added: 2519, mode: `MaxEncodedLen`)
+	/// Storage: `Domains::NewAddedHeadReceipt` (r:1 w:0)
+	/// Proof: `Domains::NewAddedHeadReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestConfirmedDomainExecutionReceipt` (r:1 w:0)
+	/// Proof: `Domains::LatestConfirmedDomainExecutionReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::ConsensusBlockHash` (r:1 w:0)
+	/// Proof: `Domains::ConsensusBlockHash` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::BlockTree` (r:1 w:0)
+	/// Proof: `Domains::BlockTree` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `RuntimeConfigs::EnableDynamicCostOfStorage` (r:1 w:0)
+	/// Proof: `RuntimeConfigs::EnableDynamicCostOfStorage` (`max_values`: Some(1), `max_size`: Some(1), added: 496, mode: `MaxEncodedLen`)
+	/// Storage: `System::Account` (r:1 w:1)
+	/// Proof: `System::Account` (`max_values`: None, `max_size`: Some(128), added: 2603, mode: `MaxEncodedLen`)
+	/// Storage: `TransactionFees::CollectedBlockFees` (r:1 w:1)
+	/// Proof: `TransactionFees::CollectedBlockFees` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
+	fn validate_singleton_receipt() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `1441`
+		//  Estimated: `7381`
+		// Minimum execution time: 494_000_000 picoseconds.
+		Weight::from_parts(510_000_000, 0)
+			.saturating_add(Weight::from_parts(0, 7381))
+			.saturating_add(ParityDbWeight::get().reads(22))
+			.saturating_add(ParityDbWeight::get().writes(2))
 	}
 }

@@ -18,9 +18,11 @@ frame-benchmarking = { workspace = true, optional = true }
 frame-support.workspace = true
 frame-system.workspace = true
 hexlit.workspace = true
+hex-literal = { workspace = true, optional = true }
 log.workspace = true
 pallet-balances.workspace = true
 scale-info = { workspace = true, features = ["derive"] }
+schnorrkel = { workspace = true, optional = true }
 sp-consensus-slots.workspace = true
 sp-consensus-subspace.workspace = true
 sp-core.workspace = true
@@ -70,7 +72,10 @@ runtime-benchmarks = [
     "frame-system/runtime-benchmarks",
     "frame-benchmarking",
     "frame-benchmarking/runtime-benchmarks",
+    "sp-consensus-subspace/runtime-benchmarks",
     "sp-domains/runtime-benchmarks",
     "sp-domains-fraud-proof/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",
+    "schnorrkel",
+    "hex-literal",
 ]

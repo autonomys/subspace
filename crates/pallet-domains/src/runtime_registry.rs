@@ -501,7 +501,7 @@ mod tests {
             ));
 
             ext.execute_with(|| {
-                frame_system::Pallet::<Test>::set_block_number(100u64);
+                frame_system::Pallet::<Test>::set_block_number(100u32);
                 let res = crate::Pallet::<Test>::upgrade_domain_runtime(
                     RawOrigin::Root.into(),
                     0,
@@ -514,7 +514,7 @@ mod tests {
 
         // will not be able to override an already scheduled upgrade
         ext.execute_with(|| {
-            frame_system::Pallet::<Test>::set_block_number(100u64);
+            frame_system::Pallet::<Test>::set_block_number(100u32);
             let res = crate::Pallet::<Test>::upgrade_domain_runtime(
                 RawOrigin::Root.into(),
                 0,
@@ -562,7 +562,7 @@ mod tests {
         })
     }
 
-    fn go_to_block(block: u64) {
+    fn go_to_block(block: u32) {
         for i in System::block_number() + 1..=block {
             let parent_hash = if System::block_number() > 1 {
                 let header = System::finalize();

@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn test_domain_instantiation() {
         let creator = 1u128;
-        let created_at = 0u64;
+        let created_at = 0u32;
         // Construct an invalid domain config initially
         let mut domain_config_params = DomainConfigParams {
             domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
@@ -562,7 +562,7 @@ mod tests {
     #[test]
     fn test_domain_instantiation_evm_accounts() {
         let creator = 1u128;
-        let created_at = 0u64;
+        let created_at = 0u32;
         // Construct an invalid domain config initially
         let mut domain_config_params = DomainConfigParams {
             domain_name: "evm-domain".to_owned(),
@@ -729,7 +729,7 @@ mod tests {
     #[test]
     fn test_domain_instantiation_evm_contract_allow_list() {
         let creator = 1u128;
-        let created_at = 0u64;
+        let created_at = 0u32;
         // Construct a valid default domain config
         let mut domain_config_params = DomainConfigParams {
             domain_name: "evm-domain".to_owned(),

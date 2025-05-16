@@ -692,7 +692,7 @@ mod tests {
             );
             let mut receipt_of_block_1 = None;
             let mut bundle_header_hash_of_block_1 = None;
-            for block_number in 1..=(block_tree_pruning_depth as u64 + 3) {
+            for block_number in 1..=(block_tree_pruning_depth + 3) {
                 // Finilize parent block and initialize block at `block_number`
                 run_to_block::<Test>(block_number, receipt.consensus_block_hash);
 
@@ -726,7 +726,7 @@ mod tests {
                 ));
                 // `bundle_extrinsics_root` should be tracked in `ExecutionInbox`
                 assert_eq!(
-                    ExecutionInbox::<Test>::get((domain_id, block_number as u32, block_number)),
+                    ExecutionInbox::<Test>::get((domain_id, block_number, block_number)),
                     vec![BundleDigest {
                         header_hash: bundle_header_hash,
                         extrinsics_root: bundle_extrinsics_root,
@@ -739,7 +739,7 @@ mod tests {
 
                 // Head receipt number should be updated
                 let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
-                assert_eq!(head_receipt_number, block_number as u32 - 1);
+                assert_eq!(head_receipt_number, block_number - 1);
 
                 // As we only extending the block tree there should be no fork
                 let parent_domain_block_receipt =
@@ -1035,7 +1035,7 @@ mod tests {
             // Construct a future receipt
             let mut future_receipt = next_receipt.clone();
             future_receipt.domain_block_number = head_receipt_number + 2;
-            future_receipt.consensus_block_number = head_receipt_number as u64 + 2;
+            future_receipt.consensus_block_number = head_receipt_number as u32 + 2;
             ExecutionInbox::<Test>::insert(
                 (
                     domain_id,
@@ -1127,7 +1127,7 @@ mod tests {
             // Construct a future receipt
             let mut future_receipt = next_receipt.clone();
             future_receipt.domain_block_number = head_receipt_number + 1;
-            future_receipt.consensus_block_number = head_receipt_number as u64 + 1;
+            future_receipt.consensus_block_number = head_receipt_number as u32 + 1;
 
             ExecutionInbox::<Test>::insert(
                 (
@@ -1222,7 +1222,7 @@ mod tests {
     #[test]
     fn test_collect_invalid_bundle_author() {
         let creator = 0u128;
-        let challenge_period = BlockTreePruningDepth::get() as u64;
+        let challenge_period = BlockTreePruningDepth::get();
         let operator_set: Vec<_> = (1..15).collect();
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
@@ -1250,7 +1250,7 @@ mod tests {
             let current_block_number = frame_system::Pallet::<Test>::current_block_number();
             let execution_inbox = ExecutionInbox::<Test>::get((
                 domain_id,
-                current_block_number as u32,
+                current_block_number,
                 current_block_number,
             ));
             let bundles_extrinsics_roots: Vec<_> = execution_inbox
@@ -1289,7 +1289,7 @@ mod tests {
             let next_receipt = extend_block_tree(
                 domain_id,
                 operator_set[0],
-                (current_block_number + challenge_period) as u32 + 1,
+                current_block_number + challenge_period + 1u32,
                 target_receipt,
             );
             // Confirm `target_receipt`
