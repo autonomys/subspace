@@ -1564,7 +1564,7 @@ impl<T: Config> sp_domains::DomainBundleSubmitted for Pallet<T> {
         // domain completely because in the invalid extrinsic root fraud proof the prover need
         // to generate a proof-of-empty-value for the domain.
         DomainChainAllowlistUpdate::<T>::mutate(domain_id, |maybe_updates| {
-            if let Some(ref mut updates) = maybe_updates {
+            if let Some(updates) = maybe_updates {
                 updates.clear();
             }
         });
