@@ -8,12 +8,12 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::mem;
 use parity_scale_codec::Decode;
+use subspace_core_primitives::BlockNumber;
 use subspace_core_primitives::pieces::{Piece, RawRecord};
 use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
     SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::BlockNumber;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::Scalar;
 
@@ -214,12 +214,13 @@ impl Reconstructor {
                     let segment_index = segment_header.segment_index();
 
                     if let Some(last_segment_index) = self.last_segment_index
-                        && last_segment_index != segment_index {
-                            return Err(ReconstructorError::IncorrectSegmentOrder {
-                                expected_segment_index: last_segment_index + SegmentIndex::ONE,
-                                actual_segment_index: segment_index + SegmentIndex::ONE,
-                            });
-                        }
+                        && last_segment_index != segment_index
+                    {
+                        return Err(ReconstructorError::IncorrectSegmentOrder {
+                            expected_segment_index: last_segment_index + SegmentIndex::ONE,
+                            actual_segment_index: segment_index + SegmentIndex::ONE,
+                        });
+                    }
 
                     self.last_segment_index
                         .replace(segment_index + SegmentIndex::ONE);

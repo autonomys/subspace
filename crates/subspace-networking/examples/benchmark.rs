@@ -1,18 +1,18 @@
 use async_lock::Semaphore;
-use backoff::future::retry;
 use backoff::ExponentialBackoff;
+use backoff::future::retry;
 use clap::Parser;
+use futures::StreamExt;
 use futures::channel::oneshot;
 use futures::future::pending;
 use futures::stream::FuturesUnordered;
-use futures::StreamExt;
+use libp2p::Multiaddr;
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
-use libp2p::Multiaddr;
 use parking_lot::Mutex;
 use std::error::Error;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_logging::init_logger;
@@ -364,9 +364,10 @@ pub async fn configure_dsn(
 
         move |address| {
             if matches!(address.iter().next(), Some(Protocol::Ip4(_)))
-                && let Some(node_address_sender) = node_address_sender.lock().take() {
-                    node_address_sender.send(address.clone()).unwrap();
-                }
+                && let Some(node_address_sender) = node_address_sender.lock().take()
+            {
+                node_address_sender.send(address.clone()).unwrap();
+            }
         }
     }));
 

@@ -11,7 +11,7 @@ use alloc::sync::Arc;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::num::NonZeroUsize;
-use kzg::{FFTSettings, PolyRecover, DAS, FFTG1, G1};
+use kzg::{DAS, FFTG1, FFTSettings, G1, PolyRecover};
 use rust_kzg_blst::types::fft_settings::FsFFTSettings;
 use rust_kzg_blst::types::g1::FsG1;
 use rust_kzg_blst::types::poly::FsPoly;

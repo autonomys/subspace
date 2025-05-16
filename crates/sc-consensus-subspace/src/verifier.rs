@@ -21,7 +21,7 @@ use sc_consensus::block_import::BlockImportParams;
 use sc_consensus::import_queue::Verifier;
 use sc_consensus_slots::check_equivocation;
 use sc_proof_of_time::verifier::PotVerifier;
-use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_TRACE};
+use sc_telemetry::{CONSENSUS_TRACE, TelemetryHandle, telemetry};
 use schnorrkel::context::SigningContext;
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
@@ -29,7 +29,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
+    CompatibleDigestItem, PreDigest, SubspaceDigestItems, extract_subspace_digest_items,
 };
 use sp_consensus_subspace::{ChainConstants, PotNextSlotInput, SubspaceApi, SubspaceJustification};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
@@ -37,13 +37,13 @@ use sp_runtime::{DigestItem, Justifications};
 use std::iter;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::thread::available_parallelism;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
-use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
+use subspace_verification::{VerifySolutionParams, check_reward_signature, verify_solution};
 use tokio::runtime::Handle;
 use tracing::{debug, info, trace, warn};
 

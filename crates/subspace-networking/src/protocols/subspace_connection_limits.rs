@@ -1,6 +1,6 @@
 use libp2p::connection_limits::{Behaviour as ConnectionLimitsBehaviour, ConnectionLimits};
-use libp2p::core::transport::PortUse;
 use libp2p::core::Endpoint;
+use libp2p::core::transport::PortUse;
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::{
     ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour, THandler, THandlerInEvent,
@@ -88,14 +88,13 @@ impl NetworkBehaviour for Behaviour {
             Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
             Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
             _ => None,
-        })
-            && self
-                .incoming_allow_list
-                .values()
-                .any(|(ip_addresses, _attempts)| ip_addresses.contains(&ip_address))
-            {
-                return Ok(());
-            }
+        }) && self
+            .incoming_allow_list
+            .values()
+            .any(|(ip_addresses, _attempts)| ip_addresses.contains(&ip_address))
+        {
+            return Ok(());
+        }
 
         self.inner
             .handle_pending_inbound_connection(connection_id, local_addr, remote_addr)
@@ -134,9 +133,10 @@ impl NetworkBehaviour for Behaviour {
         effective_role: Endpoint,
     ) -> Result<Vec<Multiaddr>, ConnectionDenied> {
         if let Some(peer) = &maybe_peer
-            && self.incoming_allow_list.contains_key(peer) {
-                return Ok(Vec::new());
-            }
+            && self.incoming_allow_list.contains_key(peer)
+        {
+            return Ok(Vec::new());
+        }
 
         self.inner.handle_pending_outbound_connection(
             connection_id,

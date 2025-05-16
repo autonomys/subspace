@@ -1,7 +1,7 @@
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter, Layer};
+use tracing_subscriber::{EnvFilter, Layer, fmt};
 
 pub fn init_logger() {
     // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on

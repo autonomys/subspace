@@ -5,10 +5,10 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_logging::init_logger;
+use subspace_networking::Config;
 use subspace_networking::protocols::request_response::handlers::generic_request_handler::{
     GenericRequest, GenericRequestHandler,
 };
-use subspace_networking::Config;
 use tokio::time::sleep;
 
 #[derive(Encode, Decode)]
@@ -50,9 +50,10 @@ async fn main() {
 
         move |address| {
             if matches!(address.iter().next(), Some(Protocol::Ip4(_)))
-                && let Some(node_1_address_sender) = node_1_address_sender.lock().take() {
-                    node_1_address_sender.send(address.clone()).unwrap();
-                }
+                && let Some(node_1_address_sender) = node_1_address_sender.lock().take()
+            {
+                node_1_address_sender.send(address.clone()).unwrap();
+            }
         }
     }));
 

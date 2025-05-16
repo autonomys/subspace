@@ -2,17 +2,17 @@
 //! queries, subscriptions, various events and shared information.
 
 use crate::protocols::request_response::request_response_factory::RequestFailure;
+use crate::utils::Handler;
 use crate::utils::multihash::Multihash;
 use crate::utils::rate_limiter::RateLimiter;
-use crate::utils::Handler;
 use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
 use libp2p::gossipsub::{PublishError, Sha256Topic, SubscriptionError};
 use libp2p::kad::{PeerRecord, RecordKey};
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 use tokio::sync::OwnedSemaphorePermit;
 
 /// Represents Kademlia events (RoutablePeer, PendingRoutablePeer, UnroutablePeer).

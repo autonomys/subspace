@@ -1,6 +1,6 @@
+pub use libp2p::PeerId;
 use libp2p::kad::KBucketDistance;
 pub use libp2p::kad::RecordKey;
-pub use libp2p::PeerId;
 use std::cmp::Ordering;
 use std::hash::Hash;
 

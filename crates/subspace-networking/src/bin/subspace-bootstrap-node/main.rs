@@ -3,10 +3,10 @@
 #![feature(type_changing_struct_update)]
 
 use clap::Parser;
-use futures::{select, FutureExt};
+use futures::{FutureExt, select};
 use libp2p::identity::ed25519::Keypair;
 use libp2p::kad::Mode;
-use libp2p::{identity, Multiaddr, PeerId};
+use libp2p::{Multiaddr, PeerId, identity};
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -16,9 +16,9 @@ use std::panic;
 use std::process::exit;
 use std::sync::Arc;
 use subspace_logging::init_logger;
-use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
+use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{peer_id, Config, KademliaMode};
+use subspace_networking::{Config, KademliaMode, peer_id};
 use tracing::{debug, info};
 
 /// Size of the LRU cache for peers.

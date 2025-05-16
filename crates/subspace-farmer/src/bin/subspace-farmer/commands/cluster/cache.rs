@@ -1,8 +1,8 @@
 use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::Parser;
-use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use prometheus_client::registry::Registry;
 use std::fs;
 use std::future::Future;
@@ -145,13 +145,14 @@ pub(super) async fn cache(
 
         for cache in &disk_caches {
             if !cache.directory.exists()
-                && let Err(error) = fs::create_dir(&cache.directory) {
-                    return Err(anyhow!(
-                        "Directory {} doesn't exist and can't be created: {}",
-                        cache.directory.display(),
-                        error
-                    ));
-                }
+                && let Err(error) = fs::create_dir(&cache.directory)
+            {
+                return Err(anyhow!(
+                    "Directory {} doesn't exist and can't be created: {}",
+                    cache.directory.display(),
+                    error
+                ));
+            }
         }
         None
     };

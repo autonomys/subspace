@@ -4,7 +4,7 @@
 #![warn(missing_docs)]
 
 use crate::domain_block_er::execution_receipt_protocol::{
-    generate_protocol_name, DomainBlockERRequest, DomainBlockERResponse,
+    DomainBlockERRequest, DomainBlockERResponse, generate_protocol_name,
 };
 use domain_runtime_primitives::Balance;
 use futures::channel::oneshot;

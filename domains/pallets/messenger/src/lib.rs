@@ -44,12 +44,12 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::{DomainAllowlistUpdates, DomainId};
+use sp_messenger::MAX_FUTURE_ALLOWED_NONCES;
 use sp_messenger::messages::{
     ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, Message, Nonce,
 };
-use sp_messenger::MAX_FUTURE_ALLOWED_NONCES;
-use sp_runtime::traits::Hash;
 use sp_runtime::DispatchError;
+use sp_runtime::traits::Hash;
 use subspace_runtime_primitives::CreateUnsigned;
 
 /// Transaction validity for a given validated XDM extrinsic.
@@ -150,8 +150,8 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
-        HoldIdentifier, Nonce, OutboxMessageResult, RawOrigin, StateRootOf, ValidatedRelayMessage,
-        STORAGE_VERSION, U256,
+        HoldIdentifier, Nonce, OutboxMessageResult, RawOrigin, STORAGE_VERSION, StateRootOf, U256,
+        ValidatedRelayMessage,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -179,8 +179,8 @@ mod pallet {
         RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
-        ChannelNonce, DomainRegistration, InherentError, InherentType, NoteChainTransfer,
-        OnXDMRewards, StorageKeys, INHERENT_IDENTIFIER,
+        ChannelNonce, DomainRegistration, INHERENT_IDENTIFIER, InherentError, InherentType,
+        NoteChainTransfer, OnXDMRewards, StorageKeys,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{ArithmeticError, Perbill, Saturating};
@@ -195,7 +195,7 @@ mod pallet {
         type SelfChainId: Get<ChainId>;
         /// function to fetch endpoint response handler by Endpoint.
         fn get_endpoint_handler(endpoint: &Endpoint)
-            -> Option<Box<dyn EndpointHandler<MessageId>>>;
+        -> Option<Box<dyn EndpointHandler<MessageId>>>;
         /// Currency type pallet uses for fees and deposits.
         type Currency: Mutate<Self::AccountId>
             + InspectHold<Self::AccountId>
@@ -217,11 +217,7 @@ mod pallet {
         /// Hash type of MMR
         type MmrHash: Parameter + Member + Default + Clone;
         /// MMR proof verifier
-        type MmrProofVerifier: MmrProofVerifier<
-            Self::MmrHash,
-            BlockNumberFor<Self>,
-            StateRootOf<Self>,
-        >;
+        type MmrProofVerifier: MmrProofVerifier<Self::MmrHash, BlockNumberFor<Self>, StateRootOf<Self>>;
         /// Storage key provider.
         type StorageKeys: StorageKeys;
         /// Domain owner provider.
@@ -820,9 +816,10 @@ mod pallet {
 
             if let Some(provided_updates) = inherent_data.maybe_updates {
                 if let Call::update_domain_allowlist { updates } = call
-                    && updates != &provided_updates {
-                        return Err(InherentError::IncorrectAllowlistUpdates);
-                    }
+                    && updates != &provided_updates
+                {
+                    return Err(InherentError::IncorrectAllowlistUpdates);
+                }
             } else {
                 return Err(InherentError::MissingAllowlistUpdates);
             }
@@ -924,10 +921,10 @@ mod pallet {
                 let message_count = OutboxMessageCount::<T>::get((dst_chain_id, channel_id));
                 if let Some(channel) = Channels::<T>::get(dst_chain_id, channel_id)
                     && channel.state == ChannelState::Open
-                        && message_count < channel.max_outgoing_messages
-                    {
-                        return Some(channel_id);
-                    }
+                    && message_count < channel.max_outgoing_messages
+                {
+                    return Some(channel_id);
+                }
 
                 next_channel_id = channel_id
             }

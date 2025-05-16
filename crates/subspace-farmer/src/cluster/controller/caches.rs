@@ -9,18 +9,18 @@ use crate::cluster::cache::{
     ClusterCacheDetailsRequest, ClusterCacheId, ClusterCacheIdentifyBroadcast, ClusterPieceCache,
     ClusterPieceCacheDetails,
 };
-use crate::cluster::controller::stream_map::StreamMap;
 use crate::cluster::controller::ClusterControllerCacheIdentifyBroadcast;
+use crate::cluster::controller::stream_map::StreamMap;
 use crate::cluster::nats_client::NatsClient;
 use crate::farm::PieceCache;
 use crate::farmer_cache::FarmerCache;
 use anyhow::anyhow;
 use futures::channel::oneshot;
 use futures::future::FusedFuture;
-use futures::{select, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, select};
 use parking_lot::Mutex;
-use std::future::{ready, Future};
-use std::pin::{pin, Pin};
+use std::future::{Future, ready};
+use std::pin::{Pin, pin};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::MissedTickBehavior;
@@ -110,10 +110,12 @@ pub async fn maintain_caches(
     let mut cache_reinitialization =
         (Box::pin(ready(())) as Pin<Box<dyn Future<Output = ()>>>).fuse();
 
-    let cache_identify_subscription = pin!(nats_client
-        .subscribe_to_broadcasts::<ClusterCacheIdentifyBroadcast>(Some(cache_group), None)
-        .await
-        .map_err(|error| anyhow!("Failed to subscribe to cache identify broadcast: {error}"))?);
+    let cache_identify_subscription = pin!(
+        nats_client
+            .subscribe_to_broadcasts::<ClusterCacheIdentifyBroadcast>(Some(cache_group), None)
+            .await
+            .map_err(|error| anyhow!("Failed to subscribe to cache identify broadcast: {error}"))?
+    );
 
     // Request cache to identify themselves
     if let Err(error) = nats_client
@@ -144,10 +146,11 @@ pub async fn maintain_caches(
 
                 let _handler_id = farmer_cache.on_sync_progress(Arc::new(move |&progress| {
                     if progress == 100.0
-                        && let Some(sync_finish_sender) = sync_finish_sender.lock().take() {
-                            // Result doesn't matter
-                            let _ = sync_finish_sender.send(());
-                        }
+                        && let Some(sync_finish_sender) = sync_finish_sender.lock().take()
+                    {
+                        // Result doesn't matter
+                        let _ = sync_finish_sender.send(());
+                    }
                 }));
 
                 farmer_cache

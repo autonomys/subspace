@@ -7,12 +7,12 @@ mod aux_schema;
 pub mod worker;
 
 use crate::aux_schema::{
-    get_last_processed_nonces, set_channel_inbox_response_processed_state,
-    set_channel_outbox_processed_state, ChannelProcessedState,
+    ChannelProcessedState, get_last_processed_nonces, set_channel_inbox_response_processed_state,
+    set_channel_outbox_processed_state,
 };
 use async_channel::TrySendError;
 use cross_domain_message_gossip::{
-    get_channel_state, ChannelDetail, Message as GossipMessage, MessageData as GossipMessageData,
+    ChannelDetail, Message as GossipMessage, MessageData as GossipMessageData, get_channel_state,
 };
 use parity_scale_codec::{Codec, Encode};
 use rand::seq::SliceRandom;
@@ -27,8 +27,8 @@ use sp_messenger::messages::{
 };
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_mmr_primitives::MmrApi;
-use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One};
 use sp_runtime::ArithmeticError;
+use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use std::cmp::max;
 use std::marker::PhantomData;

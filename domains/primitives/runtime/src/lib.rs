@@ -37,8 +37,8 @@ use sp_runtime::traits::transaction_extension::TransactionExtension;
 use sp_runtime::traits::{Convert, Dispatchable, IdentifyAccount, Verify};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{MultiAddress, MultiSignature, Perbill, Perquintill};
-use sp_weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use sp_weights::Weight;
+use sp_weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 pub use subspace_runtime_primitives::HoldIdentifier;
 use subspace_runtime_primitives::{MAX_BLOCK_LENGTH, SHANNON};
 
@@ -274,9 +274,9 @@ pub mod opaque {
     use crate::BlockNumber;
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
+    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
     use sp_runtime::generic;
     use sp_runtime::traits::BlakeTwo256;
-    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
 
     /// Opaque block header type.
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;

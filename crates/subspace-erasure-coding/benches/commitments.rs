@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use kzg::G1;
 use rust_kzg_blst::types::g1::FsG1;
 use std::num::NonZeroUsize;

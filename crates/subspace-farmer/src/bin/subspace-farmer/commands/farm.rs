@@ -1,5 +1,5 @@
-use crate::commands::shared::network::{configure_network, NetworkArgs};
-use crate::commands::shared::{derive_libp2p_keypair, DiskFarm, PlottingThreadPriority};
+use crate::commands::shared::network::{NetworkArgs, configure_network};
+use crate::commands::shared::{DiskFarm, PlottingThreadPriority, derive_libp2p_keypair};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock, Semaphore};
@@ -8,7 +8,7 @@ use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use futures::channel::oneshot;
 use futures::stream::FuturesUnordered;
-use futures::{select, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, select};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::fs;
@@ -18,8 +18,8 @@ use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::PublicKey;
+use subspace_core_primitives::pieces::Record;
 use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
@@ -27,34 +27,34 @@ use subspace_farmer::farm::{PlottedSectors, SectorPlottingDetails, SectorUpdate}
 use subspace_farmer::farmer_cache::{FarmerCache, FarmerCaches};
 use subspace_farmer::farmer_piece_getter::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
+use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeClient;
 use subspace_farmer::node_client::rpc_node_client::RpcNodeClient;
-use subspace_farmer::node_client::NodeClient;
+use subspace_farmer::plotter::Plotter;
 use subspace_farmer::plotter::cpu::CpuPlotter;
+#[cfg(feature = "_gpu")]
+use subspace_farmer::plotter::gpu::GpuPlotter;
 #[cfg(feature = "cuda")]
 use subspace_farmer::plotter::gpu::cuda::CudaRecordsEncoder;
 #[cfg(feature = "rocm")]
 use subspace_farmer::plotter::gpu::rocm::RocmRecordsEncoder;
-#[cfg(feature = "_gpu")]
-use subspace_farmer::plotter::gpu::GpuPlotter;
 use subspace_farmer::plotter::pool::PoolPlotter;
-use subspace_farmer::plotter::Plotter;
 use subspace_farmer::single_disk_farm::identity::Identity;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
-    create_plotting_thread_pool_manager, parse_cpu_cores_sets,
+    AsyncJoinOnDrop, create_plotting_thread_pool_manager, parse_cpu_cores_sets,
     recommended_number_of_farming_threads, run_future_in_dedicated_thread,
-    thread_pool_core_indices, AsyncJoinOnDrop,
+    thread_pool_core_indices,
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_kzg::Kzg;
-use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
+use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
-use tracing::{error, info, info_span, warn, Instrument};
+use tracing::{Instrument, error, info, info_span, warn};
 
 /// Get piece retry attempts number.
 const PIECE_GETTER_MAX_RETRIES: u16 = 7;
@@ -376,13 +376,14 @@ where
 
         for farm in &disk_farms {
             if !farm.directory.exists()
-                && let Err(error) = fs::create_dir(&farm.directory) {
-                    return Err(anyhow!(
-                        "Directory {} doesn't exist and can't be created: {}",
-                        farm.directory.display(),
-                        error
-                    ));
-                }
+                && let Err(error) = fs::create_dir(&farm.directory)
+            {
+                return Err(anyhow!(
+                    "Directory {} doesn't exist and can't be created: {}",
+                    farm.directory.display(),
+                    error
+                ));
+            }
         }
         None
     };

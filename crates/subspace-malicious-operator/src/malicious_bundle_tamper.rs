@@ -102,10 +102,11 @@ where
         }
         // If a bad receipt is already made for the same domain block, reuse it
         if let Some(bad_receipts_at) = self.bad_receipts_cache.get(&receipt.domain_block_number)
-            && let Some(previous_bad_receipt) = bad_receipts_at.get(&receipt.consensus_block_hash) {
-                *receipt = previous_bad_receipt.clone();
-                return Ok(());
-            }
+            && let Some(previous_bad_receipt) = bad_receipts_at.get(&receipt.consensus_block_hash)
+        {
+            *receipt = previous_bad_receipt.clone();
+            return Ok(());
+        }
 
         let random_seed = Random::seed();
         let bad_receipt_type = match random_seed % 7 {

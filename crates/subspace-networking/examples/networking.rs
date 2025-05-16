@@ -1,7 +1,7 @@
 #![feature(type_changing_struct_update)]
 
-use futures::channel::oneshot;
 use futures::StreamExt;
+use futures::channel::oneshot;
 use libp2p::gossipsub::Sha256Topic;
 use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
@@ -31,9 +31,10 @@ async fn main() {
 
         move |address| {
             if matches!(address.iter().next(), Some(Protocol::Ip4(_)))
-                && let Some(node_1_address_sender) = node_1_address_sender.lock().take() {
-                    node_1_address_sender.send(address.clone()).unwrap();
-                }
+                && let Some(node_1_address_sender) = node_1_address_sender.lock().take()
+            {
+                node_1_address_sender.send(address.clone()).unwrap();
+            }
         }
     }));
 

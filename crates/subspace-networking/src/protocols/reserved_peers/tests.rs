@@ -1,12 +1,12 @@
 use crate::protocols::reserved_peers::{Behaviour, Config};
-use futures::{select, FutureExt};
+use futures::{FutureExt, select};
+use libp2p::core::Transport;
 use libp2p::core::transport::MemoryTransport;
 use libp2p::core::upgrade::Version;
-use libp2p::core::Transport;
 use libp2p::identity::Keypair;
 use libp2p::plaintext::Config as PlainTextConfig;
 use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
-use libp2p::{yamux, Swarm, SwarmBuilder};
+use libp2p::{Swarm, SwarmBuilder, yamux};
 use libp2p_swarm_test::SwarmExt;
 use std::time::Duration;
 use tokio::time::sleep;

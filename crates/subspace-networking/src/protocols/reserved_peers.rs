@@ -5,6 +5,7 @@ mod tests;
 use futures::FutureExt;
 use futures_timer::Delay;
 use handler::Handler;
+use libp2p::PeerId;
 use libp2p::core::transport::PortUse;
 use libp2p::core::{Endpoint, Multiaddr};
 use libp2p::swarm::behaviour::{ConnectionEstablished, FromSwarm};
@@ -13,7 +14,6 @@ use libp2p::swarm::{
     ConnectionClosed, ConnectionDenied, ConnectionId, DialFailure, NetworkBehaviour, THandler,
     THandlerInEvent, THandlerOutEvent, ToSwarm,
 };
-use libp2p::PeerId;
 use std::collections::HashMap;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
@@ -184,12 +184,13 @@ impl NetworkBehaviour for Behaviour {
                 ..
             }) => {
                 if let Some(state) = self.reserved_peers_state.get_mut(&peer_id)
-                    && remaining_established == 0 {
-                        state.connection_status = ConnectionStatus::NotConnected;
+                    && remaining_established == 0
+                {
+                    state.connection_status = ConnectionStatus::NotConnected;
 
-                        debug!(%state.peer_id, "Reserved peer disconnected.");
-                        self.wake();
-                    }
+                    debug!(%state.peer_id, "Reserved peer disconnected.");
+                    self.wake();
+                }
             }
             FromSwarm::DialFailure(DialFailure {
                 peer_id: Some(peer_id),

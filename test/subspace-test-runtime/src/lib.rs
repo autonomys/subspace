@@ -48,12 +48,12 @@ use frame_support::inherent::ProvideInherent;
 use frame_support::traits::fungible::Inspect;
 use frame_support::traits::tokens::WithdrawConsequence;
 use frame_support::traits::{
-    ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, ExistenceRequirement,
+    ConstU8, ConstU16, ConstU32, ConstU64, ConstU128, Currency, Everything, ExistenceRequirement,
     Get, Imbalance, Time, VariantCount, WithdrawReasons,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, Weight};
-use frame_support::{construct_runtime, parameter_types, PalletId};
+use frame_support::{PalletId, construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use pallet_balances::NegativeImbalance;
@@ -66,12 +66,12 @@ use sp_api::impl_runtime_apis;
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionRanges, Vote};
 use sp_core::crypto::KeyTypeId;
-use sp_core::{OpaqueMetadata, H256};
+use sp_core::{H256, OpaqueMetadata};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor, OpaqueBundle,
-    OpaqueBundles, OperatorId, OperatorPublicKey, OperatorRewardSource,
-    PermissionedActionAllowedBy, DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
+    DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates, DomainId, DomainInstanceData,
+    ExecutionReceiptFor, INITIAL_DOMAIN_TX_RANGE, OpaqueBundle, OpaqueBundles, OperatorId,
+    OperatorPublicKey, OperatorRewardSource, PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -83,7 +83,7 @@ use sp_messenger::messages::{
     CrossDomainMessage, MessageId, MessageKey, MessagesWithStorageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
-use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
+use sp_messenger_host_functions::{StorageKeyRequest, get_storage_key};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::traits::{
     AccountIdConversion, AccountIdLookup, AsSystemOriginSigner, BlakeTwo256, ConstBool,
@@ -96,8 +96,8 @@ use sp_runtime::transaction_validity::{
 };
 use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{
-    generic, impl_tx_ext_default, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode,
-    Perbill,
+    AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill, generic,
+    impl_tx_ext_default,
 };
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
@@ -112,15 +112,15 @@ use subspace_core_primitives::segments::{
     HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
 use subspace_core_primitives::solutions::SolutionRange;
-use subspace_core_primitives::{hashes, PublicKey, Randomness, SlotNumber, U256};
+use subspace_core_primitives::{PublicKey, Randomness, SlotNumber, U256, hashes};
 use subspace_runtime_primitives::utility::{
-    nested_call_iter, DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
+    DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall, nested_call_iter,
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockHashFor, BlockNumber, ConsensusEventSegmentSize, ExtrinsicFor,
-    FindBlockRewardAddress, Hash, HeaderFor, HoldIdentifier, Moment, Nonce, Signature,
+    FindBlockRewardAddress, Hash, HeaderFor, HoldIdentifier, MAX_BLOCK_LENGTH,
+    MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR, Moment, Nonce, SHANNON, SSC, Signature,
     SlowAdjustingFeeUpdate, TargetBlockFullness, XdmAdjustedWeightToFee, XdmFeeMultipler,
-    MAX_BLOCK_LENGTH, MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 

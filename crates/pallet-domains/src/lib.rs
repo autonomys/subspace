@@ -21,13 +21,13 @@ pub mod weights;
 
 extern crate alloc;
 
-use crate::block_tree::{verify_execution_receipt, Error as BlockTreeError};
+use crate::block_tree::{Error as BlockTreeError, verify_execution_receipt};
 use crate::bundle_storage_fund::{charge_bundle_storage_fee, storage_fund_account};
 use crate::domain_registry::{DomainConfig, Error as DomainRegistryError};
 use crate::runtime_registry::into_complete_raw_genesis;
 #[cfg(feature = "runtime-benchmarks")]
 pub use crate::staking::do_register_operator;
-use crate::staking::{do_reward_operators, OperatorStatus};
+use crate::staking::{OperatorStatus, do_reward_operators};
 use crate::staking_epoch::EpochTransitionResult;
 use crate::weights::WeightInfo;
 #[cfg(not(feature = "std"))]
@@ -48,15 +48,15 @@ use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
-use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_consensus_subspace::WrappedPotOutput;
+use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    ChainId, DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle,
-    OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature, ProofOfElection,
-    RuntimeId, SealedSingletonReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT,
-    EMPTY_EXTRINSIC_ROOT,
+    ChainId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, DomainBundleLimit, DomainId,
+    DomainInstanceData, EMPTY_EXTRINSIC_ROOT, ExecutionReceipt, OpaqueBundle, OperatorId,
+    OperatorPublicKey, OperatorRewardSource, OperatorSignature, ProofOfElection, RuntimeId,
+    SealedSingletonReceipt,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
@@ -201,44 +201,45 @@ pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>:
 #[frame_support::pallet]
 mod pallet {
     #[cfg(not(feature = "runtime-benchmarks"))]
+    use crate::DomainHashingFor;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    use crate::MAX_NOMINATORS_TO_SLASH;
+    #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::block_tree::AcceptedReceiptType;
     use crate::block_tree::{
-        execution_receipt_type, process_execution_receipt, prune_receipt, Error as BlockTreeError,
-        ReceiptType,
+        Error as BlockTreeError, ReceiptType, execution_receipt_type, process_execution_receipt,
+        prune_receipt,
     };
+    use crate::bundle_storage_fund::Error as BundleStorageFundError;
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::bundle_storage_fund::refund_storage_fee;
-    use crate::bundle_storage_fund::Error as BundleStorageFundError;
     use crate::domain_registry::{
-        do_instantiate_domain, do_update_domain_allow_list, DomainConfigParams, DomainObject,
-        Error as DomainRegistryError,
+        DomainConfigParams, DomainObject, Error as DomainRegistryError, do_instantiate_domain,
+        do_update_domain_allow_list,
     };
     use crate::runtime_registry::{
+        DomainRuntimeUpgradeEntry, Error as RuntimeRegistryError, ScheduledRuntimeUpgrade,
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
-        register_runtime_at_genesis, DomainRuntimeUpgradeEntry, Error as RuntimeRegistryError,
-        ScheduledRuntimeUpgrade,
+        register_runtime_at_genesis,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking::do_reward_operators;
     use crate::staking::{
-        do_deregister_operator, do_mark_operators_as_slashed, do_nominate_operator,
-        do_register_operator, do_unlock_funds, do_unlock_nominator, do_withdraw_stake, Deposit,
-        DomainEpoch, Error as StakingError, Operator, OperatorConfig, SharePrice, StakingSummary,
-        WithdrawStake, Withdrawal,
+        Deposit, DomainEpoch, Error as StakingError, Operator, OperatorConfig, SharePrice,
+        StakingSummary, WithdrawStake, Withdrawal, do_deregister_operator,
+        do_mark_operators_as_slashed, do_nominate_operator, do_register_operator, do_unlock_funds,
+        do_unlock_nominator, do_withdraw_stake,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_slash_operator;
-    use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
+    use crate::staking_epoch::{Error as StakingEpochError, do_finalize_domain_current_epoch};
     use crate::storage_proof::InherentExtrinsicData;
     use crate::weights::WeightInfo;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    use crate::DomainHashingFor;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    use crate::MAX_NOMINATORS_TO_SLASH;
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
-        ExecutionReceiptOf, FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf, RawOrigin,
-        ReceiptHashFor, SingletonReceiptOf, StateRootOf, MAX_BUNDLE_PER_BLOCK, STORAGE_VERSION,
+        ExecutionReceiptOf, FraudProofFor, HoldIdentifier, MAX_BUNDLE_PER_BLOCK, NominatorId,
+        OpaqueBundleOf, RawOrigin, ReceiptHashFor, STORAGE_VERSION, SingletonReceiptOf,
+        StateRootOf,
     };
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
@@ -266,11 +267,11 @@ mod pallet {
     use sp_domains_fraud_proof::fraud_proof_runtime_interface::domain_runtime_call;
     use sp_domains_fraud_proof::storage_proof::{self, FraudProofStorageKeyProvider};
     use sp_domains_fraud_proof::{InvalidTransactionCode, StatelessDomainRuntimeCall};
+    use sp_runtime::Saturating;
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
         MaybeDisplay, One, SimpleBitOps, Zero,
     };
-    use sp_runtime::Saturating;
     use sp_std::boxed::Box;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
@@ -447,11 +448,7 @@ mod pallet {
         type MmrHash: Parameter + Member + Default + Clone;
 
         /// MMR proof verifier
-        type MmrProofVerifier: MmrProofVerifier<
-            Self::MmrHash,
-            BlockNumberFor<Self>,
-            StateRootOf<Self>,
-        >;
+        type MmrProofVerifier: MmrProofVerifier<Self::MmrHash, BlockNumberFor<Self>, StateRootOf<Self>>;
 
         /// Fraud proof storage key provider
         type FraudProofStorageKeyProvider: FraudProofStorageKeyProvider<BlockNumberFor<Self>>;
@@ -1161,21 +1158,21 @@ mod pallet {
                         && let Some(block_tree_node) =
                             prune_receipt::<T>(domain_id, receipt_block_number)
                                 .map_err(Error::<T>::from)?
-                        {
-                            actual_weight =
-                                actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
-                                    block_tree_node.operator_ids.len() as u32,
-                                ));
+                    {
+                        actual_weight =
+                            actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
+                                block_tree_node.operator_ids.len() as u32,
+                            ));
 
-                            let bad_receipt_hash = block_tree_node
-                                .execution_receipt
-                                .hash::<DomainHashingFor<T>>();
-                            do_mark_operators_as_slashed::<T>(
-                                block_tree_node.operator_ids.into_iter(),
-                                SlashedReason::BadExecutionReceipt(bad_receipt_hash),
-                            )
-                            .map_err(Error::<T>::from)?;
-                        }
+                        let bad_receipt_hash = block_tree_node
+                            .execution_receipt
+                            .hash::<DomainHashingFor<T>>();
+                        do_mark_operators_as_slashed::<T>(
+                            block_tree_node.operator_ids.into_iter(),
+                            SlashedReason::BadExecutionReceipt(bad_receipt_hash),
+                        )
+                        .map_err(Error::<T>::from)?;
+                    }
 
                     #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
                     let maybe_confirmed_domain_block_info = process_execution_receipt::<T>(
@@ -1775,21 +1772,21 @@ mod pallet {
                         && let Some(block_tree_node) =
                             prune_receipt::<T>(domain_id, receipt.domain_block_number)
                                 .map_err(Error::<T>::from)?
-                        {
-                            actual_weight =
-                                actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
-                                    block_tree_node.operator_ids.len() as u32,
-                                ));
+                    {
+                        actual_weight =
+                            actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
+                                block_tree_node.operator_ids.len() as u32,
+                            ));
 
-                            let bad_receipt_hash = block_tree_node
-                                .execution_receipt
-                                .hash::<DomainHashingFor<T>>();
-                            do_mark_operators_as_slashed::<T>(
-                                block_tree_node.operator_ids.into_iter(),
-                                SlashedReason::BadExecutionReceipt(bad_receipt_hash),
-                            )
-                            .map_err(Error::<T>::from)?;
-                        }
+                        let bad_receipt_hash = block_tree_node
+                            .execution_receipt
+                            .hash::<DomainHashingFor<T>>();
+                        do_mark_operators_as_slashed::<T>(
+                            block_tree_node.operator_ids.into_iter(),
+                            SlashedReason::BadExecutionReceipt(bad_receipt_hash),
+                        )
+                        .map_err(Error::<T>::from)?;
+                    }
 
                     #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
                     let maybe_confirmed_domain_block_info = process_execution_receipt::<T>(
@@ -2208,10 +2205,9 @@ impl<T: Config> Pallet<T> {
         // NOTE: during `validate_unsigned` this is implicitly checked within `is_proof_of_time_valid` since we
         // are using quick verification which will return `false` if the `proof-of-time` is not seem by the node
         // before.
-        if pre_dispatch
-            && let Some(future_slot) = T::BlockSlot::future_slot(current_block_number) {
-                ensure!(slot_number <= *future_slot, BundleError::SlotInTheFuture)
-            }
+        if pre_dispatch && let Some(future_slot) = T::BlockSlot::future_slot(current_block_number) {
+            ensure!(slot_number <= *future_slot, BundleError::SlotInTheFuture)
+        }
 
         // Check if the bundle is built too long time ago and beyond `T::BundleLongevity` number of consensus blocks.
         let produced_after_block_number =
@@ -2660,9 +2656,10 @@ impl<T: Config> Pallet<T> {
         operator_id: &OperatorId,
     ) -> Result<(BalanceOf<T>, BalanceOf<T>), BundleError> {
         if let Some(pending_election_params) = LastEpochStakingDistribution::<T>::get(domain_id)
-            && let Some(operator_stake) = pending_election_params.operators.get(operator_id) {
-                return Ok((*operator_stake, pending_election_params.total_domain_stake));
-            }
+            && let Some(operator_stake) = pending_election_params.operators.get(operator_id)
+        {
+            return Ok((*operator_stake, pending_election_params.total_domain_stake));
+        }
         let domain_stake_summary =
             DomainStakingSummary::<T>::get(domain_id).ok_or(BundleError::InvalidDomainId)?;
         let operator_stake = domain_stake_summary

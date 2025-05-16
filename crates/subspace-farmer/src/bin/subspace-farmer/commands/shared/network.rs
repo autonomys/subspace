@@ -8,13 +8,13 @@ use std::hash::Hash;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::sync::{Arc, Weak};
+use subspace_farmer::KNOWN_PEERS_CACHE_SIZE;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farmer_cache::FarmerCaches;
 use subspace_farmer::node_client::NodeClientExt;
-use subspace_farmer::KNOWN_PEERS_CACHE_SIZE;
+use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::protocols::request_response::handlers::cached_piece_by_index::{
     CachedPieceByIndexRequest, CachedPieceByIndexRequestHandler, CachedPieceByIndexResponse,
     PieceResult,
@@ -28,11 +28,11 @@ use subspace_networking::protocols::request_response::handlers::segment_header::
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
-    construct, Config, KademliaMode, KnownPeersManager, KnownPeersManagerConfig, Node, NodeRunner,
-    WeakNode,
+    Config, KademliaMode, KnownPeersManager, KnownPeersManagerConfig, Node, NodeRunner, WeakNode,
+    construct,
 };
 use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
-use tracing::{debug, error, info, warn, Instrument};
+use tracing::{Instrument, debug, error, info, warn};
 
 /// How many segment headers can be requested at a time.
 ///

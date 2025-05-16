@@ -5,15 +5,15 @@ use crate::node_client::{NodeClient, NodeClientExt};
 use crate::utils::AsyncJoinOnDrop;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
-use futures::{select, FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, select};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
-    FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
-    MAX_SEGMENT_HEADERS_PER_REQUEST,
+    FarmerAppInfo, MAX_SEGMENT_HEADERS_PER_REQUEST, RewardSignatureResponse, RewardSigningInfo,
+    SlotInfo, SolutionResponse,
 };
 use tokio::sync::watch;
 use tokio_stream::wrappers::WatchStream;
@@ -63,9 +63,10 @@ impl SegmentHeaders {
         NC: NodeClient,
     {
         if let Some(last_synced) = &self.last_synced
-            && last_synced.elapsed() < SEGMENT_HEADERS_SYNC_INTERVAL {
-                return Ok(());
-            }
+            && last_synced.elapsed() < SEGMENT_HEADERS_SYNC_INTERVAL
+        {
+            return Ok(());
+        }
         self.last_synced.replace(Instant::now());
 
         let mut segment_index_offset = SegmentIndex::from(self.segment_headers.len() as u64);

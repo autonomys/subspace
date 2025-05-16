@@ -16,11 +16,11 @@ use crate::{
 };
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
-use frame_support::{ensure, PalletError};
+use frame_support::{PalletError, ensure};
 use frame_system::pallet_prelude::BlockNumberFor;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_core::{sr25519, Get};
+use sp_core::{Get, sr25519};
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey, OperatorRewardSource};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
 use sp_runtime::{Perbill, Percent, Perquintill, Saturating};
@@ -1508,22 +1508,22 @@ pub(crate) mod tests {
         NominatorCount, OperatorIdOwner, Operators, PendingSlashes, Withdrawals,
     };
     use crate::staking::{
-        do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_nominate_operator,
-        do_reward_operators, do_unlock_funds, do_withdraw_stake, DomainEpoch,
-        Error as StakingError, Operator, OperatorConfig, OperatorStatus, StakingSummary,
-        WithdrawStake,
+        DomainEpoch, Error as StakingError, Operator, OperatorConfig, OperatorStatus,
+        StakingSummary, WithdrawStake, do_convert_previous_epoch_withdrawal,
+        do_mark_operators_as_slashed, do_nominate_operator, do_reward_operators, do_unlock_funds,
+        do_withdraw_stake,
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
-    use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
+    use crate::tests::{ExistentialDeposit, RuntimeOrigin, Test, new_test_ext};
     use crate::{
-        bundle_storage_fund, AllowedDefaultSharePriceEpoch, BalanceOf, Error, NominatorId,
-        OperatorEpochSharePrice, SlashedReason, MAX_NOMINATORS_TO_SLASH,
+        AllowedDefaultSharePriceEpoch, BalanceOf, Error, MAX_NOMINATORS_TO_SLASH, NominatorId,
+        OperatorEpochSharePrice, SlashedReason, bundle_storage_fund,
     };
-    use frame_support::traits::fungible::Mutate;
     use frame_support::traits::Currency;
+    use frame_support::traits::fungible::Mutate;
     use frame_support::weights::Weight;
     use frame_support::{assert_err, assert_ok};
-    use sp_core::{sr25519, Pair};
+    use sp_core::{Pair, sr25519};
     use sp_domains::{
         DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
         OperatorRewardSource,
@@ -1551,8 +1551,8 @@ pub(crate) mod tests {
     ) -> (OperatorId, OperatorConfig<BalanceOf<Test>>) {
         nominators.insert(operator_account, (operator_free_balance, operator_stake));
         for nominator in &nominators {
-            Balances::set_balance(nominator.0, nominator.1 .0);
-            assert_eq!(Balances::usable_balance(nominator.0), nominator.1 .0);
+            Balances::set_balance(nominator.0, nominator.1.0);
+            assert_eq!(Balances::usable_balance(nominator.0), nominator.1.0);
         }
         nominators.remove(&operator_account);
 
@@ -1609,7 +1609,7 @@ pub(crate) mod tests {
         let operator_id = NextOperatorId::<Test>::get() - 1;
         let mut expected_nominator_count = 0;
         for nominator in nominators {
-            if nominator.1 .1.is_zero() {
+            if nominator.1.1.is_zero() {
                 continue;
             }
 
@@ -1617,7 +1617,7 @@ pub(crate) mod tests {
             let res = Domains::nominate_operator(
                 RuntimeOrigin::signed(nominator.0),
                 operator_id,
-                nominator.1 .1,
+                nominator.1.1,
             );
             assert_ok!(res);
         }

@@ -1,4 +1,4 @@
-use crate::mock::{new_test_ext, Executive, RuntimeOrigin};
+use crate::mock::{Executive, RuntimeOrigin, new_test_ext};
 use frame_support::assert_ok;
 use parity_scale_codec::Encode;
 use sp_version::RuntimeVersion;

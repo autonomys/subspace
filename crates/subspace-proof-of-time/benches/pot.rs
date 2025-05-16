@@ -1,5 +1,5 @@
 use core::num::NonZeroU32;
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use rand_chacha::ChaCha8Rng;
 use rand_core::{RngCore, SeedableRng};
 use std::hint::black_box;

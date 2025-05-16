@@ -6,7 +6,7 @@ use domain_runtime_primitives::AccountIdConverter;
 use parity_scale_codec::Encode;
 use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension};
 use sp_core::crypto::AccountId32;
-use sp_core::{sr25519, Pair, Public};
+use sp_core::{Pair, Public, sr25519};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
     DomainRuntimeConfig, GenesisDomain, OperatorAllowList, OperatorPublicKey, RuntimeType,

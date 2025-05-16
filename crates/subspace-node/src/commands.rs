@@ -4,8 +4,8 @@ mod shared;
 mod wipe;
 
 pub use domain_key::{
-    create_domain_key, insert_domain_key, CreateDomainKeyOptions, InsertDomainKeyOptions,
+    CreateDomainKeyOptions, InsertDomainKeyOptions, create_domain_key, insert_domain_key,
 };
-pub use run::{run, RunOptions};
+pub use run::{RunOptions, run};
 pub(crate) use shared::set_exit_on_panic;
-pub use wipe::{wipe, WipeOptions};
+pub use wipe::{WipeOptions, wipe};

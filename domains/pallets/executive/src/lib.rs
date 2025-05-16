@@ -93,9 +93,9 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::Mutate;
     use frame_support::weights::WeightToFee;
-    use frame_system::pallet_prelude::*;
     use frame_system::SetCode;
-    use sp_executive::{InherentError, InherentType, INHERENT_IDENTIFIER};
+    use frame_system::pallet_prelude::*;
+    use sp_executive::{INHERENT_IDENTIFIER, InherentError, InherentType};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -160,9 +160,10 @@ mod pallet {
 
             if let Some(provided_code) = inherent_data.maybe_code {
                 if let Call::set_code { code } = call
-                    && code != &provided_code {
-                        return Err(InherentError::IncorrectRuntimeCode);
-                    }
+                    && code != &provided_code
+                {
+                    return Err(InherentError::IncorrectRuntimeCode);
+                }
             } else {
                 return Err(InherentError::MissingRuntimeCode);
             }
@@ -208,18 +209,18 @@ pub struct Executive<
 );
 
 impl<
-        ExecutiveConfig: Config + frame_system::Config + EnsureInherentsAreFirst<BlockOf<ExecutiveConfig>>,
-        Context: Default,
-        UnsignedValidator,
-        AllPalletsWithSystem: OnRuntimeUpgrade
-            + BeforeAllRuntimeMigrations
-            + OnInitialize<BlockNumberFor<ExecutiveConfig>>
-            + OnIdle<BlockNumberFor<ExecutiveConfig>>
-            + OnFinalize<BlockNumberFor<ExecutiveConfig>>
-            + OffchainWorker<BlockNumberFor<ExecutiveConfig>>
-            + OnPoll<BlockNumberFor<ExecutiveConfig>>,
-        COnRuntimeUpgrade: OnRuntimeUpgrade,
-    > ExecuteBlock<BlockOf<ExecutiveConfig>>
+    ExecutiveConfig: Config + frame_system::Config + EnsureInherentsAreFirst<BlockOf<ExecutiveConfig>>,
+    Context: Default,
+    UnsignedValidator,
+    AllPalletsWithSystem: OnRuntimeUpgrade
+        + BeforeAllRuntimeMigrations
+        + OnInitialize<BlockNumberFor<ExecutiveConfig>>
+        + OnIdle<BlockNumberFor<ExecutiveConfig>>
+        + OnFinalize<BlockNumberFor<ExecutiveConfig>>
+        + OffchainWorker<BlockNumberFor<ExecutiveConfig>>
+        + OnPoll<BlockNumberFor<ExecutiveConfig>>,
+    COnRuntimeUpgrade: OnRuntimeUpgrade,
+> ExecuteBlock<BlockOf<ExecutiveConfig>>
     for Executive<
         ExecutiveConfig,
         Context,
@@ -247,19 +248,18 @@ where
 }
 
 impl<
-        ExecutiveConfig: Config + frame_system::Config + EnsureInherentsAreFirst<BlockOf<ExecutiveConfig>>,
-        Context: Default,
-        UnsignedValidator,
-        AllPalletsWithSystem: OnRuntimeUpgrade
-            + BeforeAllRuntimeMigrations
-            + OnInitialize<BlockNumberFor<ExecutiveConfig>>
-            + OnIdle<BlockNumberFor<ExecutiveConfig>>
-            + OnFinalize<BlockNumberFor<ExecutiveConfig>>
-            + OffchainWorker<BlockNumberFor<ExecutiveConfig>>
-            + OnPoll<BlockNumberFor<ExecutiveConfig>>,
-        COnRuntimeUpgrade: OnRuntimeUpgrade,
-    >
-    Executive<ExecutiveConfig, Context, UnsignedValidator, AllPalletsWithSystem, COnRuntimeUpgrade>
+    ExecutiveConfig: Config + frame_system::Config + EnsureInherentsAreFirst<BlockOf<ExecutiveConfig>>,
+    Context: Default,
+    UnsignedValidator,
+    AllPalletsWithSystem: OnRuntimeUpgrade
+        + BeforeAllRuntimeMigrations
+        + OnInitialize<BlockNumberFor<ExecutiveConfig>>
+        + OnIdle<BlockNumberFor<ExecutiveConfig>>
+        + OnFinalize<BlockNumberFor<ExecutiveConfig>>
+        + OffchainWorker<BlockNumberFor<ExecutiveConfig>>
+        + OnPoll<BlockNumberFor<ExecutiveConfig>>,
+    COnRuntimeUpgrade: OnRuntimeUpgrade,
+> Executive<ExecutiveConfig, Context, UnsignedValidator, AllPalletsWithSystem, COnRuntimeUpgrade>
 where
     ExtrinsicOf<ExecutiveConfig>: Checkable<Context> + Codec,
     CheckedOf<ExtrinsicOf<ExecutiveConfig>, Context>: Applyable + GetDispatchInfo,

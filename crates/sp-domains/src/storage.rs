@@ -2,8 +2,8 @@
 extern crate alloc;
 
 use crate::{
-    evm_chain_id_storage_key, evm_contract_creation_allowed_by_storage_key,
-    self_domain_id_storage_key, DomainId, PermissionedActionAllowedBy,
+    DomainId, PermissionedActionAllowedBy, evm_chain_id_storage_key,
+    evm_contract_creation_allowed_by_storage_key, self_domain_id_storage_key,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -11,13 +11,13 @@ use domain_runtime_primitives::{EVMChainId, EthereumAccountId};
 use hash_db::Hasher;
 use parity_scale_codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
-use sp_core::storage::{well_known_keys, ChildInfo};
+use sp_core::storage::{ChildInfo, well_known_keys};
 #[cfg(feature = "std")]
 use sp_core::storage::{Storage, StorageChild};
 use sp_runtime::StateVersion;
 use sp_state_machine::{Backend, TrieBackend, TrieBackendBuilder};
 use sp_std::collections::btree_map::BTreeMap;
-use sp_trie::{empty_trie_root, LayoutV0, MemoryDB};
+use sp_trie::{LayoutV0, MemoryDB, empty_trie_root};
 
 /// Create a new empty instance of in-memory backend.
 ///

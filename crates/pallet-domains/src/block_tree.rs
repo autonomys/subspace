@@ -12,7 +12,7 @@ use crate::{
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use frame_support::{ensure, PalletError};
+use frame_support::{PalletError, ensure};
 use frame_system::pallet_prelude::BlockNumberFor;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -629,9 +629,10 @@ pub(crate) fn prune_receipt<T: Config>(
 mod tests {
     use super::*;
     use crate::tests::{
-        create_dummy_bundle_with_receipts, create_dummy_receipt, extend_block_tree,
-        extend_block_tree_from_zero, get_block_tree_node_at, new_test_ext_with_extensions,
-        register_genesis_domain, run_to_block, BlockTreePruningDepth, Domains, Test,
+        BlockTreePruningDepth, Domains, Test, create_dummy_bundle_with_receipts,
+        create_dummy_receipt, extend_block_tree, extend_block_tree_from_zero,
+        get_block_tree_node_at, new_test_ext_with_extensions, register_genesis_domain,
+        run_to_block,
     };
     use crate::{FrozenDomains, RawOrigin as DomainOrigin};
     use frame_support::dispatch::RawOrigin;
@@ -781,11 +782,10 @@ mod tests {
                 verify_execution_receipt::<Test>(domain_id, &pruned_receipt),
                 Error::PrunedReceipt
             );
-            assert!(ConsensusBlockHash::<Test>::get(
-                domain_id,
-                pruned_receipt.consensus_block_number,
-            )
-            .is_none());
+            assert!(
+                ConsensusBlockHash::<Test>::get(domain_id, pruned_receipt.consensus_block_number,)
+                    .is_none()
+            );
         });
     }
 
@@ -1091,11 +1091,13 @@ mod tests {
             let mut invalid_execution_trace_receipt = next_receipt;
 
             // Receipt with only one element in execution trace vector
-            invalid_execution_trace_receipt.execution_trace = vec![invalid_execution_trace_receipt
-                .execution_trace
-                .first()
-                .cloned()
-                .expect("First element should be there; qed")];
+            invalid_execution_trace_receipt.execution_trace = vec![
+                invalid_execution_trace_receipt
+                    .execution_trace
+                    .first()
+                    .cloned()
+                    .expect("First element should be there; qed"),
+            ];
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &invalid_execution_trace_receipt),
                 Error::InvalidExecutionTrace

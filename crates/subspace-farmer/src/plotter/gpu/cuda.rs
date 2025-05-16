@@ -3,10 +3,10 @@
 use crate::plotter::gpu::GpuRecordsEncoder;
 use async_lock::Mutex as AsyncMutex;
 use parking_lot::Mutex;
-use rayon::{current_thread_index, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
+use rayon::{ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder, current_thread_index};
 use std::process::exit;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use subspace_core_primitives::pieces::{PieceOffset, Record};
 use subspace_core_primitives::sectors::SectorId;
 use subspace_farmer_components::plotting::RecordsEncoder;
@@ -47,30 +47,32 @@ impl RecordsEncoder for CudaRecordsEncoder {
             let plotting_error = Mutex::new(None::<String>);
 
             self.thread_pool.scope(|scope| {
-                scope.spawn_broadcast(|_scope, _ctx| loop {
-                    // Take mutex briefly to make sure encoding is allowed right now
-                    self.global_mutex.lock_blocking();
+                scope.spawn_broadcast(|_scope, _ctx| {
+                    loop {
+                        // Take mutex briefly to make sure encoding is allowed right now
+                        self.global_mutex.lock_blocking();
 
-                    // This instead of `while` above because otherwise mutex will be held for the
-                    // duration of the loop and will limit concurrency to 1 record
-                    let Some(((piece_offset, record), mut encoded_chunks_used)) =
-                        iter.lock().next()
-                    else {
-                        return;
-                    };
-                    let pos_seed = sector_id.derive_evaluation_seed(piece_offset);
+                        // This instead of `while` above because otherwise mutex will be held for the
+                        // duration of the loop and will limit concurrency to 1 record
+                        let Some(((piece_offset, record), mut encoded_chunks_used)) =
+                            iter.lock().next()
+                        else {
+                            return;
+                        };
+                        let pos_seed = sector_id.derive_evaluation_seed(piece_offset);
 
-                    if let Err(error) = self.cuda_device.generate_and_encode_pospace(
-                        &pos_seed,
-                        record,
-                        encoded_chunks_used.iter_mut(),
-                    ) {
-                        plotting_error.lock().replace(error);
-                        return;
-                    }
+                        if let Err(error) = self.cuda_device.generate_and_encode_pospace(
+                            &pos_seed,
+                            record,
+                            encoded_chunks_used.iter_mut(),
+                        ) {
+                            plotting_error.lock().replace(error);
+                            return;
+                        }
 
-                    if abort_early.load(Ordering::Relaxed) {
-                        return;
+                        if abort_early.load(Ordering::Relaxed) {
+                            return;
+                        }
                     }
                 });
             });
@@ -100,9 +102,7 @@ impl CudaRecordsEncoder {
                 eprintln!("panic on thread {}: {:?}", thread_name(index), panic_info);
             } else {
                 // We want to guarantee exit, rather than panicking in a panic handler.
-                eprintln!(
-                    "rayon panic handler called on non-rayon thread: {panic_info:?}"
-                );
+                eprintln!("rayon panic handler called on non-rayon thread: {panic_info:?}");
             }
             exit(1);
         };

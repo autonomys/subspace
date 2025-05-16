@@ -1,6 +1,6 @@
 use crate::ExecutionReceiptFor;
 use domain_runtime_primitives::CheckExtrinsicsValidityError;
-use futures::{select, FutureExt};
+use futures::{FutureExt, select};
 use parity_scale_codec::Encode;
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_transaction_pool_api::InPoolTransaction;
@@ -13,8 +13,8 @@ use sp_domains::{
     ProofOfElection,
 };
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::Percent;
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
 use std::collections::HashSet;
@@ -343,7 +343,9 @@ where
                 parent_hash,
             )?
         {
-            tracing::warn!("Unexpected error when validating all the extrinsics at once: {transaction_validity_error:?}");
+            tracing::warn!(
+                "Unexpected error when validating all the extrinsics at once: {transaction_validity_error:?}"
+            );
 
             // Truncate to remove the invalid extrinsic (and any extrinsic after it), so only
             // the valid exrinsic will be used to construct bundle.

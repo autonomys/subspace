@@ -1,6 +1,6 @@
 use crate::mmr::sync::MmrSync;
-use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::PieceGetter;
+use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::utils::wait_for_block_import;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
@@ -8,18 +8,18 @@ use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportedState, IncomingBlock, StateAction,
     StorageChanges,
 };
-use sc_consensus_subspace::archiver::{decode_block, SegmentHeadersStore};
+use sc_consensus_subspace::archiver::{SegmentHeadersStore, decode_block};
 use sc_network::service::traits::NetworkService;
 use sc_network::{NetworkBlock, NetworkRequest, PeerId};
-use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::SyncingService;
+use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_subspace_sync_common::snap_sync_engine::SnapSyncingEngine;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_consensus_subspace::SubspaceApi;
-use sp_core::offchain::OffchainStorage;
 use sp_core::H256;
+use sp_core::offchain::OffchainStorage;
 use sp_mmr_primitives::MmrApi;
 use sp_objects::ObjectsApi;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};

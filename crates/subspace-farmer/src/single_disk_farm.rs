@@ -22,10 +22,10 @@ use crate::farm::{
 };
 use crate::node_client::NodeClient;
 use crate::plotter::Plotter;
-use crate::single_disk_farm::direct_io_file::{DirectIoFile, DISK_SECTOR_SIZE};
+use crate::single_disk_farm::direct_io_file::{DISK_SECTOR_SIZE, DirectIoFile};
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 use crate::single_disk_farm::farming::{
-    farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
+    FarmingOptions, PlotAudit, farming, slot_notification_forwarder,
 };
 use crate::single_disk_farm::identity::{Identity, IdentityError};
 use crate::single_disk_farm::metrics::SingleDiskFarmMetrics;
@@ -35,17 +35,17 @@ use crate::single_disk_farm::plot_cache::DiskPlotCache;
 use crate::single_disk_farm::plotted_sectors::SingleDiskPlottedSectors;
 pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
-    plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions, SectorPlottingOptions,
+    PlottingOptions, PlottingSchedulerOptions, SectorPlottingOptions, plotting, plotting_scheduler,
 };
 use crate::single_disk_farm::reward_signing::reward_signing;
-use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
-use crate::{farm, KNOWN_PEERS_CACHE_SIZE};
+use crate::utils::{AsyncJoinOnDrop, tokio_rayon_spawn_handler};
+use crate::{KNOWN_PEERS_CACHE_SIZE, farm};
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesUnordered;
-use futures::{select, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, select};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
@@ -61,20 +61,20 @@ use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use std::{fmt, fs, io, mem};
-use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
+use subspace_core_primitives::PublicKey;
+use subspace_core_primitives::hashes::{Blake3Hash, blake3_hash};
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::sectors::SectorIndex;
 use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
-use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
-use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
-use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::sector::{SectorMetadata, SectorMetadataChecksummed, sector_size};
 use subspace_kzg::Kzg;
 use subspace_networking::KnownPeersManager;
 use subspace_proof_of_space::Table;
@@ -83,7 +83,7 @@ use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::broadcast;
 use tokio::task;
-use tracing::{error, info, trace, warn, Instrument, Span};
+use tracing::{Instrument, Span, error, info, trace, warn};
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
 // usize depending on chain parameters
@@ -490,9 +490,7 @@ pub enum SingleDiskFarmScrubError {
         error: IdentityError,
     },
     /// Identity public key doesn't match public key in the disk farm info
-    #[error(
-        "Identity public key {identity} doesn't match public key in the disk farm info {info}"
-    )]
+    #[error("Identity public key {identity} doesn't match public key in the disk farm info {info}")]
     PublicKeyMismatch {
         /// Identity public key
         identity: PublicKey,
@@ -1012,10 +1010,11 @@ impl SingleDiskFarm {
                     }
 
                     if let Some(plotting_delay) = plotting_delay
-                        && plotting_delay.await.is_err() {
-                            // Dropped before resolving
-                            return Ok(());
-                        }
+                        && plotting_delay.await.is_err()
+                    {
+                        // Dropped before resolving
+                        return Ok(());
+                    }
 
                     plotting(plotting_options).await
                 };
@@ -1608,9 +1607,7 @@ impl SingleDiskFarm {
             )?;
             sectors_metadata.push(
                 SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref()).map_err(
-                    |error| {
-                        io::Error::other(format!("Failed to decode sector metadata: {error}"))
-                    },
+                    |error| io::Error::other(format!("Failed to decode sector metadata: {error}")),
                 )?,
             );
         }
@@ -1890,14 +1887,15 @@ impl SingleDiskFarm {
                     let metadata_header_bytes = metadata_header.encode();
 
                     if !dry_run
-                        && let Err(error) = metadata_file.write_all_at(&metadata_header_bytes, 0) {
-                            return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
-                                file: metadata_file_path,
-                                size: metadata_header_bytes.len() as u64,
-                                offset: 0,
-                                error,
-                            });
-                        }
+                        && let Err(error) = metadata_file.write_all_at(&metadata_header_bytes, 0)
+                    {
+                        return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
+                            file: metadata_file_path,
+                            size: metadata_header_bytes.len() as u64,
+                            offset: 0,
+                            error,
+                        });
+                    }
                 }
 
                 (metadata_file, metadata_header)
@@ -1958,14 +1956,15 @@ impl SingleDiskFarm {
                     let metadata_header_bytes = metadata_header.encode();
 
                     if !dry_run
-                        && let Err(error) = metadata_file.write_all_at(&metadata_header_bytes, 0) {
-                            return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
-                                file: plot_file_path,
-                                size: metadata_header_bytes.len() as u64,
-                                offset: 0,
-                                error,
-                            });
-                        }
+                        && let Err(error) = metadata_file.write_all_at(&metadata_header_bytes, 0)
+                    {
+                        return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
+                            file: plot_file_path,
+                            size: metadata_header_bytes.len() as u64,
+                            offset: 0,
+                            error,
+                        });
+                    }
                 }
 
                 plot_file
@@ -2157,16 +2156,15 @@ impl SingleDiskFarm {
                                     let bytes = &mut scratch_buffer[..bytes_to_write];
 
                                     if !dry_run
-                                        && let Err(error) = plot_file.write_all_at(bytes, offset) {
-                                            return Err(
-                                                SingleDiskFarmScrubError::FailedToWriteBytes {
-                                                    file: plot_file_path.clone(),
-                                                    size: scratch_buffer.len() as u64,
-                                                    offset,
-                                                    error,
-                                                },
-                                            );
-                                        }
+                                        && let Err(error) = plot_file.write_all_at(bytes, offset)
+                                    {
+                                        return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
+                                            file: plot_file_path.clone(),
+                                            size: scratch_buffer.len() as u64,
+                                            offset,
+                                            error,
+                                        });
+                                    }
 
                                     hasher.update(bytes);
                                 }
@@ -2178,16 +2176,14 @@ impl SingleDiskFarm {
                                     if !dry_run
                                         && let Err(error) =
                                             plot_file.write_all_at(&checksum, offset)
-                                        {
-                                            return Err(
-                                                SingleDiskFarmScrubError::FailedToWriteBytes {
-                                                    file: plot_file_path.clone(),
-                                                    size: checksum.len() as u64,
-                                                    offset,
-                                                    error,
-                                                },
-                                            );
-                                        }
+                                    {
+                                        return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
+                                            file: plot_file_path.clone(),
+                                            size: checksum.len() as u64,
+                                            offset,
+                                            error,
+                                        });
+                                    }
                                 }
 
                                 return Ok(());
@@ -2278,15 +2274,15 @@ impl SingleDiskFarm {
                         "Failed to read cached piece, replacing with dummy element"
                     );
 
-                    if !dry_run
-                        && let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
-                            return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
-                                file: file.clone(),
-                                size: u64::from(element_size),
-                                offset,
-                                error,
-                            });
-                        }
+                    if !dry_run && let Err(error) = cache_file.write_all_at(&dummy_element, offset)
+                    {
+                        return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
+                            file: file.clone(),
+                            size: u64::from(element_size),
+                            offset,
+                            error,
+                        });
+                    }
 
                     return Ok(());
                 }
@@ -2302,15 +2298,15 @@ impl SingleDiskFarm {
                         "Cached piece checksum mismatch, replacing with dummy element"
                     );
 
-                    if !dry_run
-                        && let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
-                            return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
-                                file: file.clone(),
-                                size: u64::from(element_size),
-                                offset,
-                                error,
-                            });
-                        }
+                    if !dry_run && let Err(error) = cache_file.write_all_at(&dummy_element, offset)
+                    {
+                        return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
+                            file: file.clone(),
+                            size: u64::from(element_size),
+                            offset,
+                            error,
+                        });
+                    }
 
                     return Ok(());
                 }

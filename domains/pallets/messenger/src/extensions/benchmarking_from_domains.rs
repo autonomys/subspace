@@ -1,6 +1,6 @@
 //! Benchmarking for `pallet-messenger` extensions.
 
-use crate::extensions::benchmarking_from_consensus::{set_channel_init_state, RelayMessage};
+use crate::extensions::benchmarking_from_consensus::{RelayMessage, set_channel_init_state};
 use crate::{Config, Pallet as Messenger, ValidatedRelayMessage};
 use frame_benchmarking::v2::*;
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};

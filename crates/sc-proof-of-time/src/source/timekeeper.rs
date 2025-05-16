@@ -1,8 +1,8 @@
 use crate::source::state::PotState;
 use crate::verifier::PotVerifier;
+use futures::SinkExt;
 use futures::channel::mpsc;
 use futures::executor::block_on;
-use futures::SinkExt;
 use sp_consensus_slots::Slot;
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -33,8 +33,7 @@ pub(super) fn run_timekeeper(
     loop {
         trace!(
             "Proving for slot {} with {} iterations",
-            next_slot_input.slot,
-            next_slot_input.slot_iterations
+            next_slot_input.slot, next_slot_input.slot_iterations
         );
         let checkpoints =
             subspace_proof_of_time::prove(next_slot_input.seed, next_slot_input.slot_iterations)?;
@@ -62,9 +61,10 @@ pub(super) fn run_timekeeper(
             .unwrap_or_else(|next_slot_input| next_slot_input);
 
         if let Err(error) = proofs_sender.try_send(proof)
-            && let Err(error) = block_on(proofs_sender.send(error.into_inner())) {
-                debug!(%error, "Couldn't send checkpoints, channel is closed");
-                return Ok(());
-            }
+            && let Err(error) = block_on(proofs_sender.send(error.into_inner()))
+        {
+            debug!(%error, "Couldn't send checkpoints, channel is closed");
+            return Ok(());
+        }
     }
 }

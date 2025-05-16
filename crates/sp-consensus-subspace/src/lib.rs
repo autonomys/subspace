@@ -34,11 +34,11 @@ use subspace_core_primitives::{BlockHash, BlockNumber, PublicKey, SlotNumber};
 #[cfg(feature = "std")]
 use subspace_kzg::Kzg;
 #[cfg(feature = "std")]
-use subspace_proof_of_space::shim::ShimTable;
-#[cfg(feature = "std")]
 use subspace_proof_of_space::PosTableType;
 #[cfg(feature = "std")]
 use subspace_proof_of_space::Table;
+#[cfg(feature = "std")]
+use subspace_proof_of_space::shim::ShimTable;
 use subspace_verification::VerifySolutionParams;
 
 /// The `ConsensusEngineId` of Subspace.
@@ -475,9 +475,9 @@ pub trait Consensus {
         #[cfg(not(feature = "runtime-benchmarks"))]
         {
             use sp_externalities::ExternalitiesExt;
+            use subspace_proof_of_space::PosTableType;
             #[cfg(feature = "std")]
             use subspace_proof_of_space::chia::ChiaTable;
-            use subspace_proof_of_space::PosTableType;
 
             let pos_table_type = self
                 .extension::<PosExtension>()

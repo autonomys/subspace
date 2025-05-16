@@ -5,10 +5,10 @@ pub(super) mod types;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use crate::chiapos::Seed;
 use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT, PARAM_M};
 use crate::chiapos::table::types::{Metadata, Position, X, Y};
 use crate::chiapos::utils::EvaluatableUsize;
-use crate::chiapos::Seed;
 #[cfg(not(feature = "std"))]
 use alloc::vec;
 #[cfg(not(feature = "std"))]
@@ -16,8 +16,8 @@ use alloc::vec::Vec;
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::{ChaCha8, Key, Nonce};
 use core::array;
-use core::simd::num::SimdUint;
 use core::simd::Simd;
+use core::simd::num::SimdUint;
 #[cfg(all(feature = "std", any(feature = "parallel", test)))]
 use parking_lot::Mutex;
 #[cfg(any(feature = "parallel", test))]
@@ -292,11 +292,7 @@ fn find_matches<T, Map>(
         let (a, b) = left_targets
             .left_targets
             .split_at(left_targets.left_targets.len() / 2);
-        if parity == 0 {
-            a
-        } else {
-            b
-        }
+        if parity == 0 { a } else { b }
     };
 
     for (&y, left_position) in left_bucket_ys.iter().zip(left_bucket_start_position..) {

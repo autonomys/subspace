@@ -1,6 +1,6 @@
 use sp_core::H256;
 use sp_mmr_primitives::utils::NodesUtils;
-use sp_mmr_primitives::{NodeIndex, INDEXING_PREFIX};
+use sp_mmr_primitives::{INDEXING_PREFIX, NodeIndex};
 use subspace_runtime_primitives::opaque::Header;
 
 pub(crate) mod request_handler;

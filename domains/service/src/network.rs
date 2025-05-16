@@ -2,18 +2,18 @@ use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents, ProofProvider};
 use sc_consensus::ImportQueue;
 use sc_network::NetworkBackend;
 use sc_network_common::role::Roles;
+use sc_network_sync::SyncingService;
 use sc_network_sync::block_relay_protocol::{BlockDownloader, BlockRelayParams};
 use sc_network_sync::engine::SyncingEngine;
 use sc_network_sync::service::network::{NetworkServiceHandle, NetworkServiceProvider};
-use sc_network_sync::SyncingService;
 use sc_service::{
-    build_default_block_downloader, build_network_advanced, build_polkadot_syncing_strategy,
     BuildNetworkAdvancedParams, BuildNetworkParams, Error, NetworkStarter,
+    build_default_block_downloader, build_network_advanced, build_polkadot_syncing_strategy,
 };
 use sc_transaction_pool_api::TransactionPool;
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::ProvideRuntimeApi;
 use sp_api::__private::BlockT;
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::block_validation::{Chain, DefaultBlockAnnounceValidator};
 use sp_runtime::traits::BlockIdTo;

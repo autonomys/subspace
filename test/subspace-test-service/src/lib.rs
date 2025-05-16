@@ -18,7 +18,7 @@
 
 #![warn(missing_docs, unused_crate_dependencies)]
 
-use cross_domain_message_gossip::{xdm_gossip_peers_set_config, GossipWorkerBuilder};
+use cross_domain_message_gossip::{GossipWorkerBuilder, xdm_gossip_peers_set_config};
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 use frame_system::pallet_prelude::BlockNumberFor;
 use futures::channel::mpsc;
@@ -37,7 +37,7 @@ use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::service::traits::NetworkService;
 use sc_network::{
-    multiaddr, NetworkWorker, NotificationMetrics, NotificationService, ReputationChange,
+    NetworkWorker, NotificationMetrics, NotificationService, ReputationChange, multiaddr,
 };
 use sc_service::config::{
     DatabaseSource, ExecutorConfiguration, KeystoreConfig, MultiaddrWithPeerId,
@@ -50,19 +50,19 @@ use sc_service::{
 use sc_transaction_pool::{BasicPool, FullChainApi, Options};
 use sc_transaction_pool_api::error::{Error as TxPoolError, IntoPoolError};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
+use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender, tracing_unbounded};
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    extract_pre_digest, CompatibleDigestItem, PreDigest, PreDigestPotInfo,
+    CompatibleDigestItem, PreDigest, PreDigestPotInfo, extract_pre_digest,
 };
 use sp_consensus_subspace::{PotExtension, SubspaceApi};
-use sp_core::offchain::storage::OffchainDb;
-use sp_core::offchain::OffchainDbExt;
-use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
+use sp_core::offchain::OffchainDbExt;
+use sp_core::offchain::storage::OffchainDb;
+use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_domains::{BundleProducerElectionApi, ChainId, DomainsApi, OpaqueBundle};
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
@@ -76,7 +76,7 @@ use sp_runtime::generic::{Digest, SignedPayload};
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
 };
-use sp_runtime::{generic, DigestItem, MultiAddress, OpaqueExtrinsic, SaturatedConversion};
+use sp_runtime::{DigestItem, MultiAddress, OpaqueExtrinsic, SaturatedConversion, generic};
 use sp_subspace_mmr::host_functions::{SubspaceMmrExtension, SubspaceMmrHostFunctionsImpl};
 use sp_timestamp::Timestamp;
 use std::collections::HashMap;
@@ -94,11 +94,11 @@ use subspace_runtime_primitives::{
     AccountId, Balance, BlockHashFor, ExtrinsicFor, Hash, HeaderFor, Signature,
 };
 use subspace_service::{FullSelectChain, RuntimeExecutor};
-use subspace_test_client::{chain_spec, Backend, Client};
+use subspace_test_client::{Backend, Client, chain_spec};
 use subspace_test_primitives::OnchainStateApi;
 use subspace_test_runtime::{
-    DisablePallets, Runtime, RuntimeApi, RuntimeCall, SignedExtra, UncheckedExtrinsic,
-    SLOT_DURATION,
+    DisablePallets, Runtime, RuntimeApi, RuntimeCall, SLOT_DURATION, SignedExtra,
+    UncheckedExtrinsic,
 };
 use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{RpcHandlersExt, RpcTransactionError, RpcTransactionOutput};
@@ -698,7 +698,9 @@ impl MockConsensusNode {
                 return (slot, bundle);
             }
         }
-        panic!("Failed to produce bundle after {MAX_PRODUCE_BUNDLE_TRY:?} tries, something must be wrong");
+        panic!(
+            "Failed to produce bundle after {MAX_PRODUCE_BUNDLE_TRY:?} tries, something must be wrong"
+        );
     }
 
     /// Subscribe the new slot notification
@@ -782,9 +784,10 @@ impl MockConsensusNode {
                 .expect("should be able to decode");
             if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) =
                 ext.function
-                && opaque_bundle.sealed_header.slot_number() == *new_slot.0 {
-                    return Some(opaque_bundle);
-                }
+                && opaque_bundle.sealed_header.slot_number() == *new_slot.0
+            {
+                return Some(opaque_bundle);
+            }
         }
         None
     }
@@ -876,9 +879,10 @@ impl MockConsensusNode {
                 if let subspace_test_runtime::RuntimeCall::Domains(
                     pallet_domains::Call::submit_fraud_proof { fraud_proof },
                 ) = ext.function
-                    && fraud_proof_predicate(&fraud_proof) {
-                        return *fraud_proof;
-                    }
+                    && fraud_proof_predicate(&fraud_proof)
+                {
+                    return *fraud_proof;
+                }
             }
             unreachable!()
         })
@@ -1195,7 +1199,8 @@ fn log_new_block(block: &Block, used_time_ms: u128) {
         block.header().hash(),
         block.header().parent_hash(),
         block.extrinsics().len(),
-        block.extrinsics()
+        block
+            .extrinsics()
             .iter()
             .map(|xt| BlakeTwo256::hash_of(xt).to_string())
             .collect::<Vec<_>>()

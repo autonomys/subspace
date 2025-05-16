@@ -8,8 +8,8 @@ use futures::{Stream, StreamExt, TryFutureExt};
 use pallet_domains::OperatorConfig;
 use parity_scale_codec::Encode;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
-use sc_service::config::KeystoreConfig;
 use sc_service::KeystoreContainer;
+use sc_service::config::KeystoreConfig;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
@@ -23,7 +23,7 @@ use sp_keyring::Sr25519Keyring;
 use sp_keystore::{Keystore, KeystorePtr};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
-use sp_runtime::{generic, RuntimeAppPublic};
+use sp_runtime::{RuntimeAppPublic, generic};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::error::Error;
 use std::sync::Arc;
@@ -213,9 +213,10 @@ where
 
             // Periodically check the malicious operator status
             if u64::from(slot) % 10 == 0
-                && let Err(err) = self.update_malicious_operator_status() {
-                    tracing::error!(?err, "Failed to update malicious operator status");
-                }
+                && let Err(err) = self.update_malicious_operator_status()
+            {
+                tracing::error!(?err, "Failed to update malicious operator status");
+            }
         }
     }
 
@@ -272,10 +273,11 @@ where
                 .consensus_client
                 .runtime_api()
                 .operator(consensus_best_hash, *operator_id)?
-                && operator_signing_key == signing_key {
-                    maybe_operator_id = Some(*operator_id);
-                    break;
-                }
+                && operator_signing_key == signing_key
+            {
+                maybe_operator_id = Some(*operator_id);
+                break;
+            }
         }
 
         // If the `signing_key` is linked to a operator, the previous registration request succeeded,

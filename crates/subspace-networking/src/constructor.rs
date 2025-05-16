@@ -12,7 +12,7 @@ use crate::protocols::request_response::request_response_factory::RequestHandler
 use crate::protocols::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
 use crate::utils::rate_limiter::RateLimiter;
-use crate::utils::{strip_peer_id, SubspaceMetrics};
+use crate::utils::{SubspaceMetrics, strip_peer_id};
 use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
 use libp2p::autonat::Config as AutonatConfig;
@@ -24,13 +24,13 @@ use libp2p::gossipsub::{
 use libp2p::identify::Config as IdentifyConfig;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
-    store, BucketInserts, Config as KademliaConfig, Mode, ProviderRecord, Record, RecordKey,
-    StoreInserts,
+    BucketInserts, Config as KademliaConfig, Mode, ProviderRecord, Record, RecordKey, StoreInserts,
+    store,
 };
 use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
 use libp2p::yamux::Config as YamuxConfig;
-use libp2p::{identity, Multiaddr, PeerId, StreamProtocol, SwarmBuilder, TransportError};
+use libp2p::{Multiaddr, PeerId, StreamProtocol, SwarmBuilder, TransportError, identity};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::borrow::Cow;

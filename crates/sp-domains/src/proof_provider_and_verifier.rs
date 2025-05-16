@@ -14,12 +14,12 @@ use parity_scale_codec::{Compact, Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::storage::StorageKey;
 #[cfg(feature = "std")]
-use sp_state_machine::prove_read;
-#[cfg(feature = "std")]
 use sp_state_machine::TrieBackendBuilder;
+#[cfg(feature = "std")]
+use sp_state_machine::prove_read;
 use sp_std::fmt::Debug;
 use sp_std::marker::PhantomData;
-use sp_trie::{read_trie_value, LayoutV1, StorageProof};
+use sp_trie::{LayoutV1, StorageProof, read_trie_value};
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
 #[cfg(feature = "std")]

@@ -8,8 +8,8 @@ use sp_domains::{DomainId, DomainsApi};
 use sp_messenger::messages::ChainId;
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_mmr_primitives::MmrApi;
-use sp_runtime::traits::{CheckedSub, NumberFor, One, Zero};
 use sp_runtime::SaturatedConversion;
+use sp_runtime::traits::{CheckedSub, NumberFor, One, Zero};
 use std::sync::Arc;
 
 pub async fn gossip_channel_updates<Client, Block, CBlock, SO>(

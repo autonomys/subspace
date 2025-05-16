@@ -15,12 +15,12 @@ use alloc::format;
 use core::mem;
 use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{
-    block_weights, maximum_block_length, opaque, AccountId, Address, Balance, BlockNumber, Hash,
-    Nonce, Signature, EXISTENTIAL_DEPOSIT, MAX_OUTGOING_MESSAGES,
+    AccountId, Address, Balance, BlockNumber, EXISTENTIAL_DEPOSIT, Hash, MAX_OUTGOING_MESSAGES,
+    Nonce, Signature, block_weights, maximum_block_length, opaque,
 };
 use domain_runtime_primitives::{
-    CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier, TargetBlockFullness,
-    ERR_BALANCE_OVERFLOW, SLOT_DURATION,
+    CheckExtrinsicsValidityError, DecodeExtrinsicError, ERR_BALANCE_OVERFLOW, HoldIdentifier,
+    SLOT_DURATION, TargetBlockFullness,
 };
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::genesis_builder_helper::{build_state, get_preset};
@@ -46,7 +46,7 @@ use sp_messenger::messages::{
     CrossDomainMessage, MessageId, MessageKey, MessagesWithStorageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
-use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
+use sp_messenger_host_functions::{StorageKeyRequest, get_storage_key};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::generic::{Era, ExtrinsicFormat, Preamble};
 use sp_runtime::traits::{
@@ -57,7 +57,7 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
 use sp_runtime::type_with_default::TypeWithDefault;
-use sp_runtime::{generic, impl_opaque_keys, ApplyExtrinsicResult, Digest, ExtrinsicInclusionMode};
+use sp_runtime::{ApplyExtrinsicResult, Digest, ExtrinsicInclusionMode, generic, impl_opaque_keys};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
@@ -72,8 +72,8 @@ use static_assertions::const_assert;
 use subspace_runtime_primitives::utility::DefaultNonceProvider;
 use subspace_runtime_primitives::{
     BlockHashFor, BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, ExtrinsicFor,
-    Hash as ConsensusBlockHash, HeaderFor, Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee,
-    XdmFeeMultipler, MAX_CALL_RECURSION_DEPTH, SSC,
+    Hash as ConsensusBlockHash, HeaderFor, MAX_CALL_RECURSION_DEPTH, Moment, SSC,
+    SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee, XdmFeeMultipler,
 };
 
 /// Block type as expected by this runtime.
@@ -604,7 +604,7 @@ pub fn extract_signer(
 fn extrinsic_era(extrinsic: &ExtrinsicFor<Block>) -> Option<Era> {
     match &extrinsic.preamble {
         Preamble::Bare(_) | Preamble::General(_, _) => None,
-        Preamble::Signed(_, _, extra) => Some(extra.4 .0),
+        Preamble::Signed(_, _, extra) => Some(extra.4.0),
     }
 }
 

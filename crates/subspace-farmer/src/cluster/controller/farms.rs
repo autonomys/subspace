@@ -4,8 +4,8 @@
 //! about which pieces are plotted in which sectors of which farm up to date. Implementation
 //! automatically handles dynamic farm addition and removal, etc.
 
-use crate::cluster::controller::stream_map::StreamMap;
 use crate::cluster::controller::ClusterControllerFarmerIdentifyBroadcast;
+use crate::cluster::controller::stream_map::StreamMap;
 use crate::cluster::farmer::{
     ClusterFarm, ClusterFarmerFarmDetails, ClusterFarmerFarmDetailsRequest, ClusterFarmerId,
     ClusterFarmerIdentifyBroadcast,
@@ -16,7 +16,7 @@ use crate::farm::{Farm, FarmId, SectorPlottingDetails, SectorUpdate};
 use anyhow::anyhow;
 use async_lock::RwLock as AsyncRwLock;
 use futures::stream::FuturesUnordered;
-use futures::{select, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, select};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::mem;
@@ -203,10 +203,14 @@ pub async fn maintain_farms(
     let mut farms_to_add_remove = StreamMap::default();
     let mut farms = FuturesUnordered::new();
 
-    let farmer_identify_subscription = pin!(nats_client
-        .subscribe_to_broadcasts::<ClusterFarmerIdentifyBroadcast>(None, None)
-        .await
-        .map_err(|error| anyhow!("Failed to subscribe to farmer identify broadcast: {error}"))?);
+    let farmer_identify_subscription = pin!(
+        nats_client
+            .subscribe_to_broadcasts::<ClusterFarmerIdentifyBroadcast>(None, None)
+            .await
+            .map_err(|error| anyhow!(
+                "Failed to subscribe to farmer identify broadcast: {error}"
+            ))?
+    );
 
     // Request farmer to identify themselves
     if let Err(error) = nats_client

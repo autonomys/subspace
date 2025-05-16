@@ -2,8 +2,8 @@ use crate::utils::{AsyncJoinOnDrop, Handler, HandlerFn};
 use async_trait::async_trait;
 use event_listener_primitives::HandlerId;
 use fs2::FileExt;
-use futures::future::{pending, Fuse};
 use futures::FutureExt;
+use futures::future::{Fuse, pending};
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use memmap2::{MmapMut, MmapOptions};
@@ -19,9 +19,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use std::{io, mem};
-use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
+use subspace_core_primitives::hashes::{Blake3Hash, blake3_hash};
 use thiserror::Error;
-use tokio::time::{sleep, Sleep};
+use tokio::time::{Sleep, sleep};
 use tracing::{debug, error, trace, warn};
 
 /// Defines optional time for address dial failure
@@ -313,14 +313,15 @@ pub struct KnownPeersManager {
 impl Drop for KnownPeersManager {
     fn drop(&mut self) {
         if self.cache_need_saving
-            && let Some(known_peers_slots) = &self.known_peers_slots {
-                known_peers_slots
-                    .lock()
-                    .write_to_inactive_slot(&EncodableKnownPeers::from_cache(
-                        &self.known_peers,
-                        self.config.cache_size,
-                    ));
-            }
+            && let Some(known_peers_slots) = &self.known_peers_slots
+        {
+            known_peers_slots
+                .lock()
+                .write_to_inactive_slot(&EncodableKnownPeers::from_cache(
+                    &self.known_peers,
+                    self.config.cache_size,
+                ));
+        }
     }
 }
 
@@ -637,23 +638,24 @@ impl KnownPeersRegistry for KnownPeersManager {
             (&mut self.networking_parameters_save_delay).await;
 
             if let Some(known_peers_slots) = &self.known_peers_slots
-                && self.cache_need_saving {
-                    let known_peers =
-                        EncodableKnownPeers::from_cache(&self.known_peers, self.config.cache_size);
-                    let known_peers_slots = Arc::clone(known_peers_slots);
-                    let write_known_peers_fut =
-                        AsyncJoinOnDrop::new(tokio::task::spawn_blocking(move || {
-                            known_peers_slots
-                                .lock()
-                                .write_to_inactive_slot(&known_peers);
-                        }));
+                && self.cache_need_saving
+            {
+                let known_peers =
+                    EncodableKnownPeers::from_cache(&self.known_peers, self.config.cache_size);
+                let known_peers_slots = Arc::clone(known_peers_slots);
+                let write_known_peers_fut =
+                    AsyncJoinOnDrop::new(tokio::task::spawn_blocking(move || {
+                        known_peers_slots
+                            .lock()
+                            .write_to_inactive_slot(&known_peers);
+                    }));
 
-                    if let Err(error) = write_known_peers_fut.await {
-                        error!(%error, "Failed to write known peers");
-                    }
-
-                    self.cache_need_saving = false;
+                if let Err(error) = write_known_peers_fut.await {
+                    error!(%error, "Failed to write known peers");
                 }
+
+                self.cache_need_saving = false;
+            }
             self.networking_parameters_save_delay = KnownPeersManager::default_delay();
         }
     }
@@ -688,9 +690,10 @@ pub(crate) fn append_p2p_suffix(peer_id: PeerId, mut address: Multiaddr) -> Mult
     let last_protocol = address.pop();
 
     if let Some(protocol) = last_protocol
-        && !matches!(protocol, Protocol::P2p(..)) {
-            address.push(protocol)
-        }
+        && !matches!(protocol, Protocol::P2p(..))
+    {
+        address.push(protocol)
+    }
     address.push(Protocol::P2p(peer_id));
 
     address

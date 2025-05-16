@@ -1,14 +1,14 @@
 //! Tests translated into Rust from
 //! https://github.com/Chia-Network/chiapos/blob/a2049c5367fe60930533a995f7ffded538f04dc4/tests/test.cpp
 
+use crate::chiapos::Seed;
 use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT};
 use crate::chiapos::table::types::{Metadata, Position, X, Y};
 use crate::chiapos::table::{
-    calculate_left_targets, compute_f1, compute_f1_simd, compute_fn, find_matches,
-    metadata_size_bytes, partial_y, COMPUTE_F1_SIMD_FACTOR,
+    COMPUTE_F1_SIMD_FACTOR, calculate_left_targets, compute_f1, compute_f1_simd, compute_fn,
+    find_matches, metadata_size_bytes, partial_y,
 };
 use crate::chiapos::utils::EvaluatableUsize;
-use crate::chiapos::Seed;
 use bitvec::prelude::*;
 use std::collections::BTreeMap;
 

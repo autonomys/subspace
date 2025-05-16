@@ -7,7 +7,7 @@ use sc_network_gossip::{
     GossipEngine, MessageIntent, Syncing as GossipSyncing, ValidationResult, Validator,
     ValidatorContext,
 };
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
+use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender, tracing_unbounded};
 use sp_api::StorageProof;
 use sp_consensus::SyncOracle;
 use sp_core::twox_256;
@@ -164,15 +164,16 @@ fn topic<Block: BlockT>() -> Block::Hash {
 impl<Block: BlockT, Network, SO: SyncOracle> GossipWorker<Block, Network, SO> {
     /// Starts the Gossip message worker.
     pub async fn run(mut self) {
-        let incoming_cross_chain_messages = pin!(self
-            .gossip_engine
-            .lock()
-            .messages_for(topic::<Block>())
-            .filter_map(|notification| async move {
-                Message::decode(&mut &notification.message[..])
-                    .ok()
-                    .map(|msg| (notification.sender, msg))
-            }));
+        let incoming_cross_chain_messages = pin!(
+            self.gossip_engine
+                .lock()
+                .messages_for(topic::<Block>())
+                .filter_map(|notification| async move {
+                    Message::decode(&mut &notification.message[..])
+                        .ok()
+                        .map(|msg| (notification.sender, msg))
+                })
+        );
         let mut incoming_cross_chain_messages = incoming_cross_chain_messages.fuse();
 
         loop {

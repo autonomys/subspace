@@ -1,14 +1,14 @@
 use futures::channel::oneshot;
-use futures::{select, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, select};
+use libp2p::PeerId;
 use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
-use libp2p::PeerId;
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_logging::init_logger;
-use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
+use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::{Config, Node};
 use tokio::signal;
 use tokio::time::sleep;
@@ -57,9 +57,10 @@ async fn main() {
 
         move |address| {
             if matches!(address.iter().next(), Some(Protocol::Ip4(_)))
-                && let Some(node_1_address_sender) = node_1_address_sender.lock().take() {
-                    node_1_address_sender.send(address.clone()).unwrap();
-                }
+                && let Some(node_1_address_sender) = node_1_address_sender.lock().take()
+            {
+                node_1_address_sender.send(address.clone()).unwrap();
+            }
         }
     }));
 

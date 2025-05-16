@@ -4,8 +4,8 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use domain_runtime_primitives::opaque::AccountId;
-use rand::seq::SliceRandom;
 use rand::SeedableRng;
+use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;
 use sp_state_machine::trace;
 use sp_std::collections::btree_map::BTreeMap;

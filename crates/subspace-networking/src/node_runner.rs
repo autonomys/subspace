@@ -1,14 +1,14 @@
 use crate::behavior::persistent_parameters::{
-    append_p2p_suffix, remove_p2p_suffix, KnownPeersRegistry, PeerAddressRemovedEvent,
+    KnownPeersRegistry, PeerAddressRemovedEvent, append_p2p_suffix, remove_p2p_suffix,
 };
 use crate::behavior::{Behavior, Event};
-use crate::constructor::temporary_bans::TemporaryBans;
 use crate::constructor::DummyRecordStore;
+use crate::constructor::temporary_bans::TemporaryBans;
 use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, IfDisconnected,
 };
 use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
-use crate::utils::{is_global_address_or_dns, strip_peer_id, SubspaceMetrics};
+use crate::utils::{SubspaceMetrics, is_global_address_or_dns, strip_peer_id};
 use async_lock::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -1173,14 +1173,15 @@ impl NodeRunner {
 
     async fn handle_gossipsub_event(&mut self, event: GossipsubEvent) {
         if let GossipsubEvent::Message { message, .. } = event
-            && let Some(senders) = self.topic_subscription_senders.get(&message.topic) {
-                let bytes = Bytes::from(message.data);
+            && let Some(senders) = self.topic_subscription_senders.get(&message.topic)
+        {
+            let bytes = Bytes::from(message.data);
 
-                for sender in senders.values() {
-                    // Doesn't matter if receiver is still listening for messages or not.
-                    let _ = sender.unbounded_send(bytes.clone());
-                }
+            for sender in senders.values() {
+                // Doesn't matter if receiver is still listening for messages or not.
+                let _ = sender.unbounded_send(bytes.clone());
             }
+        }
     }
 
     async fn handle_request_response_event(&mut self, event: RequestResponseEvent) {
@@ -1384,12 +1385,13 @@ impl NodeRunner {
                         entry.remove_entry();
 
                         if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut()
-                            && !gossipsub.unsubscribe(&topic) {
-                                warn!(
-                                    "Can't unsubscribe from topic {topic} because subscription doesn't exist, \
+                            && !gossipsub.unsubscribe(&topic)
+                        {
+                            warn!(
+                                "Can't unsubscribe from topic {topic} because subscription doesn't exist, \
                                     this is a logic error in the subspace or swarm libraries"
-                                );
-                            }
+                            );
+                        }
                     }
                 } else {
                     error!(
