@@ -7985,6 +7985,7 @@ dependencies = [
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
+ "schnorrkel",
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",

@@ -185,7 +185,7 @@ pub struct DummyBlockSlot;
 
 impl BlockSlot<Test> for DummyBlockSlot {
     fn future_slot(_block_number: BlockNumberFor<Test>) -> Option<sp_consensus_slots::Slot> {
-        Some(0u64.into())
+        None
     }
 
     fn slot_produced_after(_slot: sp_consensus_slots::Slot) -> Option<BlockNumberFor<Test>> {
