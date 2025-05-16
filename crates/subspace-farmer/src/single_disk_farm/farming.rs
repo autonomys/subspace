@@ -134,7 +134,8 @@ where
     ) -> Result<
         Vec<(
             SectorIndex,
-            impl ProvableSolutions<Item = Result<Solution<PublicKey>, ProvingError>> + 'a,
+            impl ProvableSolutions<Item = Result<Solution<PublicKey>, ProvingError>>
+            + use<'a, PosTable, Plot>,
         )>,
         AuditingError,
     >

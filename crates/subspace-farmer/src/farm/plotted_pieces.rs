@@ -61,7 +61,7 @@ where
     pub fn read_piece(
         &self,
         piece_index: PieceIndex,
-    ) -> Option<impl Future<Output = Option<Piece>> + 'static> {
+    ) -> Option<impl Future<Output = Option<Piece>> + use<FarmIndex>> {
         let piece_details = match self.pieces.get(&piece_index) {
             Some(piece_details) => piece_details
                 .choose(&mut thread_rng())
