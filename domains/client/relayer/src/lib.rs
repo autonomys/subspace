@@ -1,4 +1,3 @@
-#![feature(let_chains)]
 #![warn(rust_2018_idioms)]
 // TODO: Restore once https://github.com/rust-lang/rust/issues/122105 is resolved
 // #![deny(unused_crate_dependencies)]
