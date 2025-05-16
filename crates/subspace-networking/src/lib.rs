@@ -27,9 +27,9 @@ pub use crate::node::{
     GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription, WeakNode,
 };
 pub use crate::node_runner::NodeRunner;
-pub use constructor::{construct, peer_id, Config, CreationError, KademliaMode};
+pub use constructor::{Config, CreationError, KademliaMode, construct, peer_id};
 pub use libp2p;
 pub use shared::PeerDiscovered;
+pub use utils::PeerAddress;
 pub use utils::key_with_distance::KeyWithDistance;
 pub use utils::multihash::Multihash;
-pub use utils::PeerAddress;

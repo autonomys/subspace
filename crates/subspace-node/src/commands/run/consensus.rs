@@ -1,11 +1,11 @@
 use crate::commands::run::shared::{RpcOptions, TrieCacheParams};
-use crate::{chain_spec, derive_pot_external_entropy, Error};
+use crate::{Error, chain_spec, derive_pot_external_entropy};
 use clap::Parser;
 use prometheus_client::registry::Registry;
 use sc_chain_spec::GenericChainSpec;
 use sc_cli::{
-    generate_node_name, Cors, NodeKeyParams, NodeKeyType, RpcMethods, RuntimeParams,
-    TelemetryParams, TransactionPoolParams, RPC_DEFAULT_PORT,
+    Cors, NodeKeyParams, NodeKeyType, RPC_DEFAULT_PORT, RpcMethods, RuntimeParams, TelemetryParams,
+    TransactionPoolParams, generate_node_name,
 };
 use sc_consensus_subspace::archiver::CreateObjectMappings;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, Role, SetConfig};
@@ -20,8 +20,8 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::BlockNumber;
-use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_service::config::{
     ChainSyncMode, SubspaceConfiguration, SubspaceNetworking, SubstrateConfiguration,
     SubstrateNetworkConfiguration, SubstrateRpcConfiguration,

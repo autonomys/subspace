@@ -20,8 +20,8 @@ use log::warn;
 pub use pallet::*;
 use serde::{Deserialize, Serialize};
 use sp_core::U256;
-use sp_runtime::traits::{CheckedSub, Zero};
 use sp_runtime::Saturating;
+use sp_runtime::traits::{CheckedSub, Zero};
 use subspace_runtime_primitives::{BlockNumber, FindBlockRewardAddress, FindVotingRewardAddresses};
 
 type BalanceOf<T> =

@@ -7,9 +7,9 @@ use frame_support::traits::fungible::{Balanced, Mutate};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::weights::WeightToFee;
 use sp_core::Get;
+use sp_messenger::OnXDMRewards;
 use sp_messenger::endpoint::{CollectedFee, Endpoint};
 use sp_messenger::messages::{ChainId, ChannelId, MessageId, Nonce};
-use sp_messenger::OnXDMRewards;
 use sp_runtime::traits::{CheckedAdd, CheckedMul, CheckedSub, Zero};
 use sp_runtime::{DispatchError, DispatchResult, Saturating};
 

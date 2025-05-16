@@ -42,14 +42,18 @@ async fn test_address_timed_removal_from_known_peers_cache() {
     assert_eq!(peers_cache.len(), 1);
     let addresses_from_cache = peers_cache.get(&peer_id).expect("PeerId present");
     assert_eq!(addresses_from_cache.len(), 2);
-    assert!(addresses_from_cache
-        .peek(&addr1)
-        .expect("Address present")
-        .is_none());
-    assert!(addresses_from_cache
-        .peek(&addr2)
-        .expect("Address present")
-        .is_none());
+    assert!(
+        addresses_from_cache
+            .peek(&addr1)
+            .expect("Address present")
+            .is_none()
+    );
+    assert!(
+        addresses_from_cache
+            .peek(&addr2)
+            .expect("Address present")
+            .is_none()
+    );
 
     let removed_addresses = remove_known_peer_addresses_internal(
         &mut peers_cache,
@@ -64,14 +68,18 @@ async fn test_address_timed_removal_from_known_peers_cache() {
     assert_eq!(removed_addresses.len(), 0);
     let addresses_from_cache = peers_cache.get(&peer_id).expect("PeerId present");
     assert_eq!(addresses_from_cache.len(), 2);
-    assert!(addresses_from_cache
-        .peek(&addr1)
-        .expect("Address present")
-        .is_some());
-    assert!(addresses_from_cache
-        .peek(&addr2)
-        .expect("Address present")
-        .is_some());
+    assert!(
+        addresses_from_cache
+            .peek(&addr1)
+            .expect("Address present")
+            .is_some()
+    );
+    assert!(
+        addresses_from_cache
+            .peek(&addr2)
+            .expect("Address present")
+            .is_some()
+    );
 
     let removed_addresses = remove_known_peer_addresses_internal(
         &mut peers_cache,

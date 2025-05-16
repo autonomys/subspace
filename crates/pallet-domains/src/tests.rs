@@ -1,4 +1,4 @@
-use crate::block_tree::{verify_execution_receipt, BlockTreeNode};
+use crate::block_tree::{BlockTreeNode, verify_execution_receipt};
 use crate::domain_registry::{DomainConfig, DomainConfigParams, DomainObject};
 use crate::pallet::OperatorIdOwner;
 use crate::runtime_registry::ScheduledRuntimeUpgrade;
@@ -11,13 +11,13 @@ use crate::{
     RawOrigin as DomainOrigin, RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
 use core::mem;
-use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
+use domain_runtime_primitives::opaque::Header as DomainHeader;
 use frame_support::dispatch::{DispatchInfo, RawOrigin};
 use frame_support::traits::{ConstU64, Currency, Hooks, VariantCount};
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{IdentityFee, Weight};
-use frame_support::{assert_err, assert_ok, derive_impl, parameter_types, PalletId};
+use frame_support::{PalletId, assert_err, assert_ok, derive_impl, parameter_types};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
@@ -32,7 +32,7 @@ use sp_domains::{
     SealedBundleHeader,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
-use sp_runtime::generic::{Preamble, EXTRINSIC_FORMAT_VERSION};
+use sp_runtime::generic::{EXTRINSIC_FORMAT_VERSION, Preamble};
 use sp_runtime::traits::{
     AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, Hash as HashT, IdentityLookup,
     One, Zero,
@@ -43,7 +43,7 @@ use sp_runtime::{BuildStorage, OpaqueExtrinsic};
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::U256 as P256;
 use subspace_runtime_primitives::{
-    ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee, SSC,
+    ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, SSC, StorageFee,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -810,12 +810,10 @@ fn test_basic_fraud_proof_processing() {
 
                 // The other data that used to verify ER should not be removed, such that the honest
                 // operator can re-submit the valid ER
-                assert!(!ExecutionInbox::<Test>::get((
-                    domain_id,
-                    block_number,
-                    block_number as u64
-                ))
-                .is_empty());
+                assert!(
+                    !ExecutionInbox::<Test>::get((domain_id, block_number, block_number as u64))
+                        .is_empty()
+                );
                 assert!(ConsensusBlockHash::<Test>::get(domain_id, block_number as u64).is_some());
             }
 

@@ -1,10 +1,10 @@
-use crate::malicious_bundle_producer::MaliciousBundleProducer;
 use crate::DomainCli;
+use crate::malicious_bundle_producer::MaliciousBundleProducer;
 use cross_domain_message_gossip::{ChainMsg, Message};
 use domain_client_operator::snap_sync::ConsensusChainSyncParams;
 use domain_client_operator::{BootstrapResult, OperatorStreams};
-use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
+use domain_eth_service::provider::EthProvider;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_service::providers::DefaultProvider;
 use domain_service::{FullBackend, FullClient};
@@ -27,7 +27,7 @@ use sp_keystore::KeystorePtr;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::{AccountId, HeaderFor, DOMAINS_BLOCK_PRUNING_DEPTH};
+use subspace_runtime_primitives::{AccountId, DOMAINS_BLOCK_PRUNING_DEPTH, HeaderFor};
 use subspace_service::FullClient as CFullClient;
 
 /// `DomainInstanceStarter` used to start a domain instance node based on the given

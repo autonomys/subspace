@@ -1,7 +1,7 @@
 use sc_chain_spec::ChainSpec;
 use sc_network::config::{
-    MultiaddrWithPeerId, NetworkBackendType, NetworkConfiguration, NodeKeyConfig, SetConfig,
-    SyncMode, TransportConfig, DEFAULT_KADEMLIA_REPLICATION_FACTOR,
+    DEFAULT_KADEMLIA_REPLICATION_FACTOR, MultiaddrWithPeerId, NetworkBackendType,
+    NetworkConfiguration, NodeKeyConfig, SetConfig, SyncMode, TransportConfig,
 };
 use sc_rpc_server::RpcEndpoint;
 use sc_service::config::{
@@ -16,8 +16,8 @@ use sc_telemetry::TelemetryEndpoints;
 use std::net::SocketAddr;
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tokio::runtime::Handle;
 
 /// The default max request size in MB, copied from Substrate

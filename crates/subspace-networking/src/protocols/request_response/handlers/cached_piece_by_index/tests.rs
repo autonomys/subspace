@@ -11,10 +11,12 @@ fn closest_peers_encoding() {
         let closest_peers = ClosestPeers::from(vec![
             {
                 let peer_id = PeerId::random();
-                let addresses = vec![Multiaddr::from(IpAddr::V4(Ipv4Addr::LOCALHOST))
-                    .with(Protocol::Tcp(1234))
-                    .with_p2p(peer_id)
-                    .unwrap()];
+                let addresses = vec![
+                    Multiaddr::from(IpAddr::V4(Ipv4Addr::LOCALHOST))
+                        .with(Protocol::Tcp(1234))
+                        .with_p2p(peer_id)
+                        .unwrap(),
+                ];
 
                 (peer_id, addresses)
             },
@@ -57,10 +59,12 @@ fn closest_peers_encoding() {
     {
         let closest_peers = ClosestPeers::from(vec![{
             let peer_id = PeerId::random();
-            let addresses = vec![Multiaddr::from(IpAddr::V4(Ipv4Addr::LOCALHOST))
-                .with(Protocol::Tcp(1234))
-                .with_p2p(PeerId::random())
-                .unwrap()];
+            let addresses = vec![
+                Multiaddr::from(IpAddr::V4(Ipv4Addr::LOCALHOST))
+                    .with(Protocol::Tcp(1234))
+                    .with_p2p(PeerId::random())
+                    .unwrap(),
+            ];
 
             (peer_id, addresses)
         }]);

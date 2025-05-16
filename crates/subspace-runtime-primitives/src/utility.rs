@@ -5,8 +5,8 @@ use frame_support::pallet_prelude::TypeInfo;
 use frame_system::pallet_prelude::RuntimeCallFor;
 use scale_info::prelude::collections::VecDeque;
 use scale_info::prelude::vec;
-use sp_runtime::traits::{BlockNumberProvider, Get};
 use sp_runtime::Vec;
+use sp_runtime::traits::{BlockNumberProvider, Get};
 
 /// Trait used to convert from a generated `RuntimeCall` type to `pallet_utility::Call<Runtime>`.
 pub trait MaybeUtilityCall<Runtime>

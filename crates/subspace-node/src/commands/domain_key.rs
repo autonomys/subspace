@@ -1,10 +1,10 @@
-use crate::commands::shared::{derive_keypair, store_key_in_keystore, KeystoreOptions};
+use crate::commands::shared::{KeystoreOptions, derive_keypair, store_key_in_keystore};
 use bip39::Mnemonic;
 use clap::Parser;
 use sc_cli::{Error, KeystoreParams};
 use sc_service::config::KeystoreConfig;
-use sp_core::crypto::{ExposeSecret, SecretString};
 use sp_core::Pair;
+use sp_core::crypto::{ExposeSecret, SecretString};
 use sp_domains::DomainId;
 use std::path::PathBuf;
 use subspace_logging::init_logger;

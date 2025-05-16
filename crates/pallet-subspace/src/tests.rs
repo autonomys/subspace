@@ -1,14 +1,14 @@
 //! Consensus extension module tests for Subspace consensus.
 
 use crate::mock::{
-    allow_all_pot_extension, create_archived_segment, create_segment_header, create_signed_vote,
-    go_to_block, new_test_ext, progress_to_block, BlockAuthoringDelay, RuntimeEvent, RuntimeOrigin,
-    Subspace, System, Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
+    BlockAuthoringDelay, INITIAL_SOLUTION_RANGE, RuntimeEvent, RuntimeOrigin, SLOT_PROBABILITY,
+    Subspace, System, Test, allow_all_pot_extension, create_archived_segment,
+    create_segment_header, create_signed_vote, go_to_block, new_test_ext, progress_to_block,
 };
 use crate::{
-    pallet, AllowAuthoringByAnyone, Call, CheckVoteError, Config, CurrentBlockAuthorInfo,
+    AllowAuthoringByAnyone, Call, CheckVoteError, Config, CurrentBlockAuthorInfo,
     CurrentBlockVoters, EnableRewardsAt, ParentBlockAuthorInfo, ParentBlockVoters,
-    PotSlotIterations, PotSlotIterationsValue, SegmentCommitment,
+    PotSlotIterations, PotSlotIterationsValue, SegmentCommitment, pallet,
 };
 use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
@@ -16,11 +16,11 @@ use rand::prelude::*;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{PotExtension, SolutionRanges};
+use sp_runtime::DispatchError;
 use sp_runtime::traits::BlockNumberProvider;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, ValidTransaction,
 };
-use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
@@ -1439,14 +1439,16 @@ fn allow_authoring_by_anyone_works() {
             1,
         );
         // However authoring with a different public key panics (client error)
-        assert!(std::panic::catch_unwind(|| {
-            progress_to_block(
-                &keypair2,
-                frame_system::Pallet::<Test>::current_block_number() + 1,
-                1,
-            );
-        })
-        .is_err());
+        assert!(
+            std::panic::catch_unwind(|| {
+                progress_to_block(
+                    &keypair2,
+                    frame_system::Pallet::<Test>::current_block_number() + 1,
+                    1,
+                );
+            })
+            .is_err()
+        );
 
         // Unlock authoring by anyone
         assert_err!(

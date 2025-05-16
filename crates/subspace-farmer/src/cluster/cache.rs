@@ -16,7 +16,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use derive_more::{Display, From};
 use futures::stream::FuturesUnordered;
-use futures::{select, stream, FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, select, stream};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input, Output};
 use std::collections::BTreeSet;
 use std::pin::Pin;
@@ -24,7 +24,7 @@ use std::task::Poll;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tokio::time::MissedTickBehavior;
-use tracing::{debug, error, info, info_span, trace, warn, Instrument};
+use tracing::{Instrument, debug, error, info, info_span, trace, warn};
 use ulid::Ulid;
 
 const MIN_CACHE_IDENTIFICATION_INTERVAL: Duration = Duration::from_secs(1);

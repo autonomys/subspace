@@ -2,10 +2,10 @@
 //! This command starts an RPC server to serve object requests from the DSN.
 pub(crate) mod server;
 
-use crate::commands::rpc::server::{launch_rpc_server, RpcOptions, RPC_DEFAULT_PORT};
-use crate::commands::{initialize_object_fetcher, shutdown_signal, GatewayOptions};
+use crate::commands::rpc::server::{RPC_DEFAULT_PORT, RpcOptions, launch_rpc_server};
+use crate::commands::{GatewayOptions, initialize_object_fetcher, shutdown_signal};
 use clap::Parser;
-use futures::{select, FutureExt};
+use futures::{FutureExt, select};
 use std::pin::pin;
 use subspace_gateway_rpc::{SubspaceGatewayRpc, SubspaceGatewayRpcConfig};
 use tracing::info;

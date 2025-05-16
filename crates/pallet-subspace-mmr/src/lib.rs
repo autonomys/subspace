@@ -12,8 +12,8 @@ use sp_subspace_mmr::{LeafDataV0, MmrLeaf};
 
 #[frame_support::pallet]
 mod pallet {
-    use frame_support::pallet_prelude::*;
     use frame_support::Parameter;
+    use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::BlockNumberFor;
     use sp_core::H256;
 

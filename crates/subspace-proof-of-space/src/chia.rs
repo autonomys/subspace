@@ -58,9 +58,7 @@ impl Table for ChiaTable {
         let mut challenge = [0; 32];
         challenge[..mem::size_of::<u32>()].copy_from_slice(&challenge_index.to_le_bytes());
 
-        
-        self
-            .tables
+        self.tables
             .find_proof(&challenge)
             .next()
             .map(PosProof::from)

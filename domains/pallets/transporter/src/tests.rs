@@ -1,6 +1,6 @@
 use crate::mock::{
-    new_test_ext, AccountId, Balance, Balances, MockAccountIdConverter, MockRuntime, RuntimeEvent,
-    RuntimeOrigin, SelfChainId, SelfEndpointId, System, Transporter, USER_ACCOUNT,
+    AccountId, Balance, Balances, MockAccountIdConverter, MockRuntime, RuntimeEvent, RuntimeOrigin,
+    SelfChainId, SelfEndpointId, System, Transporter, USER_ACCOUNT, new_test_ext,
 };
 use crate::{EndpointHandler, Error, Location, Transfer};
 use frame_support::dispatch::DispatchResult;

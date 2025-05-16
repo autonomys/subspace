@@ -6,9 +6,9 @@ mod x86_64;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use aes::Aes128;
 use aes::cipher::array::Array;
 use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
-use aes::Aes128;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use subspace_core_primitives::pot::{PotCheckpoints, PotKey, PotOutput, PotSeed};

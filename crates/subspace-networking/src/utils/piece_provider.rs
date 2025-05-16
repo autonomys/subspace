@@ -15,7 +15,7 @@ use futures::channel::mpsc;
 use futures::future::FusedFuture;
 use futures::stream::FuturesUnordered;
 use futures::task::noop_waker_ref;
-use futures::{stream, FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, stream};
 use libp2p::kad::{Behaviour as Kademlia, KBucketKey, RecordKey};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{Multiaddr, PeerId};
@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tokio_stream::StreamMap;
-use tracing::{debug, trace, warn, Instrument};
+use tracing::{Instrument, debug, trace, warn};
 
 /// Validates piece against using its commitment.
 #[async_trait]

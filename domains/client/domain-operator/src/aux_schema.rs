@@ -5,10 +5,10 @@ use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, HeaderBackend, Result as ClientResult};
 use sp_domains::InvalidBundleType;
+use sp_runtime::Saturating;
 use sp_runtime::traits::{
     Block as BlockT, CheckedMul, CheckedSub, NumberFor, One, SaturatedConversion, Zero,
 };
-use sp_runtime::Saturating;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;

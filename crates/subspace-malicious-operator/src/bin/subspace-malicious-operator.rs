@@ -16,7 +16,7 @@ use sp_domains::DomainId;
 use sp_messenger::messages::ChainId;
 use std::collections::HashMap;
 use subspace_malicious_operator::malicious_domain_instance_starter::DomainInstanceStarter;
-use subspace_malicious_operator::{create_malicious_operator_configuration, Cli, DomainCli};
+use subspace_malicious_operator::{Cli, DomainCli, create_malicious_operator_configuration};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};

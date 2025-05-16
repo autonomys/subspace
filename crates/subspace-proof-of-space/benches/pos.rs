@@ -1,6 +1,6 @@
 #![feature(const_trait_impl)]
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 #[cfg(feature = "parallel")]
 use rayon::ThreadPoolBuilder;
 use subspace_core_primitives::pos::PosSeed;
@@ -73,17 +73,21 @@ fn pos_bench<PosTable>(
 
     group.bench_function("proof/missing", |b| {
         b.iter(|| {
-            assert!(table
-                .find_proof(black_box(challenge_index_without_solution))
-                .is_none());
+            assert!(
+                table
+                    .find_proof(black_box(challenge_index_without_solution))
+                    .is_none()
+            );
         });
     });
 
     group.bench_function("proof/present", |b| {
         b.iter(|| {
-            assert!(table
-                .find_proof(black_box(challenge_index_with_solution))
-                .is_some());
+            assert!(
+                table
+                    .find_proof(black_box(challenge_index_with_solution))
+                    .is_some()
+            );
         });
     });
 

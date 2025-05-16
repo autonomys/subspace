@@ -811,9 +811,10 @@ mod pallet {
 
             if let Some(provided_updates) = inherent_data.maybe_updates {
                 if let Call::update_domain_allowlist { updates } = call
-                    && updates != &provided_updates {
-                        return Err(InherentError::IncorrectAllowlistUpdates);
-                    }
+                    && updates != &provided_updates
+                {
+                    return Err(InherentError::IncorrectAllowlistUpdates);
+                }
             } else {
                 return Err(InherentError::MissingAllowlistUpdates);
             }
@@ -915,10 +916,10 @@ mod pallet {
                 let message_count = OutboxMessageCount::<T>::get((dst_chain_id, channel_id));
                 if let Some(channel) = Channels::<T>::get(dst_chain_id, channel_id)
                     && channel.state == ChannelState::Open
-                        && message_count < channel.max_outgoing_messages
-                    {
-                        return Some(channel_id);
-                    }
+                    && message_count < channel.max_outgoing_messages
+                {
+                    return Some(channel_id);
+                }
 
                 next_channel_id = channel_id
             }

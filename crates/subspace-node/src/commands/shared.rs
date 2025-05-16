@@ -1,9 +1,9 @@
 use clap::Parser;
 use sc_cli::Error;
 use sc_keystore::LocalKeystore;
+use sp_core::Pair as PairT;
 use sp_core::crypto::{ExposeSecret, SecretString};
 use sp_core::sr25519::Pair;
-use sp_core::Pair as PairT;
 use sp_domains::KEY_TYPE;
 use sp_keystore::Keystore;
 use std::panic;

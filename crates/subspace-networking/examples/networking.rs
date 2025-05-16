@@ -1,7 +1,7 @@
 #![feature(type_changing_struct_update)]
 
-use futures::channel::oneshot;
 use futures::StreamExt;
+use futures::channel::oneshot;
 use libp2p::gossipsub::Sha256Topic;
 use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;

@@ -1,7 +1,7 @@
 use clap::Parser;
 use sc_cli::{
-    Cors, RpcMethods, RPC_DEFAULT_MAX_CONNECTIONS, RPC_DEFAULT_MAX_SUBS_PER_CONN,
-    RPC_DEFAULT_MESSAGE_CAPACITY_PER_CONN,
+    Cors, RPC_DEFAULT_MAX_CONNECTIONS, RPC_DEFAULT_MAX_SUBS_PER_CONN,
+    RPC_DEFAULT_MESSAGE_CAPACITY_PER_CONN, RpcMethods,
 };
 use sc_service::config::IpNetwork;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};

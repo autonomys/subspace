@@ -1,6 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use futures::executor::block_on;
+use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
 use futures::FutureExt;
+use futures::executor::block_on;
 use parking_lot::Mutex;
 use rand::prelude::*;
 use std::fs::OpenOptions;
@@ -8,23 +8,23 @@ use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::{env, fs, slice};
 use subspace_archiving::archiver::Archiver;
+use subspace_core_primitives::PublicKey;
 use subspace_core_primitives::pieces::{PieceOffset, Record};
 use subspace_core_primitives::sectors::SectorId;
 use subspace_core_primitives::segments::{HistorySize, RecordedHistorySegment};
-use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{
-    plot_sector, CpuRecordsEncoder, PlotSectorOptions, PlottedSector,
+    CpuRecordsEncoder, PlotSectorOptions, PlottedSector, plot_sector,
 };
-use subspace_farmer_components::reading::{read_piece, ReadSectorRecordChunksMode};
+use subspace_farmer_components::reading::{ReadSectorRecordChunksMode, read_piece};
 use subspace_farmer_components::sector::{
-    sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
+    SectorContentsMap, SectorMetadata, SectorMetadataChecksummed, sector_size,
 };
 use subspace_farmer_components::{FarmerProtocolInfo, ReadAt, ReadAtSync};
 use subspace_kzg::Kzg;
-use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
+use subspace_proof_of_space::chia::ChiaTable;
 
 type PosTable = ChiaTable;
 

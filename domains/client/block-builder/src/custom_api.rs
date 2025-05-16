@@ -2,7 +2,7 @@
 
 use hash_db::{HashDB, Hasher, Prefix};
 use parity_scale_codec::{Codec, Decode, Encode};
-use sc_client_api::{backend, ExecutorProvider, StateBackend};
+use sc_client_api::{ExecutorProvider, StateBackend, backend};
 use sp_core::offchain::OffchainOverlayedChange;
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode};
 use sp_inherents::InherentData;

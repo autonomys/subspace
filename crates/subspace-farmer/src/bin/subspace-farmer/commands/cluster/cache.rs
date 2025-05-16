@@ -1,8 +1,8 @@
 use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::Parser;
-use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use prometheus_client::registry::Registry;
 use std::fs;
 use std::future::Future;

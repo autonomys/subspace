@@ -17,9 +17,9 @@ use crate::utils::{RelayCounter, RelayCounterVec};
 use derive_more::From;
 use parity_scale_codec::{Decode, Encode};
 use sc_network_common::sync::message::{BlockAttributes, BlockData, BlockRequest};
+use sp_runtime::Justifications;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
-use sp_runtime::Justifications;
 use subspace_runtime_primitives::{BlockHashFor, ExtrinsicFor, HeaderFor};
 use substrate_prometheus_endpoint::{PrometheusError, Registry};
 

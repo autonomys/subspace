@@ -3,8 +3,8 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex};
 use crate::ScalarBytes;
+use crate::segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 #[cfg(feature = "serde")]
