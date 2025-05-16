@@ -627,13 +627,11 @@ where
 
     // Fast path to check if the fraud proof is targeting a bad receipt that claim a non-exist extrinsic
     // is invalid
-    if let Some(invalid_extrinsic_index) = targeted_invalid_bundle_entry.invalid_extrinsic_index() {
-        if let InvalidBundlesProofData::Bundle(bundle_with_proof) = proof_data {
-            if bundle_with_proof.bundle.extrinsics.len() as u32 <= invalid_extrinsic_index {
+    if let Some(invalid_extrinsic_index) = targeted_invalid_bundle_entry.invalid_extrinsic_index()
+        && let InvalidBundlesProofData::Bundle(bundle_with_proof) = proof_data
+            && bundle_with_proof.bundle.extrinsics.len() as u32 <= invalid_extrinsic_index {
                 return Ok(());
             }
-        }
-    }
 
     match &invalid_bundle_type {
         InvalidBundleType::OutOfRangeTx(extrinsic_index) => {

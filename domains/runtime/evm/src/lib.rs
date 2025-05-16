@@ -1393,7 +1393,7 @@ impl_runtime_apis! {
             UncheckedExtrinsic::decode_with_depth_limit(
                 MAX_CALL_RECURSION_DEPTH,
                 &mut encoded.as_slice(),
-            ).map_err(|err| DecodeExtrinsicError(format!("{}", err)))
+            ).map_err(|err| DecodeExtrinsicError(format!("{err}")))
         }
 
         fn decode_extrinsics_prefix(

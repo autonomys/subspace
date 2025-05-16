@@ -502,8 +502,7 @@ fn create_plotting_thread_pool_manager_thread_pool_pair(
         } else {
             // We want to guarantee exit, rather than panicking in a panic handler.
             eprintln!(
-                "rayon panic handler called on non-rayon thread: {:?}",
-                panic_info
+                "rayon panic handler called on non-rayon thread: {panic_info:?}"
             );
         }
         exit(1);
@@ -522,11 +521,10 @@ fn create_plotting_thread_pool_manager_thread_pool_pair(
 
                 move || {
                     cpu_core_set.pin_current_thread();
-                    if let Some(thread_priority) = thread_priority {
-                        if let Err(error) = set_current_thread_priority(thread_priority) {
+                    if let Some(thread_priority) = thread_priority
+                        && let Err(error) = set_current_thread_priority(thread_priority) {
                             warn!(%error, "Failed to set thread priority");
                         }
-                    }
                     drop(cpu_core_set);
 
                     let _guard = handle.enter();

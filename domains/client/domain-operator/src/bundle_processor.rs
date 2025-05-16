@@ -246,7 +246,7 @@ where
             let domain_tip = domain_parent.0;
             if self.client.info().best_hash != domain_tip {
                 let header = self.client.header(domain_tip)?.ok_or_else(|| {
-                    sp_blockchain::Error::Backend(format!("Header for #{:?} not found", domain_tip))
+                    sp_blockchain::Error::Backend(format!("Header for #{domain_tip:?} not found"))
                 })?;
                 let block_origin = if self
                     .domain_block_processor

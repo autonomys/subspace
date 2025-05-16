@@ -59,8 +59,7 @@ fn source_piece_index_conversion() {
         let next_source_piece_index = PieceIndex::new(next_source_piece_index);
 
         println!(
-            "{:?} {:?} {:?} {:?} {:?}",
-            piece_index, piece_position, source_position, segment_index, next_source_piece_index
+            "{piece_index:?} {piece_position:?} {source_position:?} {segment_index:?} {next_source_piece_index:?}"
         );
 
         assert_eq!(piece_index.position(), piece_position);
@@ -73,7 +72,7 @@ fn source_piece_index_conversion() {
 
         assert_eq!(piece_index.segment_index(), segment_index);
         assert_eq!(piece_index.next_source_index(), next_source_piece_index);
-        assert!(piece_index.is_source(), "{:?}", piece_index);
+        assert!(piece_index.is_source(), "{piece_index:?}");
 
         if piece_position == 0 {
             assert_eq!(segment_index.first_piece_index(), piece_index);
@@ -103,12 +102,12 @@ fn parity_piece_index_conversion() {
         let piece_index = PieceIndex::new(piece_index);
         let segment_index = SegmentIndex::new(segment_index);
 
-        println!("{:?} {:?} {:?}", piece_index, piece_position, segment_index,);
+        println!("{piece_index:?} {piece_position:?} {segment_index:?}",);
 
         assert_eq!(piece_index.position(), piece_position);
 
         assert_eq!(piece_index.segment_index(), segment_index);
-        assert!(!piece_index.is_source(), "{:?}", piece_index);
+        assert!(!piece_index.is_source(), "{piece_index:?}");
 
         if piece_position as usize == ArchivedHistorySegment::NUM_PIECES - 1 {
             assert_eq!(segment_index.last_piece_index(), piece_index);
@@ -138,7 +137,7 @@ fn parity_piece_index_position_panic() {
     for &(piece_index, piece_position, segment_index) in PARITY_PIECE_INDEX_TEST_CASES {
         let piece_index = PieceIndex::new(piece_index);
 
-        println!("{:?} {:?} {:?}", piece_index, piece_position, segment_index);
+        println!("{piece_index:?} {piece_position:?} {segment_index:?}");
 
         // Always panics
         piece_index.source_position();
@@ -151,7 +150,7 @@ fn parity_piece_index_next_source_panic() {
     for &(piece_index, piece_position, segment_index) in PARITY_PIECE_INDEX_TEST_CASES {
         let piece_index = PieceIndex::new(piece_index);
 
-        println!("{:?} {:?} {:?}", piece_index, piece_position, segment_index);
+        println!("{piece_index:?} {piece_position:?} {segment_index:?}");
 
         // Always panics
         piece_index.next_source_index();

@@ -499,13 +499,12 @@ where
         let mut maybe_pre_digest = None;
 
         while let Some(solution) = solution_receiver.next().await {
-            if let Some(root_plot_public_key) = &maybe_root_plot_public_key {
-                if &solution.public_key != root_plot_public_key {
+            if let Some(root_plot_public_key) = &maybe_root_plot_public_key
+                && &solution.public_key != root_plot_public_key {
                     // Only root plot public key is allowed, no need to even try to claim block or
                     // vote.
                     continue;
                 }
-            }
 
             let sector_id = SectorId::new(
                 solution.public_key.hash(),
@@ -688,8 +687,8 @@ where
     }
 
     fn should_backoff(&self, slot: Slot, chain_head: &Block::Header) -> bool {
-        if let Some(strategy) = &self.backoff_authoring_blocks {
-            if let Ok(chain_head_slot) = extract_pre_digest(chain_head).map(|digest| digest.slot())
+        if let Some(strategy) = &self.backoff_authoring_blocks
+            && let Ok(chain_head_slot) = extract_pre_digest(chain_head).map(|digest| digest.slot())
             {
                 return strategy.should_backoff(
                     *chain_head.number(),
@@ -699,7 +698,6 @@ where
                     self.logging_target(),
                 );
             }
-        }
         false
     }
 
@@ -889,8 +887,7 @@ where
         }
 
         Err(ConsensusError::CannotSign(format!(
-            "Farmer didn't sign reward. Key: {:?}",
-            public_key
+            "Farmer didn't sign reward. Key: {public_key:?}"
         )))
     }
 }

@@ -9,7 +9,7 @@ pub(super) unsafe fn create(
     seed: &[u8; 16],
     key: &[u8; 16],
     checkpoint_iterations: u32,
-) -> PotCheckpoints {
+) -> PotCheckpoints { unsafe {
     let mut checkpoints = PotCheckpoints::default();
 
     let keys_reg = expand_key(key);
@@ -38,7 +38,7 @@ pub(super) unsafe fn create(
     }
 
     checkpoints
-}
+}}
 
 // Below code copied with minor changes from following place under MIT/Apache-2.0 license by Artyom
 // Pavlov:
@@ -69,7 +69,7 @@ macro_rules! expand_round {
 
 #[target_feature(enable = "aes")]
 #[inline]
-unsafe fn expand_key(key: &[u8; 16]) -> RoundKeys {
+unsafe fn expand_key(key: &[u8; 16]) -> RoundKeys { unsafe {
     // SAFETY: `RoundKeys` is a `[__m128i; 11]` which can be initialized
     // with all zeroes.
     let mut keys: RoundKeys = mem::zeroed();
@@ -89,4 +89,4 @@ unsafe fn expand_key(key: &[u8; 16]) -> RoundKeys {
     expand_round!(keys, 10, 0x36);
 
     keys
-}
+}}

@@ -288,12 +288,12 @@ mod test {
             .iter()
             .zip(exts_length)
             .map(|(ext_hashed, ext_length)| {
-                let value = if ext_length <= 32 {
+                
+                if ext_length <= 32 {
                     Value::Inline(ext_hashed)
                 } else {
                     Value::Node(ext_hashed)
-                };
-                value
+                }
             })
             .collect();
 

@@ -1172,8 +1172,8 @@ impl NodeRunner {
     }
 
     async fn handle_gossipsub_event(&mut self, event: GossipsubEvent) {
-        if let GossipsubEvent::Message { message, .. } = event {
-            if let Some(senders) = self.topic_subscription_senders.get(&message.topic) {
+        if let GossipsubEvent::Message { message, .. } = event
+            && let Some(senders) = self.topic_subscription_senders.get(&message.topic) {
                 let bytes = Bytes::from(message.data);
 
                 for sender in senders.values() {
@@ -1181,7 +1181,6 @@ impl NodeRunner {
                     let _ = sender.unbounded_send(bytes.clone());
                 }
             }
-        }
     }
 
     async fn handle_request_response_event(&mut self, event: RequestResponseEvent) {
@@ -1384,14 +1383,13 @@ impl NodeRunner {
                     if entry.get().is_empty() {
                         entry.remove_entry();
 
-                        if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut() {
-                            if !gossipsub.unsubscribe(&topic) {
+                        if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut()
+                            && !gossipsub.unsubscribe(&topic) {
                                 warn!(
                                     "Can't unsubscribe from topic {topic} because subscription doesn't exist, \
                                     this is a logic error in the subspace or swarm libraries"
                                 );
                             }
-                        }
                     }
                 } else {
                     error!(

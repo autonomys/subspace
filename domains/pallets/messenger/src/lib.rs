@@ -819,11 +819,10 @@ mod pallet {
                 .expect("Messenger inherent data must be provided");
 
             if let Some(provided_updates) = inherent_data.maybe_updates {
-                if let Call::update_domain_allowlist { updates } = call {
-                    if updates != &provided_updates {
+                if let Call::update_domain_allowlist { updates } = call
+                    && updates != &provided_updates {
                         return Err(InherentError::IncorrectAllowlistUpdates);
                     }
-                }
             } else {
                 return Err(InherentError::MissingAllowlistUpdates);
             }
@@ -923,13 +922,12 @@ mod pallet {
             // we always prefer latest opened channel.
             while let Some(channel_id) = next_channel_id.checked_sub(ChannelId::one()) {
                 let message_count = OutboxMessageCount::<T>::get((dst_chain_id, channel_id));
-                if let Some(channel) = Channels::<T>::get(dst_chain_id, channel_id) {
-                    if channel.state == ChannelState::Open
+                if let Some(channel) = Channels::<T>::get(dst_chain_id, channel_id)
+                    && channel.state == ChannelState::Open
                         && message_count < channel.max_outgoing_messages
                     {
                         return Some(channel_id);
                     }
-                }
 
                 next_channel_id = channel_id
             }

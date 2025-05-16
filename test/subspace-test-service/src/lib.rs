@@ -782,11 +782,9 @@ impl MockConsensusNode {
                 .expect("should be able to decode");
             if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) =
                 ext.function
-            {
-                if opaque_bundle.sealed_header.slot_number() == *new_slot.0 {
+                && opaque_bundle.sealed_header.slot_number() == *new_slot.0 {
                     return Some(opaque_bundle);
                 }
-            }
         }
         None
     }
@@ -878,11 +876,9 @@ impl MockConsensusNode {
                 if let subspace_test_runtime::RuntimeCall::Domains(
                     pallet_domains::Call::submit_fraud_proof { fraud_proof },
                 ) = ext.function
-                {
-                    if fraud_proof_predicate(&fraud_proof) {
+                    && fraud_proof_predicate(&fraud_proof) {
                         return *fraud_proof;
                     }
-                }
             }
             unreachable!()
         })

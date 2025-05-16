@@ -312,8 +312,8 @@ pub struct KnownPeersManager {
 
 impl Drop for KnownPeersManager {
     fn drop(&mut self) {
-        if self.cache_need_saving {
-            if let Some(known_peers_slots) = &self.known_peers_slots {
+        if self.cache_need_saving
+            && let Some(known_peers_slots) = &self.known_peers_slots {
                 known_peers_slots
                     .lock()
                     .write_to_inactive_slot(&EncodableKnownPeers::from_cache(
@@ -321,7 +321,6 @@ impl Drop for KnownPeersManager {
                         self.config.cache_size,
                     ));
             }
-        }
     }
 }
 
@@ -637,8 +636,8 @@ impl KnownPeersRegistry for KnownPeersManager {
         loop {
             (&mut self.networking_parameters_save_delay).await;
 
-            if let Some(known_peers_slots) = &self.known_peers_slots {
-                if self.cache_need_saving {
+            if let Some(known_peers_slots) = &self.known_peers_slots
+                && self.cache_need_saving {
                     let known_peers =
                         EncodableKnownPeers::from_cache(&self.known_peers, self.config.cache_size);
                     let known_peers_slots = Arc::clone(known_peers_slots);
@@ -655,7 +654,6 @@ impl KnownPeersRegistry for KnownPeersManager {
 
                     self.cache_need_saving = false;
                 }
-            }
             self.networking_parameters_save_delay = KnownPeersManager::default_delay();
         }
     }
@@ -689,11 +687,10 @@ pub(crate) fn remove_p2p_suffix(mut address: Multiaddr) -> Multiaddr {
 pub(crate) fn append_p2p_suffix(peer_id: PeerId, mut address: Multiaddr) -> Multiaddr {
     let last_protocol = address.pop();
 
-    if let Some(protocol) = last_protocol {
-        if !matches!(protocol, Protocol::P2p(..)) {
+    if let Some(protocol) = last_protocol
+        && !matches!(protocol, Protocol::P2p(..)) {
             address.push(protocol)
         }
-    }
     address.push(Protocol::P2p(peer_id));
 
     address

@@ -212,11 +212,10 @@ where
             }
 
             // Periodically check the malicious operator status
-            if u64::from(slot) % 10 == 0 {
-                if let Err(err) = self.update_malicious_operator_status() {
+            if u64::from(slot) % 10 == 0
+                && let Err(err) = self.update_malicious_operator_status() {
                     tracing::error!(?err, "Failed to update malicious operator status");
                 }
-            }
         }
     }
 
@@ -273,12 +272,10 @@ where
                 .consensus_client
                 .runtime_api()
                 .operator(consensus_best_hash, *operator_id)?
-            {
-                if operator_signing_key == signing_key {
+                && operator_signing_key == signing_key {
                     maybe_operator_id = Some(*operator_id);
                     break;
                 }
-            }
         }
 
         // If the `signing_key` is linked to a operator, the previous registration request succeeded,
@@ -462,8 +459,7 @@ pub fn construct_signed_extrinsic(
                         .sr25519_sign(OperatorPublicKey::ID, &public_key, e)
                 })?
                 .ok_or(format!(
-                    "Failed to sign extrinsic, sudo key pair missing from keystore?, public_key {:?}",
-                    public_key
+                    "Failed to sign extrinsic, sudo key pair missing from keystore?, public_key {public_key:?}"
                 ))?
         }
     };

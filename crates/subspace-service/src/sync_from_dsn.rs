@@ -225,12 +225,10 @@ async fn create_imported_blocks_observer<Block, Client>(
             Err(_timeout) => {
                 if let Err(error) =
                     notifications_sender.try_send(NotificationReason::NoImportedBlocks)
-                {
-                    if error.is_disconnected() {
+                    && error.is_disconnected() {
                         // Receiving side was closed
                         return;
                     }
-                }
             }
         }
     }
@@ -251,16 +249,13 @@ async fn create_substrate_network_observer(
         let was_online = last_online
             .map(|last_online| last_online.elapsed() < MIN_OFFLINE_PERIOD)
             .unwrap_or_default();
-        if is_online && !was_online {
-            if let Err(error) =
+        if is_online && !was_online
+            && let Err(error) =
                 notifications_sender.try_send(NotificationReason::WentOnlineSubstrate)
-            {
-                if error.is_disconnected() {
+                && error.is_disconnected() {
                     // Receiving side was closed
                     return;
                 }
-            }
-        }
 
         if is_online {
             last_online.replace(Instant::now());

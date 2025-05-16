@@ -120,12 +120,11 @@ where
         {
             let temporary_bans = self.temporary_bans.lock();
             for protocol in addr_iter {
-                if let Protocol::P2p(peer_id) = protocol {
-                    if temporary_bans.is_banned(&peer_id) {
+                if let Protocol::P2p(peer_id) = protocol
+                    && temporary_bans.is_banned(&peer_id) {
                         let error = io::Error::other("Peer is temporarily banned");
                         return Err(TransportError::Other(error.into()));
                     }
-                }
             }
         }
 

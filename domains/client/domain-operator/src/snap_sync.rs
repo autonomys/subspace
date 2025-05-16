@@ -220,7 +220,7 @@ async fn get_last_confirmed_block<Block: BlockT>(
     }
 
     Err(sp_blockchain::Error::Application(
-        format!("Failed to get block {}", block_number).into(),
+        format!("Failed to get block {block_number}").into(),
     ))
 }
 

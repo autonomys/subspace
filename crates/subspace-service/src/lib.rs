@@ -854,13 +854,11 @@ where
                 let node_address_sender = Mutex::new(Some(node_address_sender));
 
                 move |address| {
-                    if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
-                        if let Some(node_address_sender) = node_address_sender.lock().take() {
-                            if let Err(err) = node_address_sender.send(address.clone()) {
+                    if matches!(address.iter().next(), Some(Protocol::Ip4(_)))
+                        && let Some(node_address_sender) = node_address_sender.lock().take()
+                            && let Err(err) = node_address_sender.send(address.clone()) {
                                 debug!(?err, "Couldn't send a node address to the channel.");
                             }
-                        }
-                    }
                 }
             }));
 
@@ -1122,12 +1120,11 @@ where
             Some("sync-from-dsn"),
             Box::pin(async move {
                 // Run snap-sync before DSN-sync.
-                if config.sync == ChainSyncMode::Snap {
-                    if let Err(error) = snap_sync_task.in_current_span().await {
+                if config.sync == ChainSyncMode::Snap
+                    && let Err(error) = snap_sync_task.in_current_span().await {
                         error!(%error, "Snap sync exited with a fatal error");
                         return;
                     }
-                }
 
                 if let Err(error) = worker.await {
                     error!(%error, "Sync from DSN exited with an error");
@@ -1384,7 +1381,7 @@ fn extract_confirmation_depth(chain_spec: &dyn ChainSpec) -> Option<u32> {
     let spec: serde_json::Value =
         serde_json::from_str(chain_spec.as_json(true).ok()?.as_str()).ok()?;
     let encoded_confirmation_depth = hex::decode(
-        spec.pointer(format!("/genesis/raw/top/{}", storage_key).as_str())?
+        spec.pointer(format!("/genesis/raw/top/{storage_key}").as_str())?
             .as_str()?
             .trim_start_matches("0x"),
     )

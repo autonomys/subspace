@@ -1011,12 +1011,11 @@ impl SingleDiskFarm {
                         return Ok(());
                     }
 
-                    if let Some(plotting_delay) = plotting_delay {
-                        if plotting_delay.await.is_err() {
+                    if let Some(plotting_delay) = plotting_delay
+                        && plotting_delay.await.is_err() {
                             // Dropped before resolving
                             return Ok(());
                         }
-                    }
 
                     plotting(plotting_options).await
                 };
@@ -1587,7 +1586,7 @@ impl SingleDiskFarm {
 
         let metadata_header = PlotMetadataHeader::decode(&mut metadata_header_bytes.as_ref())
             .map_err(|error| {
-                io::Error::other(format!("Failed to decode metadata header: {}", error))
+                io::Error::other(format!("Failed to decode metadata header: {error}"))
             })?;
 
         if metadata_header.version != SingleDiskFarm::SUPPORTED_PLOT_VERSION {
@@ -1610,7 +1609,7 @@ impl SingleDiskFarm {
             sectors_metadata.push(
                 SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref()).map_err(
                     |error| {
-                        io::Error::other(format!("Failed to decode sector metadata: {}", error))
+                        io::Error::other(format!("Failed to decode sector metadata: {error}"))
                     },
                 )?,
             );
@@ -1890,8 +1889,8 @@ impl SingleDiskFarm {
                             as SectorIndex;
                     let metadata_header_bytes = metadata_header.encode();
 
-                    if !dry_run {
-                        if let Err(error) = metadata_file.write_all_at(&metadata_header_bytes, 0) {
+                    if !dry_run
+                        && let Err(error) = metadata_file.write_all_at(&metadata_header_bytes, 0) {
                             return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
                                 file: metadata_file_path,
                                 size: metadata_header_bytes.len() as u64,
@@ -1899,7 +1898,6 @@ impl SingleDiskFarm {
                                 error,
                             });
                         }
-                    }
                 }
 
                 (metadata_file, metadata_header)
@@ -1959,8 +1957,8 @@ impl SingleDiskFarm {
                     metadata_header.plotted_sector_count = (plot_size / sector_size) as SectorIndex;
                     let metadata_header_bytes = metadata_header.encode();
 
-                    if !dry_run {
-                        if let Err(error) = metadata_file.write_all_at(&metadata_header_bytes, 0) {
+                    if !dry_run
+                        && let Err(error) = metadata_file.write_all_at(&metadata_header_bytes, 0) {
                             return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
                                 file: plot_file_path,
                                 size: metadata_header_bytes.len() as u64,
@@ -1968,7 +1966,6 @@ impl SingleDiskFarm {
                                 error,
                             });
                         }
-                    }
                 }
 
                 plot_file
@@ -2159,8 +2156,8 @@ impl SingleDiskFarm {
                                         - offset_in_sector;
                                     let bytes = &mut scratch_buffer[..bytes_to_write];
 
-                                    if !dry_run {
-                                        if let Err(error) = plot_file.write_all_at(bytes, offset) {
+                                    if !dry_run
+                                        && let Err(error) = plot_file.write_all_at(bytes, offset) {
                                             return Err(
                                                 SingleDiskFarmScrubError::FailedToWriteBytes {
                                                     file: plot_file_path.clone(),
@@ -2170,7 +2167,6 @@ impl SingleDiskFarm {
                                                 },
                                             );
                                         }
-                                    }
 
                                     hasher.update(bytes);
                                 }
@@ -2179,8 +2175,8 @@ impl SingleDiskFarm {
                                     let checksum = *hasher.finalize().as_bytes();
                                     let offset = u64::from(sector_index) * sector_size
                                         + sector_bytes_range.end as u64;
-                                    if !dry_run {
-                                        if let Err(error) =
+                                    if !dry_run
+                                        && let Err(error) =
                                             plot_file.write_all_at(&checksum, offset)
                                         {
                                             return Err(
@@ -2192,7 +2188,6 @@ impl SingleDiskFarm {
                                                 },
                                             );
                                         }
-                                    }
                                 }
 
                                 return Ok(());
@@ -2283,8 +2278,8 @@ impl SingleDiskFarm {
                         "Failed to read cached piece, replacing with dummy element"
                     );
 
-                    if !dry_run {
-                        if let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
+                    if !dry_run
+                        && let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
                             return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
                                 file: file.clone(),
                                 size: u64::from(element_size),
@@ -2292,7 +2287,6 @@ impl SingleDiskFarm {
                                 error,
                             });
                         }
-                    }
 
                     return Ok(());
                 }
@@ -2308,8 +2302,8 @@ impl SingleDiskFarm {
                         "Cached piece checksum mismatch, replacing with dummy element"
                     );
 
-                    if !dry_run {
-                        if let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
+                    if !dry_run
+                        && let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
                             return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
                                 file: file.clone(),
                                 size: u64::from(element_size),
@@ -2317,7 +2311,6 @@ impl SingleDiskFarm {
                                 error,
                             });
                         }
-                    }
 
                     return Ok(());
                 }

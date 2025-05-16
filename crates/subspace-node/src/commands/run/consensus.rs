@@ -356,7 +356,7 @@ impl FromStr for CreateObjectMappingConfig {
 impl fmt::Display for CreateObjectMappingConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Block(block) => write!(f, "{}", block),
+            Self::Block(block) => write!(f, "{block}"),
             Self::Yes => f.write_str("yes"),
             Self::No => f.write_str("no"),
         }
@@ -621,8 +621,8 @@ pub(super) fn create_consensus_chain_configuration(
 
     let node_name = name.unwrap_or_else(generate_node_name);
 
-    if let StatePruningMode::Number(number) = pruning_params.state_pruning {
-        if number < MIN_STATE_PRUNING {
+    if let StatePruningMode::Number(number) = pruning_params.state_pruning
+        && number < MIN_STATE_PRUNING {
             // Do not return error because some users may in fact use lower values and we don't want
             // to break their setups, at least for now
             error!(
@@ -630,7 +630,6 @@ pub(super) fn create_consensus_chain_configuration(
                 node can break any time!"
             );
         }
-    }
 
     let consensus_chain_config = SubstrateConfiguration {
         impl_name: env!("CARGO_PKG_NAME").to_string(),

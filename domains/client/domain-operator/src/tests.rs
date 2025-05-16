@@ -1215,9 +1215,7 @@ async fn test_evm_domain_gas_estimates() {
                     ),
                     // The exact estimate is not important, but we want to know if it changes
                     (53_408.into(), 53_408.into()),
-                    "Incorrect EVM Create gas estimate: {:?} {:?}",
-                    evm_call,
-                    create_info,
+                    "Incorrect EVM Create gas estimate: {evm_call:?} {create_info:?}",
                 );
             }
             pallet_evm::Call::call {
@@ -1255,9 +1253,7 @@ async fn test_evm_domain_gas_estimates() {
                     (call_info.used_gas.standard, call_info.used_gas.effective),
                     // The exact estimate is not important, but we want to know if it changes
                     (21_400.into(), 21_400.into()),
-                    "Incorrect EVM Call gas estimate: {:?} {:?}",
-                    evm_call,
-                    call_info,
+                    "Incorrect EVM Call gas estimate: {evm_call:?} {call_info:?}",
                 );
             }
             _ => panic!("Unexpected pallet_evm::Call type"),
@@ -3032,12 +3028,11 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
                 assert!(proof.is_good_invalid_fraud_proof);
                 return true;
             }
-        }
         false
     });
 
@@ -3142,12 +3137,11 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
                 assert!(!proof.is_good_invalid_fraud_proof);
                 return true;
             }
-        }
         false
     });
 
@@ -3281,12 +3275,11 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type {
                 assert!(proof.is_good_invalid_fraud_proof);
                 return true;
             }
-        }
         false
     });
 
@@ -3391,12 +3384,11 @@ async fn test_false_invalid_bundles_undecodeable_tx_proof_creation_and_verificat
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type {
                 assert!(!proof.is_good_invalid_fraud_proof);
                 return true;
             }
-        }
         false
     });
 
@@ -3541,13 +3533,12 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(proof.is_good_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 0);
                 return true;
             }
-        }
         false
     });
 
@@ -3703,13 +3694,12 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(proof.is_good_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 2);
                 return true;
             }
-        }
         false
     });
 
@@ -3833,13 +3823,12 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(!proof.is_good_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 1);
                 return true;
             }
-        }
         false
     });
 
@@ -3951,12 +3940,11 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type {
                 assert!(proof.is_good_invalid_fraud_proof);
                 return true;
             }
-        }
         false
     });
 
@@ -4059,12 +4047,11 @@ async fn test_false_invalid_bundle_weight_proof_creation_and_verification() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type {
                 assert!(!proof.is_good_invalid_fraud_proof);
                 return true;
             }
-        }
         false
     });
 
@@ -4168,12 +4155,11 @@ async fn test_false_invalid_bundles_non_exist_extrinsic_proof_creation_and_verif
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundlesProofData::Bundle(_) = proof.proof_data {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundlesProofData::Bundle(_) = proof.proof_data {
                 assert_eq!(fp.targeted_bad_receipt_hash(), bad_receipt_hash);
                 return true;
             }
-        }
         false
     });
 
@@ -4856,8 +4842,7 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         if let subspace_test_runtime::RuntimeCall::Domains(
             pallet_domains::Call::submit_fraud_proof { fraud_proof },
         ) = ext.function
-        {
-            if let FraudProofVariant::ValidBundle(ref proof) = fraud_proof.proof {
+            && let FraudProofVariant::ValidBundle(ref proof) = fraud_proof.proof {
                 // The fraud proof is targetting the `bad_receipt`
                 assert_eq!(
                     fraud_proof.bad_receipt_hash,
@@ -4879,7 +4864,6 @@ async fn test_valid_bundle_proof_generation_and_verification() {
 
                 break;
             }
-        }
     }
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
@@ -6005,11 +5989,10 @@ async fn test_unordered_cross_domains_message_should_work() {
                 while let Some(xdm) = reorder_xdm_receiver.next().await {
                     if i % 3 == 0 {
                         msg_buffer.push_back(xdm);
-                        if let Some(xdm) = msg_buffer.pop_front() {
-                            if i % 2 == 0 {
+                        if let Some(xdm) = msg_buffer.pop_front()
+                            && i % 2 == 0 {
                                 evm_domain_tx_pool_sink.unbounded_send(xdm).unwrap();
                             }
-                        }
                     } else {
                         evm_domain_tx_pool_sink.unbounded_send(xdm).unwrap();
                     }
@@ -7154,13 +7137,12 @@ async fn test_xdm_false_invalid_fraud_proof() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(!proof.is_good_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 0);
                 return true;
             }
-        }
         false
     });
 
@@ -7354,13 +7336,12 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(proof.is_good_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 0);
                 return true;
             }
-        }
         false
     });
 

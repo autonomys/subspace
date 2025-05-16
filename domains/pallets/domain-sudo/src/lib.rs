@@ -118,11 +118,10 @@ mod pallet {
 
             if let Some(encoded_call) = inherent_data.maybe_call {
                 let runtime_call = Box::new(T::IntoRuntimeCall::runtime_call(encoded_call));
-                if let Call::sudo { call } = call {
-                    if call != &runtime_call {
+                if let Call::sudo { call } = call
+                    && call != &runtime_call {
                         return Err(InherentError::IncorrectRuntimeCall);
                     }
-                }
             } else {
                 return Err(InherentError::MissingRuntimeCall);
             }

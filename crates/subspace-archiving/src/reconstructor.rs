@@ -213,14 +213,13 @@ impl Reconstructor {
                 SegmentItem::ParentSegmentHeader(segment_header) => {
                     let segment_index = segment_header.segment_index();
 
-                    if let Some(last_segment_index) = self.last_segment_index {
-                        if last_segment_index != segment_index {
+                    if let Some(last_segment_index) = self.last_segment_index
+                        && last_segment_index != segment_index {
                             return Err(ReconstructorError::IncorrectSegmentOrder {
                                 expected_segment_index: last_segment_index + SegmentIndex::ONE,
                                 actual_segment_index: segment_index + SegmentIndex::ONE,
                             });
                         }
-                    }
 
                     self.last_segment_index
                         .replace(segment_index + SegmentIndex::ONE);

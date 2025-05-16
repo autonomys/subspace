@@ -332,12 +332,11 @@ where
         let parent_hash = *header.parent_hash();
 
         let pre_digest = &subspace_digest_items.pre_digest;
-        if let Some(root_plot_public_key) = root_plot_public_key {
-            if &pre_digest.solution().public_key != root_plot_public_key {
+        if let Some(root_plot_public_key) = root_plot_public_key
+            && &pre_digest.solution().public_key != root_plot_public_key {
                 // Only root plot public key is allowed.
                 return Err(Error::OnlyRootPlotPublicKeyAllowed);
             }
-        }
 
         let parent_header = self
             .client

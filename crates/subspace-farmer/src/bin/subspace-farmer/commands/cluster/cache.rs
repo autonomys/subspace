@@ -144,15 +144,14 @@ pub(super) async fn cache(
         }
 
         for cache in &disk_caches {
-            if !cache.directory.exists() {
-                if let Err(error) = fs::create_dir(&cache.directory) {
+            if !cache.directory.exists()
+                && let Err(error) = fs::create_dir(&cache.directory) {
                     return Err(anyhow!(
                         "Directory {} doesn't exist and can't be created: {}",
                         cache.directory.display(),
                         error
                     ));
                 }
-            }
         }
         None
     };

@@ -361,8 +361,8 @@ where
             }
         };
 
-        if let Some(old_sector_metadata) = &maybe_old_sector_metadata {
-            if farmer_app_info.protocol_info.history_size <= old_sector_metadata.history_size {
+        if let Some(old_sector_metadata) = &maybe_old_sector_metadata
+            && farmer_app_info.protocol_info.history_size <= old_sector_metadata.history_size {
                 if farmer_app_info.protocol_info.min_sector_lifetime == HistorySize::ONE {
                     debug!(
                         current_history_size = %farmer_app_info.protocol_info.history_size,
@@ -382,7 +382,6 @@ where
                     return PlotSingleSectorResult::Skipped;
                 }
             }
-        }
 
         break farmer_app_info;
     };

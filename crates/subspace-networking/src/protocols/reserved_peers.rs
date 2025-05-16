@@ -183,14 +183,13 @@ impl NetworkBehaviour for Behaviour {
                 remaining_established,
                 ..
             }) => {
-                if let Some(state) = self.reserved_peers_state.get_mut(&peer_id) {
-                    if remaining_established == 0 {
+                if let Some(state) = self.reserved_peers_state.get_mut(&peer_id)
+                    && remaining_established == 0 {
                         state.connection_status = ConnectionStatus::NotConnected;
 
                         debug!(%state.peer_id, "Reserved peer disconnected.");
                         self.wake();
                     }
-                }
             }
             FromSwarm::DialFailure(DialFailure {
                 peer_id: Some(peer_id),

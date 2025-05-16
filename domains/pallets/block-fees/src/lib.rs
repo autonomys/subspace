@@ -154,11 +154,9 @@ mod pallet {
             if let Call::set_next_consensus_chain_byte_fee {
                 transaction_byte_fee,
             } = call
-            {
-                if transaction_byte_fee != &provided_transaction_byte_fee {
+                && transaction_byte_fee != &provided_transaction_byte_fee {
                     return Err(InherentError::IncorrectConsensusChainByteFee);
                 }
-            }
 
             Ok(())
         }

@@ -384,11 +384,10 @@ async fn configure_dsn(
         let node_address_sender = Mutex::new(Some(node_address_sender));
 
         move |address| {
-            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
-                if let Some(node_address_sender) = node_address_sender.lock().take() {
+            if matches!(address.iter().next(), Some(Protocol::Ip4(_)))
+                && let Some(node_address_sender) = node_address_sender.lock().take() {
                     node_address_sender.send(address.clone()).unwrap();
                 }
-            }
         }
     }));
 
@@ -410,7 +409,7 @@ async fn configure_dsn(
     drop(on_new_listener_handler);
 
     println!("Node ID is {}", node.id());
-    println!("Node address {}", node_addr);
+    println!("Node address {node_addr}");
 
     node
 }

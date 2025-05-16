@@ -527,11 +527,10 @@ where
                 // Wait for solutions and transform proposed proof of space solutions into
                 // data structure `sc-consensus-subspace` expects
                 let forward_signature_fut = async move {
-                    if let Ok(reward_signature) = response_receiver.await {
-                        if let Some(signature) = reward_signature.signature {
+                    if let Ok(reward_signature) = response_receiver.await
+                        && let Some(signature) = reward_signature.signature {
                             let _ = signature_sender.unbounded_send(signature);
                         }
-                    }
                 };
 
                 // Run above future with timeout
@@ -576,11 +575,10 @@ where
         //  multiple (https://github.com/paritytech/jsonrpsee/issues/452)
         let mut reward_signature_senders = reward_signature_senders.lock();
 
-        if reward_signature_senders.current_hash == reward_signature.hash.into() {
-            if let Some(mut sender) = reward_signature_senders.senders.pop() {
+        if reward_signature_senders.current_hash == reward_signature.hash.into()
+            && let Some(mut sender) = reward_signature_senders.senders.pop() {
                 let _ = sender.send(reward_signature);
             }
-        }
 
         Ok(())
     }
@@ -702,13 +700,11 @@ where
                 .flatten()
         };
 
-        if let Some(sender) = maybe_sender {
-            if let Err(error) = sender.unbounded_send(()) {
-                if !error.is_closed() {
+        if let Some(sender) = maybe_sender
+            && let Err(error) = sender.unbounded_send(())
+                && !error.is_closed() {
                     warn!("Failed to acknowledge archived segment: {error}");
                 }
-            }
-        }
 
         debug!(%segment_index, "Acknowledged archived segment.");
 
@@ -806,8 +802,7 @@ where
             );
 
             return Err(Error::StringError(format!(
-                "Request limit ({}) exceed the server limit: {} ",
-                limit, MAX_SEGMENT_HEADERS_PER_REQUEST
+                "Request limit ({limit}) exceed the server limit: {MAX_SEGMENT_HEADERS_PER_REQUEST} "
             )));
         };
 

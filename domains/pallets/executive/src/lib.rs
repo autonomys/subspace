@@ -159,11 +159,10 @@ mod pallet {
                 .expect("Executive inherent data must be provided");
 
             if let Some(provided_code) = inherent_data.maybe_code {
-                if let Call::set_code { code } = call {
-                    if code != &provided_code {
+                if let Call::set_code { code } = call
+                    && code != &provided_code {
                         return Err(InherentError::IncorrectRuntimeCode);
                     }
-                }
             } else {
                 return Err(InherentError::MissingRuntimeCode);
             }
@@ -318,7 +317,7 @@ where
 
         match ExecutiveConfig::ensure_inherents_are_first(block) {
             Ok(num) => num,
-            Err(i) => panic!("Invalid inherent position for extrinsic at index {}", i),
+            Err(i) => panic!("Invalid inherent position for extrinsic at index {i}"),
         }
     }
 

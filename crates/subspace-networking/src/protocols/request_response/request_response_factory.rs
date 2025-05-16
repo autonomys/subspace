@@ -666,9 +666,9 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                     None => continue,
                 };
 
-                if let Ok(payload) = result {
-                    if let Some((protocol, _)) = self.protocols.get_mut(&*protocol_name) {
-                        if protocol.send_response(inner_channel, Ok(payload)).is_err() {
+                if let Ok(payload) = result
+                    && let Some((protocol, _)) = self.protocols.get_mut(&*protocol_name)
+                        && protocol.send_response(inner_channel, Ok(payload)).is_err() {
                             // Note: Failure is handled further below when receiving
                             // `InboundFailure` event from `RequestResponse` behaviour.
                             debug!(
@@ -679,8 +679,6 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                 protocol_name,
                             );
                         }
-                    }
-                }
             }
 
             for rq_rs_runner in &mut self.request_handlers {

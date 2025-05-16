@@ -88,15 +88,14 @@ impl NetworkBehaviour for Behaviour {
             Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
             Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
             _ => None,
-        }) {
-            if self
+        })
+            && self
                 .incoming_allow_list
                 .values()
                 .any(|(ip_addresses, _attempts)| ip_addresses.contains(&ip_address))
             {
                 return Ok(());
             }
-        }
 
         self.inner
             .handle_pending_inbound_connection(connection_id, local_addr, remote_addr)
@@ -134,11 +133,10 @@ impl NetworkBehaviour for Behaviour {
         addresses: &[Multiaddr],
         effective_role: Endpoint,
     ) -> Result<Vec<Multiaddr>, ConnectionDenied> {
-        if let Some(peer) = &maybe_peer {
-            if self.incoming_allow_list.contains_key(peer) {
+        if let Some(peer) = &maybe_peer
+            && self.incoming_allow_list.contains_key(peer) {
                 return Ok(Vec::new());
             }
-        }
 
         self.inner.handle_pending_outbound_connection(
             connection_id,

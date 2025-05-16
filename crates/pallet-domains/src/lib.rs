@@ -2210,11 +2210,10 @@ impl<T: Config> Pallet<T> {
         // NOTE: during `validate_unsigned` this is implicitly checked within `is_proof_of_time_valid` since we
         // are using quick verification which will return `false` if the `proof-of-time` is not seem by the node
         // before.
-        if pre_dispatch {
-            if let Some(future_slot) = T::BlockSlot::future_slot(current_block_number) {
+        if pre_dispatch
+            && let Some(future_slot) = T::BlockSlot::future_slot(current_block_number) {
                 ensure!(slot_number <= *future_slot, BundleError::SlotInTheFuture)
             }
-        }
 
         // Check if the bundle is built too long time ago and beyond `T::BundleLongevity` number of consensus blocks.
         let produced_after_block_number =
@@ -2662,11 +2661,10 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
         operator_id: &OperatorId,
     ) -> Result<(BalanceOf<T>, BalanceOf<T>), BundleError> {
-        if let Some(pending_election_params) = LastEpochStakingDistribution::<T>::get(domain_id) {
-            if let Some(operator_stake) = pending_election_params.operators.get(operator_id) {
+        if let Some(pending_election_params) = LastEpochStakingDistribution::<T>::get(domain_id)
+            && let Some(operator_stake) = pending_election_params.operators.get(operator_id) {
                 return Ok((*operator_stake, pending_election_params.total_domain_stake));
             }
-        }
         let domain_stake_summary =
             DomainStakingSummary::<T>::get(domain_id).ok_or(BundleError::InvalidDomainId)?;
         let operator_stake = domain_stake_summary

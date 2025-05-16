@@ -310,8 +310,8 @@ impl<T: Config> Pallet<T> {
             }
         }
 
-        if let Some(block_author) = maybe_block_author {
-            if !block_reward.is_zero() {
+        if let Some(block_author) = maybe_block_author
+            && !block_reward.is_zero() {
                 let _imbalance = T::Currency::deposit_creating(&block_author, block_reward);
                 T::OnReward::on_reward(block_author.clone(), block_reward);
 
@@ -320,7 +320,6 @@ impl<T: Config> Pallet<T> {
                     reward: block_reward,
                 });
             }
-        }
 
         if old_remaining_issuance != new_remaining_issuance {
             RemainingIssuance::<T>::put(new_remaining_issuance);

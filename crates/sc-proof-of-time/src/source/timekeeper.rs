@@ -61,11 +61,10 @@ pub(super) fn run_timekeeper(
             )
             .unwrap_or_else(|next_slot_input| next_slot_input);
 
-        if let Err(error) = proofs_sender.try_send(proof) {
-            if let Err(error) = block_on(proofs_sender.send(error.into_inner())) {
+        if let Err(error) = proofs_sender.try_send(proof)
+            && let Err(error) = block_on(proofs_sender.send(error.into_inner())) {
                 debug!(%error, "Couldn't send checkpoints, channel is closed");
                 return Ok(());
             }
-        }
     }
 }

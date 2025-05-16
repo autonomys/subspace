@@ -164,8 +164,8 @@ where
             .try_read()
             .and_then(|plotted_pieces| plotted_pieces.read_piece(piece_index));
 
-        if let Some(read_piece_fut) = maybe_read_piece_fut {
-            if let Some(piece) = read_piece_fut.await {
+        if let Some(read_piece_fut) = maybe_read_piece_fut
+            && let Some(piece) = read_piece_fut.await {
                 trace!(%piece_index, "Got piece from local plot successfully");
                 inner
                     .farmer_caches
@@ -173,7 +173,6 @@ where
                     .await;
                 return Some(piece);
             }
-        }
 
         // L1 piece acquisition
         trace!(%piece_index, "Getting piece from DSN L1.");

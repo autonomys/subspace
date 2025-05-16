@@ -213,11 +213,10 @@ async fn basic() {
                 let sender = Mutex::new(Some(sender));
 
                 move |progress| {
-                    if *progress == 100.0 {
-                        if let Some(sender) = sender.lock().take() {
+                    if *progress == 100.0
+                        && let Some(sender) = sender.lock().take() {
                             sender.send(()).unwrap();
                         }
-                    }
                 }
             }))
             .detach();
@@ -429,11 +428,10 @@ async fn basic() {
                 let sender = Mutex::new(Some(sender));
 
                 move |progress| {
-                    if *progress == 100.0 {
-                        if let Some(sender) = sender.lock().take() {
+                    if *progress == 100.0
+                        && let Some(sender) = sender.lock().take() {
                             sender.send(()).unwrap();
                         }
-                    }
                 }
             }))
             .detach();
@@ -525,11 +523,10 @@ async fn duplicate_indices() {
                 let sender = Mutex::new(Some(sender));
 
                 move |progress| {
-                    if *progress == 100.0 {
-                        if let Some(sender) = sender.lock().take() {
+                    if *progress == 100.0
+                        && let Some(sender) = sender.lock().take() {
                             sender.send(()).unwrap();
                         }
-                    }
                 }
             }))
             .detach();
@@ -577,11 +574,10 @@ async fn duplicate_indices() {
                 let sender = Mutex::new(Some(sender));
 
                 move |progress| {
-                    if *progress == 100.0 {
-                        if let Some(sender) = sender.lock().take() {
+                    if *progress == 100.0
+                        && let Some(sender) = sender.lock().take() {
                             sender.send(()).unwrap();
                         }
-                    }
                 }
             }))
             .detach();

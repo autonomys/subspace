@@ -90,12 +90,11 @@ pub async fn start_slot_worker<Block, Client, SC, Worker, SO, CIDP>(
                 }
             },
         };
-        if let Some(last_proven_slot) = maybe_last_proven_slot {
-            if last_proven_slot >= slot {
+        if let Some(last_proven_slot) = maybe_last_proven_slot
+            && last_proven_slot >= slot {
                 // Already processed
                 continue;
             }
-        }
         maybe_last_proven_slot.replace(slot);
 
         worker.0.on_proof(slot, checkpoints);

@@ -296,7 +296,7 @@ impl Config {
                 .expect("Default config for gossipsub is always correct; qed")
         });
 
-        let protocol_version = format!("/subspace/2/{}", protocol_version);
+        let protocol_version = format!("/subspace/2/{protocol_version}");
         let identify = IdentifyConfig::new(protocol_version.clone(), keypair.public());
 
         let temporary_ban_backoff = ExponentialBackoff {
