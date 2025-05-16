@@ -47,8 +47,8 @@ use sp_domains::{DomainAllowlistUpdates, DomainId};
 use sp_messenger::messages::{
     ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, Message, MessageId, Nonce,
 };
-use sp_runtime::traits::Hash;
 use sp_runtime::DispatchError;
+use sp_runtime::traits::Hash;
 use subspace_runtime_primitives::CreateUnsigned;
 
 /// Transaction validity for a given validated XDM extrinsic.
@@ -148,8 +148,8 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
-        HoldIdentifier, Nonce, OutboxMessageResult, RawOrigin, StateRootOf, ValidatedRelayMessage,
-        STORAGE_VERSION, U256,
+        HoldIdentifier, Nonce, OutboxMessageResult, RawOrigin, STORAGE_VERSION, StateRootOf, U256,
+        ValidatedRelayMessage,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -176,8 +176,8 @@ mod pallet {
         MessageWeightTag, PayloadV1, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
-        ChannelNonce, DomainRegistration, InherentError, InherentType, NoteChainTransfer,
-        OnXDMRewards, StorageKeys, INHERENT_IDENTIFIER,
+        ChannelNonce, DomainRegistration, INHERENT_IDENTIFIER, InherentError, InherentType,
+        NoteChainTransfer, OnXDMRewards, StorageKeys,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{ArithmeticError, Perbill, Saturating};
@@ -192,7 +192,7 @@ mod pallet {
         type SelfChainId: Get<ChainId>;
         /// function to fetch endpoint response handler by Endpoint.
         fn get_endpoint_handler(endpoint: &Endpoint)
-            -> Option<Box<dyn EndpointHandler<MessageId>>>;
+        -> Option<Box<dyn EndpointHandler<MessageId>>>;
         /// Currency type pallet uses for fees and deposits.
         type Currency: Mutate<Self::AccountId>
             + InspectHold<Self::AccountId>
@@ -214,11 +214,7 @@ mod pallet {
         /// Hash type of MMR
         type MmrHash: Parameter + Member + Default + Clone;
         /// MMR proof verifier
-        type MmrProofVerifier: MmrProofVerifier<
-            Self::MmrHash,
-            BlockNumberFor<Self>,
-            StateRootOf<Self>,
-        >;
+        type MmrProofVerifier: MmrProofVerifier<Self::MmrHash, BlockNumberFor<Self>, StateRootOf<Self>>;
         /// Storage key provider.
         type StorageKeys: StorageKeys;
         /// Domain owner provider.
@@ -1520,7 +1516,7 @@ impl<T: Config> sp_domains::DomainBundleSubmitted for Pallet<T> {
         // domain completely because in the invalid extrinsic root fraud proof the prover need
         // to generate a proof-of-empty-value for the domain.
         DomainChainAllowlistUpdate::<T>::mutate(domain_id, |maybe_updates| {
-            if let Some(ref mut updates) = maybe_updates {
+            if let Some(updates) = maybe_updates {
                 updates.clear();
             }
         });
