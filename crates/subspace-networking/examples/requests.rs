@@ -5,10 +5,10 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_logging::init_logger;
+use subspace_networking::Config;
 use subspace_networking::protocols::request_response::handlers::generic_request_handler::{
     GenericRequest, GenericRequestHandler,
 };
-use subspace_networking::Config;
 use tokio::time::sleep;
 
 #[derive(Encode, Decode)]

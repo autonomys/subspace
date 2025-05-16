@@ -1,5 +1,6 @@
 //! Consensus block relay implementation.
 
+use crate::LOG_TARGET;
 use crate::consensus::types::{
     ConsensusClientMetrics, ConsensusRequest, ConsensusServerMetrics, FullDownloadRequest,
     FullDownloadResponse, InitialRequest, InitialResponse, PartialBlock, ProtocolInitialRequest,
@@ -11,7 +12,6 @@ use crate::protocol::compact_block::{
 use crate::protocol::{ClientBackend, ProtocolUnitInfo, ServerBackend};
 use crate::types::{RelayError, RequestResponseErr};
 use crate::utils::{NetworkPeerHandle, NetworkWrapper};
-use crate::LOG_TARGET;
 use async_trait::async_trait;
 use futures::channel::oneshot;
 use futures::stream::StreamExt;
@@ -498,7 +498,7 @@ where
             Ok(None) => {
                 return Err(RelayError::BlockHeader(format!(
                     "Missing header: {block_hash:?}"
-                )))
+                )));
             }
             Err(err) => return Err(RelayError::BlockHeader(format!("{block_hash:?}, {err:?}"))),
         };

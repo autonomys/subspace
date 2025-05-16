@@ -1,6 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use subspace_core_primitives::pieces::RawRecord;
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use subspace_core_primitives::ScalarBytes;
+use subspace_core_primitives::pieces::RawRecord;
 use subspace_kzg::{Kzg, Scalar};
 
 fn criterion_benchmark(c: &mut Criterion) {

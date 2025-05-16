@@ -1,6 +1,6 @@
 use libp2p::connection_limits::{Behaviour as ConnectionLimitsBehaviour, ConnectionLimits};
-use libp2p::core::transport::PortUse;
 use libp2p::core::Endpoint;
+use libp2p::core::transport::PortUse;
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::{
     ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour, THandler, THandlerInEvent,

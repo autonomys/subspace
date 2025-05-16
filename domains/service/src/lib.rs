@@ -6,7 +6,7 @@ pub mod network;
 pub mod providers;
 pub mod rpc;
 
-pub use self::domain::{new_full, DomainOperator, DomainParams, FullPool, NewFull};
+pub use self::domain::{DomainOperator, DomainParams, FullPool, NewFull, new_full};
 use sc_domains::RuntimeExecutor;
 use sc_service::TFullClient;
 

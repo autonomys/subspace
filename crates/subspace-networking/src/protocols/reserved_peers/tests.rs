@@ -1,12 +1,12 @@
 use crate::protocols::reserved_peers::{Behaviour, Config};
-use futures::{select, FutureExt};
+use futures::{FutureExt, select};
+use libp2p::core::Transport;
 use libp2p::core::transport::MemoryTransport;
 use libp2p::core::upgrade::Version;
-use libp2p::core::Transport;
 use libp2p::identity::Keypair;
 use libp2p::plaintext::Config as PlainTextConfig;
 use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
-use libp2p::{yamux, Swarm, SwarmBuilder};
+use libp2p::{Swarm, SwarmBuilder, yamux};
 use libp2p_swarm_test::SwarmExt;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -160,7 +160,7 @@ async fn test_reserved_peers_dial_event() {
     let identity2 = Keypair::generate_ed25519();
 
     let peer2_id = identity2.public().to_peer_id();
-    let peer2_address = format!("/memory/0/p2p/{}", peer2_id);
+    let peer2_address = format!("/memory/0/p2p/{peer2_id}");
 
     let mut peer1 = new_ephemeral(
         identity1,

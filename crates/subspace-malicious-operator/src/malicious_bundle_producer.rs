@@ -8,8 +8,8 @@ use futures::{Stream, StreamExt, TryFutureExt};
 use pallet_domains::OperatorConfig;
 use parity_scale_codec::Encode;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
-use sc_service::config::KeystoreConfig;
 use sc_service::KeystoreContainer;
+use sc_service::config::KeystoreConfig;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
@@ -23,7 +23,7 @@ use sp_keyring::Sr25519Keyring;
 use sp_keystore::{Keystore, KeystorePtr};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
-use sp_runtime::{generic, RuntimeAppPublic};
+use sp_runtime::{RuntimeAppPublic, generic};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::error::Error;
 use std::sync::Arc;
@@ -462,8 +462,7 @@ pub fn construct_signed_extrinsic(
                         .sr25519_sign(OperatorPublicKey::ID, &public_key, e)
                 })?
                 .ok_or(format!(
-                    "Failed to sign extrinsic, sudo key pair missing from keystore?, public_key {:?}",
-                    public_key
+                    "Failed to sign extrinsic, sudo key pair missing from keystore?, public_key {public_key:?}"
                 ))?
         }
     };

@@ -5,11 +5,11 @@ use crate::{BlockFees, DomainAllowlistUpdates, Transfers};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use domain_runtime_primitives::{
-    opaque, Balance, CheckExtrinsicsValidityError, DecodeExtrinsicError,
+    Balance, CheckExtrinsicsValidityError, DecodeExtrinsicError, opaque,
 };
+use sp_runtime::Digest;
 use sp_runtime::generic::Era;
 use sp_runtime::traits::NumberFor;
-use sp_runtime::Digest;
 use sp_weights::Weight;
 use subspace_core_primitives::U256;
 use subspace_runtime_primitives::{ExtrinsicFor, Moment};

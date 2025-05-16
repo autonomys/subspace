@@ -1,8 +1,8 @@
 //! `SyncingEngine` is the actor responsible for syncing Substrate chain
 //! to tip and keep the blockchain up to date with network updates.
 
-use futures::channel::oneshot;
 use futures::StreamExt;
+use futures::channel::oneshot;
 use sc_client_api::ProofProvider;
 use sc_consensus::IncomingBlock;
 use sc_network::types::ProtocolName;
@@ -10,8 +10,8 @@ use sc_network::{OutboundFailure, PeerId, RequestFailure};
 use sc_network_sync::pending_responses::{PendingResponses, ResponseEvent};
 use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::state_request_handler::generate_protocol_name;
-use sc_network_sync::strategy::state::StateStrategy;
 use sc_network_sync::strategy::SyncingAction;
+use sc_network_sync::strategy::state::StateStrategy;
 use sc_network_sync::types::BadPeer;
 use sp_blockchain::{Error as ClientError, HeaderBackend};
 use sp_runtime::traits::{Block as BlockT, NumberFor};

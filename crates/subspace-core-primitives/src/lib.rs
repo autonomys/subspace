@@ -24,7 +24,7 @@ pub mod solutions;
 #[cfg(test)]
 mod tests;
 
-use crate::hashes::{blake3_hash, blake3_hash_list, Blake3Hash};
+use crate::hashes::{Blake3Hash, blake3_hash, blake3_hash_list};
 use core::fmt;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};

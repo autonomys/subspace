@@ -7,7 +7,7 @@ use domain_runtime_primitives::{
 use frame_support::weights::Weight;
 use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionRanges};
 use sp_core::crypto::KeyTypeId;
-use sp_core::{OpaqueMetadata, H256};
+use sp_core::{H256, OpaqueMetadata};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor, OperatorId,

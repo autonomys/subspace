@@ -1,13 +1,13 @@
 use crate::constructor::temporary_bans::TemporaryBans;
+use libp2p::core::Transport;
 use libp2p::core::multiaddr::{Multiaddr, Protocol};
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::{Boxed, DialOpts, ListenerId, TransportError, TransportEvent};
-use libp2p::core::Transport;
 use libp2p::dns::tokio::Transport as TokioTransport;
-use libp2p::tcp::tokio::Transport as TokioTcpTransport;
 use libp2p::tcp::Config as GenTcpConfig;
+use libp2p::tcp::tokio::Transport as TokioTcpTransport;
 use libp2p::yamux::Config as YamuxConfig;
-use libp2p::{core, identity, noise, PeerId};
+use libp2p::{PeerId, core, identity, noise};
 use parking_lot::Mutex;
 use std::io;
 use std::pin::Pin;

@@ -5,7 +5,7 @@ pub(crate) mod network;
 pub(crate) mod rpc;
 
 use crate::commands::http::HttpCommandOptions;
-use crate::commands::network::{configure_network, NetworkArgs};
+use crate::commands::network::{NetworkArgs, configure_network};
 use crate::commands::rpc::RpcCommandOptions;
 use crate::node_client::RpcNodeClient;
 use crate::piece_getter::DsnPieceGetter;
@@ -17,8 +17,8 @@ use std::process::exit;
 use std::sync::Arc;
 use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_kzg::Kzg;
-use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::NodeRunner;
+use subspace_networking::utils::piece_provider::PieceProvider;
 use tokio::signal;
 use tracing::{debug, warn};
 

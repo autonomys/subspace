@@ -22,8 +22,8 @@ pub mod auto_id_domain_chain_spec;
 pub mod chain_spec;
 pub mod evm_domain_chain_spec;
 
-use futures::executor::block_on;
 use futures::StreamExt;
+use futures::executor::block_on;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus_subspace::archiver::encode_block;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -41,12 +41,12 @@ use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
 use subspace_core_primitives::solutions::{RewardSignature, Solution};
 use subspace_core_primitives::{PublicKey, REWARD_SIGNING_CONTEXT};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{
-    plot_sector, CpuRecordsEncoder, PlotSectorOptions, PlottedSector,
+    CpuRecordsEncoder, PlotSectorOptions, PlottedSector, plot_sector,
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
-use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_kzg::Kzg;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;

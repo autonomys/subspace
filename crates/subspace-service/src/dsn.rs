@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use subspace_networking::libp2p::kad::Mode;
-use subspace_networking::libp2p::{identity, Multiaddr};
+use subspace_networking::libp2p::{Multiaddr, identity};
 use subspace_networking::protocols::request_response::handlers::cached_piece_by_index::CachedPieceByIndexRequestHandler;
 use subspace_networking::protocols::request_response::handlers::piece_by_index::PieceByIndexRequestHandler;
 use subspace_networking::protocols::request_response::handlers::segment_header::SegmentHeaderBySegmentIndexesRequestHandler;

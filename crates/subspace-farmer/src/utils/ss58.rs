@@ -2,8 +2,8 @@
 //! `sp-core` into farmer application
 
 use base58::FromBase58;
-use blake2::digest::typenum::U64;
 use blake2::digest::FixedOutput;
+use blake2::digest::typenum::U64;
 use blake2::{Blake2b, Digest};
 use ss58_registry::Ss58AddressFormat;
 use subspace_core_primitives::PublicKey;

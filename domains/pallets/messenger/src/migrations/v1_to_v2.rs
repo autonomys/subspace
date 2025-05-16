@@ -11,7 +11,7 @@ use frame_support::migrations::VersionedMigration;
 use frame_support::pallet_prelude::{Decode, Encode, OptionQuery, TypeInfo};
 use frame_support::traits::UncheckedOnRuntimeUpgrade;
 use frame_support::weights::Weight;
-use frame_support::{storage_alias, Identity};
+use frame_support::{Identity, storage_alias};
 use sp_domains::{ChainId, ChannelId};
 use sp_messenger::messages::{Channel as ChannelV1, ChannelState, Nonce};
 #[cfg(feature = "std")]
@@ -127,7 +127,7 @@ pub(crate) mod migrate_channels {
 mod tests {
     use super::migrate_channels::Channels;
     use super::*;
-    use crate::mock::chain_a::{new_test_ext, Runtime};
+    use crate::mock::chain_a::{Runtime, new_test_ext};
     use frame_support::weights::RuntimeDbWeight;
     use sp_runtime::traits::Get;
 

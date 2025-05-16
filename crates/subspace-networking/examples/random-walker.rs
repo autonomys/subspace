@@ -1,7 +1,7 @@
 use clap::Parser;
+use futures::StreamExt;
 use futures::channel::oneshot;
 use futures::future::pending;
-use futures::StreamExt;
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
@@ -410,7 +410,7 @@ async fn configure_dsn(
     drop(on_new_listener_handler);
 
     println!("Node ID is {}", node.id());
-    println!("Node address {}", node_addr);
+    println!("Node address {node_addr}");
 
     node
 }

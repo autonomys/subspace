@@ -3,7 +3,7 @@ mod incremental_record_commitments;
 extern crate alloc;
 
 use crate::archiver::incremental_record_commitments::{
-    update_record_commitments, IncrementalRecordCommitmentsState,
+    IncrementalRecordCommitmentsState, update_record_commitments,
 };
 use alloc::collections::VecDeque;
 #[cfg(not(feature = "std"))]
@@ -14,7 +14,7 @@ use core::cmp::Ordering;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use subspace_core_primitives::hashes::{blake3_254_hash_to_scalar, Blake3Hash};
+use subspace_core_primitives::hashes::{Blake3Hash, blake3_254_hash_to_scalar};
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, GlobalObject};
 use subspace_core_primitives::pieces::RawRecord;
 use subspace_core_primitives::segments::{

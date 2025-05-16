@@ -1,7 +1,7 @@
+use crate::BundleSender;
 use crate::bundle_producer_election_solver::BundleProducerElectionSolver;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::utils::OperatorSlotInfo;
-use crate::BundleSender;
 use async_trait::async_trait;
 use parity_scale_codec::Decode;
 use sc_client_api::{AuxStore, BlockBackend};

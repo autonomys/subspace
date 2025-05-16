@@ -8,8 +8,8 @@ use subspace_core_primitives::segments::HistorySize;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{CpuRecordsEncoder, RecordsEncoder};
 use subspace_farmer_components::sector::SectorContentsMap;
-use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
+use subspace_proof_of_space::chia::ChiaTable;
 
 type PosTable = ChiaTable;
 

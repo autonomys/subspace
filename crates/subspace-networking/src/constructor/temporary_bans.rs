@@ -1,5 +1,5 @@
-use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
+use backoff::backoff::Backoff;
 use libp2p::PeerId;
 use schnellru::{ByLength, LruMap};
 use std::ops::Add;

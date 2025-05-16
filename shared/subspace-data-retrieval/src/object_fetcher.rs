@@ -2,7 +2,7 @@
 
 use crate::object_fetcher::partial_object::{PartialObject, RawPieceData};
 use crate::object_fetcher::segment_header::{
-    max_segment_header_encoded_size, min_segment_header_encoded_size, MAX_SEGMENT_PADDING,
+    MAX_SEGMENT_PADDING, max_segment_header_encoded_size, min_segment_header_encoded_size,
 };
 use crate::piece_fetcher::download_pieces;
 use crate::piece_getter::PieceGetter;
@@ -119,9 +119,9 @@ pub enum Error {
 
     /// Supplied piece offset is inside the minimum segment header size
     #[error(
-            "Piece offset is inside the segment header, min size of segment header: {}, object: {mapping:?}",
-            min_segment_header_encoded_size(),
-        )]
+        "Piece offset is inside the segment header, min size of segment header: {}, object: {mapping:?}",
+        min_segment_header_encoded_size()
+    )]
     PieceOffsetInSegmentHeader { mapping: GlobalObject },
 
     /// Segment decoding error

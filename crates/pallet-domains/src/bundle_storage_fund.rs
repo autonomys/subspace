@@ -3,15 +3,15 @@
 use crate::staking::NewDeposit;
 use crate::staking_epoch::mint_into_treasury;
 use crate::{BalanceOf, Config, Event, HoldIdentifier, Operators, Pallet};
+use frame_support::PalletError;
+use frame_support::traits::Get;
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
-use frame_support::traits::Get;
-use frame_support::PalletError;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_domains::OperatorId;
-use sp_runtime::traits::{AccountIdConversion, CheckedSub, Zero};
 use sp_runtime::Perbill;
+use sp_runtime::traits::{AccountIdConversion, CheckedSub, Zero};
 use sp_std::collections::btree_map::BTreeMap;
 use subspace_runtime_primitives::StorageFee;
 

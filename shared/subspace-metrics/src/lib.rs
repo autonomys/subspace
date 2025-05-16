@@ -6,7 +6,7 @@
 
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
-use actix_web::{get, App, HttpResponse, HttpServer};
+use actix_web::{App, HttpResponse, HttpServer, get};
 use prometheus::{Registry as SubstrateRegistry, TextEncoder};
 use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry as PrometheusClientRegistry;

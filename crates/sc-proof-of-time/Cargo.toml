@@ -4,7 +4,7 @@ description = "Subspace proof of time implementation"
 license = "0BSD"
 version = "0.1.0"
 authors = ["Rahul Subramaniyam <rahulksnv@gmail.com>"]
-edition = "2021"
+edition.workspace = true
 include = [
     "/src",
     "/Cargo.toml",

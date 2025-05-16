@@ -10,8 +10,8 @@ use sc_client_api::backend::Backend;
 use sp_api::StorageProof;
 use sp_core::traits::CodeExecutor;
 use sp_runtime::traits::{Block as BlockT, HashingFor};
-use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::BackendTransaction;
+use sp_state_machine::backend::AsTrieBackend;
 use std::marker::PhantomData;
 use std::sync::Arc;
 

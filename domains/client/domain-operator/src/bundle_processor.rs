@@ -1,7 +1,7 @@
+use crate::ExecutionReceiptFor;
 use crate::domain_block_processor::{
     DomainBlockProcessor, PendingConsensusBlocks, ReceiptsChecker,
 };
-use crate::ExecutionReceiptFor;
 use domain_block_preprocessor::DomainBlockPreprocessor;
 use sc_client_api::{AuxStore, BlockBackend, ExecutorProvider, Finalizer, ProofProvider};
 use sc_consensus::{BlockImportParams, ForkChoiceStrategy, StateAction};
@@ -9,8 +9,8 @@ use sc_executor::RuntimeVersionOf;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
-use sp_core::traits::CodeExecutor;
 use sp_core::H256;
+use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{DomainId, DomainsApi, ReceiptValidity};
@@ -246,7 +246,7 @@ where
             let domain_tip = domain_parent.0;
             if self.client.info().best_hash != domain_tip {
                 let header = self.client.header(domain_tip)?.ok_or_else(|| {
-                    sp_blockchain::Error::Backend(format!("Header for #{:?} not found", domain_tip))
+                    sp_blockchain::Error::Backend(format!("Header for #{domain_tip:?} not found"))
                 })?;
                 let block_origin = if self
                     .domain_block_processor

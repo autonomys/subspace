@@ -1,8 +1,8 @@
 use frame_support::PalletError;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_core::storage::StorageKey;
 use sp_core::H256;
+use sp_core::storage::StorageKey;
 use sp_domains::proof_provider_and_verifier::{
     StorageProofVerifier, VerificationError as StorageProofVerificationError,
 };

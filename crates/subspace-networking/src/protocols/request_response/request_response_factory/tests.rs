@@ -3,13 +3,13 @@ use crate::protocols::request_response::request_response_factory::{
     RequestFailure, RequestHandler, RequestResponseFactoryBehaviour,
 };
 use async_trait::async_trait;
+use futures::StreamExt;
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesUnordered;
-use futures::StreamExt;
 use libp2p::core::transport::{MemoryTransport, Transport};
 use libp2p::core::upgrade;
 use libp2p::swarm::{Swarm, SwarmEvent};
-use libp2p::{noise, SwarmBuilder};
+use libp2p::{SwarmBuilder, noise};
 use libp2p_swarm_test::SwarmExt;
 use std::time::Duration;
 use std::{io, iter};

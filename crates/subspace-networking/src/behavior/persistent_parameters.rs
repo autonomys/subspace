@@ -2,8 +2,8 @@ use crate::utils::{AsyncJoinOnDrop, Handler, HandlerFn};
 use async_trait::async_trait;
 use event_listener_primitives::HandlerId;
 use fs2::FileExt;
-use futures::future::{pending, Fuse};
 use futures::FutureExt;
+use futures::future::{Fuse, pending};
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use memmap2::{MmapMut, MmapOptions};
@@ -19,9 +19,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use std::{io, mem};
-use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
+use subspace_core_primitives::hashes::{Blake3Hash, blake3_hash};
 use thiserror::Error;
-use tokio::time::{sleep, Sleep};
+use tokio::time::{Sleep, sleep};
 use tracing::{debug, error, trace, warn};
 
 /// Defines optional time for address dial failure
