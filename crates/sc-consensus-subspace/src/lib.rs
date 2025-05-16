@@ -6,7 +6,7 @@
 //!
 //! All of the modules here are crucial for consensus, open each module for specific details.
 
-#![feature(let_chains, try_blocks, duration_constructors)]
+#![feature(let_chains, try_blocks, duration_constructors_lite)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
