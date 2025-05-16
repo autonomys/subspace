@@ -167,7 +167,7 @@ where
 {
     sync_segment_headers(segment_headers_store, node)
         .await
-        .map_err(|error| format!("Failed to sync segment headers: {}", error))?;
+        .map_err(|error| format!("Failed to sync segment headers: {error}"))?;
 
     let target_segment_index = {
         let last_segment_index = segment_headers_store

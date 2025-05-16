@@ -96,7 +96,7 @@ pub fn mainnet_compiled() -> Result<GenericChainSpec, String> {
         .iter()
         .map(|address| {
             AccountId::from_ss58check(address)
-                .map_err(|_| format!("Invalid council SS58 address: {}", address))
+                .map_err(|_| format!("Invalid council SS58 address: {address}"))
         })
         .collect::<Result<Vec<AccountId>, String>>()?;
 

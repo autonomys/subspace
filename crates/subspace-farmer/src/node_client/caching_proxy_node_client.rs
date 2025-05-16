@@ -62,11 +62,10 @@ impl SegmentHeaders {
     where
         NC: NodeClient,
     {
-        if let Some(last_synced) = &self.last_synced {
-            if last_synced.elapsed() < SEGMENT_HEADERS_SYNC_INTERVAL {
+        if let Some(last_synced) = &self.last_synced
+            && last_synced.elapsed() < SEGMENT_HEADERS_SYNC_INTERVAL {
                 return Ok(());
             }
-        }
         self.last_synced.replace(Instant::now());
 
         let mut segment_index_offset = SegmentIndex::from(self.segment_headers.len() as u64);

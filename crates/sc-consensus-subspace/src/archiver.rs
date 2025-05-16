@@ -196,8 +196,7 @@ where
 
                     if segment_index != last_segment_index + SegmentIndex::ONE {
                         let error = format!(
-                            "Segment index {} must strictly follow {}, can't store segment header",
-                            segment_index, last_segment_index
+                            "Segment index {segment_index} must strictly follow {last_segment_index}, can't store segment header"
                         );
                         return Err(sp_blockchain::Error::Application(error.into()));
                     }
@@ -1162,8 +1161,7 @@ where
     if parent_block_hash != best_archived_block_hash {
         let error = format!(
             "Attempt to switch to a different fork beyond archiving depth, \
-            can't do it: parent block hash {}, best archived block hash {}",
-            parent_block_hash, best_archived_block_hash
+            can't do it: parent block hash {parent_block_hash}, best archived block hash {best_archived_block_hash}"
         );
         return Err(sp_blockchain::Error::Consensus(sp_consensus::Error::Other(
             error.into(),

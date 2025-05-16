@@ -788,15 +788,14 @@ impl<T: Config> Pallet<T> {
                 .voting_next
                 .replace(next_voting_solution_range);
 
-            if let Some(solution_range_for_rewards) = EnableRewardsBelowSolutionRange::<T>::get() {
-                if next_solution_range <= solution_range_for_rewards {
+            if let Some(solution_range_for_rewards) = EnableRewardsBelowSolutionRange::<T>::get()
+                && next_solution_range <= solution_range_for_rewards {
                     EnableRewardsBelowSolutionRange::<T>::take();
 
                     let next_block_number =
                         frame_system::Pallet::<T>::current_block_number() + One::one();
                     EnableRewards::<T>::put(next_block_number);
                 }
-            }
         });
 
         EraStartSlot::<T>::put(current_slot);
@@ -950,8 +949,8 @@ impl<T: Config> Pallet<T> {
                 );
 
                 // Update target slot for entropy injection once we know it
-                if let Some(entropy_source_block_number) = maybe_entropy_source_block_number {
-                    if let Some(entropy_value) = entropy.get_mut(&entropy_source_block_number) {
+                if let Some(entropy_source_block_number) = maybe_entropy_source_block_number
+                    && let Some(entropy_value) = entropy.get_mut(&entropy_source_block_number) {
                         let target_slot = pre_digest
                             .slot()
                             .saturating_add(pot_entropy_injection_delay);
@@ -973,7 +972,6 @@ impl<T: Config> Pallet<T> {
                             PotSlotIterations::<T>::put(pot_slot_iterations);
                         }
                     }
-                }
 
                 PotEntropy::<T>::put(entropy.clone());
             }
@@ -1014,14 +1012,13 @@ impl<T: Config> Pallet<T> {
             }
 
             // Clean up old values we'll no longer need
-            if let Some(entry) = entropy.first_entry() {
-                if let Some(target_slot) = entry.get().target_slot
+            if let Some(entry) = entropy.first_entry()
+                && let Some(target_slot) = entry.get().target_slot
                     && target_slot < current_slot
                 {
                     entry.remove();
                     PotEntropy::<T>::put(entropy);
                 }
-            }
         }
     }
 
@@ -1636,8 +1633,8 @@ fn check_vote<T: Config>(
             .as_ref()
             == Some(&key);
 
-    if !is_equivocating {
-        if let Some((_reward_address, signature)) = ParentBlockVoters::<T>::get().get(&key) {
+    if !is_equivocating
+        && let Some((_reward_address, signature)) = ParentBlockVoters::<T>::get().get(&key) {
             if signature != &signed_vote.signature {
                 is_equivocating = true;
             } else {
@@ -1645,10 +1642,9 @@ fn check_vote<T: Config>(
                 return Err(CheckVoteError::DuplicateVote);
             }
         }
-    }
 
-    if !is_equivocating {
-        if let Some((_reward_address, signature)) =
+    if !is_equivocating
+        && let Some((_reward_address, signature)) =
             CurrentBlockVoters::<T>::get().unwrap_or_default().get(&key)
         {
             if signature != &signed_vote.signature {
@@ -1658,7 +1654,6 @@ fn check_vote<T: Config>(
                 return Err(CheckVoteError::DuplicateVote);
             }
         }
-    }
 
     if pre_dispatch {
         // During `pre_dispatch` call put farmer into the list of reward receivers.
@@ -1686,12 +1681,10 @@ fn check_vote<T: Config>(
         CurrentBlockAuthorInfo::<T>::mutate(|maybe_info| {
             if let Some((public_key, _sector_index, _piece_offset, _chunk, _slot, reward_address)) =
                 maybe_info
-            {
-                if public_key == &offender {
+                && public_key == &offender {
                     // Revoke reward for block author
                     reward_address.take();
                 }
-            }
         });
 
         CurrentBlockVoters::<T>::mutate(|current_reward_receivers| {
@@ -1778,11 +1771,10 @@ impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId
         CurrentBlockAuthorInfo::<T>::get().and_then(
             |(_public_key, _sector_index, _piece_offset, _chunk, _slot, reward_address)| {
                 // Rewards might be disabled, in which case no block reward
-                if let Some(height) = EnableRewards::<T>::get() {
-                    if frame_system::Pallet::<T>::current_block_number() >= height {
+                if let Some(height) = EnableRewards::<T>::get()
+                    && frame_system::Pallet::<T>::current_block_number() >= height {
                         return reward_address;
                     }
-                }
 
                 None
             },
@@ -1793,8 +1785,8 @@ impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId
 impl<T: Config> subspace_runtime_primitives::FindVotingRewardAddresses<T::AccountId> for Pallet<T> {
     fn find_voting_reward_addresses() -> Vec<T::AccountId> {
         // Rewards might be disabled, in which case no voting reward
-        if let Some(height) = EnableRewards::<T>::get() {
-            if frame_system::Pallet::<T>::current_block_number() >= height {
+        if let Some(height) = EnableRewards::<T>::get()
+            && frame_system::Pallet::<T>::current_block_number() >= height {
                 // It is possible that this is called during initialization when current block
                 // voters are already moved into parent block voters, handle it accordingly
                 return CurrentBlockVoters::<T>::get()
@@ -1803,7 +1795,6 @@ impl<T: Config> subspace_runtime_primitives::FindVotingRewardAddresses<T::Accoun
                     .filter_map(|(reward_address, _signature)| reward_address)
                     .collect();
             }
-        }
 
         Vec::new()
     }

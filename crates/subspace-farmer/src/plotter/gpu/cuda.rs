@@ -101,8 +101,7 @@ impl CudaRecordsEncoder {
             } else {
                 // We want to guarantee exit, rather than panicking in a panic handler.
                 eprintln!(
-                    "rayon panic handler called on non-rayon thread: {:?}",
-                    panic_info
+                    "rayon panic handler called on non-rayon thread: {panic_info:?}"
                 );
             }
             exit(1);

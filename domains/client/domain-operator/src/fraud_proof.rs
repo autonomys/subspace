@@ -657,8 +657,7 @@ where
                         .block_number_from_id(&BlockId::Hash(domain_block_parent_hash))?
                         .ok_or_else(|| {
                             FraudProofError::Blockchain(sp_blockchain::Error::Backend(format!(
-                                "unable to get block number for domain block:{:?}",
-                                domain_block_parent_hash
+                                "unable to get block number for domain block:{domain_block_parent_hash:?}"
                             )))
                         })?;
 

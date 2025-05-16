@@ -389,7 +389,7 @@ pub async fn configure_dsn(
     drop(on_new_listener_handler);
 
     println!("Node ID is {}", node.id());
-    println!("Node address {}", node_addr);
+    println!("Node address {node_addr}");
 
     node
 }

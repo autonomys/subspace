@@ -356,7 +356,7 @@ impl FromStr for CreateObjectMappingConfig {
 impl fmt::Display for CreateObjectMappingConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Block(block) => write!(f, "{}", block),
+            Self::Block(block) => write!(f, "{block}"),
             Self::Yes => f.write_str("yes"),
             Self::No => f.write_str("no"),
         }
