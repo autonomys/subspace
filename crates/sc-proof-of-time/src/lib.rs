@@ -1,7 +1,5 @@
 //! Subspace proof of time implementation.
 
-#![feature(let_chains)]
-
 mod slots;
 pub mod source;
 pub mod verifier;

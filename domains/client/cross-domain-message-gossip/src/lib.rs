@@ -1,4 +1,3 @@
-#![feature(let_chains)]
 #![warn(rust_2018_idioms)]
 
 mod aux_schema;

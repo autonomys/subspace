@@ -9,7 +9,6 @@
 //! 5. Push back the potential new domain runtime extrisnic.
 
 #![warn(rust_2018_idioms)]
-#![feature(let_chains)]
 
 pub mod inherents;
 pub mod stateless_runtime;
