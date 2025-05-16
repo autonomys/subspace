@@ -47,7 +47,7 @@ use subspace_runtime_primitives::{
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
-type Block = frame_system::mocking::MockBlock<Test>;
+type Block = frame_system::mocking::MockBlockU32<Test>;
 type Balance = u128;
 
 // TODO: Remove when DomainRegistry is usable.
@@ -67,7 +67,7 @@ frame_support::construct_runtime!(
     }
 );
 
-type BlockNumber = u64;
+type BlockNumber = u32;
 type Hash = H256;
 pub(crate) type AccountId = u128;
 
@@ -189,7 +189,7 @@ impl BlockSlot<Test> for DummyBlockSlot {
     }
 
     fn slot_produced_after(_slot: sp_consensus_slots::Slot) -> Option<BlockNumberFor<Test>> {
-        Some(0u64)
+        Some(0u32)
     }
 }
 
@@ -513,9 +513,9 @@ pub(crate) fn extend_block_tree(
     mut latest_receipt: ExecutionReceiptOf<Test>,
 ) -> ExecutionReceiptOf<Test> {
     let current_block_number = frame_system::Pallet::<Test>::current_block_number();
-    assert!(current_block_number < to as u64);
+    assert!(current_block_number < to);
 
-    for block_number in (current_block_number + 1)..to as u64 {
+    for block_number in (current_block_number + 1)..to {
         // Finilize parent block and initialize block at `block_number`
         run_to_block::<Test>(block_number, latest_receipt.consensus_block_hash);
 
@@ -547,7 +547,7 @@ pub(crate) fn extend_block_tree(
     }
 
     // Finilize parent block and initialize block at `to`
-    run_to_block::<Test>(to as u64, latest_receipt.consensus_block_hash);
+    run_to_block::<Test>(to, latest_receipt.consensus_block_hash);
 
     latest_receipt
 }
@@ -810,13 +810,11 @@ fn test_basic_fraud_proof_processing() {
 
                 // The other data that used to verify ER should not be removed, such that the honest
                 // operator can re-submit the valid ER
-                assert!(!ExecutionInbox::<Test>::get((
-                    domain_id,
-                    block_number,
-                    block_number as u64
-                ))
-                .is_empty());
-                assert!(ConsensusBlockHash::<Test>::get(domain_id, block_number as u64).is_some());
+                assert!(
+                    !ExecutionInbox::<Test>::get((domain_id, block_number, block_number))
+                        .is_empty()
+                );
+                assert!(ConsensusBlockHash::<Test>::get(domain_id, block_number).is_some());
             }
 
             // Re-submit the valid ER
