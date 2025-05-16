@@ -11,8 +11,8 @@ use frame_support::weights::IdentityFee;
 use frame_support::{derive_impl, parameter_types};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use pallet_balances::AccountData;
-use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::BuildStorage;
+use sp_runtime::transaction_validity::TransactionValidityError;
 use subspace_runtime_primitives::DomainEventSegmentSize;
 
 type Block = frame_system::mocking::MockBlock<MockRuntime>;

@@ -39,7 +39,7 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_auto_id::auto_id_runtime_interface::{decode_tbs_certificate, verify_signature};
 use sp_auto_id::{DerVec, SignatureVerificationRequest, Validity};
-use sp_core::{blake2_256, H256, U256};
+use sp_core::{H256, U256, blake2_256};
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
 use subspace_runtime_primitives::Moment;

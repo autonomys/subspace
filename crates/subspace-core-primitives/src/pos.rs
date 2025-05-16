@@ -1,6 +1,6 @@
 //! Proof of space-related data structures.
 
-use crate::hashes::{blake3_hash, Blake3Hash};
+use crate::hashes::{Blake3Hash, blake3_hash};
 use core::fmt;
 use derive_more::{Deref, DerefMut, From, Into};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};

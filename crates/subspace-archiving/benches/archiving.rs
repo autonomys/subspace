@@ -1,5 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use rand::{thread_rng, Rng};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use rand::{Rng, thread_rng};
 use std::num::NonZeroUsize;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::pieces::Record;

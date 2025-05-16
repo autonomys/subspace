@@ -8,9 +8,9 @@ use crate::hashes::Blake3Hash;
 use crate::pieces::PieceIndex;
 use core::default::Default;
 use parity_scale_codec::{Decode, Encode};
+use scale_info::TypeInfo;
 use scale_info::prelude::vec;
 use scale_info::prelude::vec::Vec;
-use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 

@@ -13,9 +13,9 @@ use sp_core::crypto::Ss58Codec;
 use sp_domains::{EvmType, PermissionedActionAllowedBy};
 use sp_runtime::{BoundedVec, Percent};
 use std::marker::PhantomData;
-use std::num::{NonZeroU128, NonZeroU32};
-use subspace_core_primitives::pot::PotKey;
+use std::num::{NonZeroU32, NonZeroU128};
 use subspace_core_primitives::PublicKey;
+use subspace_core_primitives::pot::PotKey;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, CouncilConfig, DemocracyConfig, DomainsConfig,
     EnableRewardsAt, RewardPoint, RewardsConfig, RuntimeConfigsConfig, RuntimeGenesisConfig,

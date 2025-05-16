@@ -13,27 +13,27 @@
 
 use crate::archiver::SegmentHeadersStore;
 use crate::verifier::VerificationError;
-use crate::{aux_schema, slot_worker, SubspaceLink};
-use futures::channel::mpsc;
+use crate::{SubspaceLink, aux_schema, slot_worker};
 use futures::StreamExt;
-use sc_client_api::backend::AuxStore;
+use futures::channel::mpsc;
 use sc_client_api::BlockBackend;
+use sc_client_api::backend::AuxStore;
+use sc_consensus::StateAction;
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
-use sc_consensus::StateAction;
 use sc_proof_of_time::verifier::PotVerifier;
 use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    extract_pre_digest, extract_subspace_digest_items, SubspaceDigestItems,
+    SubspaceDigestItems, extract_pre_digest, extract_subspace_digest_items,
 };
 use sp_consensus_subspace::{PotNextSlotInput, SubspaceApi, SubspaceJustification};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One};
 use sp_runtime::Justifications;
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::sectors::SectorId;
@@ -41,7 +41,7 @@ use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentInde
 use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_proof_of_space::Table;
-use subspace_verification::{calculate_block_weight, PieceCheckParams, VerifySolutionParams};
+use subspace_verification::{PieceCheckParams, VerifySolutionParams, calculate_block_weight};
 use tracing::warn;
 
 /// Notification with number of the block that is about to be imported and acknowledgement sender
@@ -333,10 +333,11 @@ where
 
         let pre_digest = &subspace_digest_items.pre_digest;
         if let Some(root_plot_public_key) = root_plot_public_key
-            && &pre_digest.solution().public_key != root_plot_public_key {
-                // Only root plot public key is allowed.
-                return Err(Error::OnlyRootPlotPublicKeyAllowed);
-            }
+            && &pre_digest.solution().public_key != root_plot_public_key
+        {
+            // Only root plot public key is allowed.
+            return Err(Error::OnlyRootPlotPublicKeyAllowed);
+        }
 
         let parent_header = self
             .client

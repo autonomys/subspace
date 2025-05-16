@@ -29,8 +29,8 @@ use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
-use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
+use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{BundleProducerElectionApi, DomainsApi, OpaqueBundle, OperatorId};
 use sp_domains_fraud_proof::FraudProofApi;
@@ -38,11 +38,11 @@ use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
-use std::pin::{pin, Pin};
+use std::pin::{Pin, pin};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use subspace_runtime_primitives::{Balance, BlockHashFor, HeaderFor};
-use tracing::{info, Instrument};
+use tracing::{Instrument, info};
 
 pub type OpaqueBundleFor<Block, CBlock> =
     OpaqueBundle<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
@@ -214,12 +214,12 @@ pub(super) async fn start_worker<
                     .process_bundles((block_info.hash, block_info.number, block_info.is_new_best))
                     .instrument(span.clone())
                     .await
-                {
-                    tracing::error!(?error, "Failed to process consensus block");
-                    // Bring down the service as bundles processor is an essential task.
-                    // TODO: more graceful shutdown.
-                    break;
-                }
+            {
+                tracing::error!(?error, "Failed to process consensus block");
+                // Bring down the service as bundles processor is an essential task.
+                // TODO: more graceful shutdown.
+                break;
+            }
         }
     }
 }

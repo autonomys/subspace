@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
-use subspace_networking::libp2p::identity::{ed25519, Keypair};
+use subspace_networking::libp2p::identity::{Keypair, ed25519};
 use thread_priority::ThreadPriority;
 use zeroize::Zeroizing;
 

@@ -1,5 +1,5 @@
-use crate::rpc::FullDeps;
 use crate::FullClient;
+use crate::rpc::FullDeps;
 use domain_runtime_primitives::{Balance, Nonce};
 use jsonrpsee::RpcModule;
 use parity_scale_codec::{Decode, Encode};

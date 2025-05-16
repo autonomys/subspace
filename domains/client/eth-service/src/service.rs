@@ -1,9 +1,9 @@
-use fc_mapping_sync::kv::MappingSyncWorker;
 use fc_mapping_sync::SyncStrategy;
+use fc_mapping_sync::kv::MappingSyncWorker;
 use fc_rpc::EthTask;
 pub use fc_rpc_core::types::{FeeHistoryCache, FeeHistoryCacheLimit, FilterPool};
 use fc_storage::StorageOverride;
-use futures::{future, StreamExt};
+use futures::{StreamExt, future};
 use sc_client_api::{BlockchainEvents, StorageProvider};
 use sc_network_sync::SyncingService;
 use sc_service::error::Error as ServiceError;

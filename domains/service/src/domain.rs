@@ -9,8 +9,8 @@ use domain_client_operator::snap_sync::ConsensusChainSyncParams;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
 use domain_runtime_primitives::opaque::{Block, Header};
 use domain_runtime_primitives::{Balance, Hash};
-use futures::channel::mpsc;
 use futures::Stream;
+use futures::channel::mpsc;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ExecutorProvider,
@@ -27,7 +27,7 @@ use sc_service::{
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_transaction_pool::{BasicPool, FullChainApi};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver};
+use sc_utils::mpsc::{TracingUnboundedReceiver, tracing_unbounded};
 use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;

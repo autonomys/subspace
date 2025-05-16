@@ -1,6 +1,6 @@
+use crate::U256;
 use crate::pieces::PieceIndex;
 use crate::segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex};
-use crate::U256;
 
 #[test]
 fn piece_distance_middle() {

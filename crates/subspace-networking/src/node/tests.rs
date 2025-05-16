@@ -1,7 +1,7 @@
 use crate::protocols::request_response::handlers::generic_request_handler::{
     GenericRequest, GenericRequestHandler,
 };
-use crate::{construct, Config};
+use crate::{Config, construct};
 use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
 use parity_scale_codec::{Decode, Encode};

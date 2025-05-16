@@ -6,24 +6,24 @@ use crate::pallet::{
     Withdrawals,
 };
 use crate::staking::{
-    do_cleanup_operator, do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal,
     DomainEpoch, Error as TransitionError, OperatorStatus, SharePrice, WithdrawalInShares,
+    do_cleanup_operator, do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal,
 };
 use crate::{
-    bundle_storage_fund, BalanceOf, Config, DepositOnHold, ElectionVerificationParams, Event,
-    HoldIdentifier, OperatorEpochSharePrice, Pallet,
+    BalanceOf, Config, DepositOnHold, ElectionVerificationParams, Event, HoldIdentifier,
+    OperatorEpochSharePrice, Pallet, bundle_storage_fund,
 };
+use frame_support::PalletError;
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
 use frame_support::traits::tokens::{
     DepositConsequence, Fortitude, Precision, Provenance, Restriction,
 };
-use frame_support::PalletError;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{DomainId, EpochIndex, OperatorId};
-use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::Saturating;
+use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 
@@ -534,15 +534,15 @@ mod tests {
         Deposits, DomainStakingSummary, HeadDomainNumber, LastEpochStakingDistribution,
         NominatorCount, OperatorIdOwner, Operators, Withdrawals,
     };
-    use crate::staking::tests::{register_operator, Share};
+    use crate::staking::tests::{Share, register_operator};
     use crate::staking::{
-        do_deregister_operator, do_nominate_operator, do_reward_operators, do_unlock_nominator,
-        do_withdraw_stake, Error as TransitionError, WithdrawStake,
+        Error as TransitionError, WithdrawStake, do_deregister_operator, do_nominate_operator,
+        do_reward_operators, do_unlock_nominator, do_withdraw_stake,
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, operator_take_reward_tax_and_stake,
     };
-    use crate::tests::{new_test_ext, Test};
+    use crate::tests::{Test, new_test_ext};
     use crate::{BalanceOf, Config, HoldIdentifier, NominatorId};
     #[cfg(not(feature = "std"))]
     use alloc::vec;

@@ -4,11 +4,11 @@ mod tests;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::chiapos::table::types::{Metadata, Position, X, Y};
 pub use crate::chiapos::table::TablesCache;
+use crate::chiapos::table::types::{Metadata, Position, X, Y};
 use crate::chiapos::table::{
-    compute_f1, compute_fn, has_match, metadata_size_bytes, partial_y, Table,
-    COMPUTE_F1_SIMD_FACTOR,
+    COMPUTE_F1_SIMD_FACTOR, Table, compute_f1, compute_fn, has_match, metadata_size_bytes,
+    partial_y,
 };
 use crate::chiapos::utils::EvaluatableUsize;
 use crate::chiapos::{Challenge, Quality, Seed};

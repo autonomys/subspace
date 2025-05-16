@@ -3,10 +3,10 @@
 
 pub(crate) mod server;
 
-use crate::commands::http::server::{start_server, ServerParameters};
-use crate::commands::{initialize_object_fetcher, shutdown_signal, GatewayOptions};
+use crate::commands::http::server::{ServerParameters, start_server};
+use crate::commands::{GatewayOptions, initialize_object_fetcher, shutdown_signal};
 use clap::Parser;
-use futures::{select, FutureExt};
+use futures::{FutureExt, select};
 use tracing::info;
 
 /// Options for HTTP server.

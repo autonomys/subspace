@@ -8,12 +8,12 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::mem;
 use parity_scale_codec::Decode;
+use subspace_core_primitives::BlockNumber;
 use subspace_core_primitives::pieces::{Piece, RawRecord};
 use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
     SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::BlockNumber;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::Scalar;
 

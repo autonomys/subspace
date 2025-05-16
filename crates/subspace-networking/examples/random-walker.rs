@@ -1,7 +1,7 @@
 use clap::Parser;
+use futures::StreamExt;
 use futures::channel::oneshot;
 use futures::future::pending;
-use futures::StreamExt;
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};

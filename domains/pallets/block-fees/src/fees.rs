@@ -3,9 +3,9 @@ use frame_support::traits::fungible::Inspect;
 use frame_support::traits::tokens::WithdrawConsequence;
 use frame_support::traits::{Currency, ExistenceRequirement, Imbalance, WithdrawReasons};
 use parity_scale_codec::Encode;
+use sp_runtime::Saturating;
 use sp_runtime::traits::{DispatchInfoOf, PostDispatchInfoOf, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
-use sp_runtime::Saturating;
 use sp_std::marker::PhantomData;
 
 pub struct LiquidityInfo<Balance, NegativeImbalance> {

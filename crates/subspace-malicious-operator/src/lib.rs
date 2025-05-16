@@ -9,8 +9,8 @@ pub use chain_spec::create_domain_spec;
 use clap::Parser;
 use sc_chain_spec::GenericChainSpec;
 use sc_cli::{
-    generate_node_name, ChainSpec, CliConfiguration, Role, RunCmd as SubstrateRunCmd, RunCmd,
-    SubstrateCli,
+    ChainSpec, CliConfiguration, Role, RunCmd as SubstrateRunCmd, RunCmd, SubstrateCli,
+    generate_node_name,
 };
 use sc_service::config::{
     ExecutorConfiguration, KeystoreConfig, NetworkConfiguration, RpcConfiguration,

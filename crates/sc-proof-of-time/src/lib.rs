@@ -17,8 +17,8 @@ use sp_consensus_subspace::SubspaceApi;
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
-use subspace_core_primitives::pot::PotCheckpoints;
 use subspace_core_primitives::PublicKey;
+use subspace_core_primitives::pot::PotCheckpoints;
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{debug, error, info, trace};
 
@@ -91,10 +91,11 @@ pub async fn start_slot_worker<Block, Client, SC, Worker, SO, CIDP>(
             },
         };
         if let Some(last_proven_slot) = maybe_last_proven_slot
-            && last_proven_slot >= slot {
-                // Already processed
-                continue;
-            }
+            && last_proven_slot >= slot
+        {
+            // Already processed
+            continue;
+        }
         maybe_last_proven_slot.replace(slot);
 
         worker.0.on_proof(slot, checkpoints);

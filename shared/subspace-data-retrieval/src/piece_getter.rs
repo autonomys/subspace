@@ -1,7 +1,7 @@
 //! Getting object pieces from the Subspace Distributed Storage Network, or various caches.
 
 use async_trait::async_trait;
-use futures::{stream, Stream, StreamExt};
+use futures::{Stream, StreamExt, stream};
 use std::fmt;
 use std::future::Future;
 use std::sync::Arc;

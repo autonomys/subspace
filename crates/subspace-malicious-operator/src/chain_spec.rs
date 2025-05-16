@@ -5,7 +5,7 @@ use parity_scale_codec::Encode;
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
 use sp_core::crypto::AccountId32;
-use sp_core::{sr25519, Pair, Public};
+use sp_core::{Pair, Public, sr25519};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
     DomainRuntimeConfig, OperatorAllowList, OperatorPublicKey, PermissionedActionAllowedBy,

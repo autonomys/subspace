@@ -5,6 +5,7 @@ mod tests;
 use futures::FutureExt;
 use futures_timer::Delay;
 use handler::Handler;
+use libp2p::PeerId;
 use libp2p::core::transport::PortUse;
 use libp2p::core::{Endpoint, Multiaddr};
 use libp2p::swarm::behaviour::{ConnectionEstablished, FromSwarm};
@@ -13,7 +14,6 @@ use libp2p::swarm::{
     ConnectionClosed, ConnectionDenied, ConnectionId, DialFailure, NetworkBehaviour, THandler,
     THandlerInEvent, THandlerOutEvent, ToSwarm,
 };
-use libp2p::PeerId;
 use std::collections::HashMap;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;

@@ -6,10 +6,10 @@ use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_messenger::messages::ChainId;
-use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::DispatchResult;
+use sp_runtime::traits::BlakeTwo256;
 use sp_state_machine::backend::Backend;
-use sp_state_machine::{prove_read, InMemoryBackend};
+use sp_state_machine::{InMemoryBackend, prove_read};
 use sp_trie::StorageProof;
 
 pub(crate) type Balance = u64;

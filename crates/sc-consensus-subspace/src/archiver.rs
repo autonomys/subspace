@@ -40,29 +40,29 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::RwLock;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
-use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
+use rayon::prelude::*;
 use sc_client_api::{
     AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, LockImportRun,
 };
-use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
+use sc_telemetry::{CONSENSUS_INFO, TelemetryHandle, telemetry};
+use sc_utils::mpsc::{TracingUnboundedSender, tracing_unbounded};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_consensus_subspace::{SubspaceApi, SubspaceJustification};
 use sp_objects::ObjectsApi;
+use sp_runtime::Justifications;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{
     Block as BlockT, BlockNumber as BlockNumberT, CheckedSub, Header, NumberFor, One, Zero,
 };
-use sp_runtime::Justifications;
 use std::error::Error;
 use std::future::Future;
 use std::num::NonZeroU32;
 use std::slice;
-use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::objects::{BlockObjectMapping, GlobalObject};
@@ -262,9 +262,10 @@ where
         if block_number == 1 {
             // If there is a segment index present, and we store monotonically increasing segment
             // headers, then the first header exists.
-            return vec![self
-                .get_segment_header(SegmentIndex::ZERO)
-                .expect("Segment headers are stored in monotonically increasing order; qed")];
+            return vec![
+                self.get_segment_header(SegmentIndex::ZERO)
+                    .expect("Segment headers are stored in monotonically increasing order; qed"),
+            ];
         }
 
         if last_segment_index == SegmentIndex::ZERO {
