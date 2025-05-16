@@ -9,32 +9,32 @@ use crate::farm::{
     AuditingDetails, FarmingError, FarmingNotification, ProvingDetails, ProvingResult,
 };
 use crate::node_client::NodeClient;
-use crate::single_disk_farm::metrics::SingleDiskFarmMetrics;
 use crate::single_disk_farm::Handlers;
+use crate::single_disk_farm::metrics::SingleDiskFarmMetrics;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
-use futures::channel::mpsc;
 use futures::StreamExt;
+use futures::channel::mpsc;
 use parking_lot::Mutex;
 use rayon::ThreadPool;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
+use subspace_core_primitives::PublicKey;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::sectors::SectorIndex;
 use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
 use subspace_core_primitives::solutions::{Solution, SolutionRange};
-use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::{audit_plot_sync, AuditingError};
+use subspace_farmer_components::ReadAtSync;
+use subspace_farmer_components::auditing::{AuditingError, audit_plot_sync};
 use subspace_farmer_components::proving::{ProvableSolutions, ProvingError};
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{SectorMetadata, SectorMetadataChecksummed};
-use subspace_farmer_components::ReadAtSync;
 use subspace_kzg::Kzg;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
-use tracing::{debug, error, info, trace, warn, Span};
+use tracing::{Span, debug, error, info, trace, warn};
 
 /// How many non-fatal errors should happen in a row before farm is considered non-operational
 const NON_FATAL_ERROR_LIMIT: usize = 10;
@@ -134,7 +134,8 @@ where
     ) -> Result<
         Vec<(
             SectorIndex,
-            impl ProvableSolutions<Item = Result<Solution<PublicKey>, ProvingError>> + 'a,
+            impl ProvableSolutions<Item = Result<Solution<PublicKey>, ProvingError>>
+            + use<'a, PosTable, Plot>,
         )>,
         AuditingError,
     >
