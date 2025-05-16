@@ -100,6 +100,7 @@ impl pallet_messenger::Config for MockRuntime {
     type HoldIdentifier = MockHoldIdentifier;
     type DomainRegistration = DomainRegistration;
     type MaxOutgoingMessages = MaxOutgoingMessages;
+    type ExtensionWeightInfo = pallet_messenger::extensions::weights::SubstrateWeight<MockRuntime>;
     /// function to fetch endpoint response handler by Endpoint.
     fn get_endpoint_handler(_endpoint: &Endpoint) -> Option<Box<dyn EndpointHandler<MessageId>>> {
         #[cfg(feature = "runtime-benchmarks")]

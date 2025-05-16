@@ -145,6 +145,7 @@ const STORAGE_VERSION: StorageVersion = StorageVersion::new(2);
 
 #[frame_support::pallet]
 mod pallet {
+    pub use crate::extensions::weights::WeightInfo as ExtensionWeightInfo;
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
@@ -241,6 +242,8 @@ mod pallet {
         type MessengerOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = ()>;
         /// Helper to note cross chain XDM fee transfer
         type NoteChainTransfer: NoteChainTransfer<BalanceOf<Self>>;
+        /// Weight info for extensions
+        type ExtensionWeightInfo: ExtensionWeightInfo;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.

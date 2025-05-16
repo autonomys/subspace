@@ -155,5 +155,6 @@ runtime-benchmarks = [
     "pallet-transporter/runtime-benchmarks",
     "pallet-utility/runtime-benchmarks",
     "sp-consensus-subspace/runtime-benchmarks",
+    "sp-messenger/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",
 ]
