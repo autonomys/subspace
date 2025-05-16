@@ -62,7 +62,7 @@
     array_windows,
     assert_matches,
     box_into_inner,
-    duration_constructors,
+    duration_constructors_lite,
     let_chains,
     more_qualified_paths
 )]
