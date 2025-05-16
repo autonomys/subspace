@@ -501,6 +501,11 @@ where
         let bundle_estimated_weight = bundle.estimated_weight();
         let mut maybe_invalid_bundle_type = None;
 
+        // Note: It is okay to use stateless here since all the bundle checks currently do not
+        // require state. But of any checks in the future requires a state read that was part of the
+        // genesis ex: `SelfChainId`, stateless runtime will panic.
+        // So ideal to set the genesis storage as fraud proof already have access to that and would be
+        // no different in terms of verification on both the sides
         let stateless_runtime_api = self.stateless_runtime_api(parent_domain_hash)?;
         let consensus_runtime_api = self.consensus_client.runtime_api();
 

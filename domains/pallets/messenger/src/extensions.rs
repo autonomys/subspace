@@ -23,7 +23,7 @@ use scale_info::prelude::fmt;
 use sp_messenger::messages::{Message, Nonce, Proof};
 use sp_messenger::MAX_FUTURE_ALLOWED_NONCES;
 use sp_runtime::traits::{
-    AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, Dispatchable, Get, Implication,
+    AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, Dispatchable, Implication,
     PostDispatchInfoOf, TransactionExtension, ValidateResult,
 };
 use sp_runtime::transaction_validity::{
@@ -245,33 +245,40 @@ where
             None => return Weight::zero(),
         };
 
-        let mmr_proof_weight = if Runtime::SelfChainId::get().is_consensus_chain() {
+        let (dst_chain_id, verification_weight) = match messenger_call {
+            Call::relay_message { msg } => (
+                msg.dst_chain_id,
+                match msg.proof {
+                    Proof::Consensus { .. } => {
+                        Runtime::ExtensionWeightInfo::from_consensus_relay_message().max(
+                            Runtime::ExtensionWeightInfo::from_consensus_relay_message_channel_open(
+                            ),
+                        )
+                    }
+                    Proof::Domain { .. } => {
+                        Runtime::ExtensionWeightInfo::from_domains_relay_message_channel_open()
+                            .max(Runtime::ExtensionWeightInfo::from_domains_relay_message())
+                    }
+                },
+            ),
+            Call::relay_message_response { msg } => (
+                msg.dst_chain_id,
+                match msg.proof {
+                    Proof::Consensus { .. } => {
+                        Runtime::ExtensionWeightInfo::from_consensus_relay_message_response()
+                    }
+                    Proof::Domain { .. } => {
+                        Runtime::ExtensionWeightInfo::from_domains_relay_message_response()
+                    }
+                },
+            ),
+            _ => return Weight::zero(),
+        };
+
+        let mmr_proof_weight = if dst_chain_id.is_consensus_chain() {
             Runtime::ExtensionWeightInfo::mmr_proof_verification_on_consensus()
         } else {
             Runtime::ExtensionWeightInfo::mmr_proof_verification_on_domain()
-        };
-
-        let verification_weight = match messenger_call {
-            Call::relay_message { msg } => match msg.proof {
-                Proof::Consensus { .. } => {
-                    Runtime::ExtensionWeightInfo::from_consensus_relay_message().max(
-                        Runtime::ExtensionWeightInfo::from_consensus_relay_message_channel_open(),
-                    )
-                }
-                Proof::Domain { .. } => {
-                    Runtime::ExtensionWeightInfo::from_domains_relay_message_channel_open()
-                        .max(Runtime::ExtensionWeightInfo::from_domains_relay_message())
-                }
-            },
-            Call::relay_message_response { msg } => match msg.proof {
-                Proof::Consensus { .. } => {
-                    Runtime::ExtensionWeightInfo::from_consensus_relay_message_response()
-                }
-                Proof::Domain { .. } => {
-                    Runtime::ExtensionWeightInfo::from_domains_relay_message_response()
-                }
-            },
-            _ => return Weight::zero(),
         };
 
         mmr_proof_weight.saturating_add(verification_weight)
@@ -351,8 +358,9 @@ where
             (Some(messenger_call), Val::ValidatedRelayMessage(validated_relay_message)) => {
                 Self::do_prepare(messenger_call, validated_relay_message)
             }
-            // return Ok for the rest of the call types and a full refund
-            (_, _) => Ok(Pre::Refund(Self::do_calculate_weight(call))),
+            // return Ok for the rest of the call types and nothing to refund here as
+            // non XDM calls will have zero weight from this extension.
+            (_, _) => Ok(Pre::Refund(Weight::zero())),
         }
     }
 
