@@ -1,15 +1,39 @@
 //! EVM domain configurations.
 
-use crate::chain_spec_utils::chain_spec_properties;
-use crate::domain::cli::SpecId;
+use crate::chain_spec_utils::{chain_spec_properties, get_public_key_from_seed};
+use crate::domain::cli::{GenesisDomain, GenesisOperatorParams, SpecId};
+use domain_runtime_primitives::{AccountId20Converter, MultiAccountId};
 use evm_domain_runtime::{
-    BalancesConfig, EVMChainIdConfig, EVMConfig, Precompiles, RuntimeGenesisConfig, SystemConfig,
-    WASM_BINARY,
+    AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, Precompiles, RuntimeGenesisConfig,
+    SystemConfig, WASM_BINARY,
 };
-#[cfg(not(feature = "runtime-benchmarks"))]
-pub use non_benchmark::get_genesis_domain;
+use hex_literal::hex;
+use parity_scale_codec::Encode;
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
+use sp_core::crypto::UncheckedFrom;
+use sp_domains::storage::RawGenesis;
+use sp_domains::{
+    EvmDomainRuntimeConfig, EvmType, OperatorAllowList, OperatorPublicKey, RuntimeType,
+};
+use sp_runtime::traits::Convert;
+use sp_runtime::BuildStorage;
+use std::collections::BTreeSet;
+use subspace_runtime_primitives::{Balance, SSC};
+
+/// Development keys that will be injected automatically on polkadotjs apps
+fn get_dev_accounts() -> Vec<AccountId> {
+    vec![
+        // Alith key
+        AccountId::from(hex!("f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac")),
+        // Baltathar key
+        AccountId::from(hex!("3Cd0A705a2DC65e5b1E1205896BaA2be8A07c6e0")),
+        // Charleth key
+        AccountId::from(hex!("798d4Ba9baf0064Ec19eB4F0a1a45785ae9D6DFc")),
+        // Dorothy
+        AccountId::from(hex!("773539d4Ac0e786233D90A233654ccEE26a613D9")),
+    ]
+}
 
 pub fn development_config(
     runtime_genesis_config: RuntimeGenesisConfig,
@@ -85,6 +109,16 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
     }
 }
 
+pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAccountId, Balance)> {
+    match spec_id {
+        SpecId::Dev => get_dev_accounts()
+            .into_iter()
+            .map(|acc| (AccountId20Converter::convert(acc), 1_000_000 * SSC))
+            .collect(),
+        SpecId::DevNet | SpecId::Taurus => vec![],
+    }
+}
+
 fn testnet_genesis() -> RuntimeGenesisConfig {
     // This is the simplest bytecode to revert without returning any data.
     // We will pre-deploy it under all of our precompiles to ensure they can be called from
@@ -121,107 +155,61 @@ fn testnet_genesis() -> RuntimeGenesisConfig {
     }
 }
 
-#[cfg(not(feature = "runtime-benchmarks"))]
-mod non_benchmark {
-    use super::*;
-    use crate::chain_spec_utils::get_public_key_from_seed;
-    use crate::domain::cli::{GenesisDomain, GenesisOperatorParams};
-    use domain_runtime_primitives::{AccountId20Converter, MultiAccountId};
-    use evm_domain_runtime::AccountId;
-    use hex_literal::hex;
-    use parity_scale_codec::Encode;
-    use sp_core::crypto::UncheckedFrom;
-    use sp_domains::storage::RawGenesis;
-    use sp_domains::{
-        EvmDomainRuntimeConfig, EvmType, OperatorAllowList, OperatorPublicKey, RuntimeType,
+fn get_operator_params(
+    spec_id: SpecId,
+    sudo_account: subspace_runtime_primitives::AccountId,
+) -> GenesisOperatorParams {
+    match spec_id {
+        SpecId::Dev => GenesisOperatorParams {
+            operator_allow_list: OperatorAllowList::Anyone,
+            operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Bob"),
+        },
+        SpecId::Taurus => GenesisOperatorParams {
+            operator_allow_list: OperatorAllowList::Operators(BTreeSet::from_iter(vec![
+                sudo_account.clone(),
+            ])),
+            operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
+                "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
+            )),
+        },
+        SpecId::DevNet => GenesisOperatorParams {
+            operator_allow_list: OperatorAllowList::Anyone,
+            operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
+                "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
+            )),
+        },
+    }
+}
+
+pub fn get_genesis_domain(
+    spec_id: SpecId,
+    sudo_account: subspace_runtime_primitives::AccountId,
+    evm_type: EvmType,
+) -> Result<GenesisDomain, String> {
+    let chain_spec = match spec_id {
+        SpecId::Dev => development_config(get_testnet_genesis_by_spec_id(spec_id))?,
+        SpecId::Taurus => taurus_config(get_testnet_genesis_by_spec_id(spec_id))?,
+        SpecId::DevNet => devnet_config(get_testnet_genesis_by_spec_id(spec_id))?,
     };
-    use sp_runtime::traits::Convert;
-    use sp_runtime::BuildStorage;
-    use std::collections::BTreeSet;
-    use subspace_runtime_primitives::{Balance, SSC};
 
-    pub fn get_genesis_domain(
-        spec_id: SpecId,
-        sudo_account: subspace_runtime_primitives::AccountId,
-        evm_type: EvmType,
-    ) -> Result<GenesisDomain, String> {
-        let chain_spec = match spec_id {
-            SpecId::Dev => development_config(get_testnet_genesis_by_spec_id(spec_id))?,
-            SpecId::Taurus => taurus_config(get_testnet_genesis_by_spec_id(spec_id))?,
-            SpecId::DevNet => devnet_config(get_testnet_genesis_by_spec_id(spec_id))?,
-        };
+    let GenesisOperatorParams {
+        operator_allow_list,
+        operator_signing_key,
+    } = get_operator_params(spec_id, sudo_account);
 
-        let GenesisOperatorParams {
-            operator_allow_list,
-            operator_signing_key,
-        } = get_operator_params(spec_id, sudo_account);
-
-        let storage = chain_spec
-            .build_storage()
-            .expect("Failed to build genesis storage from genesis runtime config");
-        let raw_genesis = RawGenesis::from_storage(storage);
-        Ok(GenesisDomain {
-            raw_genesis: raw_genesis.encode(),
-            runtime_name: "evm".to_string(),
-            runtime_type: RuntimeType::Evm,
-            runtime_version: evm_domain_runtime::VERSION,
-            domain_name: "nova".to_string(),
-            initial_balances: get_testnet_endowed_accounts_by_spec_id(spec_id),
-            operator_allow_list,
-            operator_signing_key,
-            domain_runtime_config: EvmDomainRuntimeConfig { evm_type }.into(),
-        })
-    }
-
-    fn get_operator_params(
-        spec_id: SpecId,
-        sudo_account: subspace_runtime_primitives::AccountId,
-    ) -> GenesisOperatorParams {
-        match spec_id {
-            SpecId::Dev => GenesisOperatorParams {
-                operator_allow_list: OperatorAllowList::Anyone,
-                operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Bob"),
-            },
-            SpecId::Taurus => GenesisOperatorParams {
-                operator_allow_list: OperatorAllowList::Operators(BTreeSet::from_iter(vec![
-                    sudo_account.clone(),
-                ])),
-                operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
-                    "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
-                )),
-            },
-            SpecId::DevNet => GenesisOperatorParams {
-                operator_allow_list: OperatorAllowList::Anyone,
-                operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
-                    "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
-                )),
-            },
-        }
-    }
-
-    pub fn get_testnet_endowed_accounts_by_spec_id(
-        spec_id: SpecId,
-    ) -> Vec<(MultiAccountId, Balance)> {
-        match spec_id {
-            SpecId::Dev => get_dev_accounts()
-                .into_iter()
-                .map(|acc| (AccountId20Converter::convert(acc), 1_000_000 * SSC))
-                .collect(),
-            SpecId::DevNet | SpecId::Taurus => vec![],
-        }
-    }
-
-    /// Development keys that will be injected automatically on polkadotjs apps
-    fn get_dev_accounts() -> Vec<AccountId> {
-        vec![
-            // Alith key
-            AccountId::from(hex!("f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac")),
-            // Baltathar key
-            AccountId::from(hex!("3Cd0A705a2DC65e5b1E1205896BaA2be8A07c6e0")),
-            // Charleth key
-            AccountId::from(hex!("798d4Ba9baf0064Ec19eB4F0a1a45785ae9D6DFc")),
-            // Dorothy
-            AccountId::from(hex!("773539d4Ac0e786233D90A233654ccEE26a613D9")),
-        ]
-    }
+    let storage = chain_spec
+        .build_storage()
+        .expect("Failed to build genesis storage from genesis runtime config");
+    let raw_genesis = RawGenesis::from_storage(storage);
+    Ok(GenesisDomain {
+        raw_genesis: raw_genesis.encode(),
+        runtime_name: "evm".to_string(),
+        runtime_type: RuntimeType::Evm,
+        runtime_version: evm_domain_runtime::VERSION,
+        domain_name: "nova".to_string(),
+        initial_balances: get_testnet_endowed_accounts_by_spec_id(spec_id),
+        operator_allow_list,
+        operator_signing_key,
+        domain_runtime_config: EvmDomainRuntimeConfig { evm_type }.into(),
+    })
 }
