@@ -20,6 +20,7 @@ frame-system.workspace = true
 hexlit.workspace = true
 log.workspace = true
 pallet-balances.workspace = true
+pallet-subspace = { workspace = true, optional = true }
 scale-info = { workspace = true, features = ["derive"] }
 sp-consensus-slots.workspace = true
 sp-consensus-subspace.workspace = true
@@ -37,6 +38,7 @@ subspace-runtime-primitives.workspace = true
 [dev-dependencies]
 domain-pallet-executive.workspace = true
 hex-literal.workspace = true
+pallet-subspace.workspace = true
 pallet-timestamp.workspace = true
 pallet-block-fees.workspace = true
 sp-externalities.workspace = true
@@ -51,6 +53,7 @@ std = [
     "frame-system/std",
     "log/std",
     "pallet-balances/std",
+    "pallet-subspace/std",
     "scale-info/std",
     "sp-consensus-slots/std",
     "sp-consensus-subspace/std",
@@ -70,6 +73,7 @@ runtime-benchmarks = [
     "frame-system/runtime-benchmarks",
     "frame-benchmarking",
     "frame-benchmarking/runtime-benchmarks",
+    "pallet-subspace/runtime-benchmarks",
     "sp-domains/runtime-benchmarks",
     "sp-domains-fraud-proof/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",

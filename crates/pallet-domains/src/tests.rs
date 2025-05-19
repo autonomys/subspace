@@ -20,6 +20,7 @@ use frame_support::weights::{IdentityFee, Weight};
 use frame_support::{assert_err, assert_ok, derive_impl, parameter_types, PalletId};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
+use pallet_subspace::NormalEraChange;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
@@ -34,14 +35,18 @@ use sp_domains::{
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::generic::{Preamble, EXTRINSIC_FORMAT_VERSION};
 use sp_runtime::traits::{
-    AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, Hash as HashT, IdentityLookup,
-    One, Zero,
+    AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, ConstU16, Hash as HashT,
+    IdentityLookup, One, Zero,
 };
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::U256 as P256;
+use std::num::NonZeroU64;
+use subspace_core_primitives::pieces::Piece;
+use subspace_core_primitives::segments::HistorySize;
+use subspace_core_primitives::solutions::SolutionRange;
+use subspace_core_primitives::{SlotNumber, U256 as P256};
 use subspace_runtime_primitives::{
     ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee, SSC,
 };
@@ -61,6 +66,7 @@ frame_support::construct_runtime!(
         System: frame_system,
         Timestamp: pallet_timestamp,
         Balances: pallet_balances,
+        Subspace: pallet_subspace,
         Domains: pallet_domains,
         DomainExecutive: domain_pallet_executive,
         BlockFees: pallet_block_fees,
@@ -311,6 +317,54 @@ impl domain_pallet_executive::Config for Test {
 impl pallet_block_fees::Config for Test {
     type Balance = Balance;
     type DomainChainByteFee = DomainChainByteFee;
+}
+
+pub const INITIAL_SOLUTION_RANGE: SolutionRange =
+    u64::MAX / (1024 * 1024 * 1024 / Piece::SIZE as u64) * 3 / 10;
+
+parameter_types! {
+    pub const BlockAuthoringDelay: SlotNumber = 2;
+    pub const PotEntropyInjectionInterval: BlockNumber = 5;
+    pub const PotEntropyInjectionLookbackDepth: u8 = 2;
+    pub const PotEntropyInjectionDelay: SlotNumber = 4;
+    pub const EraDuration: u32 = 4;
+    // 1GB
+    pub const InitialSolutionRange: SolutionRange = INITIAL_SOLUTION_RANGE;
+    pub const RecentSegments: HistorySize = HistorySize::new(NonZeroU64::new(5).unwrap());
+    pub const RecentHistoryFraction: (HistorySize, HistorySize) = (
+        HistorySize::new(NonZeroU64::new(1).unwrap()),
+        HistorySize::new(NonZeroU64::new(10).unwrap()),
+    );
+    pub const MinSectorLifetime: HistorySize = HistorySize::new(NonZeroU64::new(4).unwrap());
+    pub const RecordSize: u32 = 3840;
+    pub const ExpectedVotesPerBlock: u32 = 9;
+    pub const ReplicationFactor: u16 = 1;
+    pub const ReportLongevity: u64 = 34;
+    pub const ShouldAdjustSolutionRange: bool = false;
+    pub const BlockSlotCount: u32 = 6;
+}
+
+impl pallet_subspace::Config for Test {
+    type RuntimeEvent = RuntimeEvent;
+    type SubspaceOrigin = pallet_subspace::EnsureSubspaceOrigin;
+    type BlockAuthoringDelay = BlockAuthoringDelay;
+    type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
+    type PotEntropyInjectionLookbackDepth = PotEntropyInjectionLookbackDepth;
+    type PotEntropyInjectionDelay = PotEntropyInjectionDelay;
+    type EraDuration = EraDuration;
+    type InitialSolutionRange = InitialSolutionRange;
+    type SlotProbability = SlotProbability;
+    type ConfirmationDepthK = ConfirmationDepthK;
+    type RecentSegments = RecentSegments;
+    type RecentHistoryFraction = RecentHistoryFraction;
+    type MinSectorLifetime = MinSectorLifetime;
+    type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
+    type MaxPiecesInSector = ConstU16<1>;
+    type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
+    type EraChangeTrigger = NormalEraChange;
+    type WeightInfo = ();
+    type BlockSlotCount = BlockSlotCount;
+    type ExtensionWeightInfo = pallet_subspace::extensions::weights::SubstrateWeight<Self>;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
