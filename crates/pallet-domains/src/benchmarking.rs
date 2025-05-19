@@ -850,8 +850,8 @@ mod benchmarks {
     #[benchmark]
     fn transfer_treasury_funds() {
         // Ensure the treasury account has balance
-        let treasury_amount = 5000u32.into();
-        let transfer_amount = 500u32.into();
+        let transfer_amount = T::Currency::minimum_balance();
+        let treasury_amount = T::Currency::minimum_balance() + transfer_amount;
         let account = account("slashed_account", 1, SEED);
         assert_eq!(T::Currency::balance(&account), 0u32.into());
         T::Currency::set_balance(&T::TreasuryAccount::get(), treasury_amount);
