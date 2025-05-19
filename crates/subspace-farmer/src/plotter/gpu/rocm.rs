@@ -102,10 +102,7 @@ impl RocmRecordsEncoder {
                 eprintln!("panic on thread {}: {:?}", thread_name(index), panic_info);
             } else {
                 // We want to guarantee exit, rather than panicking in a panic handler.
-                eprintln!(
-                    "rayon panic handler called on non-rayon thread: {:?}",
-                    panic_info
-                );
+                eprintln!("rayon panic handler called on non-rayon thread: {panic_info:?}");
             }
             exit(1);
         };
