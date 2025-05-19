@@ -457,7 +457,7 @@ where
     const IDENTIFIER: &'static str = "MessengerTrustedMmrExtension";
     type Implicit = ();
     type Val = Val<Runtime>;
-    type Pre = ();
+    type Pre = Pre;
 
     fn weight(&self, call: &RuntimeCallFor<Runtime>) -> Weight {
         MessengerExtension::<Runtime>::do_calculate_weight(call)
@@ -503,10 +503,20 @@ where
             // prepare if this is a messenger call and has been validated
             (Some(messenger_call), Val::ValidatedRelayMessage(validated_relay_message)) => {
                 MessengerExtension::<Runtime>::do_prepare(messenger_call, validated_relay_message)
-                    .map(|_| ())
             }
             // return Ok for the rest of the call types
-            (_, _) => Ok(()),
+            (_, _) => Ok(Pre::Refund(Weight::zero())),
         }
+    }
+
+    fn post_dispatch_details(
+        pre: Self::Pre,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _post_info: &PostDispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+        _result: &DispatchResult,
+    ) -> Result<Weight, TransactionValidityError> {
+        let Pre::Refund(weight) = pre;
+        Ok(weight)
     }
 }
