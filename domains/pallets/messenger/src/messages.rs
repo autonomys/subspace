@@ -16,11 +16,13 @@ use alloc::collections::BTreeMap;
 use frame_support::ensure;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_messenger::messages::{
-    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, ChannelOpenParamsV1, Message,
-    MessageId, MessageWeightTag, PayloadV1, ProtocolMessageRequest, ProtocolMessageResponse,
-    RequestResponse, VersionedPayload,
+    BlockMessageWithStorageKey, BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId,
+    ChannelOpenParamsV1, Message, MessageId, MessageKey, MessageWeightTag, PayloadV1,
+    ProtocolMessageRequest, ProtocolMessageResponse, RequestResponse, VersionedPayload,
 };
-use sp_runtime::traits::Get;
+
+use sp_messenger::MAX_FUTURE_ALLOWED_NONCES;
+use sp_runtime::traits::{Get, One};
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
 #[cfg(feature = "std")]
 use std::collections::BTreeMap;
@@ -387,11 +389,23 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn get_block_messages() -> BlockMessagesWithStorageKey {
-        let inbox_responses_weight_tags: BTreeMap<(ChainId, MessageId), MessageWeightTag> =
-            InboxResponseMessageWeightTags::<T>::iter().collect();
-        let outbox_weight_tags: BTreeMap<(ChainId, MessageId), MessageWeightTag> =
-            OutboxMessageWeightTags::<T>::iter().collect();
+    pub fn get_block_messages(query: BlockMessagesQuery) -> BlockMessagesWithStorageKey {
+        let BlockMessagesQuery {
+            chain_id,
+            channel_id,
+            outbox_from,
+            inbox_responses_from,
+        } = query;
+
+        let inbox_responses_weight_tags = Self::get_weight_tags(
+            (chain_id, channel_id, inbox_responses_from),
+            InboxResponseMessageWeightTags::<T>::get,
+        );
+
+        let outbox_weight_tags = Self::get_weight_tags(
+            (chain_id, channel_id, outbox_from),
+            OutboxMessageWeightTags::<T>::get,
+        );
 
         if outbox_weight_tags.is_empty() && inbox_responses_weight_tags.is_empty() {
             return Default::default();
@@ -435,5 +449,32 @@ impl<T: Config> Pallet<T> {
             });
 
         messages_with_storage_key
+    }
+
+    fn get_weight_tags<WTG>(
+        from: MessageKey,
+        weight_tag_getter: WTG,
+    ) -> BTreeMap<(ChainId, MessageId), MessageWeightTag>
+    where
+        WTG: Fn((ChainId, MessageId)) -> Option<MessageWeightTag>,
+    {
+        let (chain_id, channel_id, mut nonce) = from;
+        let mut weight_tags = BTreeMap::new();
+        while weight_tags.len() as u32 <= MAX_FUTURE_ALLOWED_NONCES {
+            match weight_tag_getter((chain_id, (channel_id, nonce))) {
+                // if the nonce is already processed, short circuit and return
+                None => return weight_tags,
+                Some(weight_tag) => {
+                    weight_tags.insert((chain_id, (channel_id, nonce)), weight_tag);
+                }
+            };
+
+            nonce = match nonce.checked_add(One::one()) {
+                None => return weight_tags,
+                Some(nonce) => nonce,
+            }
+        }
+
+        weight_tags
     }
 }

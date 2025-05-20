@@ -23,7 +23,7 @@ pub mod messages;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::messages::{MessageKey, Nonce};
+use crate::messages::{ChannelState, MessageKey, Nonce};
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeMap;
 #[cfg(not(feature = "std"))]
@@ -37,7 +37,9 @@ use frame_support::inherent::{InherentIdentifier, IsFatalError};
 use frame_support::storage::storage_prefix;
 #[cfg(feature = "runtime-benchmarks")]
 use frame_support::{Identity, StorageHasher};
-use messages::{BlockMessagesWithStorageKey, ChannelId, CrossDomainMessage, MessageId};
+use messages::{
+    BlockMessagesQuery, BlockMessagesWithStorageKey, ChannelId, CrossDomainMessage, MessageId,
+};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
@@ -266,7 +268,7 @@ pub struct ChannelNonce {
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
-    #[api_version(2)]
+    #[api_version(3)]
     pub trait RelayerApi<BlockNumber, CNumber, CHash>
     where
         BlockNumber: Encode + Decode,
@@ -301,6 +303,13 @@ sp_api::decl_runtime_apis! {
 
         /// Returns all the open channels to other chains.
         fn open_channels() -> BTreeSet<(ChainId, ChannelId)>;
+
+        /// Returns outbox and inbox responses from given nonce to maximum allowed nonce per block
+        /// Storage key is used to generate the storage proof for the message.
+        fn block_messages_with_query(query: BlockMessagesQuery) -> BlockMessagesWithStorageKey;
+
+        /// Returns all the channels to other chains and their local Channel state.
+        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelState)>;
     }
 
     /// Api to provide XDM extraction from Runtime Calls.

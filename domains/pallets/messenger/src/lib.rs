@@ -1410,7 +1410,11 @@ mod pallet {
         }
 
         pub fn open_channels() -> BTreeSet<(ChainId, ChannelId)> {
-            crate::migrations::get_open_channels::<T>()
+            Channels::<T>::iter_keys().collect()
+        }
+
+        pub fn channels_and_states() -> Vec<(ChainId, ChannelId, ChannelState)> {
+            crate::migrations::get_channels_and_states::<T>()
         }
 
         pub fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce> {

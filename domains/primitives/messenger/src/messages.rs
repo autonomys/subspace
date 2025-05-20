@@ -269,6 +269,15 @@ impl BlockMessagesWithStorageKey {
     }
 }
 
+/// A query to fetch block messages for Outbox and Inbox Responses
+#[derive(Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
+pub struct BlockMessagesQuery {
+    pub chain_id: ChainId,
+    pub channel_id: ChannelId,
+    pub outbox_from: Nonce,
+    pub inbox_responses_from: Nonce,
+}
+
 impl<BlockNumber, BlockHash, MmrHash> CrossDomainMessage<BlockNumber, BlockHash, MmrHash> {
     pub fn from_relayer_msg_with_proof(
         r_msg: BlockMessageWithStorageKey,

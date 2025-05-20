@@ -64,7 +64,8 @@ use sp_evm_tracker::{
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId, MessageKey,
+    BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelState, CrossDomainMessage,
+    MessageId, MessageKey,
 };
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
@@ -1543,7 +1544,7 @@ impl_runtime_apis! {
 
     impl sp_messenger::RelayerApi<Block, BlockNumber, ConsensusBlockNumber, ConsensusBlockHash> for Runtime {
         fn block_messages() -> BlockMessagesWithStorageKey {
-            Messenger::get_block_messages()
+            BlockMessagesWithStorageKey::default()
         }
 
         fn outbox_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
@@ -1572,6 +1573,14 @@ impl_runtime_apis! {
 
         fn open_channels() -> BTreeSet<(ChainId, ChannelId)> {
             Messenger::open_channels()
+        }
+
+        fn block_messages_with_query(query: BlockMessagesQuery) -> BlockMessagesWithStorageKey {
+            Messenger::get_block_messages(query)
+        }
+
+        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelState)>{
+            Messenger::channels_and_states()
         }
     }
 
