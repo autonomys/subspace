@@ -33,6 +33,10 @@ use alloc::vec::Vec;
 #[cfg(feature = "std")]
 use frame_support::inherent::InherentData;
 use frame_support::inherent::{InherentIdentifier, IsFatalError};
+#[cfg(feature = "runtime-benchmarks")]
+use frame_support::storage::storage_prefix;
+#[cfg(feature = "runtime-benchmarks")]
+use frame_support::{Identity, StorageHasher};
 use messages::{BlockMessagesWithStorageKey, ChannelId, CrossDomainMessage, MessageId};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -120,6 +124,51 @@ impl StorageKeys for () {
         _message_key: MessageKey,
     ) -> Option<Vec<u8>> {
         None
+    }
+}
+
+#[cfg(feature = "runtime-benchmarks")]
+pub struct BenchmarkStorageKeys;
+
+#[cfg(feature = "runtime-benchmarks")]
+impl StorageKeys for BenchmarkStorageKeys {
+    fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Option<Vec<u8>> {
+        let storage_prefix = storage_prefix(
+            "Domains".as_bytes(),
+            "LatestConfirmedDomainExecutionReceipt".as_bytes(),
+        );
+        let key_hashed = domain_id.using_encoded(Identity::hash);
+
+        let mut final_key = Vec::with_capacity(storage_prefix.len() + key_hashed.len());
+
+        final_key.extend_from_slice(&storage_prefix);
+        final_key.extend_from_slice(key_hashed.as_ref());
+
+        Some(final_key)
+    }
+
+    fn outbox_storage_key(_chain_id: ChainId, message_key: MessageKey) -> Option<Vec<u8>> {
+        let storage_prefix = storage_prefix("Messenger".as_bytes(), "Outbox".as_bytes());
+        let key_hashed = message_key.using_encoded(Identity::hash);
+
+        let mut final_key = Vec::with_capacity(storage_prefix.len() + key_hashed.len());
+
+        final_key.extend_from_slice(&storage_prefix);
+        final_key.extend_from_slice(key_hashed.as_ref());
+
+        Some(final_key)
+    }
+
+    fn inbox_responses_storage_key(_chain_id: ChainId, message_key: MessageKey) -> Option<Vec<u8>> {
+        let storage_prefix = storage_prefix("Messenger".as_bytes(), "InboxResponses".as_bytes());
+        let key_hashed = message_key.using_encoded(Identity::hash);
+
+        let mut final_key = Vec::with_capacity(storage_prefix.len() + key_hashed.len());
+
+        final_key.extend_from_slice(&storage_prefix);
+        final_key.extend_from_slice(key_hashed.as_ref());
+
+        Some(final_key)
     }
 }
 

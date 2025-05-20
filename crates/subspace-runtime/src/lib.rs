@@ -754,6 +754,9 @@ impl pallet_messenger::Config for Runtime {
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
+    #[cfg(feature = "runtime-benchmarks")]
+    type StorageKeys = sp_messenger::BenchmarkStorageKeys;
+    #[cfg(not(feature = "runtime-benchmarks"))]
     type StorageKeys = StorageKeys;
     type DomainOwner = Domains;
     type HoldIdentifier = HoldIdentifierWrapper;
@@ -763,6 +766,7 @@ impl pallet_messenger::Config for Runtime {
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
     type NoteChainTransfer = Transporter;
+    type ExtensionWeightInfo = pallet_messenger::extensions::weights::SubstrateWeight<Runtime>;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -1259,6 +1263,7 @@ mod benches {
         [pallet_messenger, Messenger]
         [pallet_transporter, Transporter]
         [pallet_subspace_extension, SubspaceExtensionBench::<Runtime>]
+        [pallet_messenger_from_domains_extension, MessengerFromDomainsExtensionBench::<Runtime>]
     );
 }
 
@@ -1781,6 +1786,7 @@ impl_runtime_apis! {
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
             use pallet_subspace::extensions::benchmarking::Pallet as SubspaceExtensionBench;
+            use pallet_messenger::extensions::benchmarking_from_domains::Pallet as MessengerFromDomainsExtensionBench;
 
             let mut list = Vec::<BenchmarkList>::new();
             list_benchmarks!(list, extra);
@@ -1799,6 +1805,7 @@ impl_runtime_apis! {
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
             use pallet_subspace::extensions::benchmarking::Pallet as SubspaceExtensionBench;
+            use pallet_messenger::extensions::benchmarking_from_domains::Pallet as MessengerFromDomainsExtensionBench;
 
             use frame_support::traits::WhitelistedStorageKeys;
             let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();

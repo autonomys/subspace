@@ -2,6 +2,8 @@ use crate::{ChannelId, Channels, Config, InboxResponses, Nonce, Outbox, StateRoo
 use frame_support::storage::generator::StorageDoubleMap;
 use frame_support::weights::Weight;
 use sp_core::storage::StorageKey;
+#[cfg(feature = "runtime-benchmarks")]
+use sp_domains::DomainId;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_messenger::messages::ChainId;
 use sp_runtime::traits::BlakeTwo256;
@@ -38,6 +40,7 @@ macro_rules! impl_runtime {
         use sp_runtime::Perbill;
         use sp_domains::DomainId;
         use subspace_runtime_primitives::DomainEventSegmentSize;
+        use crate::mock::pallet_domains;
 
         type Block = frame_system::mocking::MockBlock<Runtime>;
 
@@ -47,6 +50,7 @@ macro_rules! impl_runtime {
                 Messenger: crate exclude_parts{ Inherent },
                 Balances: pallet_balances,
                 Transporter: pallet_transporter,
+                Domains: pallet_domains,
             }
         );
 
@@ -109,6 +113,7 @@ macro_rules! impl_runtime {
             type AdjustedWeightToFee = frame_support::weights::IdentityFee<u64>;
             type FeeMultiplier = FeeMultiplier;
             type NoteChainTransfer = ();
+            type ExtensionWeightInfo = crate::extensions::weights::SubstrateWeight<$runtime>;
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 #[allow(unused_variables)] endpoint: &Endpoint,
@@ -179,6 +184,8 @@ macro_rules! impl_runtime {
             type SkipBalanceTransferChecks = ();
         }
 
+        impl pallet_domains::Config for $runtime {}
+
         pub const USER_ACCOUNT: AccountId = 1;
         pub const USER_INITIAL_BALANCE: Balance = 500000000;
 
@@ -239,11 +246,11 @@ impl EndpointHandler<MessageId> for MockEndpoint {
 }
 
 pub(crate) mod chain_a {
-    impl_runtime!(Runtime, ChainId::Domain(1.into()));
+    impl_runtime!(Runtime, ChainId::Domain(0.into()));
 }
 
 pub(crate) mod chain_b {
-    impl_runtime!(Runtime, ChainId::Domain(2.into()));
+    impl_runtime!(Runtime, ChainId::Domain(1.into()));
 }
 
 pub(crate) mod consensus_chain {
@@ -293,4 +300,46 @@ pub(crate) fn storage_proof_of_inbox_message_responses<T: Config>(
     let storage_key = StorageKey(key);
     let (root, proof) = storage_proof_for_key::<T>(backend, storage_key.clone());
     (root, storage_key, proof)
+}
+
+#[cfg(feature = "runtime-benchmarks")]
+pub(crate) fn storage_proof_of_domain_state_root<T: pallet_domains::Config>(
+    backend: InMemoryBackend<T::Hashing>,
+    domain_id: DomainId,
+) -> (StateRootOf<T>, StorageKey, StorageProof) {
+    let key = pallet_domains::LatestConfirmedDomainExecutionReceipt::<T>::hashed_key_for(domain_id);
+    let storage_key = StorageKey(key);
+    let state_version = sp_runtime::StateVersion::default();
+    let root = backend.storage_root(std::iter::empty(), state_version).0;
+    let proof = StorageProof::new(
+        prove_read(backend, &[storage_key.clone()])
+            .unwrap()
+            .iter_nodes()
+            .cloned(),
+    );
+    (root, storage_key, proof)
+}
+
+#[frame_support::pallet]
+pub(crate) mod pallet_domains {
+    use frame_support::pallet_prelude::*;
+    use sp_core::H256;
+    use sp_domains::{DomainId, ExecutionReceipt};
+
+    #[pallet::config]
+    pub trait Config: frame_system::Config {}
+
+    /// Pallet domain-id to store self domain id.
+    #[pallet::pallet]
+    #[pallet::without_storage_info]
+    pub struct Pallet<T>(_);
+
+    #[pallet::storage]
+    pub type LatestConfirmedDomainExecutionReceipt<T: Config> = StorageMap<
+        _,
+        Identity,
+        DomainId,
+        ExecutionReceipt<u32, H256, u32, H256, u128>,
+        OptionQuery,
+    >;
 }
