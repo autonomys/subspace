@@ -2850,6 +2850,7 @@ dependencies = [
  "cross-domain-message-gossip",
  "futures",
  "parity-scale-codec",
+ "rand 0.8.5",
  "sc-client-api",
  "sc-state-db",
  "sc-utils",

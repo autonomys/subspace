@@ -3,8 +3,10 @@
 // TODO: Restore once https://github.com/rust-lang/rust/issues/122105 is resolved
 // #![deny(unused_crate_dependencies)]
 
+mod aux_schema;
 pub mod worker;
 
+use crate::aux_schema::get_channel_processed_state;
 use async_channel::TrySendError;
 use cross_domain_message_gossip::{
     can_allow_xdm_submission, get_channel_state, get_xdm_processed_block_number,
@@ -12,23 +14,28 @@ use cross_domain_message_gossip::{
     MessageData as GossipMessageData, RELAYER_PREFIX,
 };
 use parity_scale_codec::{Codec, Encode};
+use rand::seq::SliceRandom;
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiRef, ProvideRuntimeApi};
 use sp_core::{H256, U256};
-use sp_domains::DomainsApi;
+use sp_domains::{ChannelId, DomainsApi};
 use sp_messenger::messages::{
-    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, Proof,
+    BlockMessageWithStorageKey, BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId,
+    ChannelState, CrossDomainMessage, Nonce, Proof,
 };
 use sp_messenger::{MessengerApi, RelayerApi, XdmId, MAX_FUTURE_ALLOWED_NONCES};
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One};
-use sp_runtime::ArithmeticError;
+use sp_runtime::{ArithmeticError, SaturatedConversion, Saturating};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
+use std::cmp::max;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_runtime_primitives::BlockHashFor;
 use tracing::log;
+
+const CHANNEL_PROCESSED_STATE_CACHE_LIMIT: u32 = 15;
 
 /// The logging target.
 const LOG_TARGET: &str = "message::relayer";
@@ -643,4 +650,191 @@ where
         };
         Ok(proof)
     }
+}
+
+// Fetch the unprocessed XDMs at a given block
+fn fetch_messages<Backend, Client, Block, CBlock>(
+    backend: &Backend,
+    client: &Arc<Client>,
+    fetch_message_at: Block::Hash,
+    self_chain_id: ChainId,
+) -> Result<Vec<BlockMessagesQuery>, Error>
+where
+    Block: BlockT,
+    Block::Hash: From<H256>,
+    CBlock: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
+    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
+    Backend: AuxStore,
+{
+    let runtime_api = client.runtime_api();
+    let mut queries = runtime_api
+        .channels_and_state(fetch_message_at)?
+        .into_iter()
+        .filter_map(|(dst_chain_id, channel_id, channel_state)| {
+            get_channel_state_query(
+                backend,
+                client,
+                fetch_message_at,
+                self_chain_id,
+                dst_chain_id,
+                channel_id,
+                channel_state,
+            )
+            .ok()
+            .flatten()
+        })
+        .collect::<Vec<_>>();
+
+    // pick random 15 queries
+    Ok(if queries.len() <= 15 {
+        queries
+    } else {
+        let mut rng = rand::thread_rng();
+        queries.shuffle(&mut rng);
+        queries.truncate(15);
+        queries
+    })
+}
+
+fn get_channel_state_query<Backend, Client, Block>(
+    backend: &Backend,
+    client: &Arc<Client>,
+    fetch_message_at: Block::Hash,
+    self_chain_id: ChainId,
+    dst_chain_id: ChainId,
+    channel_id: ChannelId,
+    local_channel_state: ChannelState,
+) -> Result<Option<BlockMessagesQuery>, Error>
+where
+    Backend: AuxStore,
+    Block: BlockT,
+    Block::Hash: From<H256>,
+    Client: HeaderBackend<Block>,
+{
+    let maybe_dst_channel_state =
+        get_channel_state(backend, dst_chain_id, self_chain_id, channel_id)
+            .ok()
+            .flatten();
+
+    let maybe_channel_processed_state =
+        if let Some(state) = get_channel_processed_state(backend, dst_chain_id, channel_id)? {
+            match client.hash(state.block_number.into()).ok().flatten() {
+                // there is no block at this number, could be due to re-org
+                None => None,
+                Some(hash) => {
+                    if hash != state.block_hash.into() {
+                        // client re-org'ed, allow xdm submission
+                        None
+                    } else {
+                        // check if the state is still valid from the current block
+                        match client.number(fetch_message_at)? {
+                            None => Some(state),
+                            Some(current_block_number) => {
+                                let block_limit: NumberFor<Block> =
+                                    CHANNEL_PROCESSED_STATE_CACHE_LIMIT.saturated_into();
+
+                                if state.block_number
+                                    >= current_block_number
+                                        .saturating_sub(block_limit)
+                                        .saturated_into()
+                                {
+                                    Some(state)
+                                } else {
+                                    None
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            None
+        };
+
+    Ok(
+        match (maybe_dst_channel_state, maybe_channel_processed_state) {
+            // don't have any info on channel, so assume from the beginning
+            (None, None) => Some(BlockMessagesQuery {
+                chain_id: dst_chain_id,
+                channel_id,
+                outbox_from: Nonce::zero(),
+                inbox_responses_from: Nonce::zero(),
+            }),
+            // don't have channel processed state, so use the dst_channel state for query
+            (Some(dst_channel_state), None) => Some(BlockMessagesQuery {
+                chain_id: dst_chain_id,
+                channel_id,
+                outbox_from: dst_channel_state.next_inbox_nonce,
+                inbox_responses_from: dst_channel_state
+                    .latest_response_received_message_nonce
+                    // pick the next inbox message response nonce or default to zero
+                    .map(|nonce| nonce.saturating_add(One::one()))
+                    .unwrap_or(Nonce::zero()),
+            }),
+            // don't have dst channel state, so use the last processed channel state
+            (None, Some(channel_state)) => Some(BlockMessagesQuery {
+                chain_id: dst_chain_id,
+                channel_id,
+                outbox_from: channel_state.last_outbox_nonce.saturating_add(One::one()),
+                inbox_responses_from: channel_state
+                    .last_inbox_message_response_nonce
+                    .saturating_add(One::one()),
+            }),
+            (Some(dst_channel_state), Some(channel_state)) => {
+                let next_outbox_nonce = max(
+                    dst_channel_state.next_inbox_nonce,
+                    channel_state.last_outbox_nonce.saturating_add(One::one()),
+                );
+
+                let next_inbox_response_nonce = max(
+                    dst_channel_state
+                        .latest_response_received_message_nonce
+                        .map(|nonce| nonce.saturating_add(One::one()))
+                        .unwrap_or(Nonce::zero()),
+                    channel_state
+                        .last_inbox_message_response_nonce
+                        .saturating_add(One::one()),
+                );
+
+                // if the local channel is closed, and
+                // last outbox message is already included
+                // and
+                // if the dst_channel is closed, and
+                // last inbox message response is already included
+                // we can safely skip the channel as the there is nothing further to send.
+                if local_channel_state == ChannelState::Closed
+                    && dst_channel_state.state == ChannelState::Closed
+                {
+                    let is_last_outbox_nonce = dst_channel_state
+                        .next_inbox_nonce
+                        .saturating_sub(One::one())
+                        == channel_state.last_outbox_nonce;
+
+                    let is_last_inbox_message_response_nonce = dst_channel_state
+                        .latest_response_received_message_nonce
+                        .unwrap_or(Nonce::zero())
+                        == channel_state.last_inbox_message_response_nonce;
+
+                    if is_last_outbox_nonce && is_last_inbox_message_response_nonce {
+                        None
+                    } else {
+                        Some(BlockMessagesQuery {
+                            chain_id: dst_chain_id,
+                            channel_id,
+                            outbox_from: next_outbox_nonce,
+                            inbox_responses_from: next_inbox_response_nonce,
+                        })
+                    }
+                } else {
+                    Some(BlockMessagesQuery {
+                        chain_id: dst_chain_id,
+                        channel_id,
+                        outbox_from: next_outbox_nonce,
+                        inbox_responses_from: next_inbox_response_nonce,
+                    })
+                }
+            }
+        },
+    )
 }
