@@ -5346,7 +5346,6 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_domain_sudo_calls() {
     let (_directory, mut ferdie, mut alice, account_infos) =
         setup_evm_test_accounts(Sr25519Alice, true, Sr25519Alice).await;
@@ -5764,7 +5763,6 @@ async fn test_public_evm_rejects_allow_list_domain_owner_calls() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_xdm_between_consensus_and_domain_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -5923,7 +5921,6 @@ async fn test_xdm_between_consensus_and_domain_should_work() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_xdm_between_domains_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -6047,7 +6044,6 @@ async fn test_xdm_between_domains_should_work() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_unordered_cross_domains_message_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -7143,7 +7139,6 @@ async fn test_equivocated_bundle_check() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_xdm_false_invalid_fraud_proof() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -7617,7 +7612,6 @@ async fn test_custom_api_storage_root_match_upstream_root() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_xdm_channel_allowlist_removed_after_xdm_initiated() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -7695,7 +7689,6 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_initiated() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -7802,7 +7795,6 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_xdm_channel_allowlist_removed_after_xdm_resp_relaying() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -7907,7 +7899,6 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_resp_relaying() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_xdm_transfer_below_existential_deposit() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -7983,7 +7974,6 @@ async fn test_xdm_transfer_below_existential_deposit() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_xdm_transfer_to_wrong_format_address() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -8432,7 +8422,6 @@ async fn test_invalid_chain_reward_receipt() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_domain_total_issuance_match_consensus_chain_bookkeeping_with_xdm() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
