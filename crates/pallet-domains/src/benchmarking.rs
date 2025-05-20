@@ -29,6 +29,7 @@ use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::Hooks;
 use frame_system::{Pallet as System, RawOrigin};
 use hex_literal::hex;
+use pallet_subspace::BlockRandomness;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::sr25519::vrf::{VrfPreOutput, VrfProof, VrfSignature};
@@ -44,11 +45,16 @@ use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{CheckedAdd, One, Zero};
 use sp_std::collections::btree_set::BTreeSet;
 use subspace_core_primitives::pot::PotOutput;
+use subspace_core_primitives::Randomness;
 
 const SEED: u32 = 0;
 const MAX_NOMINATORS_TO_SLASH_WITHOUT_OPERATOR: u32 = MAX_NOMINATORS_TO_SLASH - 1;
 
-#[benchmarks(where <RuntimeCallFor<T> as sp_runtime::traits::Dispatchable>::RuntimeOrigin: From<DomainOrigin>)]
+#[allow(clippy::multiple_bound_locations)]
+#[benchmarks(where
+    T: pallet_subspace::Config,
+    <RuntimeCallFor<T> as sp_runtime::traits::Dispatchable>::RuntimeOrigin: From<DomainOrigin>,
+)]
 mod benchmarks {
     use super::*;
     use sp_std::vec;
@@ -859,8 +865,8 @@ mod benchmarks {
     #[benchmark]
     fn transfer_treasury_funds() {
         // Ensure the treasury account has balance
-        let treasury_amount = 5000u32.into();
-        let transfer_amount = 500u32.into();
+        let transfer_amount = T::Currency::minimum_balance();
+        let treasury_amount = T::Currency::minimum_balance() + transfer_amount;
         let account = account("slashed_account", 1, SEED);
         assert_eq!(T::Currency::balance(&account), 0u32.into());
         T::Currency::set_balance(&T::TreasuryAccount::get(), treasury_amount);
@@ -1234,12 +1240,16 @@ mod benchmarks {
         }
     }
 
-    fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_hash: T::Hash) {
+    fn run_to_block<T: Config + pallet_subspace::Config>(
+        block_number: BlockNumberFor<T>,
+        parent_hash: T::Hash,
+    ) {
         if let Some(parent_block_number) = block_number.checked_sub(&One::one()) {
             Domains::<T>::on_finalize(parent_block_number);
         }
         System::<T>::set_block_number(block_number);
         System::<T>::initialize(&block_number, &parent_hash, &Default::default());
+        BlockRandomness::<T>::put(Randomness::default());
         Domains::<T>::on_initialize(block_number);
         System::<T>::finalize();
     }

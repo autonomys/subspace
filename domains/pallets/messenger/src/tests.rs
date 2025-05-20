@@ -1100,3 +1100,586 @@ fn test_transport_funds_between_chains_failed_no_open_channel() {
         assert_err!(res, crate::Error::<chain_a::Runtime>::NoOpenChannel);
     });
 }
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmark_fixtures_gen {
+    use super::*;
+    use crate::mock::{
+        chain_a, chain_b, consensus_chain, storage_proof_of_domain_state_root,
+        storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
+    };
+    use crate::pallet::{ChainAllowlist, Inbox, Outbox};
+    use crate::tests::force_toggle_channel_state;
+    use crate::{Config, Pallet};
+    use frame_support::assert_ok;
+    use frame_support::pallet_prelude::{Decode, Encode};
+    use sp_core::H256;
+    use sp_domains::{BlockFees, ChannelId, ExecutionReceipt, Transfers};
+    use sp_messenger::messages::{CrossDomainMessage, MessageWeightTag, Nonce, Proof};
+    use sp_mmr_primitives::EncodableOpaqueLeaf;
+    use sp_subspace_mmr::ConsensusChainMmrLeafProof;
+    use std::collections::BTreeSet;
+    use std::fs;
+
+    #[derive(Encode, Decode, PartialEq, Debug)]
+    pub(crate) struct FromConsensusRelayMessage<T: Config> {
+        pub(crate) state_root: T::Hash,
+        pub(crate) xdm: CrossDomainMessage<u32, T::Hash, T::MmrHash>,
+    }
+
+    #[test]
+    fn test_from_consensus_relay_message_channel_open() {
+        let mut chain_test_ext = consensus_chain::new_test_ext();
+        let dst_chain = chain_a::SelfChainId::get();
+        let channel_id = ChannelId::zero();
+        let nonce = Nonce::zero();
+
+        chain_test_ext.execute_with(|| {
+            let list = BTreeSet::from([dst_chain]);
+            ChainAllowlist::<consensus_chain::Runtime>::put(list);
+            assert_ok!(Pallet::<consensus_chain::Runtime>::initiate_channel(
+                consensus_chain::RuntimeOrigin::signed(USER_ACCOUNT),
+                dst_chain,
+            ));
+            assert!(
+                Outbox::<consensus_chain::Runtime>::get((dst_chain, channel_id, nonce)).is_some()
+            )
+        });
+
+        let (state_root, _, message_proof) =
+            storage_proof_of_outbox_messages::<consensus_chain::Runtime>(
+                chain_test_ext.as_backend(),
+                dst_chain,
+                channel_id,
+                nonce,
+            );
+
+        let xdm = CrossDomainMessage {
+            src_chain_id: consensus_chain::SelfChainId::get(),
+            dst_chain_id: dst_chain,
+            channel_id,
+            nonce,
+            proof: Proof::Consensus {
+                consensus_chain_mmr_proof: ConsensusChainMmrLeafProof::<u32, H256, H256> {
+                    consensus_block_number: Default::default(),
+                    consensus_block_hash: Default::default(),
+                    opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+                    proof: MmrProof {
+                        leaf_indices: vec![],
+                        leaf_count: 0,
+                        items: vec![],
+                    },
+                },
+                message_proof,
+            },
+            weight_tag: MessageWeightTag::ProtocolChannelOpen,
+        };
+
+        let data =
+            FromConsensusRelayMessage::<consensus_chain::Runtime> { state_root, xdm }.encode();
+        fs::write(
+            "./src/extensions/fixtures/from_consensus_relay_message_channel_open.data",
+            data.clone(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_from_consensus_relay_message_channel_close() {
+        let mut chain_test_ext = consensus_chain::new_test_ext();
+        let dst_chain = chain_a::SelfChainId::get();
+        let channel_id = ChannelId::zero();
+        let nonce = Nonce::one();
+
+        chain_test_ext.execute_with(|| {
+            let list = BTreeSet::from([dst_chain]);
+            ChainAllowlist::<consensus_chain::Runtime>::put(list);
+            assert_ok!(Pallet::<consensus_chain::Runtime>::initiate_channel(
+                consensus_chain::RuntimeOrigin::signed(USER_ACCOUNT),
+                dst_chain,
+            ));
+
+            assert_ok!(Pallet::<consensus_chain::Runtime>::do_open_channel(
+                dst_chain, channel_id
+            ));
+
+            assert_ok!(Pallet::<consensus_chain::Runtime>::close_channel(
+                consensus_chain::RuntimeOrigin::root(),
+                dst_chain,
+                channel_id
+            ));
+            assert!(
+                Outbox::<consensus_chain::Runtime>::get((dst_chain, channel_id, nonce)).is_some()
+            );
+        });
+
+        let (state_root, _, message_proof) =
+            storage_proof_of_outbox_messages::<consensus_chain::Runtime>(
+                chain_test_ext.as_backend(),
+                dst_chain,
+                channel_id,
+                nonce,
+            );
+
+        let xdm = CrossDomainMessage {
+            src_chain_id: consensus_chain::SelfChainId::get(),
+            dst_chain_id: dst_chain,
+            channel_id,
+            nonce,
+            proof: Proof::Consensus {
+                consensus_chain_mmr_proof: ConsensusChainMmrLeafProof::<u32, H256, H256> {
+                    consensus_block_number: Default::default(),
+                    consensus_block_hash: Default::default(),
+                    opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+                    proof: MmrProof {
+                        leaf_indices: vec![],
+                        leaf_count: 0,
+                        items: vec![],
+                    },
+                },
+                message_proof,
+            },
+            weight_tag: MessageWeightTag::ProtocolChannelClose,
+        };
+
+        let data =
+            FromConsensusRelayMessage::<consensus_chain::Runtime> { state_root, xdm }.encode();
+        fs::write(
+            "./src/extensions/fixtures/from_consensus_relay_message.data",
+            data.clone(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_from_consensus_relay_message_response() {
+        let mut chain_test_ext = consensus_chain::new_test_ext();
+        let mut chain_a_test_ext = chain_a::new_test_ext();
+        let dst_chain = consensus_chain::SelfChainId::get();
+        let channel_id = ChannelId::zero();
+        let nonce = Nonce::zero();
+
+        let msg = chain_a_test_ext.execute_with(|| {
+            let list = BTreeSet::from([dst_chain]);
+            ChainAllowlist::<chain_a::Runtime>::put(list);
+            assert_ok!(Pallet::<chain_a::Runtime>::initiate_channel(
+                chain_a::RuntimeOrigin::signed(USER_ACCOUNT),
+                dst_chain,
+            ));
+            Outbox::<chain_a::Runtime>::get((dst_chain, channel_id, nonce)).unwrap()
+        });
+
+        let (_, _, message_proof) = storage_proof_of_outbox_messages::<chain_a::Runtime>(
+            chain_a_test_ext.as_backend(),
+            dst_chain,
+            channel_id,
+            nonce,
+        );
+
+        let xdm = CrossDomainMessage {
+            src_chain_id: chain_a::SelfChainId::get(),
+            dst_chain_id: dst_chain,
+            channel_id,
+            nonce,
+            proof: Proof::Consensus {
+                consensus_chain_mmr_proof: ConsensusChainMmrLeafProof::<u64, H256, H256> {
+                    consensus_block_number: Default::default(),
+                    consensus_block_hash: Default::default(),
+                    opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+                    proof: MmrProof {
+                        leaf_indices: vec![],
+                        leaf_count: 0,
+                        items: vec![],
+                    },
+                },
+                message_proof,
+            },
+            weight_tag: MessageWeightTag::ProtocolChannelOpen,
+        };
+
+        chain_test_ext.execute_with(|| {
+            force_toggle_channel_state::<consensus_chain::Runtime>(
+                chain_a::SelfChainId::get(),
+                channel_id,
+                false,
+                true,
+            );
+            Inbox::<chain_b::Runtime>::set(Some(msg));
+
+            // process inbox message
+            let result = Pallet::<consensus_chain::Runtime>::relay_message(
+                crate::RawOrigin::ValidatedUnsigned.into(),
+                xdm,
+            );
+
+            assert_ok!(result);
+
+            consensus_chain::Messenger::inbox_responses((
+                chain_a::SelfChainId::get(),
+                channel_id,
+                nonce,
+            ))
+            .unwrap();
+        });
+
+        // relay message response to chain_a
+        let (state_root, _key, message_proof) =
+            storage_proof_of_inbox_message_responses::<consensus_chain::Runtime>(
+                chain_test_ext.as_backend(),
+                chain_a::SelfChainId::get(),
+                channel_id,
+                nonce,
+            );
+
+        let xdm = CrossDomainMessage {
+            src_chain_id: consensus_chain::SelfChainId::get(),
+            dst_chain_id: chain_a::SelfChainId::get(),
+            channel_id,
+            nonce,
+            proof: Proof::Consensus {
+                consensus_chain_mmr_proof: ConsensusChainMmrLeafProof::<u32, H256, H256> {
+                    consensus_block_number: Default::default(),
+                    consensus_block_hash: Default::default(),
+                    opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+                    proof: MmrProof {
+                        leaf_indices: vec![],
+                        leaf_count: 0,
+                        items: vec![],
+                    },
+                },
+                message_proof,
+            },
+            weight_tag: MessageWeightTag::ProtocolChannelOpen,
+        };
+
+        let data =
+            FromConsensusRelayMessage::<consensus_chain::Runtime> { state_root, xdm }.encode();
+        fs::write(
+            "./src/extensions/fixtures/from_consensus_relay_message_response.data",
+            data.clone(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_from_domains_relay_message_channel_open() {
+        let mut chain_test_ext = chain_a::new_test_ext();
+        let dst_chain = consensus_chain::SelfChainId::get();
+        let channel_id = ChannelId::zero();
+        let nonce = Nonce::zero();
+
+        chain_test_ext.execute_with(|| {
+            let list = BTreeSet::from([dst_chain]);
+            ChainAllowlist::<chain_a::Runtime>::put(list);
+            assert_ok!(Pallet::<chain_a::Runtime>::initiate_channel(
+                chain_a::RuntimeOrigin::signed(USER_ACCOUNT),
+                dst_chain,
+            ));
+            assert!(Outbox::<chain_a::Runtime>::get((dst_chain, channel_id, nonce)).is_some())
+        });
+
+        let (state_root, _key, message_proof) = storage_proof_of_outbox_messages::<chain_a::Runtime>(
+            chain_test_ext.as_backend(),
+            dst_chain,
+            channel_id,
+            nonce,
+        );
+
+        let er = ExecutionReceipt {
+            domain_block_number: Default::default(),
+            domain_block_hash: Default::default(),
+            domain_block_extrinsic_root: Default::default(),
+            parent_domain_block_receipt_hash: Default::default(),
+            consensus_block_number: Default::default(),
+            consensus_block_hash: Default::default(),
+            inboxed_bundles: vec![],
+            final_state_root: state_root,
+            execution_trace: vec![],
+            execution_trace_root: Default::default(),
+            block_fees: BlockFees::default(),
+            transfers: Transfers::default(),
+        };
+
+        let mut consensus_chain_ext = consensus_chain::new_test_ext();
+        consensus_chain_ext.execute_with(|| {
+            crate::mock::pallet_domains::LatestConfirmedDomainExecutionReceipt::<
+                consensus_chain::Runtime,
+            >::insert(
+                chain_a::SelfChainId::get().maybe_domain_chain().unwrap(),
+                er,
+            );
+        });
+
+        let (state_root, _key, domain_proof) =
+            storage_proof_of_domain_state_root::<consensus_chain::Runtime>(
+                consensus_chain_ext.as_backend(),
+                chain_a::SelfChainId::get().maybe_domain_chain().unwrap(),
+            );
+
+        let xdm = CrossDomainMessage {
+            src_chain_id: chain_a::SelfChainId::get(),
+            dst_chain_id: dst_chain,
+            channel_id,
+            nonce,
+            proof: Proof::Domain {
+                consensus_chain_mmr_proof: ConsensusChainMmrLeafProof::<u32, H256, H256> {
+                    consensus_block_number: Default::default(),
+                    consensus_block_hash: Default::default(),
+                    opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+                    proof: MmrProof {
+                        leaf_indices: vec![],
+                        leaf_count: 0,
+                        items: vec![],
+                    },
+                },
+                domain_proof,
+                message_proof,
+            },
+            weight_tag: MessageWeightTag::ProtocolChannelOpen,
+        };
+
+        let data =
+            FromConsensusRelayMessage::<consensus_chain::Runtime> { state_root, xdm }.encode();
+        fs::write(
+            "./src/extensions/fixtures/from_domains_relay_message_channel_open.data",
+            data.clone(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_from_domains_relay_message_channel_close() {
+        let mut chain_test_ext = chain_a::new_test_ext();
+        let dst_chain = consensus_chain::SelfChainId::get();
+        let channel_id = ChannelId::zero();
+        let nonce = Nonce::one();
+
+        chain_test_ext.execute_with(|| {
+            let list = BTreeSet::from([dst_chain]);
+            ChainAllowlist::<chain_a::Runtime>::put(list);
+            assert_ok!(Pallet::<chain_a::Runtime>::initiate_channel(
+                chain_a::RuntimeOrigin::signed(USER_ACCOUNT),
+                dst_chain,
+            ));
+
+            assert_ok!(Pallet::<chain_a::Runtime>::do_open_channel(
+                dst_chain, channel_id
+            ));
+
+            assert_ok!(Pallet::<chain_a::Runtime>::close_channel(
+                chain_a::RuntimeOrigin::root(),
+                dst_chain,
+                channel_id
+            ));
+            assert!(Outbox::<chain_a::Runtime>::get((dst_chain, channel_id, nonce)).is_some());
+        });
+
+        let (state_root, _, message_proof) = storage_proof_of_outbox_messages::<chain_a::Runtime>(
+            chain_test_ext.as_backend(),
+            dst_chain,
+            channel_id,
+            nonce,
+        );
+
+        let er = ExecutionReceipt {
+            domain_block_number: Default::default(),
+            domain_block_hash: Default::default(),
+            domain_block_extrinsic_root: Default::default(),
+            parent_domain_block_receipt_hash: Default::default(),
+            consensus_block_number: Default::default(),
+            consensus_block_hash: Default::default(),
+            inboxed_bundles: vec![],
+            final_state_root: state_root,
+            execution_trace: vec![],
+            execution_trace_root: Default::default(),
+            block_fees: BlockFees::default(),
+            transfers: Transfers::default(),
+        };
+
+        let mut consensus_chain_ext = consensus_chain::new_test_ext();
+        consensus_chain_ext.execute_with(|| {
+            crate::mock::pallet_domains::LatestConfirmedDomainExecutionReceipt::<
+                consensus_chain::Runtime,
+            >::insert(
+                chain_a::SelfChainId::get().maybe_domain_chain().unwrap(),
+                er,
+            );
+        });
+
+        let (state_root, _key, domain_proof) =
+            storage_proof_of_domain_state_root::<consensus_chain::Runtime>(
+                consensus_chain_ext.as_backend(),
+                chain_a::SelfChainId::get().maybe_domain_chain().unwrap(),
+            );
+
+        let xdm = CrossDomainMessage {
+            src_chain_id: chain_a::SelfChainId::get(),
+            dst_chain_id: dst_chain,
+            channel_id,
+            nonce,
+            proof: Proof::Domain {
+                consensus_chain_mmr_proof: ConsensusChainMmrLeafProof::<u32, H256, H256> {
+                    consensus_block_number: Default::default(),
+                    consensus_block_hash: Default::default(),
+                    opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+                    proof: MmrProof {
+                        leaf_indices: vec![],
+                        leaf_count: 0,
+                        items: vec![],
+                    },
+                },
+                domain_proof,
+                message_proof,
+            },
+            weight_tag: MessageWeightTag::ProtocolChannelClose,
+        };
+
+        let data = FromConsensusRelayMessage::<chain_a::Runtime> { state_root, xdm }.encode();
+        fs::write(
+            "./src/extensions/fixtures/from_domains_relay_message.data",
+            data.clone(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_from_domains_relay_message_response() {
+        let mut chain_a_test_ext = chain_a::new_test_ext();
+        let mut chain_consensus_test_ext = consensus_chain::new_test_ext();
+        let dst_chain = chain_a::SelfChainId::get();
+        let channel_id = ChannelId::zero();
+        let nonce = Nonce::zero();
+
+        let msg = chain_consensus_test_ext.execute_with(|| {
+            let list = BTreeSet::from([dst_chain]);
+            ChainAllowlist::<consensus_chain::Runtime>::put(list);
+            assert_ok!(Pallet::<consensus_chain::Runtime>::initiate_channel(
+                consensus_chain::RuntimeOrigin::signed(USER_ACCOUNT),
+                dst_chain,
+            ));
+            Outbox::<consensus_chain::Runtime>::get((dst_chain, channel_id, nonce)).unwrap()
+        });
+
+        let (_, _, message_proof) = storage_proof_of_outbox_messages::<consensus_chain::Runtime>(
+            chain_consensus_test_ext.as_backend(),
+            dst_chain,
+            channel_id,
+            nonce,
+        );
+
+        let xdm = CrossDomainMessage {
+            src_chain_id: consensus_chain::SelfChainId::get(),
+            dst_chain_id: dst_chain,
+            channel_id,
+            nonce,
+            proof: Proof::Consensus {
+                consensus_chain_mmr_proof: ConsensusChainMmrLeafProof::<u64, H256, H256> {
+                    consensus_block_number: Default::default(),
+                    consensus_block_hash: Default::default(),
+                    opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+                    proof: MmrProof {
+                        leaf_indices: vec![],
+                        leaf_count: 0,
+                        items: vec![],
+                    },
+                },
+                message_proof,
+            },
+            weight_tag: MessageWeightTag::ProtocolChannelOpen,
+        };
+
+        chain_a_test_ext.execute_with(|| {
+            force_toggle_channel_state::<chain_a::Runtime>(
+                consensus_chain::SelfChainId::get(),
+                channel_id,
+                false,
+                true,
+            );
+            Inbox::<chain_a::Runtime>::set(Some(msg));
+
+            // process inbox message
+            let result = Pallet::<chain_a::Runtime>::relay_message(
+                crate::RawOrigin::ValidatedUnsigned.into(),
+                xdm,
+            );
+
+            assert_ok!(result);
+
+            chain_a::Messenger::inbox_responses((
+                consensus_chain::SelfChainId::get(),
+                channel_id,
+                nonce,
+            ))
+            .unwrap();
+        });
+
+        // relay message response to chain_consensus
+        let (state_root, _key, message_proof) =
+            storage_proof_of_inbox_message_responses::<chain_a::Runtime>(
+                chain_a_test_ext.as_backend(),
+                consensus_chain::SelfChainId::get(),
+                channel_id,
+                nonce,
+            );
+
+        let er = ExecutionReceipt {
+            domain_block_number: Default::default(),
+            domain_block_hash: Default::default(),
+            domain_block_extrinsic_root: Default::default(),
+            parent_domain_block_receipt_hash: Default::default(),
+            consensus_block_number: Default::default(),
+            consensus_block_hash: Default::default(),
+            inboxed_bundles: vec![],
+            final_state_root: state_root,
+            execution_trace: vec![],
+            execution_trace_root: Default::default(),
+            block_fees: BlockFees::default(),
+            transfers: Transfers::default(),
+        };
+
+        chain_consensus_test_ext.execute_with(|| {
+            crate::mock::pallet_domains::LatestConfirmedDomainExecutionReceipt::<
+                consensus_chain::Runtime,
+            >::insert(
+                chain_a::SelfChainId::get().maybe_domain_chain().unwrap(),
+                er,
+            );
+        });
+
+        let (state_root, _key, domain_proof) =
+            storage_proof_of_domain_state_root::<consensus_chain::Runtime>(
+                chain_consensus_test_ext.as_backend(),
+                chain_a::SelfChainId::get().maybe_domain_chain().unwrap(),
+            );
+
+        let xdm = CrossDomainMessage {
+            src_chain_id: chain_a::SelfChainId::get(),
+            dst_chain_id: consensus_chain::SelfChainId::get(),
+            channel_id,
+            nonce,
+            proof: Proof::Domain {
+                consensus_chain_mmr_proof: ConsensusChainMmrLeafProof::<u32, H256, H256> {
+                    consensus_block_number: Default::default(),
+                    consensus_block_hash: Default::default(),
+                    opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+                    proof: MmrProof {
+                        leaf_indices: vec![],
+                        leaf_count: 0,
+                        items: vec![],
+                    },
+                },
+                domain_proof,
+                message_proof,
+            },
+            weight_tag: MessageWeightTag::ProtocolChannelOpen,
+        };
+
+        let data =
+            FromConsensusRelayMessage::<consensus_chain::Runtime> { state_root, xdm }.encode();
+        fs::write(
+            "./src/extensions/fixtures/from_domains_relay_message_response.data",
+            data.clone(),
+        )
+        .unwrap();
+    }
+}
