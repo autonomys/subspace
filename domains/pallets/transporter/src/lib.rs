@@ -38,9 +38,9 @@ pub use pallet::*;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_domains::{DomainId, DomainsTransfersTracker, SkipBalanceChecks, Transfers};
+use sp_messenger::NoteChainTransfer;
 use sp_messenger::endpoint::EndpointResponse;
 use sp_messenger::messages::ChainId;
-use sp_messenger::NoteChainTransfer;
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Get};
 use sp_std::vec;
 

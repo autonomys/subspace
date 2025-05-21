@@ -3,8 +3,8 @@ extern crate alloc;
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use frame_support::weights::Weight;
 use frame_support::Parameter;
+use frame_support::weights::Weight;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_domains::ChainId;

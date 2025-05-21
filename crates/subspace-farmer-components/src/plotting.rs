@@ -6,26 +6,26 @@
 //! Plotted sectors can be written to plot and later [`read`](crate::reading) and/or
 //! [`audited`](crate::auditing)/[`proven`](crate::proving) using other modules of this crate.
 
+use crate::FarmerProtocolInfo;
 use crate::sector::{
-    sector_record_chunks_size, sector_size, EncodedChunksUsed, RawSector, RecordMetadata,
-    SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
+    EncodedChunksUsed, RawSector, RecordMetadata, SectorContentsMap, SectorMetadata,
+    SectorMetadataChecksummed, sector_record_chunks_size, sector_size,
 };
 use crate::segment_reconstruction::recover_missing_piece;
-use crate::FarmerProtocolInfo;
 use async_lock::{Mutex as AsyncMutex, Semaphore};
 use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
 use futures::stream::FuturesUnordered;
-use futures::{select, StreamExt};
+use futures::{StreamExt, select};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::simd::Simd;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use subspace_core_primitives::hashes::{blake3_hash, blake3_hash_parallel, Blake3Hash};
+use subspace_core_primitives::hashes::{Blake3Hash, blake3_hash, blake3_hash_parallel};
 use subspace_core_primitives::pieces::{Piece, PieceIndex, PieceOffset, Record};
 use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::sectors::{SBucket, SectorId, SectorIndex};

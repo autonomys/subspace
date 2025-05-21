@@ -13,8 +13,8 @@ use sc_service::ChainType;
 use sp_core::crypto::{AccountId32, UncheckedFrom};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{DomainRuntimeConfig, OperatorAllowList, OperatorPublicKey, RuntimeType};
-use sp_runtime::traits::Convert;
 use sp_runtime::BuildStorage;
+use sp_runtime::traits::Convert;
 use std::collections::BTreeSet;
 use subspace_runtime_primitives::{Balance, SSC};
 

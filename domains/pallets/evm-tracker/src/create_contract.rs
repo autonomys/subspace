@@ -1,7 +1,7 @@
 //! Contract creation allow list implementations
 
 use crate::traits::{AccountIdFor, MaybeIntoEthCall, MaybeIntoEvmCall};
-use domain_runtime_primitives::{EthereumAccountId, ERR_CONTRACT_CREATION_NOT_ALLOWED};
+use domain_runtime_primitives::{ERR_CONTRACT_CREATION_NOT_ALLOWED, EthereumAccountId};
 use frame_support::pallet_prelude::{PhantomData, TypeInfo};
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use pallet_ethereum::{Transaction as EthereumTransaction, TransactionAction};
@@ -17,7 +17,7 @@ use sp_runtime::transaction_validity::{
     ValidTransaction,
 };
 use sp_weights::Weight;
-use subspace_runtime_primitives::utility::{nested_call_iter, MaybeNestedCall};
+use subspace_runtime_primitives::utility::{MaybeNestedCall, nested_call_iter};
 
 /// Rejects contracts that can't be created under the current allow list.
 /// Returns false if the call is a contract call, and the account is *not* allowed to call it.

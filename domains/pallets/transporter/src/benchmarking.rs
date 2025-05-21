@@ -7,8 +7,8 @@ use frame_system::RawOrigin;
 use sp_messenger::endpoint::{
     Endpoint, EndpointHandler as EndpointHandlerT, EndpointRequest, Sender,
 };
-use sp_runtime::traits::{Bounded, Convert};
 use sp_runtime::DispatchError;
+use sp_runtime::traits::{Bounded, Convert};
 use sp_std::marker::PhantomData;
 
 #[cfg(test)]

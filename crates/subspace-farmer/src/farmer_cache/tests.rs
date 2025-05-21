@@ -1,5 +1,5 @@
 use crate::disk_piece_cache::DiskPieceCache;
-use crate::farmer_cache::{decode_piece_index_from_record_key, FarmerCache};
+use crate::farmer_cache::{FarmerCache, decode_piece_index_from_record_key};
 use crate::node_client::NodeClient;
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
@@ -10,8 +10,8 @@ use rand::prelude::*;
 use std::collections::HashMap;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{
@@ -213,10 +213,10 @@ async fn basic() {
                 let sender = Mutex::new(Some(sender));
 
                 move |progress| {
-                    if *progress == 100.0 {
-                        if let Some(sender) = sender.lock().take() {
-                            sender.send(()).unwrap();
-                        }
+                    if *progress == 100.0
+                        && let Some(sender) = sender.lock().take()
+                    {
+                        sender.send(()).unwrap();
                     }
                 }
             }))
@@ -265,10 +265,12 @@ async fn basic() {
             }
 
             // Other piece indices are not requested or cached
-            assert!(farmer_cache
-                .get_piece(PieceIndex::from(10).to_multihash())
-                .await
-                .is_none());
+            assert!(
+                farmer_cache
+                    .get_piece(PieceIndex::from(10).to_multihash())
+                    .await
+                    .is_none()
+            );
         }
 
         // Update current segment header such that we keep-up after initial sync is triggered
@@ -335,10 +337,12 @@ async fn basic() {
             for piece_index in requested_pieces {
                 if !stored_pieces.contains(&piece_index) {
                     // Other piece indices are not stored anymore
-                    assert!(farmer_cache
-                        .get_piece(PieceIndex::from(10).to_multihash())
-                        .await
-                        .is_none());
+                    assert!(
+                        farmer_cache
+                            .get_piece(PieceIndex::from(10).to_multihash())
+                            .await
+                            .is_none()
+                    );
                 }
             }
         }
@@ -401,10 +405,12 @@ async fn basic() {
             for piece_index in requested_pieces {
                 if !stored_pieces.contains(&piece_index) {
                     // Other piece indices are not stored anymore
-                    assert!(farmer_cache
-                        .get_piece(PieceIndex::from(10).to_multihash())
-                        .await
-                        .is_none());
+                    assert!(
+                        farmer_cache
+                            .get_piece(PieceIndex::from(10).to_multihash())
+                            .await
+                            .is_none()
+                    );
                 }
             }
         }
@@ -429,10 +435,10 @@ async fn basic() {
                 let sender = Mutex::new(Some(sender));
 
                 move |progress| {
-                    if *progress == 100.0 {
-                        if let Some(sender) = sender.lock().take() {
-                            sender.send(()).unwrap();
-                        }
+                    if *progress == 100.0
+                        && let Some(sender) = sender.lock().take()
+                    {
+                        sender.send(()).unwrap();
                     }
                 }
             }))
@@ -525,10 +531,10 @@ async fn duplicate_indices() {
                 let sender = Mutex::new(Some(sender));
 
                 move |progress| {
-                    if *progress == 100.0 {
-                        if let Some(sender) = sender.lock().take() {
-                            sender.send(()).unwrap();
-                        }
+                    if *progress == 100.0
+                        && let Some(sender) = sender.lock().take()
+                    {
+                        sender.send(()).unwrap();
                     }
                 }
             }))
@@ -577,10 +583,10 @@ async fn duplicate_indices() {
                 let sender = Mutex::new(Some(sender));
 
                 move |progress| {
-                    if *progress == 100.0 {
-                        if let Some(sender) = sender.lock().take() {
-                            sender.send(()).unwrap();
-                        }
+                    if *progress == 100.0
+                        && let Some(sender) = sender.lock().take()
+                    {
+                        sender.send(()).unwrap();
                     }
                 }
             }))

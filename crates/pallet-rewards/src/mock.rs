@@ -1,5 +1,5 @@
 use frame_support::derive_impl;
-use frame_support::traits::{ConstU128, ConstU32};
+use frame_support::traits::{ConstU32, ConstU128};
 use sp_runtime::traits::parameter_types;
 use subspace_runtime_primitives::{
     ConsensusEventSegmentSize, FindBlockRewardAddress, FindVotingRewardAddresses, RewardsEnabled,

@@ -7,27 +7,27 @@ mod tests;
 use crate::disk_piece_cache::metrics::DiskPieceCacheMetrics;
 use crate::farm;
 use crate::farm::{FarmError, PieceCacheId, PieceCacheOffset};
-use crate::single_disk_farm::direct_io_file::{DirectIoFile, DISK_SECTOR_SIZE};
+use crate::single_disk_farm::direct_io_file::{DISK_SECTOR_SIZE, DirectIoFile};
 use crate::utils::AsyncJoinOnDrop;
 use async_trait::async_trait;
 use bytes::BytesMut;
 use futures::channel::mpsc;
-use futures::{stream, SinkExt, Stream, StreamExt};
+use futures::{SinkExt, Stream, StreamExt, stream};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::num::NonZeroU32;
 use std::path::Path;
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::task::Poll;
 use std::{fs, io};
-use subspace_core_primitives::hashes::{blake3_hash_list, Blake3Hash};
+use subspace_core_primitives::hashes::{Blake3Hash, blake3_hash_list};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_farmer_components::file_ext::FileExt;
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::task;
-use tracing::{debug, info, warn, Span};
+use tracing::{Span, debug, info, warn};
 
 /// How many pieces should be skipped before stopping to check the rest of contents, this allows to
 /// not miss most of the pieces after one or two corrupted pieces

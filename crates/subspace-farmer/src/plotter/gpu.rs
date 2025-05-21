@@ -17,29 +17,29 @@ use bytes::Bytes;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
-use futures::{select, stream, FutureExt, Sink, SinkExt, StreamExt};
+use futures::{FutureExt, Sink, SinkExt, StreamExt, select, stream};
 use prometheus_client::registry::Registry;
 use std::error::Error;
 use std::fmt;
 use std::future::pending;
 use std::num::TryFromIntError;
 use std::pin::pin;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::Poll;
 use std::time::Instant;
-use subspace_core_primitives::sectors::SectorIndex;
 use subspace_core_primitives::PublicKey;
+use subspace_core_primitives::sectors::SectorIndex;
 use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::plotting::{
-    download_sector, encode_sector, write_sector, DownloadSectorOptions, EncodeSectorOptions,
-    PlottingError, RecordsEncoder,
-};
 use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::plotting::{
+    DownloadSectorOptions, EncodeSectorOptions, PlottingError, RecordsEncoder, download_sector,
+    encode_sector, write_sector,
+};
 use subspace_kzg::Kzg;
 use tokio::task::yield_now;
-use tracing::{warn, Instrument};
+use tracing::{Instrument, warn};
 
 /// Type alias used for event handlers
 pub type HandlerFn3<A, B, C> = Arc<dyn Fn(&A, &B, &C) + Send + Sync + 'static>;

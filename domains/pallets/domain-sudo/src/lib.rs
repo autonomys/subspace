@@ -31,7 +31,7 @@ mod pallet {
     use frame_support::traits::UnfilteredDispatchable;
     use frame_system::ensure_none;
     use frame_system::pallet_prelude::OriginFor;
-    use sp_domain_sudo::{InherentError, InherentType, IntoRuntimeCall, INHERENT_IDENTIFIER};
+    use sp_domain_sudo::{INHERENT_IDENTIFIER, InherentError, InherentType, IntoRuntimeCall};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {

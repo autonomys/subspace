@@ -1,7 +1,7 @@
 //! Test utilities
 
 use crate::{self as pallet_subspace, AllowAuthoringBy, Config, EnableRewardsAt, NormalEraChange};
-use frame_support::traits::{ConstU128, ConstU16, OnInitialize};
+use frame_support::traits::{ConstU16, ConstU128, OnInitialize};
 use frame_support::{derive_impl, parameter_types};
 use futures::executor::block_on;
 use rand::Rng;
@@ -10,8 +10,8 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
 use sp_consensus_subspace::{KzgExtension, PosExtension, PotExtension, SignedVote, Vote};
 use sp_io::TestExternalities;
-use sp_runtime::testing::{Digest, DigestItem, TestXt};
 use sp_runtime::BuildStorage;
+use sp_runtime::testing::{Digest, DigestItem, TestXt};
 use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::simd::Simd;
@@ -28,12 +28,12 @@ use subspace_core_primitives::segments::{
     SegmentCommitment, SegmentHeader, SegmentIndex,
 };
 use subspace_core_primitives::solutions::{RewardSignature, Solution, SolutionRange};
-use subspace_core_primitives::{BlockNumber, PublicKey, SlotNumber, REWARD_SIGNING_CONTEXT};
+use subspace_core_primitives::{BlockNumber, PublicKey, REWARD_SIGNING_CONTEXT, SlotNumber};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_sector_sync;
-use subspace_farmer_components::plotting::{plot_sector, CpuRecordsEncoder, PlotSectorOptions};
-use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::auditing::audit_sector_sync;
+use subspace_farmer_components::plotting::{CpuRecordsEncoder, PlotSectorOptions, plot_sector};
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_kzg::Kzg;
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::{Table, TableGenerator};

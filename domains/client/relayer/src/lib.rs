@@ -1,4 +1,3 @@
-#![feature(let_chains)]
 #![warn(rust_2018_idioms)]
 // TODO: Restore once https://github.com/rust-lang/rust/issues/122105 is resolved
 // #![deny(unused_crate_dependencies)]
@@ -7,9 +6,9 @@ pub mod worker;
 
 use async_channel::TrySendError;
 use cross_domain_message_gossip::{
+    BlockId, Message as GossipMessage, MessageData as GossipMessageData, RELAYER_PREFIX,
     can_allow_xdm_submission, get_channel_state, get_xdm_processed_block_number,
-    set_xdm_message_processed_at, BlockId, Message as GossipMessage,
-    MessageData as GossipMessageData, RELAYER_PREFIX,
+    set_xdm_message_processed_at,
 };
 use parity_scale_codec::{Codec, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
@@ -20,10 +19,10 @@ use sp_domains::DomainsApi;
 use sp_messenger::messages::{
     BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, Proof,
 };
-use sp_messenger::{MessengerApi, RelayerApi, XdmId, MAX_FUTURE_ALLOWED_NONCES};
+use sp_messenger::{MAX_FUTURE_ALLOWED_NONCES, MessengerApi, RelayerApi, XdmId};
 use sp_mmr_primitives::MmrApi;
-use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One};
 use sp_runtime::ArithmeticError;
+use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -247,22 +246,21 @@ where
     let current_block_id: BlockId<Block> = client.info().into();
     if let Ok(maybe_submitted_block_id) =
         get_xdm_processed_block_number::<_, Block>(backend, &prefix, xdm_id)
-    {
-        if !can_allow_xdm_submission(
+        && !can_allow_xdm_submission(
             client,
             xdm_id,
             maybe_submitted_block_id,
             current_block_id.clone(),
             None,
-        ) {
-            log::debug!(
-                target: LOG_TARGET,
-                "Skipping already submitted message relay from {:?}: {:?}",
-                msg.src_chain_id,
-                xdm_id
-            );
-            return false;
-        }
+        )
+    {
+        log::debug!(
+            target: LOG_TARGET,
+            "Skipping already submitted message relay from {:?}: {:?}",
+            msg.src_chain_id,
+            xdm_id
+        );
+        return false;
     }
 
     if let Err(err) = set_xdm_message_processed_at(backend, &prefix, xdm_id, current_block_id) {

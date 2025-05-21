@@ -1,7 +1,7 @@
 //! Set of test accounts.
 use fp_account::AccountId20;
 use sp_core::ecdsa::{Pair, Public, Signature};
-use sp_core::{ecdsa, keccak_256, Pair as PairT};
+use sp_core::{Pair as PairT, ecdsa, keccak_256};
 
 #[allow(missing_docs)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -35,7 +35,7 @@ impl Keyring {
 
     /// Return seed string.
     pub fn to_seed(self) -> String {
-        format!("//{:?}", self)
+        format!("//{self:?}")
     }
 
     /// Return account id

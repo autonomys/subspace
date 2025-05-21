@@ -3,13 +3,13 @@ mod domain;
 mod shared;
 
 use crate::commands::run::consensus::{
-    create_consensus_chain_configuration, ConsensusChainConfiguration, ConsensusChainOptions,
+    ConsensusChainConfiguration, ConsensusChainOptions, create_consensus_chain_configuration,
 };
 use crate::commands::run::domain::{
-    create_domain_configuration, run_domain, DomainOptions, DomainStartOptions,
-    MIN_PRUNING as DOMAINS_MIN_PRUNING,
+    DomainOptions, DomainStartOptions, MIN_PRUNING as DOMAINS_MIN_PRUNING,
+    create_domain_configuration, run_domain,
 };
-use crate::{set_default_ss58_version, Error, PosTable};
+use crate::{Error, PosTable, set_default_ss58_version};
 use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::fetch_domain_bootstrap_info;
@@ -17,8 +17,8 @@ use domain_client_operator::snap_sync::{
     BlockImportingAcknowledgement, ConsensusChainSyncParams, SnapSyncOrchestrator,
 };
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use futures::stream::StreamExt;
 use futures::FutureExt;
+use futures::stream::StreamExt;
 use sc_cli::Signals;
 use sc_client_api::HeaderBackend;
 use sc_consensus_slots::SlotProportion;
@@ -35,7 +35,7 @@ use sp_messenger::messages::ChainId;
 use std::env;
 use std::sync::Arc;
 use subspace_logging::init_logger;
-use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
+use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::ChainSyncMode;
 use tracing::{debug, error, info, info_span, warn};

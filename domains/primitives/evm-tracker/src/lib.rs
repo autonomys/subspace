@@ -1,17 +1,17 @@
 //! Inherents for EVM tracker
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use domain_runtime_primitives::{maximum_domain_block_weight, Balance, EthereumAccountId};
+use domain_runtime_primitives::{Balance, EthereumAccountId, maximum_domain_block_weight};
 use frame_support::parameter_types;
-use frame_support::sp_runtime::app_crypto::sp_core::U256;
 use frame_support::sp_runtime::Perbill;
+use frame_support::sp_runtime::app_crypto::sp_core::U256;
 use parity_scale_codec::{Decode, Encode};
 use sp_domains::PermissionedActionAllowedBy;
 #[cfg(feature = "std")]
 use sp_inherents::{Error, InherentData};
 use sp_inherents::{InherentIdentifier, IsFatalError};
-use sp_weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use sp_weights::Weight;
+use sp_weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 
 /// Current approximation of the gas/s consumption considering
 /// EVM execution over compiled WASM (on 4.4Ghz CPU).

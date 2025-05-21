@@ -13,7 +13,7 @@ use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use std::{io, mem};
-use subspace_core_primitives::hashes::{blake3_hash_list, Blake3Hash};
+use subspace_core_primitives::hashes::{Blake3Hash, blake3_hash_list};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::sectors::SectorIndex;
 use subspace_farmer_components::file_ext::FileExt;

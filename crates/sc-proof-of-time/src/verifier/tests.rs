@@ -53,13 +53,15 @@ fn test_basic() {
         None
     ));
     // Invalid number of iterations
-    assert!(!verifier.verify_checkpoints(
-        genesis_seed,
-        slot_iterations
-            .checked_mul(NonZeroU32::new(2).unwrap())
-            .unwrap(),
-        &checkpoints_1
-    ));
+    assert!(
+        !verifier.verify_checkpoints(
+            genesis_seed,
+            slot_iterations
+                .checked_mul(NonZeroU32::new(2).unwrap())
+                .unwrap(),
+            &checkpoints_1
+        )
+    );
 
     let seed_1 = checkpoints_1.output().seed();
     let checkpoints_2 = subspace_proof_of_time::prove(seed_1, slot_iterations).unwrap();
@@ -110,18 +112,20 @@ fn test_basic() {
         None
     ));
     // Invalid number of iterations
-    assert!(!verifier.is_output_valid(
-        PotNextSlotInput {
-            slot: Slot::from(1),
-            slot_iterations: slot_iterations
-                .checked_mul(NonZeroU32::new(2).unwrap())
-                .unwrap(),
-            seed: genesis_seed,
-        },
-        Slot::from(2),
-        checkpoints_2.output(),
-        None
-    ));
+    assert!(
+        !verifier.is_output_valid(
+            PotNextSlotInput {
+                slot: Slot::from(1),
+                slot_iterations: slot_iterations
+                    .checked_mul(NonZeroU32::new(2).unwrap())
+                    .unwrap(),
+                seed: genesis_seed,
+            },
+            Slot::from(2),
+            checkpoints_2.output(),
+            None
+        )
+    );
 }
 
 #[test]

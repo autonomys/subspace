@@ -14,15 +14,15 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::cluster::controller::ClusterPieceGetter;
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::cluster::plotter::plotter_service;
+use subspace_farmer::plotter::Plotter;
 use subspace_farmer::plotter::cpu::CpuPlotter;
+#[cfg(feature = "_gpu")]
+use subspace_farmer::plotter::gpu::GpuPlotter;
 #[cfg(feature = "cuda")]
 use subspace_farmer::plotter::gpu::cuda::CudaRecordsEncoder;
 #[cfg(feature = "rocm")]
 use subspace_farmer::plotter::gpu::rocm::RocmRecordsEncoder;
-#[cfg(feature = "_gpu")]
-use subspace_farmer::plotter::gpu::GpuPlotter;
 use subspace_farmer::plotter::pool::PoolPlotter;
-use subspace_farmer::plotter::Plotter;
 use subspace_farmer::utils::{
     create_plotting_thread_pool_manager, parse_cpu_cores_sets, thread_pool_core_indices,
 };

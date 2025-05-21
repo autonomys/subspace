@@ -3,9 +3,9 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::hashes::{blake3_hash, Blake3Hash};
-use crate::pieces::{FlatPieces, Piece, PieceIndex, RawRecord};
 use crate::BlockNumber;
+use crate::hashes::{Blake3Hash, blake3_hash};
+use crate::pieces::{FlatPieces, Piece, PieceIndex, RawRecord};
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 use core::array::TryFromSliceError;

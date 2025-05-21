@@ -5,8 +5,8 @@ use static_assertions::const_assert_eq;
 use std::fs::{File, OpenOptions};
 use std::path::Path;
 use std::{io, mem};
-use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::ReadAtSync;
+use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 
 /// 4096 is as a relatively safe size due to sector size on SSDs commonly being 512 or 4096 bytes
 pub const DISK_SECTOR_SIZE: usize = 4096;

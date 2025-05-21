@@ -266,19 +266,19 @@ where
                 );
 
                 if let Some(proofs) = self.gossip_cache.get_or_insert(sender, Default::default) {
-                    if proofs.len() == GOSSIP_CACHE_PER_PEER_SIZE {
-                        if let Some(proof) = proofs.pop_front() {
-                            trace!(
-                                %sender,
-                                slot = %proof.slot,
-                                next_slot = %next_slot_input.slot,
-                                "Too many proofs stored from peer",
-                            );
+                    if proofs.len() == GOSSIP_CACHE_PER_PEER_SIZE
+                        && let Some(proof) = proofs.pop_front()
+                    {
+                        trace!(
+                            %sender,
+                            slot = %proof.slot,
+                            next_slot = %next_slot_input.slot,
+                            "Too many proofs stored from peer",
+                        );
 
-                            self.engine
-                                .lock()
-                                .report(sender, rep::GOSSIP_TOO_MANY_PROOFS);
-                        }
+                        self.engine
+                            .lock()
+                            .report(sender, rep::GOSSIP_TOO_MANY_PROOFS);
                     }
                     proofs.push_back(proof);
                     return;

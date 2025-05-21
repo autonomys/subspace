@@ -1,5 +1,5 @@
-use futures::channel::oneshot;
 use futures::StreamExt;
+use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
 use std::sync::Arc;

@@ -25,22 +25,21 @@
 //! initialize a block, to push extrinsics and to finalize a block.
 
 #![warn(missing_docs)]
-#![feature(let_chains)]
 
 mod custom_api;
 mod genesis_block_builder;
 
 use crate::custom_api::{TrieBackendApi, TrieDeltaBackendFor};
-pub use custom_api::{create_delta_backend, CollectedStorageChanges, DeltaBackend};
+pub use custom_api::{CollectedStorageChanges, DeltaBackend, create_delta_backend};
 pub use genesis_block_builder::CustomGenesisBlockBuilder;
 use parity_scale_codec::Encode;
-use sc_client_api::{backend, ExecutorProvider};
+use sc_client_api::{ExecutorProvider, backend};
 use sp_api::{ProvideRuntimeApi, TransactionOutcome};
 pub use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{ApplyExtrinsicFailed, Error};
 use sp_core::traits::CodeExecutor;
-use sp_runtime::traits::{Block as BlockT, Hash, HashingFor, Header as HeaderT, NumberFor, One};
 use sp_runtime::Digest;
+use sp_runtime::traits::{Block as BlockT, Hash, HashingFor, Header as HeaderT, NumberFor, One};
 use sp_state_machine::OverlayedChanges;
 use std::collections::VecDeque;
 use std::sync::Arc;
