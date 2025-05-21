@@ -13,6 +13,4 @@ pub use gossip_worker::{
     xdm_gossip_peers_set_config, ChainMsg, ChainSink, ChannelUpdate, GossipWorker,
     GossipWorkerBuilder, Message, MessageData,
 };
-pub use message_listener::{
-    can_allow_xdm_submission, start_cross_chain_message_listener, RELAYER_PREFIX,
-};
+pub use message_listener::{can_allow_xdm_submission, start_cross_chain_message_listener};
