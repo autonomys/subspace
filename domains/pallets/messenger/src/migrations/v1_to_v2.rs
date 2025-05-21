@@ -77,6 +77,7 @@ impl<Balance, AccountId> From<Channel<Balance, AccountId>> for ChannelV1<Balance
 
 pub(crate) mod migrate_channels {
     use super::*;
+    use sp_messenger::messages::ChannelStateWithNonce;
     use sp_runtime::traits::Get;
 
     #[storage_alias]
@@ -110,12 +111,24 @@ pub(crate) mod migrate_channels {
         })
     }
 
-    pub(crate) fn get_channels_and_states<T: Config>() -> Vec<(ChainId, ChannelId, ChannelState)> {
+    pub(crate) fn get_channels_and_states<T: Config>(
+    ) -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)> {
         let keys: Vec<(ChainId, ChannelId)> = ChannelStorageV1::<T>::iter_keys().collect();
         keys.into_iter()
             .filter_map(|(chain_id, channel_id)| {
-                get_channel::<T>(chain_id, channel_id)
-                    .map(|channel| (chain_id, channel_id, channel.state))
+                get_channel::<T>(chain_id, channel_id).map(|channel| {
+                    let state = channel.state;
+                    let state_with_nonce = match state {
+                        ChannelState::Initiated => ChannelStateWithNonce::Initiated,
+                        ChannelState::Open => ChannelStateWithNonce::Open,
+                        ChannelState::Closed => ChannelStateWithNonce::Closed {
+                            next_outbox_nonce: channel.next_outbox_nonce,
+                            next_inbox_nonce: channel.next_inbox_nonce,
+                        },
+                    };
+
+                    (chain_id, channel_id, state_with_nonce)
+                })
             })
             .collect()
     }

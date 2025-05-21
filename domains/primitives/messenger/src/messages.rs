@@ -34,6 +34,21 @@ pub enum ChannelState {
     Closed,
 }
 
+/// State of channel and nonces when channel is closed.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub enum ChannelStateWithNonce {
+    /// Channel between chains is initiated but do not yet send or receive messages in this state.
+    #[default]
+    Initiated,
+    /// Channel is open and can send and receive messages.
+    Open,
+    /// Channel is closed along with nonces at current point.
+    Closed {
+        next_outbox_nonce: Nonce,
+        next_inbox_nonce: Nonce,
+    },
+}
+
 /// Channel describes a bridge to exchange messages between two chains.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Channel<Balance, AccountId> {

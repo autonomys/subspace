@@ -12,7 +12,7 @@ use crate::aux_schema::{
 };
 use async_channel::TrySendError;
 use cross_domain_message_gossip::{
-    get_channel_state, Message as GossipMessage, MessageData as GossipMessageData,
+    get_channel_state, ChannelDetail, Message as GossipMessage, MessageData as GossipMessageData,
 };
 use parity_scale_codec::{Codec, Encode};
 use rand::seq::SliceRandom;
@@ -23,7 +23,7 @@ use sp_core::H256;
 use sp_domains::{ChannelId, DomainsApi};
 use sp_messenger::messages::{
     BlockMessageWithStorageKey, BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId,
-    ChannelState, CrossDomainMessage, Nonce, Proof,
+    ChannelState, ChannelStateWithNonce, CrossDomainMessage, Nonce, Proof,
 };
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_mmr_primitives::MmrApi;
@@ -633,7 +633,7 @@ fn get_channel_state_query<Backend, Client, Block>(
     self_chain_id: ChainId,
     dst_chain_id: ChainId,
     channel_id: ChannelId,
-    local_channel_state: ChannelState,
+    local_channel_state: ChannelStateWithNonce,
 ) -> Result<Option<BlockMessagesQuery>, Error>
 where
     Backend: AuxStore,
@@ -667,16 +667,19 @@ where
             inbox_responses_from: Nonce::zero(),
         }),
         // don't have channel processed state, so use the dst_channel state for query
-        (Some(dst_channel_state), None, None) => Some(BlockMessagesQuery {
-            chain_id: dst_chain_id,
-            channel_id,
-            outbox_from: dst_channel_state.next_inbox_nonce,
-            inbox_responses_from: dst_channel_state
-                .latest_response_received_message_nonce
-                // pick the next inbox message response nonce or default to zero
-                .map(|nonce| nonce.saturating_add(One::one()))
-                .unwrap_or(Nonce::zero()),
-        }),
+        (Some(dst_channel_state), None, None) => {
+            should_relay_messages_to_channel(dst_chain_id, &dst_channel_state, local_channel_state)
+                .then_some(BlockMessagesQuery {
+                    chain_id: dst_chain_id,
+                    channel_id,
+                    outbox_from: dst_channel_state.next_inbox_nonce,
+                    inbox_responses_from: dst_channel_state
+                        .latest_response_received_message_nonce
+                        // pick the next inbox message response nonce or default to zero
+                        .map(|nonce| nonce.saturating_add(One::one()))
+                        .unwrap_or(Nonce::zero()),
+                })
+        }
         // don't have dst channel state, so use the last processed channel state
         (None, last_outbox_nonce, last_inbox_message_response_nonce) => Some(BlockMessagesQuery {
             chain_id: dst_chain_id,
@@ -689,61 +692,32 @@ where
                 .unwrap_or(Nonce::zero()),
         }),
         (Some(dst_channel_state), last_outbox_nonce, last_inbox_message_response_nonce) => {
-            let next_outbox_nonce = max(
-                dst_channel_state.next_inbox_nonce,
-                last_outbox_nonce
-                    .map(|nonce| nonce.saturating_add(One::one()))
-                    .unwrap_or(Nonce::zero()),
-            );
+            should_relay_messages_to_channel(dst_chain_id, &dst_channel_state, local_channel_state)
+                .then(|| {
+                    let next_outbox_nonce = max(
+                        dst_channel_state.next_inbox_nonce,
+                        last_outbox_nonce
+                            .map(|nonce| nonce.saturating_add(One::one()))
+                            .unwrap_or(Nonce::zero()),
+                    );
 
-            let next_inbox_response_nonce = max(
-                dst_channel_state
-                    .latest_response_received_message_nonce
-                    .map(|nonce| nonce.saturating_add(One::one()))
-                    .unwrap_or(Nonce::zero()),
-                last_inbox_message_response_nonce
-                    .map(|nonce| nonce.saturating_add(One::one()))
-                    .unwrap_or(Nonce::zero()),
-            );
+                    let next_inbox_response_nonce = max(
+                        dst_channel_state
+                            .latest_response_received_message_nonce
+                            .map(|nonce| nonce.saturating_add(One::one()))
+                            .unwrap_or(Nonce::zero()),
+                        last_inbox_message_response_nonce
+                            .map(|nonce| nonce.saturating_add(One::one()))
+                            .unwrap_or(Nonce::zero()),
+                    );
 
-            // if the local channel is closed, and
-            // last outbox message is already included
-            // and
-            // if the dst_channel is closed, and
-            // last inbox message response is already included
-            // we can safely skip the channel as the there is nothing further to send.
-            if local_channel_state == ChannelState::Closed
-                && dst_channel_state.state == ChannelState::Closed
-            {
-                let is_last_outbox_nonce = dst_channel_state
-                    .next_inbox_nonce
-                    .saturating_sub(One::one())
-                    == last_outbox_nonce.unwrap_or(Nonce::zero());
-
-                let is_last_inbox_message_response_nonce = dst_channel_state
-                    .latest_response_received_message_nonce
-                    .unwrap_or(Nonce::zero())
-                    == last_inbox_message_response_nonce.unwrap_or(Nonce::zero());
-
-                if is_last_outbox_nonce && is_last_inbox_message_response_nonce {
-                    tracing::debug!(target: LOG_TARGET, "Skipping XDM for Chain[{:?}] - Channel[{:?}]", dst_chain_id, channel_id);
-                    None
-                } else {
-                    Some(BlockMessagesQuery {
+                    BlockMessagesQuery {
                         chain_id: dst_chain_id,
                         channel_id,
                         outbox_from: next_outbox_nonce,
                         inbox_responses_from: next_inbox_response_nonce,
-                    })
-                }
-            } else {
-                Some(BlockMessagesQuery {
-                    chain_id: dst_chain_id,
-                    channel_id,
-                    outbox_from: next_outbox_nonce,
-                    inbox_responses_from: next_inbox_response_nonce,
+                    }
                 })
-            }
         }
     };
 
@@ -754,6 +728,45 @@ where
     );
 
     Ok(query)
+}
+
+fn should_relay_messages_to_channel(
+    dst_chain_id: ChainId,
+    dst_channel_state: &ChannelDetail,
+    local_channel_state: ChannelStateWithNonce,
+) -> bool {
+    let should_process = if dst_channel_state.state == ChannelState::Closed
+        && let ChannelStateWithNonce::Closed {
+            next_outbox_nonce,
+            next_inbox_nonce,
+        } = local_channel_state
+    {
+        // if the next outbox nonce of local channel is same as
+        // next inbox nonce of dst_channel, then there are no further
+        // outbox messages to be sent from the local channel
+        let no_outbox_messages = next_outbox_nonce == dst_channel_state.next_inbox_nonce;
+
+        // if next inbox nonce of local channel is +1 of
+        // last received response nonce on dst_chain, then there are
+        // no further messages responses to be sent from the local channel
+        let no_inbox_responses_messages = dst_channel_state
+            .latest_response_received_message_nonce
+            .map(|nonce| nonce == next_inbox_nonce.saturating_sub(Nonce::one()))
+            .unwrap_or(false);
+
+        !(no_outbox_messages && no_inbox_responses_messages)
+    } else {
+        true
+    };
+
+    if !should_process {
+        tracing::debug!(target: LOG_TARGET,
+            "Chain[{:?}] for Channel[{:?}] is closed and no messages to process",
+            dst_chain_id, dst_channel_state.channel_id
+        );
+    }
+
+    should_process
 }
 
 fn is_relayer_api_version_available<Client, Block, CBlock>(

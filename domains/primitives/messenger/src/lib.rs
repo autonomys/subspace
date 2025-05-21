@@ -23,7 +23,7 @@ pub mod messages;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::messages::{ChannelState, MessageKey, Nonce};
+use crate::messages::{ChannelStateWithNonce, MessageKey, Nonce};
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeMap;
 #[cfg(not(feature = "std"))]
@@ -309,7 +309,7 @@ sp_api::decl_runtime_apis! {
         fn block_messages_with_query(query: BlockMessagesQuery) -> BlockMessagesWithStorageKey;
 
         /// Returns all the channels to other chains and their local Channel state.
-        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelState)>;
+        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)>;
 
         /// Returns the first outbox message nonce that should be relayed to the dst_chain.
         fn should_relay_outbox_messages(dst_chain_id: ChainId, channel_id: ChannelId, from_nonce: Nonce) -> Option<Nonce>;

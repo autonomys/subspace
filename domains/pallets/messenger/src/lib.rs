@@ -174,8 +174,9 @@ mod pallet {
         Endpoint, EndpointHandler, EndpointRequest, EndpointRequestWithCollectedFee, Sender,
     };
     use sp_messenger::messages::{
-        ChainId, ChannelOpenParamsV1, CrossDomainMessage, Message, MessageId, MessageKey,
-        MessageWeightTag, PayloadV1, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        ChainId, ChannelOpenParamsV1, ChannelStateWithNonce, CrossDomainMessage, Message,
+        MessageId, MessageKey, MessageWeightTag, PayloadV1, ProtocolMessageRequest,
+        RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
         ChannelNonce, DomainRegistration, InherentError, InherentType, NoteChainTransfer,
@@ -1414,7 +1415,7 @@ mod pallet {
             Channels::<T>::iter_keys().collect()
         }
 
-        pub fn channels_and_states() -> Vec<(ChainId, ChannelId, ChannelState)> {
+        pub fn channels_and_states() -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)> {
             crate::migrations::get_channels_and_states::<T>()
         }
 

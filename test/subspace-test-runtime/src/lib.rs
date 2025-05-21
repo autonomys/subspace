@@ -79,7 +79,7 @@ use sp_domains_fraud_proof::storage_proof::{
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelId, ChannelState,
+    BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelId, ChannelStateWithNonce,
     CrossDomainMessage, MessageId, MessageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
@@ -1757,7 +1757,7 @@ impl_runtime_apis! {
             Messenger::get_block_messages(query)
         }
 
-        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelState)>{
+        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)>{
             Messenger::channels_and_states()
         }
 

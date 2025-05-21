@@ -16,7 +16,7 @@ use sp_domains::{
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
 use sp_messenger::messages::{
-    BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelId, ChannelState,
+    BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelId, ChannelStateWithNonce,
     CrossDomainMessage, MessageId, MessageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
@@ -418,7 +418,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelState)> {
+        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)> {
             unreachable!()
         }
 

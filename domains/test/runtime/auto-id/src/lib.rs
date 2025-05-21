@@ -42,8 +42,8 @@ use sp_core::{Get, OpaqueMetadata};
 use sp_domains::{ChannelId, DomainAllowlistUpdates, DomainId, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelState, CrossDomainMessage,
-    MessageId, MessageKey, Nonce as XdmNonce,
+    BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelStateWithNonce,
+    CrossDomainMessage, MessageId, MessageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
@@ -1146,7 +1146,7 @@ impl_runtime_apis! {
             Messenger::get_block_messages(query)
         }
 
-        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelState)> {
+        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)> {
             Messenger::channels_and_states()
         }
 
