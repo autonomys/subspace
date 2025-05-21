@@ -1,8 +1,10 @@
 //! Extensions for unsigned general extrinsics
 
 use crate::pallet::Call as DomainsCall;
+use crate::weights::WeightInfo;
 use crate::{Config, FraudProofFor, OpaqueBundleOf, Origin, Pallet as Domains, SingletonReceiptOf};
 use frame_support::pallet_prelude::{PhantomData, TypeInfo};
+use frame_support::weights::Weight;
 use frame_system::pallet_prelude::RuntimeCallFor;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
@@ -175,6 +177,23 @@ where
     type Val = ();
     type Pre = ();
 
+    fn weight(&self, call: &Runtime::RuntimeCall) -> Weight {
+        // This extension only apply to the following 3 calls thus only return weight for them.
+        match call.maybe_domains_call() {
+            Some(DomainsCall::submit_bundle { .. }) => {
+                <Runtime as Config>::WeightInfo::validate_submit_bundle()
+            }
+            Some(DomainsCall::submit_fraud_proof { .. }) => {
+                // FIXME: proper weight
+                Weight::zero()
+            }
+            Some(DomainsCall::submit_receipt { .. }) => {
+                <Runtime as Config>::WeightInfo::validate_singleton_receipt()
+            }
+            _ => Weight::zero(),
+        }
+    }
+
     fn validate(
         &self,
         origin: DispatchOriginOf<RuntimeCallFor<Runtime>>,
@@ -212,7 +231,4 @@ where
     }
 
     impl_tx_ext_default!(RuntimeCallFor<Runtime>; prepare);
-
-    // TODO: need benchmarking for this extension.
-    impl_tx_ext_default!(RuntimeCallFor<Runtime>; weight);
 }

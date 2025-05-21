@@ -6,6 +6,7 @@ use super::*;
 use crate::block_tree::{prune_receipt, BlockTreeNode};
 use crate::bundle_storage_fund::refund_storage_fee;
 use crate::domain_registry::{into_domain_config, DomainConfigParams};
+use crate::runtime_registry::DomainRuntimeUpgradeEntry;
 use crate::staking::{
     do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_reward_operators,
     Error as StakingError, OperatorConfig, OperatorStatus, WithdrawStake,
@@ -15,7 +16,8 @@ use crate::staking_epoch::{
     operator_take_reward_tax_and_stake,
 };
 use crate::{
-    DomainBlockNumberFor, Pallet as Domains, RawOrigin as DomainOrigin, MAX_NOMINATORS_TO_SLASH,
+    DomainBlockNumberFor, ExecutionReceiptOf, Pallet as Domains, RawOrigin as DomainOrigin,
+    MAX_NOMINATORS_TO_SLASH,
 };
 #[cfg(not(feature = "std"))]
 use alloc::borrow::ToOwned;
@@ -26,16 +28,23 @@ use frame_support::assert_ok;
 use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::Hooks;
 use frame_system::{Pallet as System, RawOrigin};
+use hex_literal::hex;
 use pallet_subspace::BlockRandomness;
+use sp_consensus_slots::Slot;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
+use sp_core::sr25519::vrf::{VrfPreOutput, VrfProof, VrfSignature};
+use sp_core::H256;
+use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
-    OperatorPublicKey, OperatorRewardSource, OperatorSignature, PermissionedActionAllowedBy,
-    ProofOfElection, RuntimeType, SealedSingletonReceipt, SingletonReceipt,
+    dummy_opaque_bundle, BundleHeader, DomainId, ExecutionReceipt, OpaqueBundle, OperatorAllowList,
+    OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature,
+    PermissionedActionAllowedBy, ProofOfElection, RuntimeType, SealedBundleHeader,
+    SealedSingletonReceipt, SingletonReceipt, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{CheckedAdd, One, Zero};
 use sp_std::collections::btree_set::BTreeSet;
+use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::Randomness;
 
 const SEED: u32 = 0;
@@ -900,6 +909,133 @@ mod benchmarks {
         assert_eq!(Domains::<T>::head_receipt_number(domain_id), 1u32.into());
     }
 
+    #[benchmark]
+    fn validate_submit_bundle() {
+        let domain_id = register_domain::<T>();
+
+        // Use `Alice` as signing key
+        let signing_key =
+            OperatorPublicKey::from_ss58check("5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY")
+                .unwrap();
+        let (_, operator_id) = register_operator_with_key::<T>(
+            domain_id,
+            1u32,
+            signing_key,
+            T::MinNominatorStake::get(),
+        );
+        do_finalize_domain_current_epoch::<T>(domain_id)
+            .expect("finalize domain staking should success");
+
+        let proof_of_election = mock_constant_proof_of_election(domain_id, operator_id);
+        let receipt = mock_constant_receipt::<T>(domain_id);
+
+        // Instead of inserting consensus hash into `ConsensusBlockHash` for the receipt check
+        // insert `DomainRuntimeUpgradeRecords` to routed to a worse path
+        DomainRuntimeUpgradeRecords::<T>::mutate(
+            Domains::<T>::runtime_id(domain_id).unwrap(),
+            |upgrade_record| {
+                upgrade_record.insert(
+                    receipt.consensus_block_number,
+                    DomainRuntimeUpgradeEntry {
+                        at_hash: receipt.consensus_block_hash,
+                        reference_count: 1,
+                    },
+                )
+            },
+        );
+
+        let header = BundleHeader {
+            proof_of_election,
+            receipt,
+            estimated_bundle_weight: Default::default(),
+            bundle_extrinsics_root: EMPTY_EXTRINSIC_ROOT.into(),
+        };
+
+        // Hardcoded signature of the constant bundle header, signed by `Alice`
+        // NOTE: we can't sign in no-std because it requires randomness
+        let signature = OperatorSignature::unchecked_from([
+            212, 250, 46, 171, 239, 93, 105, 105, 36, 78, 32, 229, 166, 253, 168, 142, 109, 123,
+            213, 159, 210, 106, 192, 62, 54, 82, 64, 64, 19, 27, 136, 33, 19, 241, 58, 116, 252,
+            133, 147, 129, 32, 182, 201, 18, 47, 80, 117, 124, 136, 186, 168, 15, 193, 71, 236,
+            201, 155, 176, 188, 254, 114, 173, 96, 134,
+        ]);
+
+        let opaque_bundle = OpaqueBundle {
+            sealed_header: SealedBundleHeader::new(header, signature),
+            extrinsics: Vec::new(),
+        };
+
+        #[block]
+        {
+            assert_ok!(Domains::<T>::validate_submit_bundle(&opaque_bundle, true));
+        }
+    }
+
+    #[benchmark]
+    fn validate_singleton_receipt() {
+        let domain_id = register_domain::<T>();
+
+        // Use `Alice` as signing key
+        let signing_key =
+            OperatorPublicKey::from_ss58check("5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY")
+                .unwrap();
+        let (_, operator_id) = register_operator_with_key::<T>(
+            domain_id,
+            1u32,
+            signing_key,
+            T::MinNominatorStake::get(),
+        );
+        do_finalize_domain_current_epoch::<T>(domain_id)
+            .expect("finalize domain staking should success");
+
+        let proof_of_election = mock_constant_proof_of_election(domain_id, operator_id);
+        let receipt = mock_constant_receipt::<T>(domain_id);
+
+        // Instead of inserting consensus hash into `ConsensusBlockHash` for the receipt check
+        // insert `DomainRuntimeUpgradeRecords` to routed to a worse path
+        DomainRuntimeUpgradeRecords::<T>::mutate(
+            Domains::<T>::runtime_id(domain_id).unwrap(),
+            |upgrade_record| {
+                upgrade_record.insert(
+                    receipt.consensus_block_number,
+                    DomainRuntimeUpgradeEntry {
+                        at_hash: receipt.consensus_block_hash,
+                        reference_count: 1,
+                    },
+                )
+            },
+        );
+
+        let singleton_receipt: SingletonReceipt<_, _, T::DomainHeader, _> = SingletonReceipt {
+            proof_of_election,
+            receipt,
+        };
+
+        // Hardcoded signature of the constant singleton receipt, signed by `Alice`
+        // NOTE: we can't sign in no-std because it requires randomness
+        let signature = OperatorSignature::unchecked_from([
+            10, 180, 139, 94, 205, 225, 15, 19, 141, 141, 133, 23, 32, 66, 177, 60, 131, 89, 91,
+            110, 161, 218, 6, 228, 214, 118, 106, 108, 217, 36, 108, 40, 85, 150, 165, 177, 40, 9,
+            98, 82, 203, 27, 32, 98, 122, 123, 78, 221, 229, 50, 118, 153, 61, 111, 95, 51, 130,
+            195, 94, 212, 225, 14, 184, 141,
+        ]);
+
+        let sealed_singleton_receipt = SealedSingletonReceipt {
+            singleton_receipt,
+            signature,
+        };
+
+        HeadDomainNumber::<T>::set(domain_id, 10u32.into());
+
+        #[block]
+        {
+            assert_ok!(Domains::<T>::validate_singleton_receipt(
+                &sealed_singleton_receipt,
+                true
+            ));
+        }
+    }
+
     fn register_runtime<T: Config>() -> RuntimeId {
         let genesis_storage = include_bytes!("../res/evm-domain-genesis-storage").to_vec();
         let runtime_id = NextRuntimeId::<T>::get();
@@ -967,20 +1103,35 @@ mod benchmarks {
         operator_seed: u32,
         minimum_nominator_stake: BalanceOf<T>,
     ) -> (T::AccountId, OperatorId) {
-        let operator_account = account("operator", operator_seed, SEED);
-        T::Currency::set_balance(
-            &operator_account,
-            T::MinOperatorStake::get() + T::MinNominatorStake::get(),
-        );
-
         let key = {
             let mut k = [0u8; 32];
             (k[..4]).copy_from_slice(&operator_seed.to_be_bytes()[..]);
             k
         };
+        let signing_key = OperatorPublicKey::unchecked_from(key);
+        register_operator_with_key::<T>(
+            domain_id,
+            operator_seed,
+            signing_key,
+            minimum_nominator_stake,
+        )
+    }
+
+    fn register_operator_with_key<T: Config>(
+        domain_id: DomainId,
+        operator_seed: u32,
+        signing_key: OperatorPublicKey,
+        minimum_nominator_stake: BalanceOf<T>,
+    ) -> (T::AccountId, OperatorId) {
+        let operator_account = account("operator", operator_seed, SEED);
+        T::Currency::set_balance(
+            &operator_account,
+            T::MinOperatorStake::get() * 100u32.into() + T::MinNominatorStake::get(),
+        );
+
         let operator_id = NextOperatorId::<T>::get();
         let operator_config = OperatorConfig {
-            signing_key: OperatorPublicKey::unchecked_from(key),
+            signing_key,
             minimum_nominator_stake,
             nomination_tax: Default::default(),
         };
@@ -988,7 +1139,7 @@ mod benchmarks {
         assert_ok!(crate::do_register_operator::<T>(
             operator_account.clone(),
             domain_id,
-            T::MinOperatorStake::get(),
+            T::MinOperatorStake::get() * 50u32.into(),
             operator_config.clone(),
         ));
         assert_eq!(
@@ -999,6 +1150,94 @@ mod benchmarks {
         assert_eq!(operator.signing_key, operator_config.signing_key);
 
         (operator_account, operator_id)
+    }
+
+    // Return a mock `proof_of_election` which should be a constant value, otherwise,
+    // it won't match with the hardcoded signature
+    fn mock_constant_proof_of_election(
+        domain_id: DomainId,
+        operator_id: OperatorId,
+    ) -> ProofOfElection {
+        let (proof_of_time, slot) = (PotOutput::default(), Slot::from(1));
+
+        // VRF signature generated by signing:
+        // ```
+        // let global_challenge = proof_of_time
+        //     .derive_global_randomness()
+        //     .derive_global_challenge(slot.into());
+        // let vrf_sign_data = make_transcript(domain_id, &global_challenge).into_sign_data();
+        // ```
+        // with the key `Alice`
+        let vrf_signature = VrfSignature {
+            pre_output: VrfPreOutput(
+                schnorrkel::vrf::VRFPreOut::from_bytes(&[
+                    248, 47, 99, 253, 224, 36, 127, 251, 30, 132, 220, 112, 51, 251, 195, 246, 140,
+                    97, 153, 49, 166, 36, 114, 142, 73, 214, 185, 156, 2, 142, 180, 57,
+                ])
+                .unwrap(),
+            ),
+            proof: VrfProof(
+                schnorrkel::vrf::VRFProof::from_bytes(&[
+                    28, 138, 214, 43, 79, 128, 75, 106, 98, 232, 188, 139, 101, 206, 174, 146, 138,
+                    210, 101, 72, 184, 227, 115, 72, 37, 246, 182, 247, 102, 34, 11, 3, 22, 106,
+                    116, 209, 34, 220, 216, 20, 93, 101, 182, 130, 15, 71, 73, 27, 51, 126, 100,
+                    43, 80, 253, 101, 132, 222, 234, 196, 167, 19, 126, 16, 8,
+                ])
+                .unwrap(),
+            ),
+        };
+        ProofOfElection {
+            domain_id,
+            slot_number: slot.into(),
+            proof_of_time,
+            vrf_signature,
+            operator_id,
+        }
+    }
+
+    // Return a mock `receipt` which should be a constant value, otherwise, it won't match
+    // with the hardcoded signature
+    fn mock_constant_receipt<T: Config>(domain_id: DomainId) -> ExecutionReceiptOf<T> {
+        // The genesis ER will changed as the runtime code changed, thus using a mock genesis
+        // ER hash to ensure the return ER is constant
+        let mock_genesis_er_hash = H256::from_slice(
+            hex!("5207cc85cfd1f53e11f4b9e85bf2d0a4f33e24d0f0f18b818b935a6aa47d3930").as_slice(),
+        );
+        BlockTree::<T>::insert::<_, DomainBlockNumberFor<T>, <T as Config>::DomainHash>(
+            domain_id,
+            Zero::zero(),
+            mock_genesis_er_hash.into(),
+        );
+
+        let trace: Vec<<T as Config>::DomainHash> = vec![
+            H256::repeat_byte(1).into(),
+            H256::repeat_byte(2).into(),
+            H256::repeat_byte(3).into(),
+        ];
+        let execution_trace_root = {
+            let trace: Vec<_> = trace
+                .iter()
+                .map(|t| t.encode().try_into().unwrap())
+                .collect();
+            MerkleTree::from_leaves(trace.as_slice())
+                .root()
+                .unwrap()
+                .into()
+        };
+        ExecutionReceipt {
+            domain_block_number: One::one(),
+            domain_block_hash: H256::repeat_byte(7).into(),
+            domain_block_extrinsic_root: EMPTY_EXTRINSIC_ROOT.into(),
+            parent_domain_block_receipt_hash: mock_genesis_er_hash.into(),
+            consensus_block_number: One::one(),
+            consensus_block_hash: H256::repeat_byte(9).into(),
+            inboxed_bundles: vec![],
+            final_state_root: trace[2],
+            execution_trace: trace,
+            execution_trace_root,
+            block_fees: Default::default(),
+            transfers: Default::default(),
+        }
     }
 
     fn run_to_block<T: Config + pallet_subspace::Config>(
