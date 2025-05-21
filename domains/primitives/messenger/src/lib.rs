@@ -310,6 +310,12 @@ sp_api::decl_runtime_apis! {
 
         /// Returns all the channels to other chains and their local Channel state.
         fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelState)>;
+
+        /// Returns the first outbox message nonce that should be relayed to the dst_chain.
+        fn should_relay_outbox_messages(dst_chain_id: ChainId, channel_id: ChannelId, from_nonce: Nonce) -> Option<Nonce>;
+
+        /// Returns the first inbox response message nonce that should be relayed to the dst_chain.
+        fn should_relay_inbox_message_responses(dst_chain_id: ChainId,channel_id: ChannelId, from_nonce: Nonce) -> Option<Nonce>;
     }
 
     /// Api to provide XDM extraction from Runtime Calls.

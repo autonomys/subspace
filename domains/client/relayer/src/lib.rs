@@ -240,58 +240,6 @@ where
     .map_err(Error::UnableToSubmitCrossDomainMessage)
 }
 
-fn should_relay_outbox_message<Client, Block, CBlock>(
-    api: &ApiRef<'_, Client::Api>,
-    best_hash: Block::Hash,
-    msg: &BlockMessageWithStorageKey,
-) -> bool
-where
-    Block: BlockT,
-    CBlock: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
-{
-    let id = msg.id();
-    match api.should_relay_outbox_message(best_hash, msg.dst_chain_id, id) {
-        Ok(val) => val,
-        Err(err) => {
-            tracing::error!(
-                target: LOG_TARGET,
-                ?err,
-                "Failed to fetch validity of outbox message {id:?} for domain {0:?}",
-                msg.dst_chain_id
-            );
-            false
-        }
-    }
-}
-
-fn should_relay_inbox_responses_message<Client, Block, CBlock>(
-    api: &ApiRef<'_, Client::Api>,
-    best_hash: Block::Hash,
-    msg: &BlockMessageWithStorageKey,
-) -> bool
-where
-    Block: BlockT,
-    CBlock: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
-{
-    let id = msg.id();
-    match api.should_relay_inbox_message_response(best_hash, msg.dst_chain_id, id) {
-        Ok(val) => val,
-        Err(err) => {
-            tracing::error!(
-                target: LOG_TARGET,
-                ?err,
-                "Failed to fetch validity of inbox message response {id:?} for domain {0:?}",
-                msg.dst_chain_id
-            );
-            false
-        }
-    }
-}
-
 // Fetch the XDM at the given block and filter any already relayed XDM according to the best block
 fn fetch_and_filter_messages<Client, Block, CClient, CBlock>(
     client: &Arc<Client>,
@@ -306,32 +254,17 @@ where
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
     Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
 {
-    let mut msgs =
-        if is_relayer_api_version_available::<_, Block, CBlock>(client, 3, fetch_message_at) {
-            fetch_messages::<_, _, Block, CBlock>(
-                &**consensus_client,
-                client,
-                fetch_message_at,
-                self_chain_id,
-            )
-            .map_err(|_| Error::FetchAssignedMessages)?
-        } else {
-            client
-                .runtime_api()
-                .block_messages(fetch_message_at)
-                .map_err(|_| Error::FetchAssignedMessages)?
-        };
+    // return no messages for previous relayer version
+    if !is_relayer_api_version_available::<_, Block, CBlock>(client, 3, fetch_message_at) {
+        return Ok(BlockMessagesWithStorageKey::default());
+    }
 
-    let api = client.runtime_api();
-    let best_hash = client.info().best_hash;
-    msgs.outbox
-        .retain(|msg| should_relay_outbox_message::<Client, Block, CBlock>(&api, best_hash, msg));
-
-    msgs.inbox_responses.retain(|msg| {
-        should_relay_inbox_responses_message::<Client, Block, CBlock>(&api, best_hash, msg)
-    });
-
-    Ok(msgs)
+    fetch_messages::<_, _, Block, CBlock>(
+        &**consensus_client,
+        client,
+        fetch_message_at,
+        self_chain_id,
+    )
 }
 
 // A helper struct used when constructing XDM proof
@@ -534,6 +467,48 @@ where
     }
 }
 
+fn filter_block_messages<Client, Block, CBlock>(
+    api: &ApiRef<'_, Client::Api>,
+    best_hash: Block::Hash,
+    query: BlockMessagesQuery,
+    messages: &mut BlockMessagesWithStorageKey,
+) -> Result<(), Error>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
+    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
+{
+    let BlockMessagesQuery {
+        chain_id,
+        channel_id,
+        outbox_from,
+        inbox_responses_from,
+    } = query;
+    let maybe_outbox_nonce =
+        api.should_relay_outbox_messages(best_hash, chain_id, channel_id, outbox_from)?;
+    let maybe_inbox_response_nonce = api.should_relay_inbox_message_responses(
+        best_hash,
+        chain_id,
+        channel_id,
+        inbox_responses_from,
+    )?;
+
+    if let Some(nonce) = maybe_outbox_nonce {
+        messages.outbox.retain(|msg| msg.nonce >= nonce)
+    } else {
+        messages.outbox.clear()
+    }
+
+    if let Some(nonce) = maybe_inbox_response_nonce {
+        messages.inbox_responses.retain(|msg| msg.nonce >= nonce)
+    } else {
+        messages.inbox_responses.clear();
+    }
+
+    Ok(())
+}
+
 // Fetch the unprocessed XDMs at a given block
 fn fetch_messages<Backend, Client, Block, CBlock>(
     backend: &Backend,
@@ -580,6 +555,8 @@ where
         queries
     };
 
+    let best_hash = client.info().best_hash;
+    let runtime_api_best = client.runtime_api();
     let total_messages = queries
         .into_iter()
         .filter_map(|query| {
@@ -588,9 +565,19 @@ where
                 channel_id,
                 ..
             } = query;
-            let messages = runtime_api
-                .block_messages_with_query(fetch_message_at, query)
+            let mut messages = runtime_api
+                .block_messages_with_query(fetch_message_at, query.clone())
                 .ok()?;
+
+            // filter messages with best hash
+            filter_block_messages::<Client, _, CBlock>(
+                &runtime_api_best,
+                best_hash,
+                query,
+                &mut messages,
+            )
+            .ok()?;
+
             if !messages.outbox.is_empty()
                 && let Some(max_nonce) = messages.outbox.iter().map(|key| key.nonce).max()
             {

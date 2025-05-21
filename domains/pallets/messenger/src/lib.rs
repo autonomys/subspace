@@ -45,8 +45,9 @@ use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::{DomainAllowlistUpdates, DomainId};
 use sp_messenger::messages::{
-    ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, Message, MessageId, Nonce,
+    ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, Message, Nonce,
 };
+use sp_messenger::MAX_FUTURE_ALLOWED_NONCES;
 use sp_runtime::traits::Hash;
 use sp_runtime::DispatchError;
 use subspace_runtime_primitives::CreateUnsigned;
@@ -1510,14 +1511,54 @@ where
         Some(T::create_unsigned(call.into()))
     }
 
-    /// Returns true if the outbox message has not received the response yet.
-    pub fn should_relay_outbox_message(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
-        Outbox::<T>::contains_key((dst_chain_id, msg_id.0, msg_id.1))
+    /// Returns the first outbox message nonce that should be relayed to the dst_chain.
+    pub fn should_relay_outbox_messages(
+        dst_chain_id: ChainId,
+        channel_id: ChannelId,
+        from_nonce: Nonce,
+    ) -> Option<Nonce> {
+        Self::should_relay_message(
+            dst_chain_id,
+            channel_id,
+            from_nonce,
+            Outbox::<T>::contains_key,
+        )
     }
 
-    /// Returns true if the inbox message response has not received acknowledgement yet.
-    pub fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
-        InboxResponses::<T>::contains_key((dst_chain_id, msg_id.0, msg_id.1))
+    /// Returns the first inbox response message nonce that should be relayed to the dst_chain.
+    pub fn should_relay_inbox_message_responses(
+        dst_chain_id: ChainId,
+        channel_id: ChannelId,
+        from_nonce: Nonce,
+    ) -> Option<Nonce> {
+        Self::should_relay_message(
+            dst_chain_id,
+            channel_id,
+            from_nonce,
+            InboxResponses::<T>::contains_key,
+        )
+    }
+
+    fn should_relay_message<Check>(
+        dst_chain_id: ChainId,
+        channel_id: ChannelId,
+        from_nonce: Nonce,
+        check: Check,
+    ) -> Option<Nonce>
+    where
+        Check: Fn((ChainId, ChannelId, Nonce)) -> bool,
+    {
+        let mut nonce = from_nonce;
+        let to_nonce = from_nonce.saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
+        while nonce <= to_nonce {
+            if check((dst_chain_id, channel_id, nonce)) {
+                return Some(nonce);
+            }
+
+            nonce = nonce.saturating_add(Nonce::one())
+        }
+
+        None
     }
 }
 
