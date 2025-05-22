@@ -23,7 +23,7 @@ pub mod messages;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::messages::{ChannelStateWithNonce, MessageKey, Nonce};
+use crate::messages::{ChannelStateWithNonce, MessageKey, MessagesWithStorageKey, Nonce};
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeMap;
 #[cfg(not(feature = "std"))]
@@ -306,16 +306,16 @@ sp_api::decl_runtime_apis! {
 
         /// Returns outbox and inbox responses from given nonce to maximum allowed nonce per block
         /// Storage key is used to generate the storage proof for the message.
-        fn block_messages_with_query(query: BlockMessagesQuery) -> BlockMessagesWithStorageKey;
+        fn block_messages_with_query(query: BlockMessagesQuery) -> MessagesWithStorageKey;
 
         /// Returns all the channels to other chains and their local Channel state.
         fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)>;
 
         /// Returns the first outbox message nonce that should be relayed to the dst_chain.
-        fn should_relay_outbox_messages(dst_chain_id: ChainId, channel_id: ChannelId, from_nonce: Nonce) -> Option<Nonce>;
+        fn first_outbox_message_nonce_to_relay(dst_chain_id: ChainId, channel_id: ChannelId, from_nonce: Nonce) -> Option<Nonce>;
 
         /// Returns the first inbox response message nonce that should be relayed to the dst_chain.
-        fn should_relay_inbox_message_responses(dst_chain_id: ChainId,channel_id: ChannelId, from_nonce: Nonce) -> Option<Nonce>;
+        fn first_inbox_message_response_nonce_to_relay(dst_chain_id: ChainId,channel_id: ChannelId, from_nonce: Nonce) -> Option<Nonce>;
     }
 
     /// Api to provide XDM extraction from Runtime Calls.

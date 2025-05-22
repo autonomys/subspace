@@ -22,8 +22,8 @@ use sp_api::{ApiExt, ApiRef, ProvideRuntimeApi};
 use sp_core::H256;
 use sp_domains::{ChannelId, DomainsApi};
 use sp_messenger::messages::{
-    BlockMessageWithStorageKey, BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId,
-    ChannelState, ChannelStateWithNonce, CrossDomainMessage, Nonce, Proof,
+    BlockMessagesQuery, ChainId, ChannelState, ChannelStateWithNonce, CrossDomainMessage,
+    MessageNonceWithStorageKey, MessagesWithStorageKey, Nonce, Proof,
 };
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_mmr_primitives::MmrApi;
@@ -148,7 +148,7 @@ where
 }
 
 fn construct_cross_chain_message_and_submit<CNumber, CHash, Submitter, ProofConstructor>(
-    msgs: Vec<BlockMessageWithStorageKey>,
+    msgs: (ChainId, ChainId, ChannelId, Vec<MessageNonceWithStorageKey>),
     proof_constructor: ProofConstructor,
     submitter: Submitter,
 ) -> Result<(), Error>
@@ -156,21 +156,28 @@ where
     Submitter: Fn(CrossDomainMessage<CNumber, CHash, H256>) -> Result<(), Error>,
     ProofConstructor: Fn(&[u8], ChainId) -> Result<Proof<CNumber, CHash, H256>, Error>,
 {
+    let (src_chain_id, dst_chain_id, channel_id, msgs) = msgs;
     for msg in msgs {
-        let proof = match proof_constructor(&msg.storage_key, msg.dst_chain_id) {
+        let proof = match proof_constructor(&msg.storage_key, dst_chain_id) {
             Ok(proof) => proof,
             Err(err) => {
                 tracing::error!(
                     target: LOG_TARGET,
                     "Failed to construct storage proof for message: {:?} bound to chain: {:?} with error: {:?}",
-                    (msg.channel_id, msg.nonce),
-                    msg.dst_chain_id,
+                    (channel_id, msg.nonce),
+                    dst_chain_id,
                     err
                 );
                 continue;
             }
         };
-        let msg = CrossDomainMessage::from_relayer_msg_with_proof(msg, proof);
+        let msg = CrossDomainMessage::from_relayer_msg_with_proof(
+            src_chain_id,
+            dst_chain_id,
+            channel_id,
+            msg,
+            proof,
+        );
         let (dst_domain, msg_id) = (msg.dst_chain_id, (msg.channel_id, msg.nonce));
         if let Err(err) = submitter(msg) {
             tracing::error!(
@@ -246,7 +253,7 @@ fn fetch_and_filter_messages<Client, Block, CClient, CBlock>(
     fetch_message_at: Block::Hash,
     consensus_client: &Arc<CClient>,
     self_chain_id: ChainId,
-) -> Result<BlockMessagesWithStorageKey, Error>
+) -> Result<Vec<(ChainId, ChannelId, MessagesWithStorageKey)>, Error>
 where
     CBlock: BlockT,
     CClient: AuxStore + HeaderBackend<CBlock>,
@@ -256,7 +263,7 @@ where
 {
     // return no messages for previous relayer version
     if !is_relayer_api_version_available::<_, Block, CBlock>(client, 3, fetch_message_at) {
-        return Ok(BlockMessagesWithStorageKey::default());
+        return Ok(vec![]);
     }
 
     fetch_messages::<_, _, Block, CBlock>(
@@ -379,35 +386,37 @@ where
             }
         };
 
-        construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
-            block_messages.outbox,
-            |key, dst_chain_id| {
-                Self::construct_xdm_proof(
-                    consensus_chain_client,
-                    domain_client,
-                    dst_chain_id,
-                    mmr_consensus_block,
-                    key,
-                    xdm_proof_data.clone(),
-                )
-            },
-            |msg| gossip_outbox_message(domain_client, msg, gossip_message_sink),
-        )?;
+        for (dst_chain_id, channel_id, messages) in block_messages {
+            construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
+                (chain_id, dst_chain_id, channel_id, messages.outbox),
+                |key, dst_chain_id| {
+                    Self::construct_xdm_proof(
+                        consensus_chain_client,
+                        domain_client,
+                        dst_chain_id,
+                        mmr_consensus_block,
+                        key,
+                        xdm_proof_data.clone(),
+                    )
+                },
+                |msg| gossip_outbox_message(domain_client, msg, gossip_message_sink),
+            )?;
 
-        construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
-            block_messages.inbox_responses,
-            |key, dst_chain_id| {
-                Self::construct_xdm_proof(
-                    consensus_chain_client,
-                    domain_client,
-                    dst_chain_id,
-                    mmr_consensus_block,
-                    key,
-                    xdm_proof_data.clone(),
-                )
-            },
-            |msg| gossip_inbox_message_response(domain_client, msg, gossip_message_sink),
-        )?;
+            construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
+                (chain_id, dst_chain_id, channel_id, messages.inbox_responses),
+                |key, dst_chain_id| {
+                    Self::construct_xdm_proof(
+                        consensus_chain_client,
+                        domain_client,
+                        dst_chain_id,
+                        mmr_consensus_block,
+                        key,
+                        xdm_proof_data.clone(),
+                    )
+                },
+                |msg| gossip_inbox_message_response(domain_client, msg, gossip_message_sink),
+            )?;
+        }
 
         Ok(())
     }
@@ -471,7 +480,7 @@ fn filter_block_messages<Client, Block, CBlock>(
     api: &ApiRef<'_, Client::Api>,
     best_hash: Block::Hash,
     query: BlockMessagesQuery,
-    messages: &mut BlockMessagesWithStorageKey,
+    messages: &mut MessagesWithStorageKey,
 ) -> Result<(), Error>
 where
     Block: BlockT,
@@ -486,8 +495,8 @@ where
         inbox_responses_from,
     } = query;
     let maybe_outbox_nonce =
-        api.should_relay_outbox_messages(best_hash, chain_id, channel_id, outbox_from)?;
-    let maybe_inbox_response_nonce = api.should_relay_inbox_message_responses(
+        api.first_outbox_message_nonce_to_relay(best_hash, chain_id, channel_id, outbox_from)?;
+    let maybe_inbox_response_nonce = api.first_inbox_message_response_nonce_to_relay(
         best_hash,
         chain_id,
         channel_id,
@@ -515,7 +524,7 @@ fn fetch_messages<Backend, Client, Block, CBlock>(
     client: &Arc<Client>,
     fetch_message_at: Block::Hash,
     self_chain_id: ChainId,
-) -> Result<BlockMessagesWithStorageKey, Error>
+) -> Result<Vec<(ChainId, ChannelId, MessagesWithStorageKey)>, Error>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -612,16 +621,9 @@ where
                 .ok()?;
             }
 
-            Some(messages)
+            Some((dst_chain_id, channel_id, messages))
         })
-        .fold(
-            BlockMessagesWithStorageKey::default(),
-            |mut acc, mut messages| {
-                acc.outbox.append(&mut messages.outbox);
-                acc.inbox_responses.append(&mut messages.inbox_responses);
-                acc
-            },
-        );
+        .collect();
 
     Ok(total_messages)
 }

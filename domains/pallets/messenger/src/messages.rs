@@ -16,8 +16,8 @@ use alloc::collections::BTreeMap;
 use frame_support::ensure;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_messenger::messages::{
-    BlockMessageWithStorageKey, BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId,
-    ChannelOpenParamsV1, Message, MessageId, MessageKey, MessageWeightTag, PayloadV1,
+    BlockMessagesQuery, ChainId, ChannelOpenParamsV1, Message, MessageId, MessageKey,
+    MessageNonceWithStorageKey, MessageWeightTag, MessagesWithStorageKey, PayloadV1,
     ProtocolMessageRequest, ProtocolMessageResponse, RequestResponse, VersionedPayload,
 };
 
@@ -389,7 +389,7 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn get_block_messages(query: BlockMessagesQuery) -> BlockMessagesWithStorageKey {
+    pub fn get_block_messages(query: BlockMessagesQuery) -> MessagesWithStorageKey {
         let BlockMessagesQuery {
             chain_id,
             channel_id,
@@ -411,37 +411,31 @@ impl<T: Config> Pallet<T> {
             return Default::default();
         }
 
-        let mut messages_with_storage_key = BlockMessagesWithStorageKey::default();
+        let mut messages_with_storage_key = MessagesWithStorageKey::default();
 
         // create storage keys for inbox responses
-        inbox_responses_weight_tags.into_iter().for_each(
-            |((chain_id, (channel_id, nonce)), weight_tag)| {
+        inbox_responses_weight_tags
+            .into_iter()
+            .for_each(|(nonce, weight_tag)| {
                 let storage_key =
                     InboxResponses::<T>::hashed_key_for((chain_id, channel_id, nonce));
                 messages_with_storage_key
                     .inbox_responses
-                    .push(BlockMessageWithStorageKey {
-                        src_chain_id: T::SelfChainId::get(),
-                        dst_chain_id: chain_id,
-                        channel_id,
+                    .push(MessageNonceWithStorageKey {
                         nonce,
                         storage_key,
                         weight_tag,
                     });
-            },
-        );
+            });
 
         // create storage keys for outbox
         outbox_weight_tags
             .into_iter()
-            .for_each(|((chain_id, (channel_id, nonce)), weight_tag)| {
+            .for_each(|(nonce, weight_tag)| {
                 let storage_key = Outbox::<T>::hashed_key_for((chain_id, channel_id, nonce));
                 messages_with_storage_key
                     .outbox
-                    .push(BlockMessageWithStorageKey {
-                        src_chain_id: T::SelfChainId::get(),
-                        dst_chain_id: chain_id,
-                        channel_id,
+                    .push(MessageNonceWithStorageKey {
                         nonce,
                         storage_key,
                         weight_tag,
@@ -454,7 +448,7 @@ impl<T: Config> Pallet<T> {
     fn get_weight_tags<WTG>(
         from: MessageKey,
         weight_tag_getter: WTG,
-    ) -> BTreeMap<(ChainId, MessageId), MessageWeightTag>
+    ) -> BTreeMap<Nonce, MessageWeightTag>
     where
         WTG: Fn((ChainId, MessageId)) -> Option<MessageWeightTag>,
     {
@@ -465,7 +459,7 @@ impl<T: Config> Pallet<T> {
                 // if the nonce is already processed, short circuit and return
                 None => return weight_tags,
                 Some(weight_tag) => {
-                    weight_tags.insert((chain_id, (channel_id, nonce)), weight_tag);
+                    weight_tags.insert(nonce, weight_tag);
                 }
             };
 

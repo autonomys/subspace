@@ -61,7 +61,7 @@ use sp_evm_tracker::{
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelId, ChannelStateWithNonce,
-    CrossDomainMessage, MessageId, MessageKey, Nonce as XdmNonce,
+    CrossDomainMessage, MessageId, MessageKey, MessagesWithStorageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
@@ -1594,20 +1594,20 @@ impl_runtime_apis! {
             Messenger::open_channels()
         }
 
-        fn block_messages_with_query(query: BlockMessagesQuery) -> BlockMessagesWithStorageKey {
+        fn block_messages_with_query(query: BlockMessagesQuery) -> MessagesWithStorageKey {
             Messenger::get_block_messages(query)
         }
 
-        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)>{
+        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)> {
             Messenger::channels_and_states()
         }
 
-        fn should_relay_outbox_messages(dst_chain_id: ChainId, channel_id: ChannelId, from_nonce: XdmNonce) -> Option<XdmNonce> {
-            Messenger::should_relay_outbox_messages(dst_chain_id, channel_id, from_nonce)
+        fn first_outbox_message_nonce_to_relay(dst_chain_id: ChainId, channel_id: ChannelId, from_nonce: XdmNonce) -> Option<XdmNonce> {
+            Messenger::first_outbox_message_nonce_to_relay(dst_chain_id, channel_id, from_nonce)
         }
 
-        fn should_relay_inbox_message_responses(dst_chain_id: ChainId, channel_id: ChannelId, from_nonce: XdmNonce) -> Option<XdmNonce> {
-            Messenger::should_relay_inbox_message_responses(dst_chain_id, channel_id, from_nonce)
+        fn first_inbox_message_response_nonce_to_relay(dst_chain_id: ChainId, channel_id: ChannelId, from_nonce: XdmNonce) -> Option<XdmNonce> {
+            Messenger::first_inbox_message_response_nonce_to_relay(dst_chain_id, channel_id, from_nonce)
         }
     }
 

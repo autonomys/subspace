@@ -17,7 +17,7 @@ use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
 use sp_messenger::messages::{
     BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelId, ChannelStateWithNonce,
-    CrossDomainMessage, MessageId, MessageKey, Nonce as XdmNonce,
+    CrossDomainMessage, MessageId, MessageKey, MessagesWithStorageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_runtime::traits::NumberFor;
@@ -414,7 +414,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn block_messages_with_query(_: BlockMessagesQuery) -> BlockMessagesWithStorageKey {
+        fn block_messages_with_query(_: BlockMessagesQuery) -> MessagesWithStorageKey {
             unreachable!()
         }
 
@@ -422,11 +422,11 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn should_relay_outbox_messages(_: ChainId, _: ChannelId, _: XdmNonce) -> Option<XdmNonce> {
+        fn first_outbox_message_nonce_to_relay(_: ChainId, _: ChannelId, _: XdmNonce) -> Option<XdmNonce> {
             unreachable!()
         }
 
-        fn should_relay_inbox_message_responses(_: ChainId, _: ChannelId, _: XdmNonce) -> Option<XdmNonce> {
+        fn first_inbox_message_response_nonce_to_relay(_: ChainId, _: ChannelId, _: XdmNonce) -> Option<XdmNonce> {
             unreachable!()
         }
     }

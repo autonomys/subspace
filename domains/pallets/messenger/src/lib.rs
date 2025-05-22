@@ -1513,12 +1513,12 @@ where
     }
 
     /// Returns the first outbox message nonce that should be relayed to the dst_chain.
-    pub fn should_relay_outbox_messages(
+    pub fn first_outbox_message_nonce_to_relay(
         dst_chain_id: ChainId,
         channel_id: ChannelId,
         from_nonce: Nonce,
     ) -> Option<Nonce> {
-        Self::should_relay_message(
+        Self::first_relay_message(
             dst_chain_id,
             channel_id,
             from_nonce,
@@ -1527,12 +1527,12 @@ where
     }
 
     /// Returns the first inbox response message nonce that should be relayed to the dst_chain.
-    pub fn should_relay_inbox_message_responses(
+    pub fn first_inbox_message_response_nonce_to_relay(
         dst_chain_id: ChainId,
         channel_id: ChannelId,
         from_nonce: Nonce,
     ) -> Option<Nonce> {
-        Self::should_relay_message(
+        Self::first_relay_message(
             dst_chain_id,
             channel_id,
             from_nonce,
@@ -1540,7 +1540,7 @@ where
         )
     }
 
-    fn should_relay_message<Check>(
+    fn first_relay_message<Check>(
         dst_chain_id: ChainId,
         channel_id: ChannelId,
         from_nonce: Nonce,
