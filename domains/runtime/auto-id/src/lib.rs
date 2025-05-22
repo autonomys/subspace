@@ -456,7 +456,7 @@ where
 
 parameter_types! {
     pub const TransporterEndpointId: EndpointId = 1;
-    pub const MinimumTransfer: Balance = 10 * SSC;
+    pub const MinimumTransfer: Balance = SSC;
 }
 
 impl pallet_transporter::Config for Runtime {
