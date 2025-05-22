@@ -153,6 +153,7 @@ macro_rules! impl_runtime {
 
         parameter_types! {
             pub const TransporterEndpointId: EndpointId = 100;
+            pub const MinimumTransfer: Balance = 1;
         }
 
         #[derive(Debug)]
@@ -182,6 +183,7 @@ macro_rules! impl_runtime {
             type AccountIdConverter = MockAccountIdConverter;
             type WeightInfo = ();
             type SkipBalanceTransferChecks = ();
+            type MinimumTransfer = MinimumTransfer;
         }
 
         impl pallet_domains::Config for $runtime {}

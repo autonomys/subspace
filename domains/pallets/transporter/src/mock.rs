@@ -157,6 +157,10 @@ impl TryConvertBack<AccountId, MultiAccountId> for MockAccountIdConverter {
     }
 }
 
+parameter_types! {
+    pub const MinimumTransfer: Balance = 1;
+}
+
 impl Config for MockRuntime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
@@ -169,6 +173,7 @@ impl Config for MockRuntime {
     type AccountIdConverter = MockAccountIdConverter;
     type WeightInfo = ();
     type SkipBalanceTransferChecks = ();
+    type MinimumTransfer = MinimumTransfer;
 }
 
 pub const USER_ACCOUNT: AccountId = 1;
