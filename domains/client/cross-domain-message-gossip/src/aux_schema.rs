@@ -1,6 +1,5 @@
 //! Schema for channel update storage.
 
-use crate::RELAYER_PREFIX;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Info, Result as ClientResult};
@@ -89,19 +88,6 @@ where
             channel_detail.encode().as_slice(),
         )],
         vec![],
-    )?;
-
-    let channel_nonce = ChannelNonce {
-        relay_msg_nonce: Some(channel_detail.next_inbox_nonce),
-        relay_response_msg_nonce: channel_detail.latest_response_received_message_nonce,
-    };
-    let prefix = (RELAYER_PREFIX, src_chain_id, self_chain_id).encode();
-    cleanup_chain_channel_storages(
-        backend,
-        &prefix,
-        src_chain_id,
-        channel_detail.channel_id,
-        channel_nonce,
     )
 }
 

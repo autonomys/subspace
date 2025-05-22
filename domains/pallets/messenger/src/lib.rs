@@ -45,8 +45,9 @@ use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::{DomainAllowlistUpdates, DomainId};
 use sp_messenger::messages::{
-    ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, Message, MessageId, Nonce,
+    ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, Message, Nonce,
 };
+use sp_messenger::MAX_FUTURE_ALLOWED_NONCES;
 use sp_runtime::traits::Hash;
 use sp_runtime::DispatchError;
 use subspace_runtime_primitives::CreateUnsigned;
@@ -173,8 +174,9 @@ mod pallet {
         Endpoint, EndpointHandler, EndpointRequest, EndpointRequestWithCollectedFee, Sender,
     };
     use sp_messenger::messages::{
-        ChainId, ChannelOpenParamsV1, CrossDomainMessage, Message, MessageId, MessageKey,
-        MessageWeightTag, PayloadV1, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        ChainId, ChannelOpenParamsV1, ChannelStateWithNonce, CrossDomainMessage, Message,
+        MessageId, MessageKey, MessageWeightTag, PayloadV1, ProtocolMessageRequest,
+        RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
         ChannelNonce, DomainRegistration, InherentError, InherentType, NoteChainTransfer,
@@ -1410,7 +1412,11 @@ mod pallet {
         }
 
         pub fn open_channels() -> BTreeSet<(ChainId, ChannelId)> {
-            crate::migrations::get_open_channels::<T>()
+            Channels::<T>::iter_keys().collect()
+        }
+
+        pub fn channels_and_states() -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)> {
+            crate::migrations::get_channels_and_states::<T>()
         }
 
         pub fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce> {
@@ -1506,14 +1512,54 @@ where
         Some(T::create_unsigned(call.into()))
     }
 
-    /// Returns true if the outbox message has not received the response yet.
-    pub fn should_relay_outbox_message(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
-        Outbox::<T>::contains_key((dst_chain_id, msg_id.0, msg_id.1))
+    /// Returns the first outbox message nonce that should be relayed to the dst_chain.
+    pub fn first_outbox_message_nonce_to_relay(
+        dst_chain_id: ChainId,
+        channel_id: ChannelId,
+        from_nonce: Nonce,
+    ) -> Option<Nonce> {
+        Self::first_relay_message(
+            dst_chain_id,
+            channel_id,
+            from_nonce,
+            Outbox::<T>::contains_key,
+        )
     }
 
-    /// Returns true if the inbox message response has not received acknowledgement yet.
-    pub fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
-        InboxResponses::<T>::contains_key((dst_chain_id, msg_id.0, msg_id.1))
+    /// Returns the first inbox response message nonce that should be relayed to the dst_chain.
+    pub fn first_inbox_message_response_nonce_to_relay(
+        dst_chain_id: ChainId,
+        channel_id: ChannelId,
+        from_nonce: Nonce,
+    ) -> Option<Nonce> {
+        Self::first_relay_message(
+            dst_chain_id,
+            channel_id,
+            from_nonce,
+            InboxResponses::<T>::contains_key,
+        )
+    }
+
+    fn first_relay_message<Check>(
+        dst_chain_id: ChainId,
+        channel_id: ChannelId,
+        from_nonce: Nonce,
+        check: Check,
+    ) -> Option<Nonce>
+    where
+        Check: Fn((ChainId, ChannelId, Nonce)) -> bool,
+    {
+        let mut nonce = from_nonce;
+        let to_nonce = from_nonce.saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
+        while nonce <= to_nonce {
+            if check((dst_chain_id, channel_id, nonce)) {
+                return Some(nonce);
+            }
+
+            nonce = nonce.saturating_add(Nonce::one())
+        }
+
+        None
     }
 }
 

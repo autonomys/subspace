@@ -22,8 +22,8 @@ use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, Verification
 use sp_domains::DomainAllowlistUpdates;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
-    ChainId, ChannelOpenParamsV1, CrossDomainMessage, MessageWeightTag, PayloadV1, Proof,
-    ProtocolMessageRequest, RequestResponse, VersionedPayload,
+    BlockMessagesQuery, ChainId, ChannelOpenParamsV1, CrossDomainMessage, MessageWeightTag,
+    PayloadV1, Proof, ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::traits::{Convert, Zero};
@@ -80,7 +80,13 @@ fn create_channel(chain_id: ChainId, channel_id: ChannelId) {
     ));
 
     // check outbox relayer storage key generation
-    let messages_with_keys = chain_a::Messenger::get_block_messages();
+    let query = BlockMessagesQuery {
+        chain_id,
+        channel_id,
+        outbox_from: Nonce::zero(),
+        inbox_responses_from: Nonce::zero(),
+    };
+    let messages_with_keys = chain_a::Messenger::get_block_messages(query);
     assert_eq!(messages_with_keys.outbox.len(), 1);
     assert_eq!(messages_with_keys.inbox_responses.len(), 0);
     let expected_key =
@@ -294,7 +300,13 @@ fn open_channel_between_chains(
         }));
 
         // check inbox response storage key generation
-        let messages_with_keys = chain_b::Messenger::get_block_messages();
+        let query = BlockMessagesQuery {
+            chain_id: chain_a_id,
+            channel_id,
+            outbox_from: Nonce::zero(),
+            inbox_responses_from: Nonce::zero(),
+        };
+        let messages_with_keys = chain_b::Messenger::get_block_messages(query);
         assert_eq!(messages_with_keys.outbox.len(), 0);
         assert_eq!(messages_with_keys.inbox_responses.len(), 1);
         let expected_key = InboxResponses::<chain_b::Runtime>::hashed_key_for((

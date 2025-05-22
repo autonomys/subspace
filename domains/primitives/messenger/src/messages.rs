@@ -34,6 +34,21 @@ pub enum ChannelState {
     Closed,
 }
 
+/// State of channel and nonces when channel is closed.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub enum ChannelStateWithNonce {
+    /// Channel between chains is initiated but do not yet send or receive messages in this state.
+    #[default]
+    Initiated,
+    /// Channel is open and can send and receive messages.
+    Open,
+    /// Channel is closed along with nonces at current point.
+    Closed {
+        next_outbox_nonce: Nonce,
+        next_inbox_nonce: Nonce,
+    },
+}
+
 /// Channel describes a bridge to exchange messages between two chains.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Channel<Balance, AccountId> {
@@ -269,18 +284,48 @@ impl BlockMessagesWithStorageKey {
     }
 }
 
+/// Set of messages with storage keys to be relayed in a given block.
+#[derive(Default, Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
+pub struct MessagesWithStorageKey {
+    pub outbox: Vec<MessageNonceWithStorageKey>,
+    pub inbox_responses: Vec<MessageNonceWithStorageKey>,
+}
+
+/// Message with storage key to generate storage proof using the backend.
+#[derive(Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
+pub struct MessageNonceWithStorageKey {
+    /// Message nonce within the channel.
+    pub nonce: Nonce,
+    /// Storage key to generate proof for using proof backend.
+    pub storage_key: Vec<u8>,
+    /// The message weight tag
+    pub weight_tag: MessageWeightTag,
+}
+
+/// A query to fetch block messages for Outbox and Inbox Responses
+#[derive(Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
+pub struct BlockMessagesQuery {
+    pub chain_id: ChainId,
+    pub channel_id: ChannelId,
+    pub outbox_from: Nonce,
+    pub inbox_responses_from: Nonce,
+}
+
 impl<BlockNumber, BlockHash, MmrHash> CrossDomainMessage<BlockNumber, BlockHash, MmrHash> {
     pub fn from_relayer_msg_with_proof(
-        r_msg: BlockMessageWithStorageKey,
+        src_chain_id: ChainId,
+        dst_chain_id: ChainId,
+        channel_id: ChannelId,
+        msg: MessageNonceWithStorageKey,
         proof: Proof<BlockNumber, BlockHash, MmrHash>,
     ) -> Self {
         CrossDomainMessage {
-            src_chain_id: r_msg.src_chain_id,
-            dst_chain_id: r_msg.dst_chain_id,
-            channel_id: r_msg.channel_id,
-            nonce: r_msg.nonce,
+            src_chain_id,
+            dst_chain_id,
+            channel_id,
+            nonce: msg.nonce,
             proof,
-            weight_tag: r_msg.weight_tag,
+            weight_tag: msg.weight_tag,
         }
     }
 }

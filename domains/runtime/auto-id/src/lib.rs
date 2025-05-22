@@ -42,7 +42,8 @@ use sp_core::{Get, OpaqueMetadata};
 use sp_domains::{ChannelId, DomainAllowlistUpdates, DomainId, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId, MessageKey,
+    BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelStateWithNonce,
+    CrossDomainMessage, MessageId, MessageKey, MessagesWithStorageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
@@ -1114,7 +1115,7 @@ impl_runtime_apis! {
 
     impl sp_messenger::RelayerApi<Block, BlockNumber, ConsensusBlockNumber, ConsensusBlockHash> for Runtime {
         fn block_messages() -> BlockMessagesWithStorageKey {
-            Messenger::get_block_messages()
+            BlockMessagesWithStorageKey::default()
         }
 
         fn outbox_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
@@ -1125,12 +1126,12 @@ impl_runtime_apis! {
             Messenger::inbox_response_message_unsigned(msg)
         }
 
-        fn should_relay_outbox_message(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
-            Messenger::should_relay_outbox_message(dst_chain_id, msg_id)
+        fn should_relay_outbox_message(_: ChainId, _: MessageId) -> bool {
+            false
         }
 
-        fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
-            Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
+        fn should_relay_inbox_message_response(_: ChainId, _: MessageId) -> bool {
+            false
         }
 
         fn updated_channels() -> BTreeSet<(ChainId, ChannelId)> {
@@ -1143,6 +1144,22 @@ impl_runtime_apis! {
 
         fn open_channels() -> BTreeSet<(ChainId, ChannelId)> {
             Messenger::open_channels()
+        }
+
+        fn block_messages_with_query(query: BlockMessagesQuery) -> MessagesWithStorageKey {
+            Messenger::get_block_messages(query)
+        }
+
+        fn channels_and_state() -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)> {
+            Messenger::channels_and_states()
+        }
+
+        fn first_outbox_message_nonce_to_relay(dst_chain_id: ChainId, channel_id: ChannelId, from_nonce: XdmNonce) -> Option<XdmNonce> {
+            Messenger::first_outbox_message_nonce_to_relay(dst_chain_id, channel_id, from_nonce)
+        }
+
+        fn first_inbox_message_response_nonce_to_relay(dst_chain_id: ChainId, channel_id: ChannelId, from_nonce: XdmNonce) -> Option<XdmNonce> {
+            Messenger::first_inbox_message_response_nonce_to_relay(dst_chain_id, channel_id, from_nonce)
         }
     }
 

@@ -5,7 +5,7 @@ extern crate alloc;
 use crate::migrations::v1_to_v2::migrate_channels::migrate_channels;
 use crate::{BalanceOf, Channels as ChannelStorageV1, Config, Pallet};
 #[cfg(not(feature = "std"))]
-use alloc::collections::BTreeSet;
+use alloc::vec::Vec;
 use core::marker::PhantomData;
 use frame_support::migrations::VersionedMigration;
 use frame_support::pallet_prelude::{Decode, Encode, OptionQuery, TypeInfo};
@@ -14,8 +14,6 @@ use frame_support::weights::Weight;
 use frame_support::{storage_alias, Identity};
 use sp_domains::{ChainId, ChannelId};
 use sp_messenger::messages::{Channel as ChannelV1, ChannelState, Nonce};
-#[cfg(feature = "std")]
-use std::collections::BTreeSet;
 
 pub type VersionCheckedMigrateDomainsV1ToV2<T> = VersionedMigration<
     1,
@@ -79,6 +77,7 @@ impl<Balance, AccountId> From<Channel<Balance, AccountId>> for ChannelV1<Balance
 
 pub(crate) mod migrate_channels {
     use super::*;
+    use sp_messenger::messages::ChannelStateWithNonce;
     use sp_runtime::traits::Get;
 
     #[storage_alias]
@@ -91,6 +90,7 @@ pub(crate) mod migrate_channels {
         Channel<BalanceOf<T>, <T as frame_system::Config>::AccountId>,
         OptionQuery,
     >;
+
     pub(super) fn migrate_channels<T: Config>() -> Weight {
         let mut count = 0;
         Channels::<T>::drain().for_each(|(chain_id, channel_id, channel)| {
@@ -111,13 +111,24 @@ pub(crate) mod migrate_channels {
         })
     }
 
-    pub(crate) fn get_open_channels<T: Config>() -> BTreeSet<(ChainId, ChannelId)> {
-        let keys: BTreeSet<(ChainId, ChannelId)> = ChannelStorageV1::<T>::iter_keys().collect();
+    pub(crate) fn get_channels_and_states<T: Config>(
+    ) -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)> {
+        let keys: Vec<(ChainId, ChannelId)> = ChannelStorageV1::<T>::iter_keys().collect();
         keys.into_iter()
-            .filter(|(chain_id, channel_id)| {
-                get_channel::<T>(*chain_id, *channel_id)
-                    .map(|channel| channel.state != ChannelState::Closed)
-                    .unwrap_or_default()
+            .filter_map(|(chain_id, channel_id)| {
+                get_channel::<T>(chain_id, channel_id).map(|channel| {
+                    let state = channel.state;
+                    let state_with_nonce = match state {
+                        ChannelState::Initiated => ChannelStateWithNonce::Initiated,
+                        ChannelState::Open => ChannelStateWithNonce::Open,
+                        ChannelState::Closed => ChannelStateWithNonce::Closed {
+                            next_outbox_nonce: channel.next_outbox_nonce,
+                            next_inbox_nonce: channel.next_inbox_nonce,
+                        },
+                    };
+
+                    (chain_id, channel_id, state_with_nonce)
+                })
             })
             .collect()
     }

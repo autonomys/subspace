@@ -3,32 +3,40 @@
 // TODO: Restore once https://github.com/rust-lang/rust/issues/122105 is resolved
 // #![deny(unused_crate_dependencies)]
 
+mod aux_schema;
 pub mod worker;
 
+use crate::aux_schema::{
+    get_last_processed_nonces, set_channel_inbox_response_processed_state,
+    set_channel_outbox_processed_state, ChannelProcessedState,
+};
 use async_channel::TrySendError;
 use cross_domain_message_gossip::{
-    can_allow_xdm_submission, get_channel_state, get_xdm_processed_block_number,
-    set_xdm_message_processed_at, BlockId, Message as GossipMessage,
-    MessageData as GossipMessageData, RELAYER_PREFIX,
+    get_channel_state, ChannelDetail, Message as GossipMessage, MessageData as GossipMessageData,
 };
 use parity_scale_codec::{Codec, Encode};
+use rand::seq::SliceRandom;
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::{ApiRef, ProvideRuntimeApi};
-use sp_core::{H256, U256};
-use sp_domains::DomainsApi;
+use sp_api::{ApiExt, ApiRef, ProvideRuntimeApi};
+use sp_core::H256;
+use sp_domains::{ChannelId, DomainsApi};
 use sp_messenger::messages::{
-    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, Proof,
+    BlockMessagesQuery, ChainId, ChannelState, ChannelStateWithNonce, CrossDomainMessage,
+    MessageNonceWithStorageKey, MessagesWithStorageKey, Nonce, Proof,
 };
-use sp_messenger::{MessengerApi, RelayerApi, XdmId, MAX_FUTURE_ALLOWED_NONCES};
+use sp_messenger::{MessengerApi, RelayerApi};
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One};
 use sp_runtime::ArithmeticError;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
+use std::cmp::max;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_runtime_primitives::BlockHashFor;
-use tracing::log;
+
+const CHANNEL_PROCESSED_STATE_CACHE_LIMIT: u32 = 5;
+const MAXIMUM_CHANNELS_TO_PROCESS_IN_BLOCK: usize = 15;
 
 /// The logging target.
 const LOG_TARGET: &str = "message::relayer";
@@ -140,7 +148,7 @@ where
 }
 
 fn construct_cross_chain_message_and_submit<CNumber, CHash, Submitter, ProofConstructor>(
-    msgs: Vec<BlockMessageWithStorageKey>,
+    msgs: (ChainId, ChainId, ChannelId, Vec<MessageNonceWithStorageKey>),
     proof_constructor: ProofConstructor,
     submitter: Submitter,
 ) -> Result<(), Error>
@@ -148,21 +156,28 @@ where
     Submitter: Fn(CrossDomainMessage<CNumber, CHash, H256>) -> Result<(), Error>,
     ProofConstructor: Fn(&[u8], ChainId) -> Result<Proof<CNumber, CHash, H256>, Error>,
 {
+    let (src_chain_id, dst_chain_id, channel_id, msgs) = msgs;
     for msg in msgs {
-        let proof = match proof_constructor(&msg.storage_key, msg.dst_chain_id) {
+        let proof = match proof_constructor(&msg.storage_key, dst_chain_id) {
             Ok(proof) => proof,
             Err(err) => {
                 tracing::error!(
                     target: LOG_TARGET,
                     "Failed to construct storage proof for message: {:?} bound to chain: {:?} with error: {:?}",
-                    (msg.channel_id, msg.nonce),
-                    msg.dst_chain_id,
+                    (channel_id, msg.nonce),
+                    dst_chain_id,
                     err
                 );
                 continue;
             }
         };
-        let msg = CrossDomainMessage::from_relayer_msg_with_proof(msg, proof);
+        let msg = CrossDomainMessage::from_relayer_msg_with_proof(
+            src_chain_id,
+            dst_chain_id,
+            channel_id,
+            msg,
+            proof,
+        );
         let (dst_domain, msg_id) = (msg.dst_chain_id, (msg.channel_id, msg.nonce));
         if let Err(err) = submitter(msg) {
             tracing::error!(
@@ -232,184 +247,13 @@ where
     .map_err(Error::UnableToSubmitCrossDomainMessage)
 }
 
-fn check_and_update_recent_xdm_submission<Backend, Client, Block>(
-    backend: &Backend,
-    client: &Arc<Client>,
-    xdm_id: XdmId,
-    msg: &BlockMessageWithStorageKey,
-) -> bool
-where
-    Backend: AuxStore,
-    Block: BlockT,
-    Client: HeaderBackend<Block>,
-{
-    let prefix = (RELAYER_PREFIX, msg.dst_chain_id, msg.src_chain_id).encode();
-    let current_block_id: BlockId<Block> = client.info().into();
-    if let Ok(maybe_submitted_block_id) =
-        get_xdm_processed_block_number::<_, Block>(backend, &prefix, xdm_id)
-    {
-        if !can_allow_xdm_submission(
-            client,
-            xdm_id,
-            maybe_submitted_block_id,
-            current_block_id.clone(),
-            None,
-        ) {
-            log::debug!(
-                target: LOG_TARGET,
-                "Skipping already submitted message relay from {:?}: {:?}",
-                msg.src_chain_id,
-                xdm_id
-            );
-            return false;
-        }
-    }
-
-    if let Err(err) = set_xdm_message_processed_at(backend, &prefix, xdm_id, current_block_id) {
-        log::error!(
-            target: LOG_TARGET,
-            "Failed to store submitted message from {:?} to {:?}: {:?}",
-            msg.src_chain_id,
-            xdm_id,
-            err
-        );
-    }
-
-    true
-}
-
-fn should_relay_outbox_message<Backend, Client, Block, CBlock>(
-    backend: &Backend,
-    client: &Arc<Client>,
-    api: &ApiRef<'_, Client::Api>,
-    best_hash: Block::Hash,
-    msg: &BlockMessageWithStorageKey,
-) -> bool
-where
-    Backend: AuxStore,
-    Block: BlockT,
-    CBlock: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
-{
-    let id = msg.id();
-    match api.should_relay_outbox_message(best_hash, msg.dst_chain_id, id) {
-        Ok(true) => (),
-        Ok(false) => return false,
-        Err(err) => {
-            tracing::error!(
-                target: LOG_TARGET,
-                ?err,
-                "Failed to fetch validity of outbox message {id:?} for domain {0:?}",
-                msg.dst_chain_id
-            );
-            return false;
-        }
-    };
-
-    if let Some(dst_channel_state) =
-        get_channel_state(backend, msg.dst_chain_id, msg.src_chain_id, msg.channel_id)
-            .ok()
-            .flatten()
-    {
-        // if the dst_chain inbox nonce is more than message nonce, skip relaying since message is
-        // already executed on dst_chain.
-        // if the message nonce is more than the max allowed nonce on dst_chain, skip relaying message.
-        let max_messages_nonce_allowed = dst_channel_state
-            .next_inbox_nonce
-            .saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
-        let relay_message = msg.nonce >= dst_channel_state.next_inbox_nonce
-            && msg.nonce <= max_messages_nonce_allowed;
-        if !relay_message {
-            log::debug!(
-                target: LOG_TARGET,
-                "Skipping Outbox message relay from {:?} to {:?} of XDM[{:?}, {:?}]. Max Nonce allowed: {:?}",
-                msg.src_chain_id,
-                msg.dst_chain_id,
-                msg.channel_id,
-                msg.nonce,
-                max_messages_nonce_allowed
-            );
-            return false;
-        }
-    }
-
-    let xdm_id = XdmId::RelayMessage((msg.dst_chain_id, msg.channel_id, msg.nonce));
-    check_and_update_recent_xdm_submission(backend, client, xdm_id, msg)
-}
-
-fn should_relay_inbox_responses_message<Backend, Client, Block, CBlock>(
-    backend: &Backend,
-    client: &Arc<Client>,
-    api: &ApiRef<'_, Client::Api>,
-    best_hash: Block::Hash,
-    msg: &BlockMessageWithStorageKey,
-) -> bool
-where
-    Backend: AuxStore,
-    Block: BlockT,
-    CBlock: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
-{
-    let id = msg.id();
-    match api.should_relay_inbox_message_response(best_hash, msg.dst_chain_id, id) {
-        Ok(true) => (),
-        Ok(false) => return false,
-        Err(err) => {
-            tracing::error!(
-                target: LOG_TARGET,
-                ?err,
-                "Failed to fetch validity of inbox message response {id:?} for domain {0:?}",
-                msg.dst_chain_id
-            );
-            return false;
-        }
-    };
-
-    if let Some(dst_channel_state) =
-        get_channel_state(backend, msg.dst_chain_id, msg.src_chain_id, msg.channel_id)
-            .ok()
-            .flatten()
-    {
-        let next_nonce = if let Some(dst_chain_outbox_response_nonce) =
-            dst_channel_state.latest_response_received_message_nonce
-        {
-            // next nonce for outbox response will be +1 of current nonce for which
-            // dst_chain has received response.
-            dst_chain_outbox_response_nonce.saturating_add(U256::one())
-        } else {
-            // if dst_chain has not received the first outbox response,
-            // then next nonce will be just 0
-            U256::zero()
-        };
-        // relay inbox response if the dst_chain did not execute is already
-        let max_msg_nonce_allowed = next_nonce.saturating_add(MAX_FUTURE_ALLOWED_NONCES.into());
-        let relay_message = msg.nonce >= next_nonce && msg.nonce <= max_msg_nonce_allowed;
-        if !relay_message {
-            log::debug!(
-                target: LOG_TARGET,
-                "Skipping Inbox response message relay from {:?} to {:?} of XDM[{:?}, {:?}]. Max nonce allowed: {:?}",
-                msg.src_chain_id,
-                msg.dst_chain_id,
-                msg.channel_id,
-                msg.nonce,
-                max_msg_nonce_allowed
-            );
-            return false;
-        }
-    }
-
-    let xdm_id = XdmId::RelayResponseMessage((msg.dst_chain_id, msg.channel_id, msg.nonce));
-    check_and_update_recent_xdm_submission(backend, client, xdm_id, msg)
-}
-
-// Fetch the XDM at the a given block and filter any already relayed XDM according to the best block
+// Fetch the XDM at the given block and filter any already relayed XDM according to the best block
 fn fetch_and_filter_messages<Client, Block, CClient, CBlock>(
     client: &Arc<Client>,
     fetch_message_at: Block::Hash,
     consensus_client: &Arc<CClient>,
-) -> Result<BlockMessagesWithStorageKey, Error>
+    self_chain_id: ChainId,
+) -> Result<Vec<(ChainId, ChannelId, MessagesWithStorageKey)>, Error>
 where
     CBlock: BlockT,
     CClient: AuxStore + HeaderBackend<CBlock>,
@@ -417,34 +261,17 @@ where
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
     Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
 {
-    let mut msgs = client
-        .runtime_api()
-        .block_messages(fetch_message_at)
-        .map_err(|_| Error::FetchAssignedMessages)?;
+    // return no messages for previous relayer version
+    if !is_relayer_api_version_available::<_, Block, CBlock>(client, 3, fetch_message_at) {
+        return Ok(vec![]);
+    }
 
-    let api = client.runtime_api();
-    let best_hash = client.info().best_hash;
-    msgs.outbox.retain(|msg| {
-        should_relay_outbox_message::<_, _, _, CBlock>(
-            &**consensus_client,
-            client,
-            &api,
-            best_hash,
-            msg,
-        )
-    });
-
-    msgs.inbox_responses.retain(|msg| {
-        should_relay_inbox_responses_message::<_, _, _, CBlock>(
-            &**consensus_client,
-            client,
-            &api,
-            best_hash,
-            msg,
-        )
-    });
-
-    Ok(msgs)
+    fetch_messages::<_, _, Block, CBlock>(
+        &**consensus_client,
+        client,
+        fetch_message_at,
+        self_chain_id,
+    )
 }
 
 // A helper struct used when constructing XDM proof
@@ -510,6 +337,7 @@ where
                     consensus_chain_client,
                     to_process_consensus_hash,
                     consensus_chain_client,
+                    chain_id,
                 )?,
                 None,
             ),
@@ -528,6 +356,7 @@ where
                         domain_client,
                         confirmed_domain_block_hash,
                         consensus_chain_client,
+                        chain_id,
                     )?,
                     Some((domain_id, confirmed_domain_block_hash)),
                 )
@@ -557,35 +386,37 @@ where
             }
         };
 
-        construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
-            block_messages.outbox,
-            |key, dst_chain_id| {
-                Self::construct_xdm_proof(
-                    consensus_chain_client,
-                    domain_client,
-                    dst_chain_id,
-                    mmr_consensus_block,
-                    key,
-                    xdm_proof_data.clone(),
-                )
-            },
-            |msg| gossip_outbox_message(domain_client, msg, gossip_message_sink),
-        )?;
+        for (dst_chain_id, channel_id, messages) in block_messages {
+            construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
+                (chain_id, dst_chain_id, channel_id, messages.outbox),
+                |key, dst_chain_id| {
+                    Self::construct_xdm_proof(
+                        consensus_chain_client,
+                        domain_client,
+                        dst_chain_id,
+                        mmr_consensus_block,
+                        key,
+                        xdm_proof_data.clone(),
+                    )
+                },
+                |msg| gossip_outbox_message(domain_client, msg, gossip_message_sink),
+            )?;
 
-        construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
-            block_messages.inbox_responses,
-            |key, dst_chain_id| {
-                Self::construct_xdm_proof(
-                    consensus_chain_client,
-                    domain_client,
-                    dst_chain_id,
-                    mmr_consensus_block,
-                    key,
-                    xdm_proof_data.clone(),
-                )
-            },
-            |msg| gossip_inbox_message_response(domain_client, msg, gossip_message_sink),
-        )?;
+            construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
+                (chain_id, dst_chain_id, channel_id, messages.inbox_responses),
+                |key, dst_chain_id| {
+                    Self::construct_xdm_proof(
+                        consensus_chain_client,
+                        domain_client,
+                        dst_chain_id,
+                        mmr_consensus_block,
+                        key,
+                        xdm_proof_data.clone(),
+                    )
+                },
+                |msg| gossip_inbox_message_response(domain_client, msg, gossip_message_sink),
+            )?;
+        }
 
         Ok(())
     }
@@ -643,4 +474,323 @@ where
         };
         Ok(proof)
     }
+}
+
+fn filter_block_messages<Client, Block, CBlock>(
+    api: &ApiRef<'_, Client::Api>,
+    best_hash: Block::Hash,
+    query: BlockMessagesQuery,
+    messages: &mut MessagesWithStorageKey,
+) -> Result<(), Error>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
+    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
+{
+    let BlockMessagesQuery {
+        chain_id,
+        channel_id,
+        outbox_from,
+        inbox_responses_from,
+    } = query;
+    let maybe_outbox_nonce =
+        api.first_outbox_message_nonce_to_relay(best_hash, chain_id, channel_id, outbox_from)?;
+    let maybe_inbox_response_nonce = api.first_inbox_message_response_nonce_to_relay(
+        best_hash,
+        chain_id,
+        channel_id,
+        inbox_responses_from,
+    )?;
+
+    if let Some(nonce) = maybe_outbox_nonce {
+        messages.outbox.retain(|msg| msg.nonce >= nonce)
+    } else {
+        messages.outbox.clear()
+    }
+
+    if let Some(nonce) = maybe_inbox_response_nonce {
+        messages.inbox_responses.retain(|msg| msg.nonce >= nonce)
+    } else {
+        messages.inbox_responses.clear();
+    }
+
+    Ok(())
+}
+
+// Fetch the unprocessed XDMs at a given block
+fn fetch_messages<Backend, Client, Block, CBlock>(
+    backend: &Backend,
+    client: &Arc<Client>,
+    fetch_message_at: Block::Hash,
+    self_chain_id: ChainId,
+) -> Result<Vec<(ChainId, ChannelId, MessagesWithStorageKey)>, Error>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
+    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
+    Backend: AuxStore,
+{
+    let runtime_api = client.runtime_api();
+    let fetch_message_at_number = client
+        .number(fetch_message_at)?
+        .ok_or(Error::MissingBlockHeader)?;
+    let mut queries = runtime_api
+        .channels_and_state(fetch_message_at)?
+        .into_iter()
+        .filter_map(|(dst_chain_id, channel_id, channel_state)| {
+            get_channel_state_query(
+                backend,
+                client,
+                fetch_message_at,
+                self_chain_id,
+                dst_chain_id,
+                channel_id,
+                channel_state,
+            )
+            .ok()
+            .flatten()
+        })
+        .collect::<Vec<_>>();
+
+    // pick random 15 queries
+    let queries = if queries.len() <= MAXIMUM_CHANNELS_TO_PROCESS_IN_BLOCK {
+        queries
+    } else {
+        let mut rng = rand::thread_rng();
+        queries.shuffle(&mut rng);
+        queries.truncate(MAXIMUM_CHANNELS_TO_PROCESS_IN_BLOCK);
+        queries
+    };
+
+    let best_hash = client.info().best_hash;
+    let runtime_api_best = client.runtime_api();
+    let total_messages = queries
+        .into_iter()
+        .filter_map(|query| {
+            let BlockMessagesQuery {
+                chain_id: dst_chain_id,
+                channel_id,
+                ..
+            } = query;
+            let mut messages = runtime_api
+                .block_messages_with_query(fetch_message_at, query.clone())
+                .ok()?;
+
+            // filter messages with best hash
+            filter_block_messages::<Client, _, CBlock>(
+                &runtime_api_best,
+                best_hash,
+                query,
+                &mut messages,
+            )
+            .ok()?;
+
+            if !messages.outbox.is_empty()
+                && let Some(max_nonce) = messages.outbox.iter().map(|key| key.nonce).max()
+            {
+                set_channel_outbox_processed_state(
+                    backend,
+                    self_chain_id,
+                    dst_chain_id,
+                    ChannelProcessedState::<Block> {
+                        block_number: fetch_message_at_number,
+                        block_hash: fetch_message_at,
+                        channel_id,
+                        nonce: Some(max_nonce),
+                    },
+                )
+                .ok()?;
+            }
+
+            if !messages.inbox_responses.is_empty()
+                && let Some(max_nonce) = messages.inbox_responses.iter().map(|key| key.nonce).max()
+            {
+                set_channel_inbox_response_processed_state(
+                    backend,
+                    self_chain_id,
+                    dst_chain_id,
+                    ChannelProcessedState::<Block> {
+                        block_number: fetch_message_at_number,
+                        block_hash: fetch_message_at,
+                        channel_id,
+                        nonce: Some(max_nonce),
+                    },
+                )
+                .ok()?;
+            }
+
+            Some((dst_chain_id, channel_id, messages))
+        })
+        .collect();
+
+    Ok(total_messages)
+}
+
+fn get_channel_state_query<Backend, Client, Block>(
+    backend: &Backend,
+    client: &Arc<Client>,
+    fetch_message_at: Block::Hash,
+    self_chain_id: ChainId,
+    dst_chain_id: ChainId,
+    channel_id: ChannelId,
+    local_channel_state: ChannelStateWithNonce,
+) -> Result<Option<BlockMessagesQuery>, Error>
+where
+    Backend: AuxStore,
+    Block: BlockT,
+    Client: HeaderBackend<Block>,
+{
+    let maybe_dst_channel_state =
+        get_channel_state(backend, dst_chain_id, self_chain_id, channel_id)
+            .ok()
+            .flatten();
+
+    let last_processed_nonces = get_last_processed_nonces(
+        backend,
+        client,
+        fetch_message_at,
+        self_chain_id,
+        dst_chain_id,
+        channel_id,
+    )?;
+
+    let query = match (
+        maybe_dst_channel_state,
+        last_processed_nonces.outbox_nonce,
+        last_processed_nonces.inbox_response_nonce,
+    ) {
+        // don't have any info on channel, so assume from the beginning
+        (None, None, None) => Some(BlockMessagesQuery {
+            chain_id: dst_chain_id,
+            channel_id,
+            outbox_from: Nonce::zero(),
+            inbox_responses_from: Nonce::zero(),
+        }),
+        // don't have channel processed state, so use the dst_channel state for query
+        (Some(dst_channel_state), None, None) => {
+            should_relay_messages_to_channel(dst_chain_id, &dst_channel_state, local_channel_state)
+                .then_some(BlockMessagesQuery {
+                    chain_id: dst_chain_id,
+                    channel_id,
+                    outbox_from: dst_channel_state.next_inbox_nonce,
+                    inbox_responses_from: dst_channel_state
+                        .latest_response_received_message_nonce
+                        // pick the next inbox message response nonce or default to zero
+                        .map(|nonce| nonce.saturating_add(One::one()))
+                        .unwrap_or(Nonce::zero()),
+                })
+        }
+        // don't have dst channel state, so use the last processed channel state
+        (None, last_outbox_nonce, last_inbox_message_response_nonce) => Some(BlockMessagesQuery {
+            chain_id: dst_chain_id,
+            channel_id,
+            outbox_from: last_outbox_nonce
+                .map(|nonce| nonce.saturating_add(One::one()))
+                .unwrap_or(Nonce::zero()),
+            inbox_responses_from: last_inbox_message_response_nonce
+                .map(|nonce| nonce.saturating_add(One::one()))
+                .unwrap_or(Nonce::zero()),
+        }),
+        (Some(dst_channel_state), last_outbox_nonce, last_inbox_message_response_nonce) => {
+            should_relay_messages_to_channel(dst_chain_id, &dst_channel_state, local_channel_state)
+                .then(|| {
+                    let next_outbox_nonce = max(
+                        dst_channel_state.next_inbox_nonce,
+                        last_outbox_nonce
+                            .map(|nonce| nonce.saturating_add(One::one()))
+                            .unwrap_or(Nonce::zero()),
+                    );
+
+                    let next_inbox_response_nonce = max(
+                        dst_channel_state
+                            .latest_response_received_message_nonce
+                            .map(|nonce| nonce.saturating_add(One::one()))
+                            .unwrap_or(Nonce::zero()),
+                        last_inbox_message_response_nonce
+                            .map(|nonce| nonce.saturating_add(One::one()))
+                            .unwrap_or(Nonce::zero()),
+                    );
+
+                    BlockMessagesQuery {
+                        chain_id: dst_chain_id,
+                        channel_id,
+                        outbox_from: next_outbox_nonce,
+                        inbox_responses_from: next_inbox_response_nonce,
+                    }
+                })
+        }
+    };
+
+    tracing::debug!(
+        target: LOG_TARGET,
+        "From Chain[{:?}] to Chain[{:?}] and Channel[{:?}] Query: {:?}",
+        self_chain_id, dst_chain_id, channel_id, query
+    );
+
+    Ok(query)
+}
+
+fn should_relay_messages_to_channel(
+    dst_chain_id: ChainId,
+    dst_channel_state: &ChannelDetail,
+    local_channel_state: ChannelStateWithNonce,
+) -> bool {
+    let should_process = if dst_channel_state.state == ChannelState::Closed
+        && let ChannelStateWithNonce::Closed {
+            next_outbox_nonce,
+            next_inbox_nonce,
+        } = local_channel_state
+    {
+        // if the next outbox nonce of local channel is same as
+        // next inbox nonce of dst_channel, then there are no further
+        // outbox messages to be sent from the local channel
+        let no_outbox_messages = next_outbox_nonce == dst_channel_state.next_inbox_nonce;
+
+        // if next inbox nonce of local channel is +1 of
+        // last received response nonce on dst_chain, then there are
+        // no further messages responses to be sent from the local channel
+        let no_inbox_responses_messages = dst_channel_state
+            .latest_response_received_message_nonce
+            .map(|nonce| nonce == next_inbox_nonce.saturating_sub(Nonce::one()))
+            .unwrap_or(false);
+
+        !(no_outbox_messages && no_inbox_responses_messages)
+    } else {
+        true
+    };
+
+    if !should_process {
+        tracing::debug!(target: LOG_TARGET,
+            "Chain[{:?}] for Channel[{:?}] is closed and no messages to process",
+            dst_chain_id, dst_channel_state.channel_id
+        );
+    }
+
+    should_process
+}
+
+fn is_relayer_api_version_available<Client, Block, CBlock>(
+    client: &Arc<Client>,
+    version: u32,
+    block_hash: Block::Hash,
+) -> bool
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
+{
+    let relayer_api_version = client
+        .runtime_api()
+        .api_version::<dyn RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>>(
+            block_hash,
+        )
+        .ok()
+        .flatten()
+        // It is safe to return a default version of 1, since there will always be version 1.
+        .unwrap_or(1);
+
+    relayer_api_version >= version
 }

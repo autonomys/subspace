@@ -33,7 +33,6 @@ use thiserror::Error;
 
 pub(crate) const LOG_TARGET: &str = "domain_message_listener";
 const TX_POOL_PREFIX: &[u8] = b"xdm_tx_pool_listener";
-pub const RELAYER_PREFIX: &[u8] = b"xdm_relayer";
 
 /// Number of blocks an already submitted XDM is not accepted since last submission.
 const XDM_ACCEPT_BLOCK_LIMIT: u32 = 15;
