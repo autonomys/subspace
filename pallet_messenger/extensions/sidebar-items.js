@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Pre","Val"],"mod":["weights"],"struct":["MessengerExtension","MessengerTrustedMmrExtension"],"trait":["MaybeMessengerCall"]};
