@@ -38,6 +38,12 @@ use tokio::task;
 use tokio::time::sleep;
 use tracing::{debug, error, trace, warn};
 
+/// The number of times we try to download a segment before giving up.
+const SEGMENT_DOWNLOAD_RETRIES: usize = 3;
+
+/// The amount of time we wait between segment download retries.
+const SEGMENT_DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(10);
+
 /// Error type for snap sync.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -167,7 +173,7 @@ where
 {
     sync_segment_headers(segment_headers_store, node)
         .await
-        .map_err(|error| format!("Failed to sync segment headers: {}", error))?;
+        .map_err(|error| format!("Failed to sync segment headers: {error}"))?;
 
     let target_segment_index = {
         let last_segment_index = segment_headers_store
@@ -292,9 +298,46 @@ where
         let reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
 
         for segment_index in segments_to_reconstruct {
-            let segment_pieces = download_segment_pieces(segment_index, piece_getter)
-                .await
-                .map_err(|error| format!("Failed to download segment pieces: {error}"))?;
+            let mut segment_pieces = None;
+            let mut segment_error = Ok(());
+
+            for retry in 0..SEGMENT_DOWNLOAD_RETRIES {
+                // Download segment pieces
+                let result = download_segment_pieces(segment_index, piece_getter).await;
+
+                match result {
+                    Ok(pieces) => {
+                        segment_pieces = Some(pieces);
+                        segment_error = Ok(());
+                        break;
+                    }
+                    Err(error) => {
+                        if retry == SEGMENT_DOWNLOAD_RETRIES - 1 {
+                            error!(
+                                target: LOG_TARGET,
+                                %error,
+                                %retry,
+                                "Failed to download segment pieces"
+                            );
+                        } else {
+                            warn!(
+                                target: LOG_TARGET,
+                                %error,
+                                %retry,
+                                ?SEGMENT_DOWNLOAD_RETRY_DELAY,
+                                "Failed to download segment pieces, retrying..."
+                            );
+                        }
+                        segment_error = Err(error);
+                        sleep(SEGMENT_DOWNLOAD_RETRY_DELAY).await
+                    }
+                }
+            }
+
+            if let Err(segment_error) = segment_error {
+                return Err(format!("Failed to download segment pieces: {segment_error}").into());
+            }
+
             // CPU-intensive piece and segment reconstruction code can block the async executor.
             let segment_contents_fut = task::spawn_blocking({
                 let reconstructor = reconstructor.clone();
@@ -303,7 +346,11 @@ where
                     reconstructor
                         .lock()
                         .expect("Panic if previous thread panicked when holding the mutex")
-                        .add_segment(segment_pieces.as_ref())
+                        .add_segment(
+                            segment_pieces
+                                .expect("segment errors are returned above; qed")
+                                .as_ref(),
+                        )
                 }
             });
 
