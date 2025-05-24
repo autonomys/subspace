@@ -2647,7 +2647,19 @@ impl<T: Config> Pallet<T> {
                 })?
             }
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-            FraudProofVariant::Dummy => {}
+            FraudProofVariant::Dummy => {
+                // Almost every fraud proof (except `InvalidDomainBlockHash` fraud proof) need to call
+                // `get_domain_runtime_code_for_receipt` thus we include this part in the benchmark of
+                // the dummy fraud proof.
+                //
+                // NOTE: the dummy fraud proof's `maybe_domain_runtime_code_proof` is `None` thus
+                // this proof's verification is not included in the benchmark here.
+                let _ = Self::get_domain_runtime_code_for_receipt(
+                    domain_id,
+                    &bad_receipt,
+                    fraud_proof.maybe_domain_runtime_code_proof.clone(),
+                )?;
+            }
         }
 
         // The priority of fraud proof is determined by how many blocks left before the bad ER
