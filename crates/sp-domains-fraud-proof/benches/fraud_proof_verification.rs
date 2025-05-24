@@ -46,6 +46,161 @@ fn bundle_to_tx(
         .into()
 }
 
+enum Error {
+    BadMmrProof,
+    UnexpectedMmrProof,
+    BadStoragePoof,
+}
+
+// Helper function port from `pallet-domains`
+fn verify_mmr_proof_and_extract_state_root(
+    mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, BlockHashFor<Block>, mmr::Hash>,
+    expected_block_number: NumberFor<Block>,
+) -> Result<BlockHashFor<Block>, Error> {
+    let leaf_data = MmrProofVerifier::verify_proof_and_extract_leaf(mmr_leaf_proof)
+        .ok_or(Error::BadMmrProof)?;
+
+    // Ensure it is a proof of the exact block that we expected
+    if expected_block_number != leaf_data.block_number() {
+        return Err(Error::UnexpectedMmrProof);
+    }
+
+    Ok(leaf_data.state_root())
+}
+
+async fn prepare_mmr_proof_and_runtime_code_proof(
+    tokio_handle: Handle,
+) -> (
+    (TempDir, MockConsensusNode, EvmDomainNode),
+    NumberFor<Block>,
+    NumberFor<Block>,
+    ConsensusChainMmrLeafProof<NumberFor<Block>, BlockHashFor<Block>, mmr::Hash>,
+    DomainRuntimeCodeAt<NumberFor<Block>, BlockHashFor<Block>, mmr::Hash>,
+) {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+
+    let consensus_block_number = ferdie.client.info().best_number;
+    let (parent_consensus_number, parent_consensus_hash) = {
+        let best_hash = ferdie.client.info().best_hash;
+        let header = ferdie.client.header(best_hash).unwrap().unwrap();
+        (consensus_block_number - 1, header.parent_hash)
+    };
+
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    let consensus_state_root_mmr_proof =
+        sc_domains::generate_mmr_proof(&ferdie.client, consensus_block_number).unwrap();
+
+    let domain_runtime_code_at_proof = {
+        let mmr_proof =
+            sc_domains::generate_mmr_proof(&ferdie.client, parent_consensus_number).unwrap();
+        let domain_runtime_code_proof = DomainRuntimeCodeProof::generate(
+            ferdie.client.as_ref(),
+            parent_consensus_hash,
+            0, // runtime_id
+            &FPStorageKeyProvider::new(ferdie.client.clone()),
+        )
+        .unwrap();
+        DomainRuntimeCodeAt {
+            mmr_proof,
+            domain_runtime_code_proof,
+        }
+    };
+
+    (
+        (directory, ferdie, alice),
+        consensus_block_number,
+        parent_consensus_number,
+        consensus_state_root_mmr_proof,
+        domain_runtime_code_at_proof,
+    )
+}
+
+fn mmr_proof_and_runtime_code_proof_verification(c: &mut Criterion) {
+    let rt = TokioRuntime::new().unwrap();
+    let tokio_handle = rt.handle();
+
+    let (
+        (_dir, ferdie, _alice),
+        consensus_block_number,
+        parent_consensus_block_number,
+        consensus_state_root_mmr_proof,
+        domain_runtime_code_proof,
+    ) = tokio_handle.block_on(prepare_mmr_proof_and_runtime_code_proof(
+        tokio_handle.clone(),
+    ));
+    let runtime_id = 0;
+    let mut overlay = OverlayedChanges::default();
+    let state = ferdie
+        .backend
+        .state_at(ferdie.client.info().best_hash)
+        .unwrap();
+    let mut ext = Ext::new(&mut overlay, &state, None);
+
+    c.bench_function("Consensus state root MMR proof verification", |b| {
+        b.iter_batched(
+            || consensus_state_root_mmr_proof.clone(),
+            |consensus_state_root_mmr_proof| {
+                assert!(
+                    sp_externalities::set_and_run_with_externalities(&mut ext, || {
+                        verify_mmr_proof_and_extract_state_root(
+                            consensus_state_root_mmr_proof,
+                            consensus_block_number,
+                        )
+                    })
+                    .is_ok()
+                );
+            },
+            BatchSize::SmallInput,
+        )
+    });
+
+    c.bench_function("Domain runtime code proof verification", |b| {
+        b.iter_batched(
+            || domain_runtime_code_proof.clone(),
+            |domain_runtime_code_proof| {
+                assert!(
+                    sp_externalities::set_and_run_with_externalities(&mut ext, || {
+                        let DomainRuntimeCodeAt {
+                            mmr_proof,
+                            domain_runtime_code_proof,
+                        } = domain_runtime_code_proof;
+
+                        let state_root = verify_mmr_proof_and_extract_state_root(
+                            mmr_proof,
+                            parent_consensus_block_number,
+                        )?;
+
+                        <DomainRuntimeCodeProof as BasicStorageProof<Block>>::verify::<
+                            StorageKeyProvider,
+                        >(domain_runtime_code_proof, runtime_id, &state_root)
+                        .map_err(|_| Error::BadStoragePoof)
+                    })
+                    .is_ok()
+                );
+            },
+            BatchSize::SmallInput,
+        )
+    });
+}
+
 async fn prepare_fraud_proof(
     tokio_handle: Handle,
     bad_receipt_maker: impl Fn(&mut ExecutionReceiptFor<HeaderFor<DomainBlock>, Block, Balance>)
@@ -765,6 +920,7 @@ fn invalid_bundle_weight_fraud_proof_verification(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    mmr_proof_and_runtime_code_proof_verification,
     invalid_state_transition_proof_verification,
     valid_bundle_proof_verification,
     invalid_domain_extrinsics_root_fraud_proof,
