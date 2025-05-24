@@ -24,7 +24,7 @@ use pallet_transaction_payment::{
 use parity_scale_codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::parameter_types;
-use sp_runtime::traits::{Block as BlockT, Bounded, IdentifyAccount, Verify};
+use sp_runtime::traits::{Block as BlockT, Bounded, Header as HeaderT, IdentifyAccount, Verify};
 use sp_runtime::{FixedPointNumber, MultiSignature, Perbill, Perquintill};
 pub use subspace_core_primitives::BlockNumber;
 
@@ -98,6 +98,9 @@ pub type BlockHashFor<Block> = <Block as BlockT>::Hash;
 
 /// Type alias for block header.
 pub type HeaderFor<Block> = <Block as BlockT>::Header;
+
+/// Type alias for block hashing.
+pub type BlockHashingFor<Block> = <HeaderFor<Block> as HeaderT>::Hashing;
 
 parameter_types! {
     /// Event segments are disabled on the consensus chain.

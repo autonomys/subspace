@@ -12595,6 +12595,7 @@ dependencies = [
 name = "sp-domains-fraud-proof"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "domain-block-builder",
  "domain-block-preprocessor",
  "domain-runtime-primitives",
@@ -12610,12 +12611,14 @@ dependencies = [
  "libsecp256k1",
  "log",
  "pallet-balances",
+ "pallet-domains",
  "pallet-ethereum",
  "parity-scale-codec",
  "rand 0.8.5",
  "rlp",
  "sc-cli",
  "sc-client-api",
+ "sc-domains",
  "sc-executor",
  "sc-service",
  "scale-info",
@@ -12636,10 +12639,12 @@ dependencies = [
  "sp-weights",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-test-runtime",
  "subspace-test-service",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
+ "tracing",
  "trie-db",
 ]
 

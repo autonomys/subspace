@@ -52,6 +52,7 @@ pub trait WeightInfo {
 	fn submit_receipt() -> Weight;
 	fn validate_submit_bundle() -> Weight;
 	fn validate_singleton_receipt() -> Weight;
+	fn fraud_proof_pre_check() -> Weight;
 }
 
 /// Weights for pallet_domains using the Substrate node and recommended hardware.
@@ -626,6 +627,25 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(22))
 			.saturating_add(T::DbWeight::get().writes(2))
 	}
+	/// Storage: `Domains::BlockTreeNodes` (r:2 w:0)
+	/// Proof: `Domains::BlockTreeNodes` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::HeadReceiptNumber` (r:1 w:0)
+	/// Proof: `Domains::HeadReceiptNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DomainRegistry` (r:1 w:0)
+	/// Proof: `Domains::DomainRegistry` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::RuntimeRegistry` (r:1 w:0)
+	/// Proof: `Domains::RuntimeRegistry` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestConfirmedDomainExecutionReceipt` (r:1 w:0)
+	/// Proof: `Domains::LatestConfirmedDomainExecutionReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	fn fraud_proof_pre_check() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `2483056`
+		//  Estimated: `2488996`
+		// Minimum execution time: 931_000_000 picoseconds.
+		Weight::from_parts(976_000_000, 0)
+			.saturating_add(Weight::from_parts(0, 2488996))
+			.saturating_add(T::DbWeight::get().reads(6))
+	}
 }
 
 // For backwards compatibility and tests
@@ -1198,5 +1218,24 @@ impl WeightInfo for () {
 			.saturating_add(Weight::from_parts(0, 7381))
 			.saturating_add(ParityDbWeight::get().reads(22))
 			.saturating_add(ParityDbWeight::get().writes(2))
+	}
+	/// Storage: `Domains::BlockTreeNodes` (r:2 w:0)
+	/// Proof: `Domains::BlockTreeNodes` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::HeadReceiptNumber` (r:1 w:0)
+	/// Proof: `Domains::HeadReceiptNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DomainRegistry` (r:1 w:0)
+	/// Proof: `Domains::DomainRegistry` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::RuntimeRegistry` (r:1 w:0)
+	/// Proof: `Domains::RuntimeRegistry` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestConfirmedDomainExecutionReceipt` (r:1 w:0)
+	/// Proof: `Domains::LatestConfirmedDomainExecutionReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	fn fraud_proof_pre_check() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `2483056`
+		//  Estimated: `2488996`
+		// Minimum execution time: 931_000_000 picoseconds.
+		Weight::from_parts(976_000_000, 0)
+			.saturating_add(Weight::from_parts(0, 2488996))
+			.saturating_add(ParityDbWeight::get().reads(6))
 	}
 }
