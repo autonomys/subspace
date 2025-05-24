@@ -8,6 +8,7 @@ use frame_support::weights::Weight;
 use frame_system::pallet_prelude::RuntimeCallFor;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
+use sp_domains_fraud_proof::weights::fraud_proof_verification_weights;
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_runtime::impl_tx_ext_default;
 use sp_runtime::traits::{
@@ -183,8 +184,9 @@ where
             Some(DomainsCall::submit_bundle { .. }) => {
                 <Runtime as Config>::WeightInfo::validate_submit_bundle()
             }
-            Some(DomainsCall::submit_fraud_proof { .. }) => {
+            Some(DomainsCall::submit_fraud_proof { fraud_proof }) => {
                 <Runtime as Config>::WeightInfo::fraud_proof_pre_check()
+                    .saturating_add(fraud_proof_verification_weights::<_, _, _, _>(fraud_proof))
             }
             Some(DomainsCall::submit_receipt { .. }) => {
                 <Runtime as Config>::WeightInfo::validate_singleton_receipt()
