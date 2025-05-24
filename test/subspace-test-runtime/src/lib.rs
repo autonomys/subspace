@@ -901,7 +901,7 @@ impl pallet_rewards::Config for Runtime {
     type OnReward = ();
 }
 
-mod mmr {
+pub mod mmr {
     use super::Runtime;
     pub use pallet_mmr::primitives::*;
 
