@@ -184,8 +184,7 @@ where
                 <Runtime as Config>::WeightInfo::validate_submit_bundle()
             }
             Some(DomainsCall::submit_fraud_proof { .. }) => {
-                // FIXME: proper weight
-                Weight::zero()
+                <Runtime as Config>::WeightInfo::fraud_proof_pre_check()
             }
             Some(DomainsCall::submit_receipt { .. }) => {
                 <Runtime as Config>::WeightInfo::validate_singleton_receipt()
