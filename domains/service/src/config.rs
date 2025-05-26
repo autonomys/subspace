@@ -199,7 +199,7 @@ impl From<SubstrateConfiguration> for Configuration {
                     .expect("value is a constant; constant is non-zero; qed"),
                 ipfs_server: false,
                 yamux_window_size: None,
-                network_backend: NetworkBackendType::Libp2p,
+                network_backend: Some(NetworkBackendType::Libp2p),
                 force_synced: configuration.network.force_synced,
             },
             // Not used on consensus chain
