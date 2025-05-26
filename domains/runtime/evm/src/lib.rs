@@ -609,6 +609,7 @@ where
 
 parameter_types! {
     pub const TransporterEndpointId: EndpointId = 1;
+    pub const MinimumTransfer: Balance = SSC;
 }
 
 impl pallet_transporter::Config for Runtime {
@@ -620,6 +621,7 @@ impl pallet_transporter::Config for Runtime {
     type AccountIdConverter = domain_runtime_primitives::AccountId20Converter;
     type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
     type SkipBalanceTransferChecks = ();
+    type MinimumTransfer = MinimumTransfer;
 }
 
 impl pallet_evm_chain_id::Config for Runtime {}
