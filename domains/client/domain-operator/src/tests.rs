@@ -8,9 +8,7 @@ use crate::OperatorSlotInfo;
 use cross_domain_message_gossip::get_channel_state;
 use domain_block_builder::BlockBuilderApi;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_runtime_primitives::{
-    AccountId20Converter, AccountIdConverter, EthereumAccountId, Hash,
-};
+use domain_runtime_primitives::{AccountId20Converter, AccountIdConverter, Hash};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{
     Header, Runtime as TestRuntime, RuntimeCall, UncheckedExtrinsic as EvmUncheckedExtrinsic,
@@ -21,7 +19,6 @@ use domain_test_service::{EvmDomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID};
 use ethereum::TransactionV2 as EthereumTransaction;
 use fp_rpc::EthereumRuntimeRPCApi;
 use futures::StreamExt;
-use hex_literal::hex;
 use pallet_domains::{FraudProofFor, OpaqueBundleOf, OperatorConfig};
 use pallet_messenger::ChainAllowlistUpdate;
 use parity_scale_codec::{Decode, Encode};
@@ -40,7 +37,9 @@ use sp_core::{Pair, H160, H256, U256};
 use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::test_ethereum::{generate_legacy_tx, max_extrinsic_gas};
+use sp_domains::test_ethereum::{
+    generate_evm_account_list, generate_legacy_tx, max_extrinsic_gas, EvmAccountList,
+};
 use sp_domains::test_ethereum_tx::{address_build, contract_address, AccountInfo};
 use sp_domains::{
     BlockFees, Bundle, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor,
@@ -187,40 +186,6 @@ pub fn generate_evm_domain_call(
     };
 
     RuntimeCall::EVM(call)
-}
-
-/// The kind of account list to generate.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum EvmAccountList {
-    Anyone,
-    NoOne,
-    One,
-    Multiple,
-}
-
-/// Generate the supplied kind of account list.
-pub fn generate_evm_account_list(
-    account_infos: &[AccountInfo],
-    account_list_type: EvmAccountList,
-) -> PermissionedActionAllowedBy<EthereumAccountId> {
-    // The signer of pallet-evm transactions is the EVM domain in these tests, so we also add it to
-    // the account lists.
-    let evm_domain_account = hex!("e04cc55ebee1cbce552f250e85c57b70b2e2625b");
-
-    match account_list_type {
-        EvmAccountList::Anyone => PermissionedActionAllowedBy::Anyone,
-        EvmAccountList::NoOne => PermissionedActionAllowedBy::Accounts(Vec::new()),
-        EvmAccountList::One => PermissionedActionAllowedBy::Accounts(vec![
-            EthereumAccountId::from(evm_domain_account),
-            EthereumAccountId::from(account_infos[0].address),
-        ]),
-        EvmAccountList::Multiple => PermissionedActionAllowedBy::Accounts(vec![
-            EthereumAccountId::from(evm_domain_account),
-            EthereumAccountId::from(account_infos[0].address),
-            EthereumAccountId::from(account_infos[1].address),
-            EthereumAccountId::from(account_infos[2].address),
-        ]),
-    }
 }
 
 async fn setup_evm_test_nodes(

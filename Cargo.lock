@@ -2886,7 +2886,6 @@ dependencies = [
  "futures",
  "futures-timer",
  "hex",
- "hex-literal",
  "pallet-balances",
  "pallet-domain-sudo",
  "pallet-domains",
