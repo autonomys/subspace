@@ -86,7 +86,6 @@ pub fn charge_bundle_storage_fee<T: Config>(
     ) {
         let total_balance = total_balance::<T>(operator_id);
         log::debug!(
-            target: "runtime::domains",
             "Operator {operator_id:?} unable to pay for the bundle storage fee {storage_fee:?}, storage fund total balance {total_balance:?}, err {err:?}",
         );
         return Err(Error::BundleStorageFeePayment);

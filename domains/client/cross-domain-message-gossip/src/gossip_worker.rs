@@ -19,7 +19,6 @@ use std::pin::pin;
 use std::sync::Arc;
 use subspace_runtime_primitives::BlockNumber;
 
-const LOG_TARGET: &str = "cross_chain_gossip_worker";
 const PROTOCOL_NAME: &str = "/subspace/cross-chain-messages";
 
 /// Encoded message with sender info if available.
@@ -183,18 +182,18 @@ impl<Block: BlockT, Network, SO: SyncOracle> GossipWorker<Block, Network, SO> {
             futures::select! {
                 cross_chain_message = incoming_cross_chain_messages.next() => {
                     if let Some((maybe_peer, msg)) = cross_chain_message {
-                        tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain from Network: {:?}", msg.chain_id);
+                        tracing::debug!("Incoming cross chain message for chain from Network: {:?}", msg.chain_id);
                         self.handle_cross_chain_message(msg, maybe_peer);
                     }
                 },
 
                 msg = self.gossip_msg_stream.select_next_some() => {
-                    tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain from Relayer: {:?}", msg.chain_id);
+                    tracing::debug!("Incoming cross chain message for chain from Relayer: {:?}", msg.chain_id);
                     self.handle_cross_chain_message(msg, None);
                 }
 
                 _ = gossip_engine => {
-                    tracing::error!(target: LOG_TARGET, "Gossip engine has terminated.");
+                    tracing::error!("Gossip engine has terminated.");
                     return;
                 }
             }
@@ -227,11 +226,7 @@ impl<Block: BlockT, Network, SO: SyncOracle> GossipWorker<Block, Network, SO> {
 
         // sink is either closed or failed to send unbounded message
         // consider it closed and remove the sink.
-        tracing::error!(
-            target: LOG_TARGET,
-            "Failed to send incoming chain message: {:?}",
-            chain_id
-        );
+        tracing::error!("Failed to send incoming chain message: {:?}", chain_id);
         self.chain_sinks.remove(&chain_id);
     }
 }

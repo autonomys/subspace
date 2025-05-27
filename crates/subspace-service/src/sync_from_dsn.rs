@@ -40,8 +40,6 @@ const CHECK_ALMOST_SYNCED_INTERVAL: Duration = Duration::from_secs(1);
 /// Period of time during which node should be offline for DSN sync to kick-in
 const MIN_OFFLINE_PERIOD: Duration = Duration::from_secs(60);
 
-pub(crate) const LOG_TARGET: &str = "consensus_sync";
-
 /// Wrapper type for [`PieceProvider`], so it can implement [`PieceGetter`]
 pub struct DsnPieceGetter<PV: PieceValidator>(PieceProvider<PV>);
 
@@ -314,7 +312,7 @@ where
     while let Some(reason) = notifications.next().await {
         pause_sync.store(true, Ordering::Release);
 
-        info!(target: LOG_TARGET, ?reason, "Received notification to sync from DSN");
+        info!(?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
         let import_blocks_from_dsn_fut = import_blocks_from_dsn(
             &segment_headers_store,
@@ -349,7 +347,7 @@ where
         select! {
             result = import_blocks_from_dsn_fut.fuse() => {
                 if let Err(error) = result {
-                    warn!(target: LOG_TARGET, %error, "Error when syncing blocks from DSN");
+                    warn!(%error, "Error when syncing blocks from DSN");
                 }
             }
             _ = wait_almost_synced_fut.fuse() => {
@@ -357,7 +355,7 @@ where
             }
         }
 
-        debug!(target: LOG_TARGET, "Finished DSN sync");
+        debug!("Finished DSN sync");
 
         // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue
         // gracefully

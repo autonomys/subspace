@@ -1,5 +1,5 @@
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
-use crate::sync_from_dsn::{PieceGetter, LOG_TARGET};
+use crate::sync_from_dsn::PieceGetter;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::IncomingBlock;
@@ -60,7 +60,7 @@ where
             .await
             .map_err(|error| error.to_string())?;
 
-        debug!(target: LOG_TARGET, "Found {} new segment headers", new_segment_headers.len());
+        debug!("Found {} new segment headers", new_segment_headers.len());
 
         if !new_segment_headers.is_empty() {
             segment_headers_store.add_segment_headers(&new_segment_headers)?;
@@ -77,7 +77,7 @@ where
     let mut segment_indices_iter = segment_indices_iter.peekable();
 
     while let Some(segment_index) = segment_indices_iter.next() {
-        debug!(target: LOG_TARGET, %segment_index, "Processing segment");
+        debug!( %segment_index, "Processing segment");
 
         let segment_header = segment_headers_store
             .get_segment_header(segment_index)
@@ -91,7 +91,6 @@ where
             .is_some();
 
         trace!(
-            target: LOG_TARGET,
             %segment_index,
             last_archived_maybe_partial_block_number,
             last_archived_block_partial,
@@ -140,7 +139,7 @@ where
             .expect("Panic if blocking task panicked")
             .map_err(|error| error.to_string())?
             .blocks;
-        trace!(target: LOG_TARGET, %segment_index, "Segment reconstructed successfully");
+        trace!( %segment_index, "Segment reconstructed successfully");
 
         let mut blocks_to_import = Vec::with_capacity(QUEUED_BLOCKS_LIMIT as usize);
 
@@ -184,7 +183,6 @@ where
                         .import_blocks(BlockOrigin::NetworkInitialSync, importing_blocks);
                 }
                 trace!(
-                    target: LOG_TARGET,
                     %block_number,
                     %best_block_number,
                     %just_queued_blocks_count,
@@ -230,7 +228,7 @@ where
             imported_blocks += 1;
 
             if imported_blocks % 1000 == 0 {
-                debug!(target: LOG_TARGET, "Adding block {} from DSN to the import queue", block_number);
+                debug!("Adding block {} from DSN to the import queue", block_number);
             }
         }
 

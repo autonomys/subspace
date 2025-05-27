@@ -4,7 +4,7 @@
 #![warn(missing_docs)]
 
 use crate::domain_block_er::execution_receipt_protocol::{
-    generate_protocol_name, DomainBlockERRequest, DomainBlockERResponse, LOG_TARGET,
+    generate_protocol_name, DomainBlockERRequest, DomainBlockERResponse,
 };
 use domain_runtime_primitives::Balance;
 use futures::channel::oneshot;
@@ -99,7 +99,6 @@ where
         let mut peer_responses = 0;
 
         debug!(
-            target: LOG_TARGET,
             domain_id=%self.domain_id,
             %protocol_name,
             "Started obtaining last confirmed domain block ER..."
@@ -113,7 +112,7 @@ where
             let peers_info = match self.sync_service.peers_info().await {
                 Ok(peers_info) => peers_info,
                 Err(error) => {
-                    error!(target: LOG_TARGET, "Peers info request returned an error: {error}",);
+                    error!("Peers info request returned an error: {error}",);
                     sleep(REQUEST_PAUSE).await;
 
                     continue;
@@ -123,7 +122,6 @@ where
             //  Enumerate peers until we find a suitable source for domain info
             'peers: for (peer_id, peer_info) in peers_info.iter() {
                 debug!(
-                    target: LOG_TARGET,
                     %peers_not_synced,
                     %peer_request_errors,
                     %peer_responses,
@@ -132,14 +130,13 @@ where
                 );
 
                 if peers_hashes.contains_key(peer_id) {
-                    trace!(target: LOG_TARGET, %attempt, %peer_id, "Peer receipt has been already collected.");
+                    trace!( %attempt, %peer_id, "Peer receipt has been already collected.");
                     continue 'peers;
                 }
 
                 if !peer_info.is_synced {
                     peers_not_synced += 1;
                     trace!(
-                        target: LOG_TARGET,
                         %attempt,
                         %peer_id,
                         %peers_not_synced,
@@ -164,7 +161,6 @@ where
                         let DomainBlockERResponse::LastConfirmedER(receipt) = response;
                         peer_responses += 1;
                         trace!(
-                            target: LOG_TARGET,
                             %attempt,
                             %peers_not_synced,
                             %peer_request_errors,
@@ -183,7 +179,6 @@ where
                     Err(error) => {
                         peer_request_errors += 1;
                         debug!(
-                            target: LOG_TARGET,
                             %attempt,
                             %peers_not_synced,
                             %peer_request_errors,
@@ -200,7 +195,6 @@ where
             }
 
             debug!(
-                target: LOG_TARGET,
                 domain_id=%self.domain_id,
                 %peers_not_synced,
                 %peer_request_errors,
@@ -212,7 +206,6 @@ where
 
         if peers_hashes.len() < PEERS_THRESHOLD {
             debug!(
-                target: LOG_TARGET,
                 peers=%peers_hashes.len(),
                 %PEERS_THRESHOLD,
                 %peers_not_synced,
@@ -233,7 +226,6 @@ where
         }
 
         error!(
-            target: LOG_TARGET,
             %peers_not_synced,
             %peer_request_errors,
             %peer_responses,
@@ -250,7 +242,7 @@ async fn send_request<NR: NetworkRequest, Block: BlockT, DomainHeader: Header>(
     network_service: &NR,
 ) -> Result<DomainBlockERResponse<Block, DomainHeader>, DomainBlockERResponseError> {
     let (tx, rx) = oneshot::channel();
-    debug!(target: LOG_TARGET, "Sending request: {request:?}  (peer={peer_id})");
+    debug!("Sending request: {request:?}  (peer={peer_id})");
 
     let encoded_request = request.encode();
     network_service.start_request(

@@ -30,8 +30,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, trace};
 
-pub(crate) const LOG_TARGET: &str = "domain_block_er_protocol";
-
 /// Generates a `RequestResponseProtocolConfig` for the Execution receipt protocol.
 pub fn generate_protocol_config<Hash: AsRef<[u8]>, B: BlockT, N: NetworkBackend<B, B::Hash>>(
     genesis_hash: Hash,
@@ -150,10 +148,9 @@ where
 
             match self.handle_request(payload, pending_response, &peer) {
                 Ok(()) => {
-                    debug!(target: LOG_TARGET, "Handled domain block ER request from {}.", peer)
+                    debug!("Handled domain block ER request from {}.", peer)
                 }
                 Err(e) => error!(
-                    target: LOG_TARGET,
                     "Failed to handle domain block ER request from {}: {}",
                     peer, e,
                 ),
@@ -169,7 +166,7 @@ where
     ) -> Result<(), HandleRequestError> {
         let request = DomainBlockERRequest::decode(&mut payload.as_slice())?;
 
-        trace!(target: LOG_TARGET, "Handle domain block ER request: {peer}, request: {request:?}",);
+        trace!("Handle domain block ER request: {peer}, request: {request:?}",);
 
         let result = {
             let DomainBlockERRequest::LastConfirmedER(domain_id) = request;
@@ -204,7 +201,6 @@ where
             Ok(Some(last_confirmed_block_receipt)) => last_confirmed_block_receipt,
             Ok(None) => {
                 debug!(
-                    target: LOG_TARGET,
                     %domain_id,
                     %best_consensus_hash,
                     "Last confirmed domain block ER acquisition failed: no data.",
@@ -214,7 +210,6 @@ where
             }
             Err(err) => {
                 debug!(
-                    target: LOG_TARGET,
                     %domain_id,
                     %best_consensus_hash,
                     ?err,
@@ -226,7 +221,6 @@ where
         };
 
         debug!(
-            target: LOG_TARGET,
             ?last_confirmed_block_receipt,
             "Last confirmed domain block receipt."
         );

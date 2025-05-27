@@ -1276,7 +1276,7 @@ where
             }
         };
 
-        info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
+        info!("🧑‍🌾 Starting Subspace Authorship worker");
         let slot_worker_task = sc_proof_of_time::start_slot_worker(
             subspace_link.chain_constants().slot_duration(),
             client.clone(),

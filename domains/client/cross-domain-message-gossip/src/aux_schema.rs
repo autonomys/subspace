@@ -11,7 +11,6 @@ use sp_runtime::traits::{Block as BlockT, NumberFor};
 use subspace_runtime_primitives::BlockNumber;
 
 const CHANNEL_DETAIL: &[u8] = b"channel_detail";
-const LOG_TARGET: &str = "gossip_aux_schema";
 
 fn channel_detail_key(
     src_chain_id: ChainId,
@@ -221,7 +220,6 @@ where
         };
 
         tracing::debug!(
-            target: LOG_TARGET,
             "[{:?}]Cleaning Relay xdm keys for {:?} channel: {:?} from: {:?} to: {:?}",
             to_hex(prefix, false),
             chain_id,
@@ -253,7 +251,6 @@ where
         };
 
         tracing::debug!(
-            target: LOG_TARGET,
             "[{:?}]Cleaning Relay response xdm keys for {:?} channel: {:?} from: {:?} to: {:?}",
             to_hex(prefix, false),
             chain_id,

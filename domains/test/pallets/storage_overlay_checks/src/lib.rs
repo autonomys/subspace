@@ -9,8 +9,6 @@ use frame_system::pallet_prelude::BlockNumberFor;
 pub use pallet::*;
 use sp_core::H256;
 
-const LOG_TARGET: &str = "runtime::storage_overlay_checks";
-
 #[frame_support::pallet]
 mod pallet {
     use crate::StorageParams;
@@ -121,7 +119,7 @@ impl Default for StorageParams {
 
 impl<T: Config> Pallet<T> {
     fn set_storage(n: BlockNumberFor<T>, params: StorageParams) {
-        log::debug!(target: LOG_TARGET, "Setting storages at: {:?}", n);
+        log::debug!("Setting storages at: {:?}", n);
         let StorageParams {
             key1,
             key2,
@@ -140,7 +138,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn clear_storage(n: BlockNumberFor<T>) {
-        log::debug!(target: LOG_TARGET, "Clearing storages at: {:?}", n);
+        log::debug!("Clearing storages at: {:?}", n);
         Svvq::<T>::kill();
         Svoq::<T>::kill();
         let _ = Smvq::<T>::clear(u32::MAX, None);
@@ -152,7 +150,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn check_storage_exists(n: BlockNumberFor<T>, params: StorageParams) {
-        log::debug!(target: LOG_TARGET, "Checking storages exists at: {:?}", n);
+        log::debug!("Checking storages exists at: {:?}", n);
         let StorageParams {
             key1,
             key2,
@@ -171,7 +169,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn check_storage_empty(n: BlockNumberFor<T>, params: StorageParams) {
-        log::debug!(target: LOG_TARGET, "Checking storages empty at: {:?}", n);
+        log::debug!("Checking storages empty at: {:?}", n);
         let StorageParams {
             key1,
             key2,

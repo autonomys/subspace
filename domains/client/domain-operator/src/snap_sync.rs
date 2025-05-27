@@ -25,8 +25,6 @@ use tokio::sync::broadcast;
 use tokio::time::sleep;
 use tracing::{debug, error, trace, Instrument};
 
-pub(crate) const LOG_TARGET: &str = "domain_snap_sync";
-
 /// Notification with number of the block that is about to be imported and acknowledgement sender
 /// that pauses block production until the previous block is acknowledged.
 #[derive(Debug, Clone)]
@@ -80,14 +78,13 @@ impl SnapSyncOrchestrator {
 
     /// Unblocks (allows) consensus chain snap sync with the given target block.
     pub fn unblock_consensus_snap_sync(&self, target_block_number: BlockNumber) {
-        debug!(target: LOG_TARGET, %target_block_number, "Allowed starting consensus chain snap sync.");
+        debug!(%target_block_number, "Allowed starting consensus chain snap sync.");
 
         let target_block_send_result = self
             .consensus_snap_sync_target_block_tx
             .send(target_block_number);
 
         debug!(
-            target: LOG_TARGET,
             ?target_block_send_result,
             "Target block sending result: {target_block_number}"
         );
@@ -105,7 +102,7 @@ impl SnapSyncOrchestrator {
 
     /// Signal that domain snap sync finished.
     pub fn mark_domain_snap_sync_finished(&self) {
-        debug!(target: LOG_TARGET, "Signal that domain snap sync finished.");
+        debug!("Signal that domain snap sync finished.");
         self.domain_snap_sync_finished
             .store(true, Ordering::Release);
     }
@@ -135,9 +132,9 @@ async fn get_last_confirmed_block<Block: BlockT>(
     const MAX_GET_PEERS_ATTEMPT_NUMBER: usize = 30;
 
     for attempt in 1..=LAST_CONFIRMED_BLOCK_RETRIES {
-        debug!(target: LOG_TARGET, %attempt, %block_number, "Starting last confirmed block request...");
+        debug!(%attempt, %block_number, "Starting last confirmed block request...");
 
-        debug!(target: LOG_TARGET, %block_number, "Gathering peers for last confirmed block request.");
+        debug!(%block_number, "Gathering peers for last confirmed block request.");
         let mut tried_peers = HashSet::<PeerId>::new();
 
         let current_peer_id = match get_currently_connected_peer(
@@ -151,7 +148,7 @@ async fn get_last_confirmed_block<Block: BlockT>(
         {
             Ok(peer_id) => peer_id,
             Err(err) => {
-                debug!(target: LOG_TARGET, ?err, "Getting peers for the last confirmed block failed");
+                debug!(?err, "Getting peers for the last confirmed block failed");
                 continue;
             }
         };
@@ -185,7 +182,6 @@ async fn get_last_confirmed_block<Block: BlockT>(
         match block_response_result {
             Ok(block_response_inner_result) => {
                 trace!(
-                    target: LOG_TARGET,
                     %block_number,
                     "Sync worker handle result: {:?}",
                     block_response_inner_result.as_ref().map(|(block_data, protocol_name)| (hex::encode(block_data), protocol_name))
@@ -195,29 +191,29 @@ async fn get_last_confirmed_block<Block: BlockT>(
                     Ok(data) => {
                         match block_downloader.block_response_into_blocks(&block_request, data.0) {
                             Ok(mut blocks) => {
-                                trace!(target: LOG_TARGET, %block_number, "Domain block parsing result: {:?}", blocks);
+                                trace!(%block_number, "Domain block parsing result: {:?}", blocks);
 
                                 if let Some(blocks) = blocks.pop() {
                                     return Ok(blocks);
                                 } else {
-                                    trace!(target: LOG_TARGET, %current_peer_id, "Got empty state blocks",);
+                                    trace!( %current_peer_id, "Got empty state blocks",);
                                     continue;
                                 }
                             }
                             Err(error) => {
-                                error!(target: LOG_TARGET, %block_number, ?error, "Domain block parsing error");
+                                error!(%block_number, ?error, "Domain block parsing error");
                                 continue;
                             }
                         }
                     }
                     Err(error) => {
-                        error!(target: LOG_TARGET, %block_number, ?error, "Domain block sync error (inner)");
+                        error!(%block_number, ?error, "Domain block sync error (inner)");
                         continue;
                     }
                 }
             }
             Err(error) => {
-                error!(target: LOG_TARGET, %block_number, ?error, "Domain block sync error");
+                error!(%block_number, ?error, "Domain block sync error");
                 continue;
             }
         }
@@ -320,7 +316,7 @@ where
     )
     .await;
 
-    trace!(target: LOG_TARGET, "State downloaded: {:?}", state_result);
+    trace!("State downloaded: {:?}", state_result);
 
     {
         let client = sync_params.domain_client.clone();
@@ -338,7 +334,6 @@ where
     }
 
     trace!(
-        target: LOG_TARGET,
         "Domain client info after waiting: {:?}",
         sync_params.domain_client.info()
     );
@@ -349,14 +344,12 @@ where
     {
         if created_domain_block_hash == domain_block_hash {
             trace!(
-                target: LOG_TARGET,
                 ?created_domain_block_hash,
                 ?domain_block_hash,
                 "Created hash matches after the domain block import with state",
             );
         } else {
             debug!(
-                target: LOG_TARGET,
                 ?created_domain_block_hash,
                 ?domain_block_hash,
                 "Created hash doesn't match after the domain block import with state",
@@ -393,7 +386,7 @@ where
         .snap_sync_orchestrator
         .mark_domain_snap_sync_finished();
 
-    debug!(target: LOG_TARGET, info = ?sync_params.domain_client.info(), "Client info after successful domain snap sync.");
+    debug!(info = ?sync_params.domain_client.info(), "Client info after successful domain snap sync.");
 
     // Unblock consensus block importing
     drop(consensus_target_block_acknowledgement_sender);
@@ -421,9 +414,9 @@ where
     const MAX_GET_PEERS_ATTEMPT_NUMBER: usize = 30;
 
     for attempt in 1..=STATE_SYNC_RETRIES {
-        debug!(target: LOG_TARGET, %block_number, %attempt, "Starting state sync...");
+        debug!(%block_number, %attempt, "Starting state sync...");
 
-        debug!(target: LOG_TARGET, %block_number, "Gathering peers for state sync.");
+        debug!(%block_number, "Gathering peers for state sync.");
         let mut tried_peers = HashSet::<PeerId>::new();
 
         let current_peer_id = match get_currently_connected_peer(
@@ -456,7 +449,7 @@ where
 
         match last_block_from_sync_result {
             Ok(block_to_import) => {
-                debug!(target: LOG_TARGET, %block_number, "Sync worker handle result: {:?}", block_to_import);
+                debug!(%block_number, "Sync worker handle result: {:?}", block_to_import);
 
                 return block_to_import.state.ok_or_else(|| {
                     sp_blockchain::Error::Backend(
@@ -465,7 +458,7 @@ where
                 });
             }
             Err(error) => {
-                error!(target: LOG_TARGET, %block_number, %error, "State sync error");
+                error!(%block_number, %error, "State sync error");
                 continue;
             }
         }
@@ -492,7 +485,6 @@ where
             .expect("Network service must be available.");
 
         debug!(
-            target: LOG_TARGET,
             %current_attempt,
             ?all_connected_peers,
             "Connected peers"
@@ -504,7 +496,6 @@ where
             .collect::<Vec<_>>();
 
         debug!(
-            target: LOG_TARGET,
             %current_attempt,
             ?tried_peers,
             "Sync peers: {:?}", connected_full_peers

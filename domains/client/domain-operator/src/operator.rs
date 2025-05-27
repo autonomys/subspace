@@ -5,7 +5,7 @@ use crate::domain_bundle_producer::{
 };
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
-use crate::snap_sync::{snap_sync, SyncParams, LOG_TARGET};
+use crate::snap_sync::{snap_sync, SyncParams};
 use crate::{NewSlotNotification, OperatorParams};
 use futures::channel::mpsc;
 use futures::future::pending;
@@ -233,25 +233,25 @@ where
                     // TODO: Support snap sync from any state once
                     //  https://github.com/paritytech/polkadot-sdk/issues/5366 is resolved
                     if info.best_hash == info.genesis_hash {
-                        info!(target: LOG_TARGET, "Starting domain snap sync...");
+                        info!("Starting domain snap sync...");
 
                         let result = snap_sync(sync_params).await;
 
                         match result {
                             Ok(_) => {
-                                info!(target: LOG_TARGET, "Domain snap sync completed.");
+                                info!("Domain snap sync completed.");
                             }
                             Err(err) => {
-                                error!(target: LOG_TARGET, %err, "Domain snap sync failed.");
-                                info!(target: LOG_TARGET, "Wipe the DB and restart the application with --sync=full.");
+                                error!( %err, "Domain snap sync failed.");
+                                info!("Wipe the DB and restart the application with --sync=full.");
 
                                 // essential task failed
                                 return;
                             }
                         };
                     } else {
-                        error!(target: LOG_TARGET, "Snap sync can only work with genesis state.");
-                        info!(target: LOG_TARGET, "Wipe the DB and restart the application with --sync=full.");
+                        error!("Snap sync can only work with genesis state.");
+                        info!("Wipe the DB and restart the application with --sync=full.");
 
                         // essential task failed
                         return;

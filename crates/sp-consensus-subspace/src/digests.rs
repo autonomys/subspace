@@ -596,10 +596,10 @@ where
 
     let mut pre_digest = None;
     for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for pre runtime digest", log);
+        trace!("Checking log {:?}, looking for pre runtime digest", log);
         match (log.as_subspace_pre_digest(), pre_digest.is_some()) {
             (Some(_), true) => return Err(Error::Duplicate(ErrorDigestType::PreDigest)),
-            (None, _) => trace!(target: "subspace", "Ignoring digest not meant for us"),
+            (None, _) => trace!("Ignoring digest not meant for us"),
             (s, false) => pre_digest = s,
         }
     }
