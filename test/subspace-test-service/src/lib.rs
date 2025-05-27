@@ -104,7 +104,8 @@ use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{RpcHandlersExt, RpcTransactionError, RpcTransactionOutput};
 use tokio::time::sleep;
 
-type FraudProofFor<Block, DomainBlock> =
+/// Helper type alias
+pub type FraudProofFor<Block, DomainBlock> =
     FraudProof<NumberFor<Block>, BlockHashFor<Block>, HeaderFor<DomainBlock>, H256>;
 
 const MAX_PRODUCE_BUNDLE_TRY: usize = 10;
@@ -859,7 +860,7 @@ impl MockConsensusNode {
     pub fn wait_for_fraud_proof<FP>(
         &self,
         fraud_proof_predicate: FP,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send>>
+    ) -> Pin<Box<dyn Future<Output = FraudProofFor<Block, DomainBlock>> + Send>>
     where
         FP: Fn(&FraudProofFor<Block, DomainBlock>) -> bool + Send + 'static,
     {
@@ -879,10 +880,11 @@ impl MockConsensusNode {
                 ) = ext.function
                 {
                     if fraud_proof_predicate(&fraud_proof) {
-                        break;
+                        return *fraud_proof;
                     }
                 }
             }
+            unreachable!()
         })
     }
 

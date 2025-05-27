@@ -1036,6 +1036,60 @@ mod benchmarks {
         }
     }
 
+    #[benchmark]
+    fn fraud_proof_pre_check() {
+        let domain_id = register_domain::<T>();
+        let (_, operator_id) =
+            register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
+
+        let mut target_receipt_hash = None;
+        let mut receipt =
+            BlockTree::<T>::get::<_, DomainBlockNumberFor<T>>(domain_id, Zero::zero())
+                .and_then(BlockTreeNodes::<T>::get)
+                .expect("genesis receipt must exist")
+                .execution_receipt;
+        for i in 1u32..=4u32 {
+            let consensus_block_number = i.into();
+            let domain_block_number = i.into();
+
+            // Run to `block_number`
+            run_to_block::<T>(
+                consensus_block_number,
+                frame_system::Pallet::<T>::block_hash(consensus_block_number - One::one()),
+            );
+
+            // Submit a bundle with the receipt of the last block
+            let bundle = dummy_opaque_bundle(domain_id, operator_id, receipt);
+            assert_ok!(Domains::<T>::submit_bundle(
+                DomainOrigin::ValidatedUnsigned.into(),
+                bundle
+            ));
+
+            // Create ER for the above bundle
+            let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
+            let parent_domain_block_receipt = BlockTree::<T>::get(domain_id, head_receipt_number)
+                .expect("parent receipt must exist");
+            receipt = ExecutionReceipt::dummy::<DomainHashingFor<T>>(
+                consensus_block_number,
+                frame_system::Pallet::<T>::block_hash(consensus_block_number),
+                domain_block_number,
+                parent_domain_block_receipt,
+            );
+            if i == 3 {
+                target_receipt_hash.replace(receipt.hash::<DomainHashingFor<T>>());
+            }
+        }
+        assert_eq!(Domains::<T>::head_receipt_number(domain_id), 3u32.into());
+
+        // Construct fraud proof that target the ER at block #3
+        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, target_receipt_hash.unwrap());
+
+        #[block]
+        {
+            assert_ok!(Domains::<T>::validate_fraud_proof(&fraud_proof));
+        }
+    }
+
     fn register_runtime<T: Config>() -> RuntimeId {
         let genesis_storage = include_bytes!("../res/evm-domain-genesis-storage").to_vec();
         let runtime_id = NextRuntimeId::<T>::get();
