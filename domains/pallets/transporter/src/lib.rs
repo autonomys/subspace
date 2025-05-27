@@ -117,6 +117,9 @@ mod pallet {
 
         /// Skip Balance transfer checks
         type SkipBalanceTransferChecks: SkipBalanceChecks;
+
+        /// Minimum transfer amount.
+        type MinimumTransfer: Get<BalanceOf<Self>>;
     }
 
     /// Pallet transporter to move funds between chains.
@@ -230,6 +233,8 @@ mod pallet {
         BalanceUnderflow,
         /// Emits when domain balance is already initialized
         DomainBalanceAlreadyInitialized,
+        /// Emits when the requested transfer amount is less than Minimum transfer amount.
+        MinimumTransferAmount,
     }
 
     #[pallet::call]
@@ -244,6 +249,10 @@ mod pallet {
             amount: BalanceOf<T>,
         ) -> DispatchResult {
             let sender = ensure_signed(origin)?;
+            ensure!(
+                amount >= T::MinimumTransfer::get(),
+                Error::<T>::MinimumTransferAmount
+            );
 
             // burn transfer amount
             let _imbalance = T::Currency::withdraw(
