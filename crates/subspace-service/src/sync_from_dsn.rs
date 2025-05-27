@@ -307,7 +307,7 @@ where
     // If a segment has a partial block at the end, it is not fully processed until that block is
     // processed.
     //
-    // Segment zero corresponds to contents of block one, everyone has it, so we consider it as
+    // Segment zero corresponds to contents of the genesis block, everyone has it, so we consider it as
     // processed right away.
     let mut last_completed_segment_index = SegmentIndex::ZERO;
 
