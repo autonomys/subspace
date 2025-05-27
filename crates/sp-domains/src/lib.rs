@@ -33,7 +33,7 @@ use core::str::FromStr;
 use domain_runtime_primitives::{EthereumAccountId, MultiAccountId};
 use frame_support::storage::storage_prefix;
 use frame_support::{Blake2_128Concat, StorageHasher};
-use hexlit::hex;
+use hex_literal::hex;
 use parity_scale_codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};

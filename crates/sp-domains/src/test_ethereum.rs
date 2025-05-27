@@ -6,7 +6,7 @@ use crate::test_ethereum_tx::{
 use crate::{EthereumAccountId, PermissionedActionAllowedBy};
 use ethereum::TransactionV2 as Transaction;
 use frame_support::pallet_prelude::DispatchClass;
-use hexlit::hex;
+use hex_literal::hex;
 use pallet_evm::GasWeightMapping;
 use sp_core::{Get, U256};
 

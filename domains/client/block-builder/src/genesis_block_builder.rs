@@ -1,6 +1,6 @@
 //! Custom genesis block builder to inject correct genesis block.
 
-use hexlit::hex;
+use hex_literal::hex;
 use sc_chain_spec::{construct_genesis_block, resolve_state_version_from_wasm, BuildGenesisBlock};
 use sc_client_api::{Backend, BlockImportOperation};
 use sc_executor::RuntimeVersionOf;
@@ -94,15 +94,15 @@ where
                     // upgraded, so instead return the known domain-0's state root.
                     if consensus_client.info().genesis_hash
                         == H256::from(hex!(
-                            "0x295aeafca762a304d92ee1505548695091f6082d3f0aa4d092ac3cd6397a6c5e"
+                            "295aeafca762a304d92ee1505548695091f6082d3f0aa4d092ac3cd6397a6c5e"
                         ))
                         .into()
                         && domain_id == DomainId::new(0)
                     {
                         Some(
                             H256::from(hex!(
-                            "0x530eae1878202aa0ab5997eadf2b7245ee78f44a35ab25ff84151fab489aa334"
-                        ))
+                                "530eae1878202aa0ab5997eadf2b7245ee78f44a35ab25ff84151fab489aa334"
+                            ))
                             .into(),
                         )
                     } else {

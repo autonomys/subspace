@@ -17,7 +17,7 @@ domain-runtime-primitives.workspace = true
 frame-support.workspace = true
 hash-db.workspace = true
 memory-db.workspace = true
-hexlit.workspace = true
+hex-literal.workspace = true
 parity-scale-codec = { workspace = true, features = ["derive"] }
 rand.workspace = true
 rand_chacha.workspace = true
