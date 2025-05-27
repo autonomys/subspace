@@ -395,7 +395,9 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
 mod tests {
     use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
     use crate::runtime_registry::Error as RuntimeRegistryError;
-    use crate::tests::{new_test_ext, Domains, ReadRuntimeVersion, System, Test};
+    use crate::tests::{
+        new_test_ext, Domains, ReadRuntimeVersion, System, Test, TEST_RUNTIME_APIS,
+    };
     use crate::Error;
     use frame_support::dispatch::RawOrigin;
     use frame_support::traits::OnInitialize;
@@ -405,7 +407,7 @@ mod tests {
     use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeObject, RuntimeType};
     use sp_runtime::traits::BlockNumberProvider;
     use sp_runtime::{Digest, DispatchError};
-    use sp_version::RuntimeVersion;
+    use sp_version::{create_apis_vec, RuntimeVersion};
 
     #[test]
     fn create_domain_runtime() {
@@ -458,6 +460,7 @@ mod tests {
                         spec_version: 1,
                         impl_version: 1,
                         transaction_version: 1,
+                        apis: create_apis_vec!(TEST_RUNTIME_APIS),
                         ..Default::default()
                     },
                     created_at: Default::default(),
@@ -493,6 +496,7 @@ mod tests {
                 spec_version,
                 impl_version: 1,
                 transaction_version: 1,
+                apis: create_apis_vec!(TEST_RUNTIME_APIS),
                 ..Default::default()
             };
             let read_runtime_version = ReadRuntimeVersion(version.encode());
@@ -539,6 +543,7 @@ mod tests {
                     spec_version: 1,
                     impl_version: 1,
                     transaction_version: 1,
+                    apis: create_apis_vec!(TEST_RUNTIME_APIS),
                     ..Default::default()
                 }
             );
@@ -556,6 +561,7 @@ mod tests {
                     spec_version: 2,
                     impl_version: 1,
                     transaction_version: 1,
+                    apis: create_apis_vec!(TEST_RUNTIME_APIS),
                     ..Default::default()
                 }
             )
@@ -598,7 +604,7 @@ mod tests {
             authoring_version: 0,
             spec_version: 1,
             impl_version: 1,
-            apis: Default::default(),
+            apis: create_apis_vec!(TEST_RUNTIME_APIS),
             transaction_version: 1,
             system_version: 0,
         };
@@ -647,6 +653,8 @@ mod tests {
 
             let runtime_obj = RuntimeRegistry::<Test>::get(0).unwrap();
             assert_eq!(runtime_obj.version, version);
+            assert_eq!(runtime_obj.created_at, 0);
+            assert_eq!(runtime_obj.updated_at, 1);
 
             let digest = System::digest();
             assert_eq!(Some(0), fetch_upgraded_runtime_from_digest(digest))

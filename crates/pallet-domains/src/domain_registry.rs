@@ -384,7 +384,7 @@ pub(crate) fn do_update_domain_allow_list<T: Config>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::{new_test_ext, Test};
+    use crate::tests::{new_test_ext, Test, TEST_RUNTIME_APIS};
     use domain_runtime_primitives::{AccountId20, AccountId20Converter};
     use frame_support::traits::Currency;
     use frame_support::{assert_err, assert_ok};
@@ -393,7 +393,7 @@ mod tests {
     use sp_domains::{EvmDomainRuntimeConfig, EvmType, PermissionedActionAllowedBy, RuntimeObject};
     use sp_runtime::traits::Convert;
     use sp_std::vec;
-    use sp_version::RuntimeVersion;
+    use sp_version::{create_apis_vec, RuntimeVersion};
     use subspace_runtime_primitives::SSC;
 
     type Balances = pallet_balances::Pallet<Test>;
@@ -470,6 +470,7 @@ mod tests {
                         spec_version: 1,
                         impl_version: 1,
                         transaction_version: 1,
+                        apis: create_apis_vec!(TEST_RUNTIME_APIS),
                         ..Default::default()
                     },
                     created_at: Default::default(),
@@ -591,6 +592,7 @@ mod tests {
                         spec_version: 1,
                         impl_version: 1,
                         transaction_version: 1,
+                        apis: create_apis_vec!(TEST_RUNTIME_APIS),
                         ..Default::default()
                     },
                     created_at: Default::default(),
@@ -763,6 +765,7 @@ mod tests {
                         spec_version: 1,
                         impl_version: 1,
                         transaction_version: 1,
+                        apis: create_apis_vec!(TEST_RUNTIME_APIS),
                         ..Default::default()
                     },
                     created_at: Default::default(),
