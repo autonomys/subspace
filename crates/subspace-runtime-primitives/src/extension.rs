@@ -1,3 +1,6 @@
+#[cfg(feature = "runtime-benchmarks")]
+pub mod benchmarking;
+
 use crate::utility::{nested_call_iter, MaybeNestedCall};
 use core::marker::PhantomData;
 use frame_support::pallet_prelude::Weight;

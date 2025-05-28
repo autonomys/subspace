@@ -427,7 +427,13 @@ impl MaybeBalancesCall<Runtime> for RuntimeCall {
 
 impl BalanceTransferChecks for Runtime {
     fn is_balance_transferable() -> bool {
-        RuntimeConfigs::enable_balance_transfers()
+        let enabled = RuntimeConfigs::enable_balance_transfers();
+        // for benchmarks, always return enabled.
+        if cfg!(feature = "runtime-benchmarks") {
+            true
+        } else {
+            enabled
+        }
     }
 }
 
@@ -1288,6 +1294,7 @@ mod benches {
         [pallet_transporter, Transporter]
         [pallet_subspace_extension, SubspaceExtensionBench::<Runtime>]
         [pallet_messenger_from_domains_extension, MessengerFromDomainsExtensionBench::<Runtime>]
+        [balance_transfer_check_extension, BalanceTransferCheckBench::<Runtime>]
     );
 }
 
@@ -1827,6 +1834,7 @@ impl_runtime_apis! {
             use baseline::Pallet as BaselineBench;
             use pallet_subspace::extensions::benchmarking::Pallet as SubspaceExtensionBench;
             use pallet_messenger::extensions::benchmarking_from_domains::Pallet as MessengerFromDomainsExtensionBench;
+            use subspace_runtime_primitives::extension::benchmarking::Pallet as BalanceTransferCheckBench;
 
             let mut list = Vec::<BenchmarkList>::new();
             list_benchmarks!(list, extra);
@@ -1846,6 +1854,7 @@ impl_runtime_apis! {
             use baseline::Pallet as BaselineBench;
             use pallet_subspace::extensions::benchmarking::Pallet as SubspaceExtensionBench;
             use pallet_messenger::extensions::benchmarking_from_domains::Pallet as MessengerFromDomainsExtensionBench;
+            use subspace_runtime_primitives::extension::benchmarking::Pallet as BalanceTransferCheckBench;
 
             use frame_support::traits::WhitelistedStorageKeys;
             let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
