@@ -252,7 +252,9 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         dispatch_info: &DispatchInfoOf<RuntimeCall>,
         len: usize,
     ) -> Option<TransactionValidity> {
-        if !is_create_contract_allowed::<Runtime>(self, &(*info).into()) {
+        let (is_allowed, _call_count) =
+            is_create_contract_allowed::<Runtime>(self, &(*info).into());
+        if !is_allowed {
             return Some(Err(InvalidTransaction::Custom(
                 ERR_CONTRACT_CREATION_NOT_ALLOWED,
             )
@@ -271,7 +273,10 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         dispatch_info: &DispatchInfoOf<RuntimeCall>,
         len: usize,
     ) -> Option<Result<(), TransactionValidityError>> {
-        if !is_create_contract_allowed::<Runtime>(self, &(*info).into()) {
+        // TODO: handle extension weight here?
+        let (is_allowed, _call_count) =
+            is_create_contract_allowed::<Runtime>(self, &(*info).into());
+        if !is_allowed {
             return Some(Err(InvalidTransaction::Custom(
                 ERR_CONTRACT_CREATION_NOT_ALLOWED,
             )
