@@ -16,7 +16,6 @@
 mod domains;
 mod fees;
 mod object_mapping;
-mod signed_extensions;
 
 extern crate alloc;
 
@@ -26,7 +25,6 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
-pub use crate::signed_extensions::DisablePallets;
 use alloc::borrow::Cow;
 use core::mem;
 use core::num::NonZeroU64;
@@ -100,6 +98,8 @@ use subspace_core_primitives::solutions::{
     pieces_to_solution_range, solution_range_to_pieces, SolutionRange,
 };
 use subspace_core_primitives::{PublicKey, Randomness, SlotNumber, U256};
+pub use subspace_runtime_primitives::extension::BalanceTransferCheckExtension;
+use subspace_runtime_primitives::extension::{BalanceTransferChecks, MaybeBalancesCall};
 use subspace_runtime_primitives::utility::{
     DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
 };
@@ -414,6 +414,21 @@ impl pallet_utility::Config for Runtime {
     type RuntimeCall = RuntimeCall;
     type PalletsOrigin = OriginCaller;
     type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
+}
+
+impl MaybeBalancesCall<Runtime> for RuntimeCall {
+    fn maybe_balance_call(&self) -> Option<&pallet_balances::Call<Runtime>> {
+        match self {
+            RuntimeCall::Balances(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl BalanceTransferChecks for Runtime {
+    fn is_balance_transferable() -> bool {
+        RuntimeConfigs::enable_balance_transfers()
+    }
 }
 
 impl MaybeMultisigCall<Runtime> for RuntimeCall {
@@ -1096,7 +1111,7 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
-    DisablePallets,
+    BalanceTransferCheckExtension<Runtime>,
     pallet_subspace::extensions::SubspaceExtension<Runtime>,
     pallet_domains::extensions::DomainsExtension<Runtime>,
     pallet_messenger::extensions::MessengerExtension<Runtime>,
@@ -1198,7 +1213,7 @@ fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
         // for unsigned extrinsic, transaction fee check will be skipped
         // so set a default value
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
-        DisablePallets,
+        BalanceTransferCheckExtension::<Runtime>::default(),
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
         pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),

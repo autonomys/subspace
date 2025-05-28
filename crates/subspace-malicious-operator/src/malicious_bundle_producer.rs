@@ -28,7 +28,8 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::error::Error;
 use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
-use subspace_runtime::{DisablePallets, Runtime, RuntimeCall, SignedExtra, UncheckedExtrinsic};
+use subspace_runtime::{Runtime, RuntimeCall, SignedExtra, UncheckedExtrinsic};
+use subspace_runtime_primitives::extension::BalanceTransferCheckExtension;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::{AccountId, Balance, BlockHashFor, HeaderFor, Nonce};
 
@@ -415,7 +416,7 @@ fn get_singed_extra(best_number: u64, immortal: bool, nonce: Nonce) -> SignedExt
         frame_system::CheckNonce::<Runtime>::from(nonce.into()),
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
-        DisablePallets,
+        BalanceTransferCheckExtension::<Runtime>::default(),
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
         pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),

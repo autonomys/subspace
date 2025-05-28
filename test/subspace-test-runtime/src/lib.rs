@@ -55,7 +55,7 @@ use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECO
 use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
-use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
+use frame_system::pallet_prelude::RuntimeCallFor;
 use pallet_balances::NegativeImbalance;
 pub use pallet_rewards::RewardPoint;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
@@ -86,19 +86,14 @@ use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::traits::{
-    AccountIdConversion, AccountIdLookup, AsSystemOriginSigner, BlakeTwo256, ConstBool,
-    DispatchInfoOf, Keccak256, NumberFor, PostDispatchInfoOf, TransactionExtension, ValidateResult,
-    Zero,
+    AccountIdConversion, AccountIdLookup, BlakeTwo256, ConstBool, DispatchInfoOf, Keccak256,
+    NumberFor, PostDispatchInfoOf, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
-    ValidTransaction,
 };
 use sp_runtime::type_with_default::TypeWithDefault;
-use sp_runtime::{
-    generic, impl_tx_ext_default, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode,
-    Perbill,
-};
+use sp_runtime::{generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
@@ -113,8 +108,10 @@ use subspace_core_primitives::segments::{
 };
 use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{hashes, PublicKey, Randomness, SlotNumber, U256};
+pub use subspace_runtime_primitives::extension::BalanceTransferCheckExtension;
+use subspace_runtime_primitives::extension::{BalanceTransferChecks, MaybeBalancesCall};
 use subspace_runtime_primitives::utility::{
-    nested_call_iter, DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
+    DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockHashFor, BlockNumber, ConsensusEventSegmentSize, ExtrinsicFor,
@@ -552,6 +549,21 @@ impl pallet_utility::Config for Runtime {
     type RuntimeCall = RuntimeCall;
     type PalletsOrigin = OriginCaller;
     type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
+}
+
+impl MaybeBalancesCall<Runtime> for RuntimeCall {
+    fn maybe_balance_call(&self) -> Option<&pallet_balances::Call<Runtime>> {
+        match self {
+            RuntimeCall::Balances(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl BalanceTransferChecks for Runtime {
+    fn is_balance_transferable() -> bool {
+        RuntimeConfigs::enable_balance_transfers()
+    }
 }
 
 impl MaybeMultisigCall<Runtime> for RuntimeCall {
@@ -1034,7 +1046,7 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
-    DisablePallets,
+    BalanceTransferCheckExtension<Runtime>,
     pallet_subspace::extensions::SubspaceExtension<Runtime>,
     pallet_domains::extensions::DomainsExtension<Runtime>,
     pallet_messenger::extensions::MessengerExtension<Runtime>,
@@ -1272,7 +1284,7 @@ fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
         // for unsigned extrinsic, transaction fee check will be skipped
         // so set a default value
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
-        DisablePallets,
+        BalanceTransferCheckExtension::<Runtime>::default(),
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
         pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
@@ -1865,71 +1877,6 @@ impl_runtime_apis! {
             vec![]
         }
     }
-}
-
-/// Disable balance transfers, if configured in the runtime.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
-pub struct DisablePallets;
-
-impl DisablePallets {
-    fn do_validate_signed(call: &RuntimeCall) -> TransactionValidity {
-        // Disable normal balance transfers.
-        if !RuntimeConfigs::enable_balance_transfers() && contains_balance_transfer(call) {
-            Err(InvalidTransaction::Call.into())
-        } else {
-            Ok(ValidTransaction::default())
-        }
-    }
-}
-
-impl TransactionExtension<RuntimeCall> for DisablePallets {
-    const IDENTIFIER: &'static str = "DisablePallets";
-    type Implicit = ();
-    type Val = ();
-    type Pre = ();
-
-    fn weight(&self, _call: &RuntimeCall) -> Weight {
-        // there is always one storage read
-        <Runtime as frame_system::Config>::DbWeight::get().reads(1)
-    }
-
-    fn validate(
-        &self,
-        origin: OriginFor<Runtime>,
-        call: &RuntimeCallFor<Runtime>,
-        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
-        _len: usize,
-        _self_implicit: Self::Implicit,
-        _inherited_implication: &impl Encode,
-        _source: TransactionSource,
-    ) -> ValidateResult<Self::Val, RuntimeCallFor<Runtime>> {
-        let validity = if origin.as_system_origin_signer().is_some() {
-            Self::do_validate_signed(call)?
-        } else {
-            ValidTransaction::default()
-        };
-
-        Ok((validity, (), origin))
-    }
-
-    impl_tx_ext_default!(RuntimeCallFor<Runtime>; prepare);
-}
-
-fn contains_balance_transfer(call: &RuntimeCall) -> bool {
-    for call in nested_call_iter::<Runtime>(call) {
-        // Any other calls might contain nested calls, so we can only return early if we find a
-        // balance transfer call.
-        if let RuntimeCall::Balances(
-            pallet_balances::Call::transfer_allow_death { .. }
-            | pallet_balances::Call::transfer_keep_alive { .. }
-            | pallet_balances::Call::transfer_all { .. },
-        ) = call
-        {
-            return true;
-        }
-    }
-
-    false
 }
 
 #[cfg(test)]

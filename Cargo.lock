@@ -13864,6 +13864,7 @@ version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
+ "pallet-balances",
  "pallet-multisig",
  "pallet-transaction-payment",
  "pallet-utility",
