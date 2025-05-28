@@ -399,10 +399,11 @@ mod tests {
         new_test_ext, Domains, ReadRuntimeVersion, System, Test, TEST_RUNTIME_APIS,
     };
     use crate::Error;
+    use domain_runtime_primitives::Hash;
     use frame_support::dispatch::RawOrigin;
     use frame_support::traits::OnInitialize;
     use frame_support::{assert_err, assert_ok};
-    use parity_scale_codec::Encode;
+    use parity_scale_codec::{Decode, Encode};
     use sp_domains::storage::RawGenesis;
     use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeObject, RuntimeType};
     use sp_runtime::traits::BlockNumberProvider;
@@ -659,5 +660,56 @@ mod tests {
             let digest = System::digest();
             assert_eq!(Some(0), fetch_upgraded_runtime_from_digest(digest))
         });
+    }
+
+    #[test]
+    fn test_runtime_version_encode_decode_with_core_api() {
+        let runtime_obj = RuntimeObject {
+            runtime_name: "evm".to_owned(),
+            runtime_type: Default::default(),
+            runtime_upgrades: 100,
+            hash: Default::default(),
+            raw_genesis: RawGenesis::dummy(vec![1, 2, 3, 4]),
+            version: RuntimeVersion {
+                spec_name: "test".into(),
+                spec_version: 100,
+                impl_version: 34,
+                transaction_version: 256,
+                apis: create_apis_vec!(TEST_RUNTIME_APIS),
+                ..Default::default()
+            },
+            created_at: 100,
+            updated_at: 200,
+            instance_count: 500,
+        };
+
+        let encoded = runtime_obj.encode();
+        let decoded = RuntimeObject::<u32, Hash>::decode(&mut &encoded[..]).unwrap();
+        assert_eq!(decoded, runtime_obj);
+    }
+
+    #[test]
+    fn test_runtime_version_encode_decode_without_core_api() {
+        let runtime_obj = RuntimeObject {
+            runtime_name: "evm".to_owned(),
+            runtime_type: Default::default(),
+            runtime_upgrades: 100,
+            hash: Default::default(),
+            raw_genesis: RawGenesis::dummy(vec![1, 2, 3, 4]),
+            version: RuntimeVersion {
+                spec_name: "test".into(),
+                spec_version: 100,
+                impl_version: 34,
+                transaction_version: 256,
+                ..Default::default()
+            },
+            created_at: 100,
+            updated_at: 200,
+            instance_count: 500,
+        };
+
+        let encoded = runtime_obj.encode();
+        let decoded = RuntimeObject::<u32, Hash>::decode(&mut &encoded[..]).unwrap();
+        assert_ne!(decoded, runtime_obj);
     }
 }

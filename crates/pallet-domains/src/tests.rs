@@ -62,6 +62,12 @@ const DOMAIN_ID: DomainId = DomainId::new(0);
 const OPERATOR_ID: OperatorId = 0u64;
 
 // Core Api version ID and default APIs
+// RuntimeVersion's Decode is handwritten to accommodate Backward Compatibility for very old
+// RuntimeVersion that do not have TransactionVersion or SystemVersion.
+// So the Decode function always assume apis being present, at least CoreApi,
+// to derive the correct TransactionVersion and SystemVersion.
+// So we should always add the TEST_RUNTIME_APIS to the RuntimeVersion to ensure it is decoded correctly.
+// More here - https://github.com/paritytech/polkadot-sdk/blob/master/substrate/primitives/version/src/lib.rs#L637
 pub(crate) const CORE_API_ID: [u8; 8] = [223, 106, 203, 104, 153, 7, 96, 155];
 pub(crate) const TEST_RUNTIME_APIS: [(ApiId, u32); 1] = [(CORE_API_ID, 5)];
 
