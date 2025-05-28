@@ -70,6 +70,7 @@ sp-keystore.workspace = true
 sp-messenger.workspace = true
 sp-runtime.workspace = true
 subspace-core-primitives.workspace = true
+subspace-logging.workspace = true
 subspace-metrics.workspace = true
 subspace-networking.workspace = true
 subspace-proof-of-space.workspace = true
@@ -82,7 +83,6 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["macros"] }
 tokio-stream.workspace = true
 tracing.workspace = true
-subspace-logging.workspace = true
 
 [build-dependencies]
 substrate-build-script-utils.workspace = true

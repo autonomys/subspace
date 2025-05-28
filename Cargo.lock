@@ -8071,19 +8071,25 @@ name = "pallet-evm-tracker"
 version = "0.1.0"
 dependencies = [
  "domain-runtime-primitives",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "pallet-balances",
  "pallet-block-fees",
  "pallet-ethereum",
  "pallet-evm",
+ "pallet-timestamp",
  "pallet-transaction-payment",
+ "pallet-utility",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
  "sp-domains",
  "sp-evm-tracker",
+ "sp-io",
  "sp-runtime",
  "sp-weights",
+ "static_assertions",
  "subspace-runtime-primitives",
 ]
 

@@ -37,8 +37,11 @@ where
 {
     // If the account is allowed to create contracts, or it's not a contract call, return true.
     // Only enters allocating code if this account can't create contracts.
-    crate::Pallet::<Runtime>::is_allowed_to_create_contracts(signer)
-        || !is_create_contract::<Runtime>(call)
+    if crate::Pallet::<Runtime>::is_allowed_to_create_contracts(signer) {
+        return (true, 0);
+    }
+
+    is_create_contract::<Runtime>(call)
 }
 
 /// If anyone is allowed to create contracts, allows contracts. Otherwise, rejects contracts.
@@ -53,8 +56,11 @@ where
 {
     // If any account is allowed to create contracts, or it's not a contract call, return true.
     // Only enters allocating code if there is a contract creation filter.
-    crate::Pallet::<Runtime>::is_allowed_to_create_unsigned_contracts()
-        || !is_create_contract::<Runtime>(call)
+    if crate::Pallet::<Runtime>::is_allowed_to_create_unsigned_contracts() {
+        return (true, 0);
+    }
+
+    is_create_contract::<Runtime>(call)
 }
 
 /// Returns true if the call is a contract creation call.
@@ -139,7 +145,7 @@ where
     <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
         AsSystemOriginSigner<AccountIdFor<Runtime>> + Clone,
 {
-    fn do_validate_unsigned(call: &RuntimeCallFor<Runtime>) -> TransactionValidity {
+    pub(crate) fn do_validate_unsigned(call: &RuntimeCallFor<Runtime>) -> TransactionValidity {
         if !is_create_unsigned_contract_allowed::<Runtime>(call) {
             Err(InvalidTransaction::Custom(ERR_CONTRACT_CREATION_NOT_ALLOWED).into())
         } else {
@@ -147,7 +153,7 @@ where
         }
     }
 
-    fn do_validate(
+    pub(crate) fn do_validate(
         origin: &OriginFor<Runtime>,
         call: &RuntimeCallFor<Runtime>,
     ) -> TransactionValidity {
