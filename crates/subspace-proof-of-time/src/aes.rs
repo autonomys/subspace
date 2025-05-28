@@ -51,6 +51,25 @@ pub(crate) fn verify_sequential(
 ) -> bool {
     assert_eq!(checkpoint_iterations % 2, 0);
 
+    #[cfg(target_arch = "x86_64")]
+    {
+        cpufeatures::new!(has_aes, "avx512f", "vaes");
+        if has_aes::get() {
+            return unsafe {
+                x86_64::verify_sequential_avx512f(&seed, &key, checkpoints, checkpoint_iterations)
+            };
+        }
+    }
+
+    verify_sequential_generic(seed, key, checkpoints, checkpoint_iterations)
+}
+
+fn verify_sequential_generic(
+    seed: PotSeed,
+    key: PotKey,
+    checkpoints: &PotCheckpoints,
+    checkpoint_iterations: u32,
+) -> bool {
     let key = Array::from(*key);
     let cipher = Aes128::new(&key);
 
@@ -113,11 +132,23 @@ mod tests {
             &checkpoints,
             checkpoint_iterations,
         ));
+        assert!(verify_sequential_generic(
+            seed,
+            key,
+            &checkpoints,
+            checkpoint_iterations,
+        ));
 
         // Decryption of invalid cipher text fails.
         let mut checkpoints_1 = checkpoints;
         checkpoints_1[0] = PotOutput::from(BAD_CIPHER);
         assert!(!verify_sequential(
+            seed,
+            key,
+            &checkpoints_1,
+            checkpoint_iterations,
+        ));
+        assert!(!verify_sequential_generic(
             seed,
             key,
             &checkpoints_1,
@@ -131,7 +162,19 @@ mod tests {
             &checkpoints,
             checkpoint_iterations + 2,
         ));
+        assert!(!verify_sequential_generic(
+            seed,
+            key,
+            &checkpoints,
+            checkpoint_iterations + 2,
+        ));
         assert!(!verify_sequential(
+            seed,
+            key,
+            &checkpoints,
+            checkpoint_iterations - 2,
+        ));
+        assert!(!verify_sequential_generic(
             seed,
             key,
             &checkpoints,
@@ -145,9 +188,21 @@ mod tests {
             &checkpoints,
             checkpoint_iterations,
         ));
+        assert!(!verify_sequential_generic(
+            PotSeed::from(SEED_1),
+            key,
+            &checkpoints,
+            checkpoint_iterations,
+        ));
 
         // Decryption with wrong key fails.
         assert!(!verify_sequential(
+            seed,
+            PotKey::from(KEY_1),
+            &checkpoints,
+            checkpoint_iterations,
+        ));
+        assert!(!verify_sequential_generic(
             seed,
             PotKey::from(KEY_1),
             &checkpoints,

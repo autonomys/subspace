@@ -1,5 +1,6 @@
 //! Proof of time implementation.
 
+#![cfg_attr(target_arch = "x86_64", feature(stdarch_x86_avx512))]
 #![no_std]
 
 mod aes;
