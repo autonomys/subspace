@@ -41,6 +41,7 @@ cc = "1.1.23"
 chacha20 = { version = "0.9.1", default-features = false }
 clap = "4.5.18"
 core_affinity = "0.8.1"
+cpufeatures = "0.2.17"
 criterion = { version = "0.5.1", default-features = false }
 cross-domain-message-gossip = { version = "0.1.0", path = "domains/client/cross-domain-message-gossip" }
 derive_more = { version = "1.0.0", default-features = false }
