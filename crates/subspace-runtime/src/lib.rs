@@ -963,6 +963,12 @@ impl pallet_runtime_configs::Config for Runtime {
     type WeightInfo = pallet_runtime_configs::weights::SubstrateWeight<Runtime>;
 }
 
+impl pallet_domains::extensions::DomainsCheck for Runtime {
+    fn is_domains_enabled() -> bool {
+        RuntimeConfigs::enable_domains()
+    }
+}
+
 mod mmr {
     use super::Runtime;
     pub use pallet_mmr::primitives::*;

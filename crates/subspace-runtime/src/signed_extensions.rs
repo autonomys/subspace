@@ -8,8 +8,7 @@ use sp_runtime::traits::{
     AsSystemOriginSigner, DispatchInfoOf, TransactionExtension, ValidateResult,
 };
 use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
-    ValidTransaction,
+    InvalidTransaction, TransactionSource, TransactionValidity, ValidTransaction,
 };
 use sp_std::prelude::*;
 use subspace_runtime_primitives::utility::nested_call_iter;
@@ -19,14 +18,6 @@ use subspace_runtime_primitives::utility::nested_call_iter;
 pub struct DisablePallets;
 
 impl DisablePallets {
-    fn do_validate_unsigned(call: &RuntimeCall) -> TransactionValidity {
-        if matches!(call, RuntimeCall::Domains(_)) && !RuntimeConfigs::enable_domains() {
-            InvalidTransaction::Call.into()
-        } else {
-            Ok(ValidTransaction::default())
-        }
-    }
-
     fn do_validate_signed(call: &RuntimeCall) -> TransactionValidity {
         // Disable normal balance transfers.
         if !RuntimeConfigs::enable_balance_transfers() && contains_balance_transfer(call) {
@@ -69,23 +60,6 @@ impl TransactionExtension<RuntimeCall> for DisablePallets {
     }
 
     impl_tx_ext_default!(RuntimeCallFor<Runtime>; prepare);
-
-    fn bare_validate(
-        call: &RuntimeCallFor<Runtime>,
-        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
-        _len: usize,
-    ) -> TransactionValidity {
-        Self::do_validate_unsigned(call)
-    }
-
-    fn bare_validate_and_prepare(
-        call: &RuntimeCallFor<Runtime>,
-        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
-        _len: usize,
-    ) -> Result<(), TransactionValidityError> {
-        Self::do_validate_unsigned(call)?;
-        Ok(())
-    }
 }
 
 fn contains_balance_transfer(call: &RuntimeCall) -> bool {

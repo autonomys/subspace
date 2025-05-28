@@ -945,6 +945,12 @@ impl pallet_runtime_configs::Config for Runtime {
     type WeightInfo = pallet_runtime_configs::weights::SubstrateWeight<Runtime>;
 }
 
+impl pallet_domains::extensions::DomainsCheck for Runtime {
+    fn is_domains_enabled() -> bool {
+        RuntimeConfigs::enable_domains()
+    }
+}
+
 parameter_types! {
     pub const MaxSignatories: u32 = 100;
 }
@@ -1866,14 +1872,6 @@ impl_runtime_apis! {
 pub struct DisablePallets;
 
 impl DisablePallets {
-    fn do_validate_unsigned(call: &RuntimeCall) -> TransactionValidity {
-        if matches!(call, RuntimeCall::Domains(_)) && !RuntimeConfigs::enable_domains() {
-            InvalidTransaction::Call.into()
-        } else {
-            Ok(ValidTransaction::default())
-        }
-    }
-
     fn do_validate_signed(call: &RuntimeCall) -> TransactionValidity {
         // Disable normal balance transfers.
         if !RuntimeConfigs::enable_balance_transfers() && contains_balance_transfer(call) {
@@ -1890,7 +1888,6 @@ impl TransactionExtension<RuntimeCall> for DisablePallets {
     type Val = ();
     type Pre = ();
 
-    // TODO: calculate weight for extension
     fn weight(&self, _call: &RuntimeCall) -> Weight {
         // there is always one storage read
         <Runtime as frame_system::Config>::DbWeight::get().reads(1)
@@ -1916,23 +1913,6 @@ impl TransactionExtension<RuntimeCall> for DisablePallets {
     }
 
     impl_tx_ext_default!(RuntimeCallFor<Runtime>; prepare);
-
-    fn bare_validate(
-        call: &RuntimeCallFor<Runtime>,
-        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
-        _len: usize,
-    ) -> TransactionValidity {
-        Self::do_validate_unsigned(call)
-    }
-
-    fn bare_validate_and_prepare(
-        call: &RuntimeCallFor<Runtime>,
-        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
-        _len: usize,
-    ) -> Result<(), TransactionValidityError> {
-        Self::do_validate_unsigned(call)?;
-        Ok(())
-    }
 }
 
 fn contains_balance_transfer(call: &RuntimeCall) -> bool {
