@@ -27,6 +27,7 @@ pub mod check_nonce;
 pub mod create_contract;
 pub mod fees;
 pub mod traits;
+pub mod weights;
 
 pub use check_nonce::CheckNonce;
 use domain_runtime_primitives::EthereumAccountId;

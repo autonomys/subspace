@@ -225,8 +225,6 @@ where
     type Val = Val;
     type Pre = Pre;
 
-    // TODO: calculate proper weight for this extension
-    //  Currently only accounts for storage read
     fn weight(&self, _: &RuntimeCallFor<Runtime>) -> Weight {
         Self::get_weights(MAXIMUM_NUMBER_OF_CALLS)
     }
