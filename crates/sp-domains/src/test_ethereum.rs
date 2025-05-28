@@ -6,6 +6,7 @@ use crate::test_ethereum_tx::{
 use crate::{EthereumAccountId, PermissionedActionAllowedBy};
 use ethereum::TransactionV2 as Transaction;
 use frame_support::pallet_prelude::DispatchClass;
+use frame_system::pallet_prelude::RuntimeCallFor;
 use hex_literal::hex;
 use pallet_evm::GasWeightMapping;
 use sp_core::{Get, U256};
@@ -42,6 +43,69 @@ pub fn generate_evm_account_list(
             EthereumAccountId::from(account_infos[2].address),
         ]),
     }
+}
+
+/// Generate a pallet-evm call, which can be passed to `construct_and_send_extrinsic()`.
+/// `use_create` determines whether to use `create`, `create2`, or a non-create call.
+/// `recursion_depth` determines the number of `pallet_utility::Call` wrappers to use.
+pub fn generate_evm_domain_call<TestRuntime>(
+    account_info: AccountInfo,
+    use_create: ethereum::TransactionAction,
+    recursion_depth: u8,
+    nonce: U256,
+    gas_price: U256,
+) -> RuntimeCallFor<TestRuntime>
+where
+    TestRuntime: frame_system::Config + pallet_evm::Config + pallet_utility::Config,
+    RuntimeCallFor<TestRuntime>:
+        From<pallet_utility::Call<TestRuntime>> + From<pallet_evm::Call<TestRuntime>>,
+{
+    if recursion_depth > 0 {
+        let inner_call = generate_evm_domain_call::<TestRuntime>(
+            account_info,
+            use_create,
+            recursion_depth - 1,
+            nonce,
+            gas_price,
+        );
+
+        // TODO:
+        // - randomly choose from the 6 different utility wrapper calls
+        // - test this call as the second call in a batch
+        // - test __Ignore calls are ignored
+        return pallet_utility::Call::<TestRuntime>::batch {
+            calls: vec![inner_call.into()],
+        }
+        .into();
+    }
+
+    let call = match use_create {
+        // TODO:
+        // - randomly choose from Create or Create2 calls
+        ethereum::TransactionAction::Create => pallet_evm::Call::<TestRuntime>::create {
+            source: account_info.address,
+            init: vec![0; 100],
+            value: U256::zero(),
+            gas_limit: max_extrinsic_gas::<TestRuntime>(1000),
+            max_fee_per_gas: gas_price,
+            access_list: vec![],
+            max_priority_fee_per_gas: Some(U256::from(1)),
+            nonce: Some(nonce),
+        },
+        ethereum::TransactionAction::Call(contract) => pallet_evm::Call::<TestRuntime>::call {
+            source: account_info.address,
+            target: contract,
+            input: vec![0; 100],
+            value: U256::zero(),
+            gas_limit: max_extrinsic_gas::<TestRuntime>(1000),
+            max_fee_per_gas: gas_price,
+            max_priority_fee_per_gas: Some(U256::from(1)),
+            nonce: Some(nonce),
+            access_list: vec![],
+        },
+    };
+
+    call.into()
 }
 
 pub fn max_extrinsic_gas<TestRuntime: frame_system::Config + pallet_evm::Config>(

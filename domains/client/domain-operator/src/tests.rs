@@ -38,7 +38,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::test_ethereum::{
-    generate_evm_account_list, generate_legacy_tx, max_extrinsic_gas, EvmAccountList,
+    generate_evm_account_list, generate_evm_domain_call, generate_legacy_tx, EvmAccountList,
 };
 use sp_domains::test_ethereum_tx::{address_build, contract_address, AccountInfo};
 use sp_domains::{
@@ -129,63 +129,6 @@ pub fn generate_eth_domain_extrinsic(
 pub fn generate_eth_domain_sc_extrinsic(tx: EthereumTransaction) -> EvmUncheckedExtrinsic {
     let call = pallet_ethereum::Call::<TestRuntime>::transact { transaction: tx };
     fp_self_contained::UncheckedExtrinsic::new_bare(RuntimeCall::Ethereum(call))
-}
-
-/// Generate a pallet-evm call, which can be passed to `construct_and_send_extrinsic()`.
-/// `use_create` determines whether to use `create`, `create2`, or a non-create call.
-/// `recursion_depth` determines the number of `pallet_utility::Call` wrappers to use.
-pub fn generate_evm_domain_call(
-    account_info: AccountInfo,
-    use_create: ethereum::TransactionAction,
-    recursion_depth: u8,
-    nonce: U256,
-    gas_price: U256,
-) -> <TestRuntime as frame_system::Config>::RuntimeCall {
-    if recursion_depth > 0 {
-        let inner_call = generate_evm_domain_call(
-            account_info,
-            use_create,
-            recursion_depth - 1,
-            nonce,
-            gas_price,
-        );
-
-        // TODO:
-        // - randomly choose from the 6 different utility wrapper calls
-        // - test this call as the second call in a batch
-        // - test __Ignore calls are ignored
-        return RuntimeCall::Utility(pallet_utility::Call::<TestRuntime>::batch {
-            calls: vec![inner_call],
-        });
-    }
-
-    let call = match use_create {
-        // TODO:
-        // - randomly choose from Create or Create2 calls
-        ethereum::TransactionAction::Create => pallet_evm::Call::<TestRuntime>::create {
-            source: account_info.address,
-            init: vec![0; 100],
-            value: U256::zero(),
-            gas_limit: max_extrinsic_gas::<TestRuntime>(1000),
-            max_fee_per_gas: gas_price,
-            access_list: vec![],
-            max_priority_fee_per_gas: Some(U256::from(1)),
-            nonce: Some(nonce),
-        },
-        ethereum::TransactionAction::Call(contract) => pallet_evm::Call::<TestRuntime>::call {
-            source: account_info.address,
-            target: contract,
-            input: vec![0; 100],
-            value: U256::zero(),
-            gas_limit: max_extrinsic_gas::<TestRuntime>(1000),
-            max_fee_per_gas: gas_price,
-            max_priority_fee_per_gas: Some(U256::from(1)),
-            nonce: Some(nonce),
-            access_list: vec![],
-        },
-    };
-
-    RuntimeCall::EVM(call)
 }
 
 async fn setup_evm_test_nodes(
@@ -361,7 +304,7 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
         .account_basic(alice.client.info().best_hash, account_infos[1].address)
         .unwrap()
         .nonce;
-    let mut evm_tx = generate_evm_domain_call(
+    let mut evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -399,7 +342,7 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
         .unwrap();
 
     // Nested should behave exactly the same
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
         1,
@@ -415,7 +358,7 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
         "Unexpectedly failed to send nested signed extrinsic"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -488,7 +431,7 @@ async fn test_public_evm_domain_create_contracts() {
         .account_basic(alice.client.info().best_hash, account_infos[1].address)
         .unwrap()
         .nonce;
-    let mut evm_tx = generate_evm_domain_call(
+    let mut evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -526,7 +469,7 @@ async fn test_public_evm_domain_create_contracts() {
         .unwrap();
 
     // Nested should behave exactly the same
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
         1,
@@ -542,7 +485,7 @@ async fn test_public_evm_domain_create_contracts() {
         "Unexpectedly failed to send nested signed extrinsic"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -611,7 +554,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         .account_basic(alice.client.info().best_hash, account_infos[1].address)
         .unwrap()
         .nonce;
-    let mut evm_tx = generate_evm_domain_call(
+    let mut evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -674,7 +617,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         "Create contract self-contained extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -690,7 +633,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         "Create contract signed extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         2,
@@ -706,7 +649,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         "Create contract nested signed extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -739,7 +682,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         "Contract call self-contained extrinsic should have been allowed"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[3].clone(),
         ethereum::TransactionAction::Call(evm_contract_address),
         0,
@@ -777,7 +720,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         .unwrap();
 
     // Nested should be able to call existing contracts
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[3].clone(),
         ethereum::TransactionAction::Call(evm_contract_address),
         3,
@@ -843,7 +786,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
         .account_basic(alice.client.info().best_hash, account_infos[1].address)
         .unwrap()
         .nonce;
-    let mut evm_tx = generate_evm_domain_call(
+    let mut evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -908,7 +851,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
         eth_nonce - U256::one(),
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -952,7 +895,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
         .unwrap();
 
     // Nested should also work
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
         4,
@@ -990,7 +933,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
         "Create contract self-contained extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -1008,7 +951,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
         "Create contract unsigned extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         5,
@@ -1102,7 +1045,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
         .account_basic(alice.client.info().best_hash, account_infos[2].address)
         .unwrap()
         .nonce;
-    let mut evm_tx = generate_evm_domain_call(
+    let mut evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -1141,7 +1084,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
         .unwrap();
 
     // Nested should also work
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
         6,
@@ -1174,7 +1117,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
         "Create contract self-contained extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[4].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -1192,7 +1135,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
         "Create contract unsigned extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[4].clone(),
         ethereum::TransactionAction::Create,
         7,
@@ -1334,7 +1277,7 @@ async fn test_evm_domain_gas_estimates() {
         .account_basic(alice.client.info().best_hash, account_infos[0].address)
         .unwrap()
         .nonce;
-    let evm_create = generate_evm_domain_call(
+    let evm_create = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -1349,7 +1292,7 @@ async fn test_evm_domain_gas_estimates() {
         .account_basic(alice.client.info().best_hash, account_infos[0].address)
         .unwrap()
         .nonce;
-    let evm_call = generate_evm_domain_call(
+    let evm_call = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Call(H160::zero()),
         0,
@@ -1365,7 +1308,7 @@ async fn test_evm_domain_gas_estimates() {
         .account_basic(alice.client.info().best_hash, account_infos[0].address)
         .unwrap()
         .nonce;
-    let evm_create = generate_evm_domain_call(
+    let evm_create = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -1384,7 +1327,7 @@ async fn test_evm_domain_gas_estimates() {
         .account_basic(alice.client.info().best_hash, account_infos[0].address)
         .unwrap()
         .nonce;
-    let evm_call = generate_evm_domain_call(
+    let evm_call = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Call(evm_contract_address),
         0,
@@ -1402,7 +1345,7 @@ async fn test_evm_domain_gas_estimates() {
         .account_basic(alice.client.info().best_hash, account_infos[0].address)
         .unwrap()
         .nonce;
-    let evm_tx = generate_evm_domain_call(
+    let evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -1450,7 +1393,7 @@ async fn test_evm_domain_gas_estimates() {
         .account_basic(alice.client.info().best_hash, account_infos[0].address)
         .unwrap()
         .nonce;
-    let evm_tx = generate_evm_domain_call(
+    let evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Call(evm_contract_address),
         0,
