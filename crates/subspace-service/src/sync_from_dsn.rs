@@ -40,8 +40,6 @@ const CHECK_ALMOST_SYNCED_INTERVAL: Duration = Duration::from_secs(1);
 /// Period of time during which node should be offline for DSN sync to kick-in
 const MIN_OFFLINE_PERIOD: Duration = Duration::from_secs(60);
 
-pub(crate) const LOG_TARGET: &str = "consensus_sync";
-
 /// Wrapper type for [`PieceProvider`], so it can implement [`PieceGetter`]
 pub struct DsnPieceGetter<PV: PieceValidator>(PieceProvider<PV>);
 
@@ -321,7 +319,6 @@ where
 
     while let Some(reason) = notifications.next().await {
         info!(
-            target: LOG_TARGET,
             ?reason,
             ?last_completed_segment_index,
             ?last_processed_block_number,
@@ -356,7 +353,6 @@ where
                     .unwrap_or_default()
                 {
                     debug!(
-                        target: LOG_TARGET,
                         best_block = ?info.best_number,
                         ?target_block_number,
                         "Node is almost synced, stopping DSN sync until the next notification"
@@ -370,7 +366,6 @@ where
             result = import_blocks_from_dsn_fut.fuse() => {
                 if let Err(error) = result {
                     warn!(
-                        target: LOG_TARGET,
                         %error,
                         ?last_completed_segment_index,
                         ?last_processed_block_number,
@@ -391,7 +386,6 @@ where
         // gracefully. We do this at the end of the loop, to minimise race conditions which can
         // hide DSN sync bugs.
         debug!(
-            target: LOG_TARGET,
             ?last_completed_segment_index,
             ?last_processed_block_number,
             "Finished DSN sync, activating substrate sync"

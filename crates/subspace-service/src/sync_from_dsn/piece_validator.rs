@@ -1,4 +1,3 @@
-use crate::sync_from_dsn::LOG_TARGET;
 use async_trait::async_trait;
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
@@ -55,7 +54,7 @@ where
         let segment_commitment = match maybe_segment_header {
             Some(segment_header) => segment_header.segment_commitment(),
             None => {
-                error!(target: LOG_TARGET, %segment_index, "No segment commitment in the cache.");
+                error!( %segment_index, "No segment commitment in the cache.");
 
                 return None;
             }
@@ -74,7 +73,6 @@ where
             Some(piece) => Some(piece),
             None => {
                 warn!(
-                    target: LOG_TARGET,
                     %piece_index,
                     %source_peer_id,
                     "Received invalid piece from peer"

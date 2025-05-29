@@ -109,10 +109,7 @@ where
         } else {
             let (tag, priority) = match Domains::<Runtime>::validate_fraud_proof(fraud_proof) {
                 Err(e) => {
-                    log::warn!(
-                        target: "runtime::domains",
-                        "Bad fraud proof {fraud_proof:?}, error: {e:?}",
-                    );
+                    log::warn!("Bad fraud proof {fraud_proof:?}, error: {e:?}",);
                     return InvalidTransactionCode::FraudProof.into();
                 }
                 Ok(tp) => tp,

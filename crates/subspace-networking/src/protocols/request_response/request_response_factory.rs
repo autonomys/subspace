@@ -65,8 +65,6 @@ use std::time::{Duration, Instant};
 use std::{io, iter};
 use tracing::{debug, error, warn};
 
-const LOG_TARGET: &str = "request-response-protocols";
-
 /// Defines a handler for the request-response protocol factory.
 #[async_trait]
 pub trait RequestHandler: Send {
@@ -399,7 +397,6 @@ impl RequestResponseFactoryBehaviour {
                 .is_err()
             {
                 debug!(
-                    target: LOG_TARGET,
                     "Not connected to peer {:?}. At the same time local \
                      node is no longer interested in the result.",
                     target,
@@ -410,7 +407,6 @@ impl RequestResponseFactoryBehaviour {
             .is_err()
         {
             debug!(
-                target: LOG_TARGET,
                 "Unknown protocol {:?}. At the same time local \
                  node is no longer interested in the result.",
                 protocol_name,
@@ -602,8 +598,8 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
         }
 
         warn!(
-            target: LOG_TARGET,
-            "inject_node_event: no request-response instance registered for protocol {:?}", p_name
+            "inject_node_event: no request-response instance registered for protocol {:?}",
+            p_name
         )
     }
 
@@ -676,7 +672,6 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                             // Note: Failure is handled further below when receiving
                             // `InboundFailure` event from `RequestResponse` behaviour.
                             debug!(
-                                target: LOG_TARGET,
                                 %request_id,
                                 "Failed to send response for request on protocol {} due to a \
                                 timeout or due to the connection to the peer being closed. \
@@ -802,7 +797,6 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                 }
                                 None => {
                                     warn!(
-                                        target: LOG_TARGET,
                                         "Received `RequestResponseEvent::Message` with unexpected request id {:?}",
                                         request_id,
                                     );
@@ -839,7 +833,6 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                         .is_err()
                                     {
                                         debug!(
-                                            target: LOG_TARGET,
                                             %request_id,
                                             "Request failed. At the same time local node is no longer interested in \
                                             the result",
@@ -849,7 +842,6 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                 }
                                 None => {
                                     warn!(
-                                        target: LOG_TARGET,
                                         %request_id,
                                         "Received `RequestResponseEvent::Message` with unexpected request",
                                     );

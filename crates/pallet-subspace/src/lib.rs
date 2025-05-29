@@ -913,10 +913,8 @@ impl<T: Config> Pallet<T> {
                 && target_slot <= current_slot
             {
                 debug!(
-                    target: "runtime::subspace",
                     "Applying PoT slots update, changing to {} at block #{:?}",
-                    update.slot_iterations,
-                    block_number
+                    update.slot_iterations, block_number
                 );
                 pot_slot_iterations = PotSlotIterationsValue {
                     slot_iterations: update.slot_iterations,
@@ -955,20 +953,14 @@ impl<T: Config> Pallet<T> {
                         let target_slot = pre_digest
                             .slot()
                             .saturating_add(pot_entropy_injection_delay);
-                        debug!(
-                            target: "runtime::subspace",
-                            "Pot entropy injection will happen at slot {target_slot:?}",
-                        );
+                        debug!("Pot entropy injection will happen at slot {target_slot:?}",);
                         entropy_value.target_slot.replace(target_slot);
 
                         // Schedule PoT slot iterations update at the same slot as entropy
                         if let Some(update) = &mut pot_slot_iterations.update
                             && update.target_slot.is_none()
                         {
-                            debug!(
-                                target: "runtime::subspace",
-                                "Scheduling PoT slots update to happen at slot {target_slot:?}"
-                            );
+                            debug!("Scheduling PoT slots update to happen at slot {target_slot:?}");
                             update.target_slot.replace(target_slot);
                             PotSlotIterations::<T>::put(pot_slot_iterations);
                         }
@@ -994,10 +986,7 @@ impl<T: Config> Pallet<T> {
                         && let Some(update_target_slot) = update.target_slot
                         && update_target_slot == target_slot
                     {
-                        debug!(
-                            target: "runtime::subspace",
-                            "Applying PoT slots update to the next PoT parameters change"
-                        );
+                        debug!("Applying PoT slots update to the next PoT parameters change");
                         update.slot_iterations
                     } else {
                         pot_slot_iterations.slot_iterations
@@ -1235,10 +1224,10 @@ where
         let ext = T::create_unsigned(call.into());
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
-                debug!(target: "runtime::subspace", "Submitted Subspace vote");
+                debug!("Submitted Subspace vote");
             }
             Err(()) => {
-                error!(target: "runtime::subspace", "Error submitting Subspace vote");
+                error!("Error submitting Subspace vote");
             }
         }
     }
@@ -1258,10 +1247,7 @@ impl<T: Config> Pallet<T> {
             source,
             TransactionSource::Local | TransactionSource::InBlock,
         ) {
-            warn!(
-                target: "runtime::subspace",
-                "Rejecting segment header extrinsic because it is not local/in-block.",
-            );
+            warn!("Rejecting segment header extrinsic because it is not local/in-block.",);
 
             return InvalidTransaction::Call.into();
         }
@@ -1406,10 +1392,7 @@ fn check_vote<T: Config>(
     let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
     if current_block_number <= One::one() || height <= One::one() {
-        debug!(
-            target: "runtime::subspace",
-            "Votes are not expected at height below 2"
-        );
+        debug!("Votes are not expected at height below 2");
 
         return Err(CheckVoteError::UnexpectedBeforeHeightTwo);
     }
@@ -1419,7 +1402,6 @@ fn check_vote<T: Config>(
     // Subtraction will not panic due to check above.
     if !(height == current_block_number || height == current_block_number - One::one()) {
         debug!(
-            target: "runtime::subspace",
             "Vote verification error: bad height {height:?}, current block number is \
             {current_block_number:?}"
         );
@@ -1434,10 +1416,7 @@ fn check_vote<T: Config>(
     //
     // Subtraction will not panic due to check above.
     if *parent_hash != frame_system::Pallet::<T>::block_hash(height - One::one()) {
-        debug!(
-            target: "runtime::subspace",
-            "Vote verification error: parent hash {parent_hash:?}",
-        );
+        debug!("Vote verification error: parent hash {parent_hash:?}",);
         return Err(CheckVoteError::IncorrectParentHash);
     }
 
@@ -1450,10 +1429,7 @@ fn check_vote<T: Config>(
         // same (for votes produced locally)
         let current_slot = current_vote_verification_data.current_slot;
         if slot > current_slot || (slot == current_slot && height != current_block_number) {
-            debug!(
-                target: "runtime::subspace",
-                "Vote slot {slot:?} must be before current slot {current_slot:?}",
-            );
+            debug!("Vote slot {slot:?} must be before current slot {current_slot:?}",);
             return Err(CheckVoteError::SlotInTheFuture);
         }
     }
@@ -1481,10 +1457,7 @@ fn check_vote<T: Config>(
     };
 
     if slot <= parent_slot {
-        debug!(
-            target: "runtime::subspace",
-            "Vote slot {slot:?} must be after parent slot {parent_slot:?}",
-        );
+        debug!("Vote slot {slot:?} must be after parent slot {parent_slot:?}",);
         return Err(CheckVoteError::SlotInThePast);
     }
 
@@ -1494,10 +1467,7 @@ fn check_vote<T: Config>(
         &solution.public_key,
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     ) {
-        debug!(
-            target: "runtime::subspace",
-            "Vote verification error: {error:?}"
-        );
+        debug!("Vote verification error: {error:?}");
         return Err(CheckVoteError::BadRewardSignature(error));
     }
 
@@ -1528,16 +1498,14 @@ fn check_vote<T: Config>(
         )
         .segment_index();
 
-    let segment_commitment =
-        if let Some(segment_commitment) = Pallet::<T>::segment_commitment(segment_index) {
-            segment_commitment
-        } else {
-            debug!(
-                target: "runtime::subspace",
-                "Vote verification error: no segment commitment for segment index {segment_index}"
-            );
-            return Err(CheckVoteError::UnknownSegmentCommitment);
-        };
+    let segment_commitment = if let Some(segment_commitment) =
+        Pallet::<T>::segment_commitment(segment_index)
+    {
+        segment_commitment
+    } else {
+        debug!("Vote verification error: no segment commitment for segment index {segment_index}");
+        return Err(CheckVoteError::UnknownSegmentCommitment);
+    };
 
     let sector_expiration_check_segment_commitment = Pallet::<T>::segment_commitment(
         solution
@@ -1567,18 +1535,12 @@ fn check_vote<T: Config>(
     ) {
         Ok(solution_distance) => {
             if solution_distance <= vote_verification_data.solution_range / 2 {
-                debug!(
-                    target: "runtime::subspace",
-                    "Vote quality is too high"
-                );
+                debug!("Vote quality is too high");
                 return Err(CheckVoteError::QualityTooHigh);
             }
         }
         Err(error) => {
-            debug!(
-                target: "runtime::subspace",
-                "Vote verification error: {error:?}"
-            );
+            debug!("Vote verification error: {error:?}");
             return Err(CheckVoteError::InvalidSolution(error));
         }
     }
@@ -1593,7 +1555,7 @@ fn check_vote<T: Config>(
         // Quick verification when entering transaction pool, but not when constructing the block
         !pre_dispatch,
     ) {
-        debug!(target: "runtime::subspace", "Invalid proof of time");
+        debug!("Invalid proof of time");
 
         return Err(CheckVoteError::InvalidProofOfTime);
     }
@@ -1609,7 +1571,7 @@ fn check_vote<T: Config>(
             false,
         )
     {
-        debug!(target: "runtime::subspace", "Invalid future proof of time");
+        debug!("Invalid future proof of time");
 
         return Err(CheckVoteError::InvalidFutureProofOfTime);
     }

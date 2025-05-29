@@ -19,7 +19,6 @@ mod tests;
 
 use crate::mmr::sync::decode_mmr_data;
 use crate::mmr::{get_offchain_key, get_temp_key};
-use crate::sync_from_dsn::LOG_TARGET;
 use futures::channel::oneshot;
 use futures::stream::StreamExt;
 use parity_scale_codec::{Decode, Encode};
@@ -201,9 +200,9 @@ where
             } = request;
 
             match self.handle_request(payload, pending_response, &peer) {
-                Ok(()) => debug!(target: LOG_TARGET, "Handled MMR request from {}.", peer),
+                Ok(()) => debug!("Handled MMR request from {}.", peer),
                 Err(e) => {
-                    error!(target: LOG_TARGET, "Failed to handle MMR request from {}: {}", peer, e,)
+                    error!("Failed to handle MMR request from {}: {}", peer, e,)
                 }
             }
         }
@@ -239,11 +238,10 @@ where
             }
         }
 
-        trace!(target: LOG_TARGET, "Handle MMR request: {peer}, request: {request:?}",);
+        trace!("Handle MMR request: {peer}, request: {request:?}",);
 
         let result = if request.limit > MAX_MMR_ITEMS {
             error!(
-                target: LOG_TARGET,
                 "Invalid MMR request from peer={peer}: {:?}",
                 HandleRequestError::MaxItemsLimitExceeded
             );
@@ -258,7 +256,7 @@ where
                     .local_storage_get(StorageKind::PERSISTENT, &canon_key);
 
                 let block_number = leaf_index_that_added_node(position);
-                trace!(target: LOG_TARGET, %position, %block_number, "Storage data present: {}", storage_value.is_some());
+                trace!( %position, %block_number, "Storage data present: {}", storage_value.is_some());
 
                 if let Some(storage_value) = storage_value {
                     mmr_data.insert(position, storage_value);
@@ -271,14 +269,14 @@ where
 
                         if let Some(storage_value) = storage_value {
                             let data = decode_mmr_data(&storage_value);
-                            trace!(target: LOG_TARGET, %position, %block_number,"MMR node: {data:?}");
+                            trace!( %position, %block_number,"MMR node: {data:?}");
                             mmr_data.insert(position, storage_value);
                             continue;
                         } else {
-                            debug!(target: LOG_TARGET, %position, %block_number, ?hash, "Didn't find value in storage.")
+                            debug!( %position, %block_number, ?hash, "Didn't find value in storage.")
                         }
                     } else {
-                        debug!(target: LOG_TARGET, %position, %block_number, "Didn't find hash.")
+                        debug!( %position, %block_number, "Didn't find hash.")
                     }
                     break; // No more storage values
                 }

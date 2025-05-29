@@ -1127,7 +1127,7 @@ mod pallet {
         ) -> DispatchResultWithPostInfo {
             T::DomainOrigin::ensure_origin(origin)?;
 
-            log::trace!(target: "runtime::domains", "Processing bundle: {opaque_bundle:?}");
+            log::trace!("Processing bundle: {opaque_bundle:?}");
 
             let domain_id = opaque_bundle.domain_id();
             let bundle_hash = opaque_bundle.hash();
@@ -1313,7 +1313,7 @@ mod pallet {
         ) -> DispatchResultWithPostInfo {
             T::DomainOrigin::ensure_origin(origin)?;
 
-            log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
+            log::trace!("Processing fraud proof: {fraud_proof:?}");
 
             #[cfg(not(feature = "runtime-benchmarks"))]
             let mut actual_weight = T::WeightInfo::submit_fraud_proof();
@@ -2084,13 +2084,11 @@ impl<T: Config> Pallet<T> {
             | BundleError::ExpectingReceiptGap
             | BundleError::UnexpectedReceiptGap => {
                 log::debug!(
-                    target: "runtime::domains",
                     "Bad bundle/receipt, domain {domain_id:?}, operator {operator_id:?}, error: {err:?}",
                 );
             }
             _ => {
                 log::warn!(
-                    target: "runtime::domains",
                     "Bad bundle/receipt, domain {domain_id:?}, operator {operator_id:?}, error: {err:?}",
                 );
             }
@@ -2473,10 +2471,7 @@ impl<T: Config> Pallet<T> {
                     DomainHashingFor<T>,
                 >(bad_receipt, storage_proof, domain_runtime_code)
                 .map_err(|err| {
-                    log::error!(
-                        target: "runtime::domains",
-                        "Block fees proof verification failed: {err:?}"
-                    );
+                    log::error!("Block fees proof verification failed: {err:?}");
                     FraudProofError::InvalidBlockFeesFraudProof
                 })?;
             }
@@ -2495,10 +2490,7 @@ impl<T: Config> Pallet<T> {
                     DomainHashingFor<T>,
                 >(bad_receipt, storage_proof, domain_runtime_code)
                 .map_err(|err| {
-                    log::error!(
-                        target: "runtime::domains",
-                        "Domain transfers proof verification failed: {err:?}"
-                    );
+                    log::error!("Domain transfers proof verification failed: {err:?}");
                     FraudProofError::InvalidTransfersFraudProof
                 })?;
             }
@@ -2519,10 +2511,7 @@ impl<T: Config> Pallet<T> {
                     parent_receipt.domain_block_hash,
                 )
                 .map_err(|err| {
-                    log::error!(
-                        target: "runtime::domains",
-                        "Invalid Domain block hash proof verification failed: {err:?}"
-                    );
+                    log::error!("Invalid Domain block hash proof verification failed: {err:?}");
                     FraudProofError::InvalidDomainBlockHashFraudProof
                 })?;
             }
@@ -2551,10 +2540,7 @@ impl<T: Config> Pallet<T> {
                     domain_runtime_code,
                 )
                 .map_err(|err| {
-                    log::error!(
-                        target: "runtime::domains",
-                        "Invalid Domain extrinsic root proof verification failed: {err:?}"
-                    );
+                    log::error!("Invalid Domain extrinsic root proof verification failed: {err:?}");
                     FraudProofError::InvalidExtrinsicRootFraudProof
                 })?;
             }
@@ -2575,10 +2561,7 @@ impl<T: Config> Pallet<T> {
                     BalanceOf<T>,
                 >(bad_receipt, bad_receipt_parent, proof, domain_runtime_code)
                 .map_err(|err| {
-                    log::error!(
-                        target: "runtime::domains",
-                        "Invalid State transition proof verification failed: {err:?}"
-                    );
+                    log::error!("Invalid State transition proof verification failed: {err:?}");
                     FraudProofError::InvalidStateTransitionFraudProof
                 })?;
             }
@@ -2611,10 +2594,7 @@ impl<T: Config> Pallet<T> {
                     domain_runtime_code,
                 )
                 .map_err(|err| {
-                    log::error!(
-                        target: "runtime::domains",
-                        "Invalid Bundle proof verification failed: {err:?}"
-                    );
+                    log::error!("Invalid Bundle proof verification failed: {err:?}");
                     FraudProofError::InvalidBundleFraudProof
                 })?;
             }
@@ -2639,10 +2619,7 @@ impl<T: Config> Pallet<T> {
                     domain_runtime_code,
                 )
                 .map_err(|err| {
-                    log::error!(
-                        target: "runtime::domains",
-                        "Valid bundle proof verification failed: {err:?}"
-                    );
+                    log::error!("Valid bundle proof verification failed: {err:?}");
                     FraudProofError::BadValidBundleFraudProof
                 })?
             }
@@ -3165,13 +3142,10 @@ where
 
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
-                log::info!(
-                    target: "runtime::domains",
-                    "Submitted bundle from slot {slot}, extrinsics: {extrinsics_count}",
-                );
+                log::info!("Submitted bundle from slot {slot}, extrinsics: {extrinsics_count}",);
             }
             Err(()) => {
-                log::error!(target: "runtime::domains", "Error submitting bundle");
+                log::error!("Error submitting bundle");
             }
         }
     }
@@ -3186,12 +3160,11 @@ where
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
                 log::info!(
-                    target: "runtime::domains",
                     "Submitted singleton receipt from slot {slot}, domain_block_number: {domain_block_number:?}",
                 );
             }
             Err(()) => {
-                log::error!(target: "runtime::domains", "Error submitting singleton receipt");
+                log::error!("Error submitting singleton receipt");
             }
         }
     }
@@ -3205,10 +3178,10 @@ where
         let ext = T::create_unsigned(call.into());
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
-                log::info!(target: "runtime::domains", "Submitted fraud proof");
+                log::info!("Submitted fraud proof");
             }
             Err(()) => {
-                log::error!(target: "runtime::domains", "Error submitting fraud proof");
+                log::error!("Error submitting fraud proof");
             }
         }
     }

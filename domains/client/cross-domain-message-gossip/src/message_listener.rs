@@ -31,7 +31,6 @@ use std::sync::Arc;
 use subspace_runtime_primitives::{Balance, BlockNumber};
 use thiserror::Error;
 
-pub(crate) const LOG_TARGET: &str = "domain_message_listener";
 const TX_POOL_PREFIX: &[u8] = b"xdm_tx_pool_listener";
 
 /// Number of blocks an already submitted XDM is not accepted since last submission.
@@ -120,11 +119,7 @@ pub async fn start_cross_chain_message_listener<
     Executor: CodeExecutor + RuntimeVersionOf,
     SO: SyncOracle + Send,
 {
-    tracing::info!(
-        target: LOG_TARGET,
-        "Starting transaction listener for Chain: {:?}",
-        chain_id
-    );
+    tracing::info!("Starting transaction listener for Chain: {:?}", chain_id);
 
     let mut domain_storage_key_cache = BTreeMap::<(H256, ChainId, ChannelId), StorageKey>::new();
 
@@ -134,11 +129,7 @@ pub async fn start_cross_chain_message_listener<
             continue;
         }
 
-        tracing::debug!(
-            target: LOG_TARGET,
-            "Message received for Chain: {:?}",
-            chain_id,
-        );
+        tracing::debug!("Message received for Chain: {:?}", chain_id,);
 
         match msg.data {
             MessageData::Xdm(encoded_data) => {
@@ -146,7 +137,6 @@ pub async fn start_cross_chain_message_listener<
                     Ok(ext) => ext,
                     Err(err) => {
                         tracing::error!(
-                            target: LOG_TARGET,
                             "Failed to decode message: {:?} with error: {:?}",
                             encoded_data,
                             err
@@ -215,7 +205,6 @@ fn handle_channel_update<CClient, CBlock, Executor, Block>(
                 storage_proof,
             ) {
                 tracing::debug!(
-                    target: LOG_TARGET,
                     "Failed to update channel update from {:?} to {:?}: {:?}",
                     ChainId::Consensus,
                     chain_id,
@@ -223,7 +212,6 @@ fn handle_channel_update<CClient, CBlock, Executor, Block>(
                 );
             } else {
                 tracing::debug!(
-                    target: LOG_TARGET,
                     "Updated channel state from {:?} to {:?}: {:?}",
                     ChainId::Consensus,
                     chain_id,
@@ -243,7 +231,6 @@ fn handle_channel_update<CClient, CBlock, Executor, Block>(
                 domain_storage_key_cache,
             ) {
                 tracing::debug!(
-                    target: LOG_TARGET,
                     "Failed to update channel update from {:?} to {:?}: {:?}",
                     ChainId::Domain(domain_id),
                     chain_id,
@@ -251,7 +238,6 @@ fn handle_channel_update<CClient, CBlock, Executor, Block>(
                 );
             } else {
                 tracing::debug!(
-                    target: LOG_TARGET,
                     "Updated channel state from {:?} to {:?}: {:?}",
                     ChainId::Domain(domain_id),
                     chain_id,
@@ -508,7 +494,6 @@ where
             && (xdm_nonce <= channel_nonce)
         {
             tracing::debug!(
-                target: LOG_TARGET,
                 "Stale XDM submitted: XDM Nonce: {:?}, Channel Nonce: {:?}",
                 xdm_nonce,
                 channel_nonce
@@ -582,17 +567,11 @@ where
             block_id.clone(),
             maybe_channel_nonce,
         ) {
-            tracing::debug!(
-                target: LOG_TARGET,
-                "Skipping XDM[{:?}] submission. At: {:?}",
-                xdm_id,
-                block_id
-            );
+            tracing::debug!("Skipping XDM[{:?}] submission. At: {:?}", xdm_id, block_id);
             return Ok(true);
         }
 
         tracing::debug!(
-            target: LOG_TARGET,
             "Submitting XDM[{:?}] to tx pool for chain {:?} at block: {:?}",
             xdm_id,
             chain_id,
@@ -611,7 +590,6 @@ where
                     | PoolError::AlreadyImported(..)
                     | PoolError::TemporarilyBanned => {
                         tracing::debug!(
-                            target: LOG_TARGET,
                             "XDM[{:?}] to tx pool for Chain {:?} at block: {:?}: Already included",
                             xdm_id,
                             chain_id,
@@ -621,7 +599,6 @@ where
                     }
                     _ => {
                         tracing::error!(
-                            target: LOG_TARGET,
                             "Failed to submit XDM[{:?}] to tx pool for Chain {:?} with error: {:?} at block: {:?}",
                             xdm_id,
                             chain_id,
@@ -632,7 +609,6 @@ where
                 },
                 Err(err) => {
                     tracing::error!(
-                        target: LOG_TARGET,
                         "Failed to submit XDM[{:?}] to tx pool for Chain {:?} with error: {:?} at block: {:?}",
                         xdm_id,
                         chain_id,
@@ -643,7 +619,6 @@ where
             }
         } else {
             tracing::debug!(
-                target: LOG_TARGET,
                 "Submitted XDM[{:?}] to tx pool for chain {:?} at {:?}",
                 xdm_id,
                 chain_id,
@@ -672,7 +647,6 @@ where
         let block_id: BlockId<BlockOf<TxPool>> = client.info().into();
         if let Err(err) = tx_pool_res {
             tracing::error!(
-                target: LOG_TARGET,
                 "Failed to submit XDM to tx pool for Chain {:?} with error: {:?} at block: {:?}",
                 chain_id,
                 err,
@@ -680,7 +654,6 @@ where
             );
         } else {
             tracing::debug!(
-                target: LOG_TARGET,
                 "Submitted XDM to tx pool for chain {:?} at {:?}",
                 chain_id,
                 block_id

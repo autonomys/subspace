@@ -38,9 +38,6 @@ use subspace_runtime_primitives::BlockHashFor;
 const CHANNEL_PROCESSED_STATE_CACHE_LIMIT: u32 = 5;
 const MAXIMUM_CHANNELS_TO_PROCESS_IN_BLOCK: usize = 15;
 
-/// The logging target.
-const LOG_TARGET: &str = "message::relayer";
-
 /// Relayer relays messages between domains using consensus chain as trusted third party.
 struct Relayer<Client, Block>(PhantomData<(Client, Block)>);
 
@@ -162,7 +159,6 @@ where
             Ok(proof) => proof,
             Err(err) => {
                 tracing::error!(
-                    target: LOG_TARGET,
                     "Failed to construct storage proof for message: {:?} bound to chain: {:?} with error: {:?}",
                     (channel_id, msg.nonce),
                     dst_chain_id,
@@ -181,7 +177,6 @@ where
         let (dst_domain, msg_id) = (msg.dst_chain_id, (msg.channel_id, msg.nonce));
         if let Err(err) = submitter(msg) {
             tracing::error!(
-                target: LOG_TARGET,
                 ?err,
                 "Failed to submit message: {msg_id:?} to domain: {dst_domain:?}",
             );
@@ -326,7 +321,6 @@ where
             };
 
         tracing::debug!(
-            target: LOG_TARGET,
             "Checking messages to be submitted from chain: {chain_id:?} at block: ({to_process_consensus_number:?}, {to_process_consensus_hash:?})",
         );
 
@@ -724,9 +718,11 @@ where
     };
 
     tracing::debug!(
-        target: LOG_TARGET,
         "From Chain[{:?}] to Chain[{:?}] and Channel[{:?}] Query: {:?}",
-        self_chain_id, dst_chain_id, channel_id, query
+        self_chain_id,
+        dst_chain_id,
+        channel_id,
+        query
     );
 
     Ok(query)
@@ -762,9 +758,10 @@ fn should_relay_messages_to_channel(
     };
 
     if !should_process {
-        tracing::debug!(target: LOG_TARGET,
+        tracing::debug!(
             "Chain[{:?}] for Channel[{:?}] is closed and no messages to process",
-            dst_chain_id, dst_channel_state.channel_id
+            dst_chain_id,
+            dst_channel_state.channel_id
         );
     }
 

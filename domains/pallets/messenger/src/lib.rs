@@ -1355,7 +1355,6 @@ mod pallet {
                 )
                 .map_err(|err| {
                     log::error!(
-                        target: "runtime::messenger",
                         "Failed to verify storage proof for confirmed Domain block: {:?}",
                         err
                     );
@@ -1374,11 +1373,7 @@ mod pallet {
                     storage_key,
                 )
                 .map_err(|err| {
-                    log::error!(
-                        target: "runtime::messenger",
-                        "Failed to verify storage proof for message: {:?}",
-                        err
-                    );
+                    log::error!("Failed to verify storage proof for message: {:?}", err);
                     TransactionValidityError::Invalid(InvalidTransaction::BadProof)
                 })?;
 

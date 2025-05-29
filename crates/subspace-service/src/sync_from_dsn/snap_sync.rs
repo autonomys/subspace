@@ -1,6 +1,6 @@
 use crate::mmr::sync::MmrSync;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
-use crate::sync_from_dsn::{PieceGetter, LOG_TARGET};
+use crate::sync_from_dsn::PieceGetter;
 use crate::utils::wait_for_block_import;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
@@ -110,7 +110,7 @@ where
             match target_block_receiver.recv().await {
                 Ok(target_block) => Some(target_block),
                 Err(err) => {
-                    error!(target: LOG_TARGET, ?err, "Snap sync failed: can't obtain target block.");
+                    error!(?err, "Snap sync failed: can't obtain target block.");
                     return Err(Error::Other(
                         "Snap sync failed: can't obtain target block.".into(),
                     ));
@@ -120,7 +120,7 @@ where
             None
         };
 
-        debug!(target: LOG_TARGET, "Snap sync target block: {:?}", target_block);
+        debug!("Snap sync target block: {:?}", target_block);
 
         sync(
             &segment_headers_store,
@@ -146,7 +146,7 @@ where
         }
         pause_sync.store(false, Ordering::Release);
     } else {
-        debug!(target: LOG_TARGET, "Snap sync can only work with genesis state, skipping");
+        debug!("Snap sync can only work with genesis state, skipping");
     }
 
     Ok(())
@@ -184,7 +184,6 @@ where
             let mut target_block_exceeded_last_archived_block = false;
             if target_block > segment_header.last_archived_block().number {
                 warn!(
-                    target: LOG_TARGET,
                    %last_segment_index,
                    %target_block,
 
@@ -315,7 +314,7 @@ where
                     .blocks,
             );
 
-            trace!(target: LOG_TARGET, %segment_index, "Segment reconstructed successfully");
+            trace!( %segment_index, "Segment reconstructed successfully");
         }
     }
 
@@ -357,7 +356,7 @@ where
     OS: OffchainStorage,
     NR: NetworkRequest + Sync + Send,
 {
-    debug!(target: LOG_TARGET, "Starting snap sync...");
+    debug!("Starting snap sync...");
 
     let Some((target_segment_index, mut blocks)) = get_blocks_from_target_segment(
         segment_headers_store,
@@ -373,7 +372,6 @@ where
     };
 
     debug!(
-        target: LOG_TARGET,
         "Segments data received. Target segment index: {:?}",
         target_segment_index
     );
@@ -395,7 +393,6 @@ where
             });
 
         debug!(
-            target: LOG_TARGET,
             %target_segment_index,
             %first_block_number,
             %last_block_number,
@@ -420,7 +417,7 @@ where
             format!("Failed to download state for the first block of target segment: {error}")
         })?;
 
-        debug!(target: LOG_TARGET, "Downloaded state of the first block of the target segment");
+        debug!("Downloaded state of the first block of the target segment");
 
         // Import first block as finalized
         let mut block = BlockImportParams::new(BlockOrigin::NetworkInitialSync, header);
@@ -456,7 +453,6 @@ where
     };
 
     debug!(
-        target: LOG_TARGET,
         blocks_count = %blocks.len(),
         "Queuing importing remaining blocks from target segment"
     );
@@ -493,7 +489,7 @@ where
         mmr_sync.verify_mmr_data()?;
     }
 
-    debug!(target: LOG_TARGET, info = ?client.info(), "Snap sync finished successfully");
+    debug!( info = ?client.info(), "Snap sync finished successfully");
 
     Ok(())
 }
@@ -517,7 +513,7 @@ where
         .await
         .map_err(|error| error.to_string())?;
 
-    debug!(target: LOG_TARGET, "Found {} new segment headers", new_segment_headers.len());
+    debug!("Found {} new segment headers", new_segment_headers.len());
 
     if !new_segment_headers.is_empty() {
         segment_headers_store.add_segment_headers(&new_segment_headers)?;
@@ -544,9 +540,9 @@ where
     const LOOP_PAUSE: Duration = Duration::from_secs(10);
 
     for attempt in 1..=STATE_SYNC_RETRIES {
-        debug!(target: LOG_TARGET, %attempt, "Starting state sync...");
+        debug!( %attempt, "Starting state sync...");
 
-        debug!(target: LOG_TARGET, "Gathering peers for state sync.");
+        debug!("Gathering peers for state sync.");
         let mut tried_peers = HashSet::<PeerId>::new();
 
         // TODO: add loop timeout
@@ -561,7 +557,7 @@ where
                 })
                 .collect::<Vec<_>>();
 
-            debug!(target: LOG_TARGET, ?tried_peers, "Sync peers: {}", connected_full_peers.len());
+            debug!(?tried_peers, "Sync peers: {}", connected_full_peers.len());
 
             let active_peers_set = HashSet::from_iter(connected_full_peers.into_iter());
 
@@ -588,14 +584,14 @@ where
 
         match last_block_from_sync_result {
             Ok(block_to_import) => {
-                debug!(target: LOG_TARGET, "Sync worker handle result: {:?}", block_to_import);
+                debug!("Sync worker handle result: {:?}", block_to_import);
 
                 return block_to_import.state.ok_or_else(|| {
                     Error::Other("Imported state was missing in synced block".into())
                 });
             }
             Err(error) => {
-                error!(target: LOG_TARGET, %error, "State sync error");
+                error!( %error, "State sync error");
                 continue;
             }
         }
