@@ -12,10 +12,10 @@ use subspace_networking::Node;
 use tracing::{debug, error, trace, warn};
 
 const SEGMENT_HEADER_NUMBER_PER_REQUEST: u64 = 1000;
-/// Initial number of peers to query for last segment header
+/// Initial number of peers to query for last segment header.
 const SEGMENT_HEADER_CONSENSUS_INITIAL_NODES: usize = 20;
-/// How many distinct peers to try when downloading segment headers
-const SEGMENT_HEADER_PEERS_RETRIES: u32 = 10;
+/// How many distinct peers to try before giving up on downloading segment headers batches.
+const SEGMENT_HEADER_PEERS_RETRIES: u32 = 20;
 
 /// Helps downloader segment headers from DSN
 pub struct SegmentHeaderDownloader {

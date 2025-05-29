@@ -301,18 +301,31 @@ where
         .chain_constants(info.best_hash)
         .map_err(|error| error.to_string())?;
 
-    // Corresponds to contents of block one, everyone has it, so we consider it being processed
-    // right away
-    let mut last_processed_segment_index = SegmentIndex::ZERO;
+    // This is the last segment index that has been fully processed by DSN sync.
+    // If a segment has a partial block at the end, it is not fully processed until that block is
+    // processed.
+    //
+    // Segment zero corresponds to contents of the genesis block, everyone has it, so we consider it as
+    // processed right away.
+    let mut last_completed_segment_index = SegmentIndex::ZERO;
+
+    // This is the last block number that has been queued for import by DSN sync.
+    // (Or we've checked for its header and it has already been imported.)
+    //
     // TODO: We'll be able to just take finalized block once we are able to decouple pruning from
     //  finality: https://github.com/paritytech/polkadot-sdk/issues/1570
     let mut last_processed_block_number = info.best_number;
     let segment_header_downloader = SegmentHeaderDownloader::new(node);
 
     while let Some(reason) = notifications.next().await {
+        info!(
+            ?reason,
+            ?last_completed_segment_index,
+            ?last_processed_block_number,
+            "Received notification to sync from DSN, deactivating substrate sync"
+        );
         pause_sync.store(true, Ordering::Release);
 
-        info!(?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
         let import_blocks_from_dsn_fut = import_blocks_from_dsn(
             &segment_headers_store,
@@ -320,7 +333,7 @@ where
             client,
             piece_getter,
             import_queue_service,
-            &mut last_processed_segment_index,
+            &mut last_completed_segment_index,
             &mut last_processed_block_number,
             erasure_coding,
         );
@@ -339,6 +352,11 @@ where
                     .map(|diff| diff < chain_constants.confirmation_depth_k().into())
                     .unwrap_or_default()
                 {
+                    debug!(
+                        best_block = ?info.best_number,
+                        ?target_block_number,
+                        "Node is almost synced, stopping DSN sync until the next notification"
+                    );
                     break;
                 }
             }
@@ -347,7 +365,12 @@ where
         select! {
             result = import_blocks_from_dsn_fut.fuse() => {
                 if let Err(error) = result {
-                    warn!(%error, "Error when syncing blocks from DSN");
+                    warn!(
+                        %error,
+                        ?last_completed_segment_index,
+                        ?last_processed_block_number,
+                        "Error when syncing blocks from DSN, stopping DSN sync until the next notification"
+                    );
                 }
             }
             _ = wait_almost_synced_fut.fuse() => {
@@ -355,19 +378,23 @@ where
             }
         }
 
-        debug!("Finished DSN sync");
+        while notifications.try_next().is_ok() {
+            // Just drain extra messages if there are any
+        }
 
-        // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue
-        // gracefully
+        // Notify Substrate's sync mechanism to allow regular Substrate sync to continue
+        // gracefully. We do this at the end of the loop, to minimise race conditions which can
+        // hide DSN sync bugs.
+        debug!(
+            ?last_completed_segment_index,
+            ?last_processed_block_number,
+            "Finished DSN sync, activating substrate sync"
+        );
         {
             let info = client.info();
             network_block.new_best_block_imported(info.best_hash, info.best_number);
         }
         pause_sync.store(false, Ordering::Release);
-
-        while notifications.try_next().is_ok() {
-            // Just drain extra messages if there are any
-        }
     }
 
     Ok(())

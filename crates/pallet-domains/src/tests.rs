@@ -41,7 +41,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
-use sp_version::RuntimeVersion;
+use sp_version::{create_apis_vec, ApiId, RuntimeVersion};
 use std::num::NonZeroU64;
 use subspace_core_primitives::pieces::Piece;
 use subspace_core_primitives::segments::HistorySize;
@@ -60,6 +60,16 @@ const DOMAIN_ID: DomainId = DomainId::new(0);
 
 // Operator id used for testing
 const OPERATOR_ID: OperatorId = 0u64;
+
+// Core Api version ID and default APIs
+// RuntimeVersion's Decode is handwritten to accommodate Backward Compatibility for very old
+// RuntimeVersion that do not have TransactionVersion or SystemVersion.
+// So the Decode function always assume apis being present, at least CoreApi,
+// to derive the correct TransactionVersion and SystemVersion.
+// So we should always add the TEST_RUNTIME_APIS to the RuntimeVersion to ensure it is decoded correctly.
+// More here - https://github.com/paritytech/polkadot-sdk/blob/master/substrate/primitives/version/src/lib.rs#L637
+pub(crate) const CORE_API_ID: [u8; 8] = [223, 106, 203, 104, 153, 7, 96, 155];
+pub(crate) const TEST_RUNTIME_APIS: [(ApiId, u32); 1] = [(CORE_API_ID, 5)];
 
 frame_support::construct_runtime!(
     pub struct Test {
@@ -382,7 +392,7 @@ pub(crate) fn new_test_ext_with_extensions() -> sp_io::TestExternalities {
         authoring_version: 0,
         spec_version: 1,
         impl_version: 1,
-        apis: Default::default(),
+        apis: create_apis_vec!(TEST_RUNTIME_APIS),
         transaction_version: 1,
         system_version: 2,
     };

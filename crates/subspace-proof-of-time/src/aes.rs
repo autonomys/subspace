@@ -1,24 +1,22 @@
 //! AES related functionality.
 
-#[cfg(all(feature = "std", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 mod x86_64;
-
-#[cfg(not(feature = "std"))]
-extern crate alloc;
 
 use aes::cipher::array::Array;
 use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 use aes::Aes128;
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
 use subspace_core_primitives::pot::{PotCheckpoints, PotKey, PotOutput, PotSeed};
 
 /// Creates the AES based proof.
 #[inline(always)]
 pub(crate) fn create(seed: PotSeed, key: PotKey, checkpoint_iterations: u32) -> PotCheckpoints {
-    #[cfg(all(feature = "std", target_arch = "x86_64"))]
-    if std::is_x86_feature_detected!("aes") {
-        return unsafe { x86_64::create(seed.as_ref(), key.as_ref(), checkpoint_iterations) };
+    #[cfg(target_arch = "x86_64")]
+    {
+        cpufeatures::new!(has_aes, "aes");
+        if has_aes::get() {
+            return unsafe { x86_64::create(seed.as_ref(), key.as_ref(), checkpoint_iterations) };
+        }
     }
 
     create_generic(seed, key, checkpoint_iterations)
@@ -48,7 +46,7 @@ fn create_generic(seed: PotSeed, key: PotKey, checkpoint_iterations: u32) -> Pot
 pub(crate) fn verify_sequential(
     seed: PotSeed,
     key: PotKey,
-    checkpoints: &[PotOutput],
+    checkpoints: &PotCheckpoints,
     checkpoint_iterations: u32,
 ) -> bool {
     assert_eq!(checkpoint_iterations % 2, 0);
@@ -56,19 +54,18 @@ pub(crate) fn verify_sequential(
     let key = Array::from(*key);
     let cipher = Aes128::new(&key);
 
-    let mut inputs = Vec::with_capacity(checkpoints.len());
-    inputs.push(Array::from(*seed));
-    for &checkpoint in checkpoints.iter().rev().skip(1).rev() {
-        inputs.push(Array::from(*checkpoint));
-    }
-    let mut outputs = checkpoints
-        .iter()
-        .map(|&checkpoint| Array::from(*checkpoint))
-        .collect::<Vec<_>>();
+    let mut inputs = [[0u8; 16]; PotCheckpoints::NUM_CHECKPOINTS.get() as usize];
+    inputs[0] = *seed;
+    inputs[1..].copy_from_slice(PotOutput::repr_from_slice(
+        &checkpoints[..PotCheckpoints::NUM_CHECKPOINTS.get() as usize - 1],
+    ));
+
+    let mut outputs = [[0u8; 16]; PotCheckpoints::NUM_CHECKPOINTS.get() as usize];
+    outputs.copy_from_slice(PotOutput::repr_from_slice(checkpoints.as_slice()));
 
     for _ in 0..checkpoint_iterations / 2 {
-        cipher.encrypt_blocks(&mut inputs);
-        cipher.decrypt_blocks(&mut outputs);
+        cipher.encrypt_blocks(Array::cast_slice_from_core_mut(&mut inputs));
+        cipher.decrypt_blocks(Array::cast_slice_from_core_mut(&mut outputs));
     }
 
     inputs == outputs
@@ -77,6 +74,7 @@ pub(crate) fn verify_sequential(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use subspace_core_primitives::pot::PotOutput;
 
     const SEED: [u8; 16] = [
         0xd6, 0x66, 0xcc, 0xd8, 0xd5, 0x93, 0xc2, 0x3d, 0xa8, 0xdb, 0x6b, 0x5b, 0x14, 0x13, 0xb1,
@@ -100,7 +98,7 @@ mod tests {
     fn test_create_verify() {
         let seed = PotSeed::from(SEED);
         let key = PotKey::from(KEY);
-        let checkpoint_iterations = 100;
+        let checkpoint_iterations = 20;
 
         // Can encrypt/decrypt.
         let checkpoints = create(seed, key, checkpoint_iterations);
@@ -112,7 +110,7 @@ mod tests {
         assert!(verify_sequential(
             seed,
             key,
-            &*checkpoints,
+            &checkpoints,
             checkpoint_iterations,
         ));
 
@@ -122,7 +120,7 @@ mod tests {
         assert!(!verify_sequential(
             seed,
             key,
-            &*checkpoints_1,
+            &checkpoints_1,
             checkpoint_iterations,
         ));
 
@@ -130,13 +128,13 @@ mod tests {
         assert!(!verify_sequential(
             seed,
             key,
-            &*checkpoints,
+            &checkpoints,
             checkpoint_iterations + 2,
         ));
         assert!(!verify_sequential(
             seed,
             key,
-            &*checkpoints,
+            &checkpoints,
             checkpoint_iterations - 2,
         ));
 
@@ -144,7 +142,7 @@ mod tests {
         assert!(!verify_sequential(
             PotSeed::from(SEED_1),
             key,
-            &*checkpoints,
+            &checkpoints,
             checkpoint_iterations,
         ));
 
@@ -152,7 +150,7 @@ mod tests {
         assert!(!verify_sequential(
             seed,
             PotKey::from(KEY_1),
-            &*checkpoints,
+            &checkpoints,
             checkpoint_iterations,
         ));
     }

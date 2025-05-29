@@ -16,6 +16,7 @@ pub mod storage_proof;
 #[cfg(test)]
 mod tests;
 pub mod verification;
+pub mod weights;
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;

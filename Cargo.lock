@@ -1972,9 +1972,9 @@ dependencies = [
 
 [[package]]
 name = "cpufeatures"
-version = "0.2.14"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "608697df725056feaccfa42cffdaeeec3fccc4ffc38358ecd19b243e716a78e0"
+checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
 dependencies = [
  "libc",
 ]
@@ -5192,7 +5192,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.9",
  "tokio",
  "tower-service",
  "tracing",
@@ -12552,6 +12552,7 @@ dependencies = [
 name = "sp-domains-fraud-proof"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "domain-block-builder",
  "domain-block-preprocessor",
  "domain-runtime-primitives",
@@ -12567,12 +12568,14 @@ dependencies = [
  "libsecp256k1",
  "log",
  "pallet-balances",
+ "pallet-domains",
  "pallet-ethereum",
  "parity-scale-codec",
  "rand 0.8.5",
  "rlp",
  "sc-cli",
  "sc-client-api",
+ "sc-domains",
  "sc-executor",
  "sc-service",
  "scale-info",
@@ -12593,10 +12596,12 @@ dependencies = [
  "sp-weights",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-test-runtime",
  "subspace-test-service",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
+ "tracing",
  "trie-db",
 ]
 
@@ -13774,8 +13779,10 @@ version = "0.1.0"
 dependencies = [
  "aes 0.9.0-pre.2",
  "core_affinity",
+ "cpufeatures",
  "criterion",
- "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
  "subspace-core-primitives",
  "thiserror 2.0.12",
 ]

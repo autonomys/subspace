@@ -2,9 +2,9 @@
 
 use crate::hashes::{blake3_hash, blake3_hash_list, Blake3Hash};
 use crate::Randomness;
-use core::fmt;
 use core::num::NonZeroU8;
 use core::str::FromStr;
+use core::{fmt, mem};
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -213,6 +213,7 @@ impl PotSeed {
     TypeInfo,
     MaxEncodedLen,
 )]
+#[repr(C)]
 pub struct PotOutput([u8; Self::SIZE]);
 
 impl fmt::Debug for PotOutput {
@@ -290,6 +291,20 @@ impl PotOutput {
         let mut seed = PotSeed::default();
         seed.copy_from_slice(&hash[..Self::SIZE]);
         seed
+    }
+
+    /// Convenient conversion from slice of underlying representation for efficiency purposes
+    #[inline(always)]
+    pub const fn slice_from_repr(value: &[[u8; Self::SIZE]]) -> &[Self] {
+        // SAFETY: `PotOutput` is `#[repr(C)]` and guaranteed to have the same memory layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion to slice of underlying representation for efficiency purposes
+    #[inline(always)]
+    pub const fn repr_from_slice(value: &[Self]) -> &[[u8; Self::SIZE]] {
+        // SAFETY: `PotOutput` is `#[repr(C)]` and guaranteed to have the same memory layout
+        unsafe { mem::transmute(value) }
     }
 }
 
