@@ -243,16 +243,22 @@ async fn start_walking(node: Node, retries: u32, print_failed_addresses: bool) {
                     debug!(%peer_id, ?short_key, "get_closest_peers returned an item");
                     no_peers_found = false;
 
-                    let (success, _) =
+                    let (success, last_error) =
                         request_sample_piece(node.clone(), peer_id, short_key, &mut stats, false)
                             .await;
 
-                    if !success && retries > 0 {
-                        retry_jobs.push(RetryJob {
-                            retries_left: retries,
-                            short_key: short_key.to_vec(),
-                            peer_id,
-                        });
+                    if !success {
+                        if retries > 0 {
+                            retry_jobs.push(RetryJob {
+                                retries_left: retries,
+                                short_key: short_key.to_vec(),
+                                peer_id,
+                            });
+                        } else if print_failed_addresses {
+                            let discovered_peers = discovered_peers.lock();
+                            let peer_info = discovered_peers.get(&peer_id);
+                            info!(%peer_id, ?peer_info, ?last_error, "Failed to request piece.");
+                        }
                     }
                 }
             }
@@ -293,7 +299,7 @@ async fn start_walking(node: Node, retries: u32, print_failed_addresses: bool) {
                             let discovered_peers = discovered_peers.lock();
                             let peer_id = retry_job.peer_id;
                             let peer_info = discovered_peers.get(&peer_id);
-                            info!(%peer_id, ?peer_info, ?last_error, "Failed to request piece.");
+                            info!(%peer_id, ?peer_info, ?last_error, "Failed to request piece after {retries} retries.");
                         }
                     }
                 }
