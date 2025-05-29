@@ -17,7 +17,6 @@ domain-runtime-primitives.workspace = true
 frame-benchmarking = { workspace = true, optional = true }
 frame-support.workspace = true
 frame-system.workspace = true
-hexlit.workspace = true
 hex-literal = { workspace = true, optional = true }
 log.workspace = true
 pallet-balances.workspace = true

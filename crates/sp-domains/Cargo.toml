@@ -17,7 +17,7 @@ domain-runtime-primitives.workspace = true
 frame-support.workspace = true
 hash-db.workspace = true
 memory-db.workspace = true
-hexlit.workspace = true
+hex-literal.workspace = true
 parity-scale-codec = { workspace = true, features = ["derive"] }
 rand.workspace = true
 rand_chacha.workspace = true
@@ -44,6 +44,7 @@ fp-self-contained = { workspace = true, features = ["default"], optional = true 
 frame-system = { workspace = true, optional = true }
 libsecp256k1 = { workspace = true, features = ["static-context", "hmac"], optional = true }
 pallet-evm = { workspace = true, optional = true }
+pallet-utility = { workspace = true, optional = true }
 rlp = { workspace = true, optional = true }
 
 [dev-dependencies]
@@ -56,6 +57,7 @@ fp-self-contained = { workspace = true, features = ["default"] }
 frame-system.workspace = true
 libsecp256k1 = { workspace = true, features = ["static-context", "hmac"] }
 pallet-evm.workspace = true
+pallet-utility.workspace = true
 rlp.workspace = true
 
 [features]
@@ -99,5 +101,6 @@ test-ethereum = [
     "frame-system",
     "libsecp256k1",
     "pallet-evm",
+    "pallet-utility",
     "rlp",
 ]

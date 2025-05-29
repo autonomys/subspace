@@ -61,7 +61,6 @@ evm-domain-test-runtime.workspace = true
 fp-rpc.workspace = true
 fp-self-contained.workspace = true
 frame-system.workspace = true
-hex-literal.workspace = true
 pallet-balances.workspace = true
 pallet-domains.workspace = true
 pallet-domain-sudo.workspace = true

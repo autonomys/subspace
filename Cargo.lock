@@ -2768,7 +2768,7 @@ name = "domain-block-builder"
 version = "0.1.0"
 dependencies = [
  "hash-db",
- "hexlit",
+ "hex-literal",
  "parity-scale-codec",
  "sc-chain-spec",
  "sc-client-api",
@@ -2886,7 +2886,6 @@ dependencies = [
  "futures",
  "futures-timer",
  "hex",
- "hex-literal",
  "pallet-balances",
  "pallet-domain-sudo",
  "pallet-domains",
@@ -4944,12 +4943,6 @@ name = "hex_fmt"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b07f60793ff0a4d9cef0f18e63b5357e06209987153a64648c972c1e5aff336f"
-
-[[package]]
-name = "hexlit"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b6e75c860d4216ac53f9ac88b25c99eaedba075b3a7b2ed31f2adc51a74fffd"
 
 [[package]]
 name = "hickory-proto"
@@ -7957,7 +7950,6 @@ dependencies = [
  "frame-support",
  "frame-system",
  "hex-literal",
- "hexlit",
  "log",
  "pallet-balances",
  "pallet-block-fees",
@@ -12521,11 +12513,12 @@ dependencies = [
  "frame-support",
  "frame-system",
  "hash-db",
- "hexlit",
+ "hex-literal",
  "libsecp256k1",
  "memory-db",
  "num-traits",
  "pallet-evm",
+ "pallet-utility",
  "parity-scale-codec",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
