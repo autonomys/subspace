@@ -1,5 +1,6 @@
 #[cfg(feature = "runtime-benchmarks")]
 pub mod benchmarking;
+pub mod weights;
 
 use crate::utility::{nested_call_iter, MaybeNestedCall};
 use core::marker::PhantomData;
@@ -18,6 +19,13 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, ValidTransaction,
 };
+
+/// Weights for the balance transfer check extension.
+pub trait WeightInfo {
+    fn balance_transfer_check_mixed(c: u32) -> Weight;
+    fn balance_transfer_check_utility(c: u32) -> Weight;
+    fn balance_transfer_check_multisig(c: u32) -> Weight;
+}
 
 /// Trait to convert Runtime call to possible Balance call.
 pub trait MaybeBalancesCall<Runtime>
