@@ -162,7 +162,14 @@ impl PeerStats {
                     });
 
             for (error_type, err_num) in errors.into_iter() {
-                warn!("Failed piece request type - {} : {}", error_type, err_num);
+                warn!(
+                    "Failed request: {}: {}",
+                    // Make these messages less verbose
+                    error_type
+                        .replace("Underlying protocol returned an error", "Underlying")
+                        .replace("Problem on the network", "Network"),
+                    err_num
+                );
             }
         }
         if !self.get_closest_peers_errors.is_empty() {
