@@ -2,23 +2,28 @@
 pub mod benchmarking;
 pub mod weights;
 
+use crate::extension::weights::WeightInfo as SubstrateWeightInfo;
 use crate::utility::{nested_call_iter, MaybeNestedCall};
 use core::marker::PhantomData;
 use frame_support::pallet_prelude::Weight;
+use frame_support::RuntimeDebugNoBound;
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use frame_system::Config;
 use pallet_balances::Call as BalancesCall;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
 use scale_info::TypeInfo;
-use sp_core::Get;
-use sp_runtime::impl_tx_ext_default;
 use sp_runtime::traits::{
-    AsSystemOriginSigner, DispatchInfoOf, Dispatchable, TransactionExtension, ValidateResult,
+    AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, Dispatchable, PostDispatchInfoOf,
+    TransactionExtension, ValidateResult,
 };
 use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionSource, TransactionValidity, ValidTransaction,
+    InvalidTransaction, TransactionSource, TransactionValidityError, ValidTransaction,
 };
+use sp_runtime::DispatchResult;
+
+/// Maximum number of calls we benchmarked for.
+const MAXIMUM_NUMBER_OF_CALLS: u32 = 1000;
 
 /// Weights for the balance transfer check extension.
 pub trait WeightInfo {
@@ -59,17 +64,26 @@ where
     Runtime: BalanceTransferChecks + pallet_balances::Config,
     RuntimeCallFor<Runtime>: MaybeBalancesCall<Runtime> + MaybeNestedCall<Runtime>,
 {
-    fn do_validate_signed(call: &RuntimeCallFor<Runtime>) -> TransactionValidity {
+    fn do_validate_signed(
+        call: &RuntimeCallFor<Runtime>,
+    ) -> Result<(ValidTransaction, u32), TransactionValidityError> {
+        if Runtime::is_balance_transferable() {
+            return Ok((ValidTransaction::default(), 0));
+        }
+
         // Disable normal balance transfers.
-        if !Runtime::is_balance_transferable() && Self::contains_balance_transfer(call) {
+        let (contains_balance_call, calls) = Self::contains_balance_transfer(call);
+        if contains_balance_call {
             Err(InvalidTransaction::Call.into())
         } else {
-            Ok(ValidTransaction::default())
+            Ok((ValidTransaction::default(), calls))
         }
     }
 
-    fn contains_balance_transfer(call: &RuntimeCallFor<Runtime>) -> bool {
+    fn contains_balance_transfer(call: &RuntimeCallFor<Runtime>) -> (bool, u32) {
+        let mut calls = 0;
         for call in nested_call_iter::<Runtime>(call) {
+            calls += 1;
             // Any other calls might contain nested calls, so we can only return early if we find a
             // balance transfer call.
             if let Some(balance_call) = call.maybe_balance_call()
@@ -80,12 +94,24 @@ where
                         | BalancesCall::transfer_all { .. }
                 )
             {
-                return true;
+                return (true, calls);
             }
         }
 
-        false
+        (false, calls)
     }
+
+    fn get_weights(n: u32) -> Weight {
+        SubstrateWeightInfo::<Runtime>::balance_transfer_check_multisig(n)
+            .max(SubstrateWeightInfo::<Runtime>::balance_transfer_check_mixed(n))
+            .max(SubstrateWeightInfo::<Runtime>::balance_transfer_check_utility(n))
+    }
+}
+
+/// Data passed from prepare to post_dispatch.
+#[derive(RuntimeDebugNoBound)]
+pub enum Pre {
+    Refund(Weight),
 }
 
 impl<Runtime> TransactionExtension<RuntimeCallFor<Runtime>>
@@ -102,15 +128,13 @@ where
         AsSystemOriginSigner<<Runtime as Config>::AccountId> + Clone,
     RuntimeCallFor<Runtime>: MaybeBalancesCall<Runtime> + MaybeNestedCall<Runtime>,
 {
-    const IDENTIFIER: &'static str = "DisablePallets";
+    const IDENTIFIER: &'static str = "BalanceTransferCheckExtension";
     type Implicit = ();
-    type Val = ();
-    type Pre = ();
+    type Val = Option<u32>;
+    type Pre = Pre;
 
-    // TODO: calculate weight for extension
     fn weight(&self, _call: &RuntimeCallFor<Runtime>) -> Weight {
-        // there is always one storage read
-        <Runtime as Config>::DbWeight::get().reads(1)
+        Self::get_weights(MAXIMUM_NUMBER_OF_CALLS)
     }
 
     fn validate(
@@ -123,14 +147,41 @@ where
         _inherited_implication: &impl Encode,
         _source: TransactionSource,
     ) -> ValidateResult<Self::Val, RuntimeCallFor<Runtime>> {
-        let validity = if origin.as_system_origin_signer().is_some() {
-            Self::do_validate_signed(call)?
+        let (validity, maybe_calls) = if origin.as_system_origin_signer().is_some() {
+            Self::do_validate_signed(call).map(|(valid, calls)| (valid, Some(calls)))?
         } else {
-            ValidTransaction::default()
+            (ValidTransaction::default(), None)
         };
 
-        Ok((validity, (), origin))
+        Ok((validity, maybe_calls, origin))
     }
 
-    impl_tx_ext_default!(RuntimeCallFor<Runtime>; prepare);
+    fn prepare(
+        self,
+        val: Self::Val,
+        _origin: &DispatchOriginOf<RuntimeCallFor<Runtime>>,
+        _call: &RuntimeCallFor<Runtime>,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+    ) -> Result<Self::Pre, TransactionValidityError> {
+        let assigned_weight = Self::get_weights(MAXIMUM_NUMBER_OF_CALLS);
+        match val {
+            None => Ok(Pre::Refund(assigned_weight)),
+            Some(calls) => {
+                let actual_weights = Self::get_weights(calls);
+                Ok(Pre::Refund(assigned_weight.saturating_sub(actual_weights)))
+            }
+        }
+    }
+
+    fn post_dispatch_details(
+        pre: Self::Pre,
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _post_info: &PostDispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+        _result: &DispatchResult,
+    ) -> Result<Weight, TransactionValidityError> {
+        let Pre::Refund(weight) = pre;
+        Ok(weight)
+    }
 }
