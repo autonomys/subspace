@@ -2135,6 +2135,8 @@ async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
         ferdie,
         alice,
         {
+            alice.unban_peer(bob.addr.clone());
+            bob.unban_peer(alice.addr.clone());
             // ensure bob has reduced balance since alice might submit other transactions which cost
             // and so exact balance check is not feasible
             alice.free_balance(bob.key.to_account_id()) <= pre_bob_free_balance - 123
