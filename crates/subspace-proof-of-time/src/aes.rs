@@ -15,6 +15,7 @@ pub(crate) fn create(seed: PotSeed, key: PotKey, checkpoint_iterations: u32) -> 
     {
         cpufeatures::new!(has_aes, "aes");
         if has_aes::get() {
+            // SAFETY: Checked `aes` feature
             return unsafe { x86_64::create(seed.as_ref(), key.as_ref(), checkpoint_iterations) };
         }
     }
@@ -53,8 +54,9 @@ pub(crate) fn verify_sequential(
 
     #[cfg(target_arch = "x86_64")]
     {
-        cpufeatures::new!(has_aes, "avx512f", "vaes");
-        if has_aes::get() {
+        cpufeatures::new!(has_avx512f_vaes, "avx512f", "vaes");
+        if has_avx512f_vaes::get() {
+            // SAFETY: Checked `avx512f` and `vaes` features
             return unsafe {
                 x86_64::verify_sequential_avx512f(&seed, &key, checkpoints, checkpoint_iterations)
             };
