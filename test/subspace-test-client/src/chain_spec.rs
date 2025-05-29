@@ -6,10 +6,13 @@ use sp_domains::{EvmType, PermissionedActionAllowedBy};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
-use subspace_runtime_primitives::{AccountId, Balance, Signature, SSC};
+use subspace_runtime_primitives::{
+    AccountId, Balance, CouncilDemocracyConfigParams, Signature, SSC,
+};
 use subspace_test_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, RewardsConfig,
-    RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, WASM_BINARY,
+    RuntimeConfigsConfig, RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
+    WASM_BINARY,
 };
 
 /// Generate a crypto pair from seed.
@@ -129,6 +132,12 @@ fn create_genesis_config(
                     .expect("hard-coded values are valid; qed"),
             ],
         },
-        runtime_configs: Default::default(),
+        runtime_configs: RuntimeConfigsConfig {
+            enable_domains: true,
+            enable_dynamic_cost_of_storage: false,
+            enable_balance_transfers: false,
+            confirmation_depth_k: 100u32,
+            council_democracy_config_params: CouncilDemocracyConfigParams::default(),
+        },
     })
 }
