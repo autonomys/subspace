@@ -19,26 +19,26 @@ use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Parser)]
 struct Args {
-    /// Multiaddresses of bootstrap nodes to connect to on startup, multiple are supported
+    /// Multiaddresses of bootstrap nodes to connect to on startup, multiple are supported.
     #[arg(long = "bootstrap-node", required = true)]
     bootstrap_nodes: Vec<Multiaddr>,
-    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
+    /// Keep non-global (private, shared, loopback..) addresses in Kademlia DHT.
     #[arg(long, default_value_t = false)]
     allow_private_ips: bool,
-    /// Protocol version for libp2p stack, should be set as genesis hash of the blockchain for
+    /// Protocol version for libp2p stack, should be set to the genesis hash of the blockchain for
     /// production use.
     #[arg(long, required = true)]
     protocol_version: String,
-    /// Maximum established outgoing connections limit for the peer.
+    /// Maximum established outgoing connections limit for this peer.
     #[arg(long, default_value_t = 100)]
     out_peers: u32,
-    /// Maximum pending outgoing connections limit for the peer.
+    /// Maximum pending outgoing connections limit for this peer.
     #[arg(long, default_value_t = 100)]
     pending_out_peers: u32,
     /// Enable piece retrieval retries on unsuccessful requests.
     #[arg(long, default_value_t = 0)]
     retries: u32,
-    /// Logs peer and their addresses that failed all dialing retries.
+    /// Logs peer addresses that failed all dialing retries.
     #[arg(long, default_value_t = true)]
     print_failed_addresses: bool,
 }
