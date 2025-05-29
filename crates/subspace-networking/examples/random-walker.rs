@@ -80,6 +80,8 @@ struct PeerStats {
     get_closest_peers_errors: BTreeMap<String, u32>,
     successful_retries: u32,
     failed_retries: u32,
+    /// Addresses of peers that failed all dialing retries, if `print_failed_addresses` is true.
+    failed_addresses: BTreeMap<PeerId, Option<PeerDiscovered>>,
 }
 impl PeerStats {
     fn report_successful_request(&mut self, peer_id: PeerId, retry: bool) {
@@ -185,7 +187,7 @@ impl PeerStats {
             error!("Failed retries: {}", self.failed_retries);
         }
 
-        // Peers stats
+        // Responsiveness stats
         let unresponsive_peers = self
             .request_results
             .values()
@@ -199,6 +201,15 @@ impl PeerStats {
             .count();
         info!("Responsive peers number: {}", responsive_peers);
         info!("Known peers number: {}", self.request_results.len());
+
+        if !self.failed_addresses.is_empty() {
+            let total_failed_addresses = self.failed_addresses.len();
+            error!("Total failed peer addresses: {}", total_failed_addresses);
+            for (peer, details) in &self.failed_addresses {
+                error!("Failed peer: {} address: {:?}", peer, details);
+            }
+        }
+
         info!("                               ");
         info!("*******************************");
     }
@@ -258,6 +269,7 @@ async fn start_walking(node: Node, retries: u32, print_failed_addresses: bool) {
                             let discovered_peers = discovered_peers.lock();
                             let peer_info = discovered_peers.get(&peer_id);
                             info!(%peer_id, ?peer_info, ?last_error, "Failed to request piece.");
+                            stats.failed_addresses.insert(peer_id, peer_info.cloned());
                         }
                     }
                 }
@@ -300,6 +312,7 @@ async fn start_walking(node: Node, retries: u32, print_failed_addresses: bool) {
                             let peer_id = retry_job.peer_id;
                             let peer_info = discovered_peers.get(&peer_id);
                             info!(%peer_id, ?peer_info, ?last_error, "Failed to request piece after {retries} retries.");
+                            stats.failed_addresses.insert(peer_id, peer_info.cloned());
                         }
                     }
                 }
