@@ -6,7 +6,7 @@ use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::PieceIndex;
@@ -76,8 +76,8 @@ struct RequestResults {
 struct PeerStats {
     request_results: HashMap<PeerId, RequestResults>,
     no_peers_found: u32,
-    /// error type, number
-    get_closest_peers_errors: HashMap<String, u32>,
+    /// error type, number, sorted by error type
+    get_closest_peers_errors: BTreeMap<String, u32>,
     successful_retries: u32,
     failed_retries: u32,
 }
@@ -145,10 +145,11 @@ impl PeerStats {
         if total_failed_requests > 0 {
             warn!("Failed piece requests: {}", total_failed_requests);
 
+            // We want the errors to be sorted by error name, so they're easier to compare.
             let errors =
                 self.request_results
                     .values()
-                    .fold(HashMap::new(), |mut acc, peer_result| {
+                    .fold(BTreeMap::new(), |mut acc, peer_result| {
                         for (error_type, err_num) in &peer_result.failed_requests {
                             acc.entry(error_type)
                                 .and_modify(|num| *num += *err_num)
