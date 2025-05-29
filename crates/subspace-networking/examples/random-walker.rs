@@ -38,7 +38,7 @@ struct Args {
     /// Enable piece retrieval retries on unsuccessful requests.
     #[arg(long, default_value_t = 0)]
     retries: u32,
-    /// Logs peer and their addresses failed on dialing.
+    /// Logs peer and their addresses that failed all dialing retries.
     #[arg(long, default_value_t = true)]
     print_failed_addresses: bool,
 }
@@ -281,17 +281,19 @@ async fn start_walking(node: Node, retries: u32, print_failed_addresses: bool) {
                     )
                     .await;
 
-                    if !success && retries_left > 0 {
-                        next_retries.push(RetryJob {
-                            retries_left,
-                            short_key: short_key.to_vec(),
-                            peer_id: retry_job.peer_id,
-                        })
-                    } else if print_failed_addresses {
-                        let discovered_peers = discovered_peers.lock();
-                        let peer_id = retry_job.peer_id;
-                        let peer_info = discovered_peers.get(&peer_id);
-                        info!(%peer_id, ?peer_info, ?last_error, "Failed to request piece.");
+                    if !success {
+                        if retries_left > 0 {
+                            next_retries.push(RetryJob {
+                                retries_left,
+                                short_key: short_key.to_vec(),
+                                peer_id: retry_job.peer_id,
+                            });
+                        } else if print_failed_addresses {
+                            let discovered_peers = discovered_peers.lock();
+                            let peer_id = retry_job.peer_id;
+                            let peer_info = discovered_peers.get(&peer_id);
+                            info!(%peer_id, ?peer_info, ?last_error, "Failed to request piece.");
+                        }
                     }
                 }
 
