@@ -1351,9 +1351,9 @@ dependencies = [
 
 [[package]]
 name = "blake3"
-version = "1.5.4"
+version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d82033247fd8e890df8f740e407ad4d038debb9eb1f40533fffb32e7d17dc6f7"
+checksum = "3888aaa89e4b2a40fca9848e400f6a658a5a3978de7be858e209cafa8be9a4a0"
 dependencies = [
  "arrayref",
  "arrayvec 0.7.6",
@@ -13739,6 +13739,7 @@ name = "subspace-proof-of-space"
 version = "0.1.0"
 dependencies = [
  "bitvec",
+ "blake3",
  "chacha20",
  "criterion",
  "derive_more 1.0.0",
@@ -13747,7 +13748,6 @@ dependencies = [
  "seq-macro",
  "sha2 0.10.8",
  "spin 0.9.8",
- "static_assertions",
  "subspace-core-primitives",
 ]
 
