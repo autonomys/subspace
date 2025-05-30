@@ -3,12 +3,11 @@ use crate::chiapos::table::metadata_size_bytes;
 use crate::chiapos::utils::EvaluatableUsize;
 use core::iter::Step;
 use core::mem;
-use core::ops::Range;
 use derive_more::{Add, AddAssign, From, Into};
 
 /// Stores data in lower bits
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into, Add, AddAssign)]
-#[repr(transparent)]
+#[repr(C)]
 pub(in super::super) struct X(u32);
 
 impl Step for X {
@@ -50,15 +49,17 @@ impl From<X> for usize {
 }
 
 impl X {
-    /// All possible values of `x` for given `K`
-    pub(in super::super) const fn all<const K: u8>() -> Range<Self> {
-        Self(0)..Self(1 << K)
+    #[inline(always)]
+    pub(super) const fn array_from_repr<const N: usize>(array: [u32; N]) -> [Self; N] {
+        // TODO: Should have been transmute, but https://github.com/rust-lang/rust/issues/61956
+        // SAFETY: `X` is `#[repr(C)]` and guaranteed to have the same memory layout
+        unsafe { mem::transmute_copy(&array) }
     }
 }
 
 /// Stores data in lower bits
 #[derive(Debug, Default, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into)]
-#[repr(transparent)]
+#[repr(C)]
 pub(in super::super) struct Y(u32);
 
 impl From<Y> for u128 {
@@ -79,12 +80,19 @@ impl Y {
     pub(in super::super) const fn first_k_bits<const K: u8>(self) -> u32 {
         self.0 >> PARAM_EXT as usize
     }
+
+    #[inline(always)]
+    pub(super) const fn array_from_repr<const N: usize>(array: [u32; N]) -> [Self; N] {
+        // TODO: Should have been transmute, but https://github.com/rust-lang/rust/issues/61956
+        // SAFETY: `Y` is `#[repr(C)]` and guaranteed to have the same memory layout
+        unsafe { mem::transmute_copy(&array) }
+    }
 }
 
 #[derive(
     Debug, Default, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into, Add, AddAssign,
 )]
-#[repr(transparent)]
+#[repr(C)]
 pub(in super::super) struct Position(u32);
 
 impl Step for Position {
@@ -118,7 +126,7 @@ impl Position {
 
 /// Stores data in lower bits
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-#[repr(transparent)]
+#[repr(C)]
 pub(in super::super) struct Metadata<const K: u8, const TABLE_NUMBER: u8>(
     [u8; metadata_size_bytes(K, TABLE_NUMBER)],
 )
@@ -142,7 +150,7 @@ where
     fn from(value: Metadata<K, TABLE_NUMBER>) -> Self {
         // `*_be_bytes()` is used such that `Ord`/`PartialOrd` impl works as expected
         let mut output = 0u128.to_be_bytes();
-        output[mem::size_of::<u128>() - value.0.len()..].copy_from_slice(&value.0);
+        output[size_of::<u128>() - value.0.len()..].copy_from_slice(&value.0);
 
         Self::from_be_bytes(output)
     }
@@ -156,7 +164,7 @@ where
     /// only contains data in lower bits and fits into internal byte array of `Metadata`
     fn from(value: u128) -> Self {
         Self(
-            value.to_be_bytes()[mem::size_of::<u128>() - metadata_size_bytes(K, TABLE_NUMBER)..]
+            value.to_be_bytes()[size_of::<u128>() - metadata_size_bytes(K, TABLE_NUMBER)..]
                 .try_into()
                 .expect("Size of internal byte array is always smaller or equal to u128; qed"),
         )
