@@ -971,6 +971,7 @@ mod benches {
         [domain_pallet_executive, ExecutivePallet]
         [pallet_messenger, Messenger]
         [pallet_messenger_from_consensus_extension, MessengerFromConsensusExtensionBench::<Runtime>]
+        [pallet_evm_tracker, EVMNoncetracker]
     );
 }
 

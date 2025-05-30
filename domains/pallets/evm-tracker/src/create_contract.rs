@@ -7,7 +7,6 @@ use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use pallet_ethereum::{Transaction as EthereumTransaction, TransactionAction};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
-use sp_core::Get;
 use sp_runtime::impl_tx_ext_default;
 use sp_runtime::traits::{
     AsSystemOriginSigner, DispatchInfoOf, Dispatchable, TransactionExtension, ValidateResult,
@@ -139,7 +138,7 @@ where
     <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
         AsSystemOriginSigner<AccountIdFor<Runtime>> + Clone,
 {
-    fn do_validate_unsigned(call: &RuntimeCallFor<Runtime>) -> TransactionValidity {
+    pub(crate) fn do_validate_unsigned(call: &RuntimeCallFor<Runtime>) -> TransactionValidity {
         if !is_create_unsigned_contract_allowed::<Runtime>(call) {
             Err(InvalidTransaction::Custom(ERR_CONTRACT_CREATION_NOT_ALLOWED).into())
         } else {
@@ -147,7 +146,7 @@ where
         }
     }
 
-    fn do_validate(
+    pub(crate) fn do_validate(
         origin: &OriginFor<Runtime>,
         call: &RuntimeCallFor<Runtime>,
     ) -> TransactionValidity {
@@ -188,11 +187,8 @@ where
     type Val = ();
     type Pre = ();
 
-    // TODO: calculate proper weight for this extension
-    //  Currently only accounts for storage read
     fn weight(&self, _: &RuntimeCallFor<Runtime>) -> Weight {
-        // there will always be one storage read for this call
-        <Runtime as frame_system::Config>::DbWeight::get().reads(1)
+        <crate::weights::WeightInfo<Runtime> as crate::WeightInfo>::validate_nested_call()
     }
 
     fn validate(
