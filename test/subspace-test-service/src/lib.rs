@@ -89,6 +89,7 @@ use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::solutions::Solution;
 use subspace_core_primitives::{BlockNumber, PublicKey};
+use subspace_runtime_primitives::extension::BalanceTransferCheckExtension;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockHashFor, ExtrinsicFor, Hash, HeaderFor, Signature,
@@ -97,8 +98,7 @@ use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{chain_spec, Backend, Client};
 use subspace_test_primitives::OnchainStateApi;
 use subspace_test_runtime::{
-    DisablePallets, Runtime, RuntimeApi, RuntimeCall, SignedExtra, UncheckedExtrinsic,
-    SLOT_DURATION,
+    Runtime, RuntimeApi, RuntimeCall, SignedExtra, UncheckedExtrinsic, SLOT_DURATION,
 };
 use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{RpcHandlersExt, RpcTransactionError, RpcTransactionOutput};
@@ -1411,7 +1411,7 @@ fn get_signed_extra(
         frame_system::CheckNonce::<Runtime>::from(nonce.into()),
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
-        DisablePallets,
+        BalanceTransferCheckExtension::<Runtime>::default(),
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
         pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),

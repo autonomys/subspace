@@ -1,7 +1,8 @@
 //! Runtime primitives for Subspace Network.
-
+#![feature(let_chains)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod extension;
 pub mod utility;
 
 #[cfg(not(feature = "std"))]
