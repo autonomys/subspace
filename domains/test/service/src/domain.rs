@@ -601,8 +601,8 @@ impl DomainNodeBuilder {
 
     /// Make the node connect to the given domain node.
     ///
-    /// By default the node will not be connected to any node or will be able to discover any other
-    /// node.
+    /// By default the node will not be connected to any node, and won't be able to discover any
+    /// other nodes.
     pub fn connect_to_domain_node(mut self, addr: MultiaddrWithPeerId) -> Self {
         self.domain_nodes.push(addr);
         self

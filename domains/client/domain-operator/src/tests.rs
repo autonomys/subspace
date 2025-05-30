@@ -78,7 +78,7 @@ use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockConsensusNode,
 };
 use tempfile::TempDir;
-use tracing::error;
+use tracing::{error, info};
 
 /// The general timeout for test operations that could hang.
 const TIMEOUT: Duration = Duration::from_mins(10);
@@ -137,13 +137,12 @@ async fn setup_evm_test_nodes(
     evm_owner: impl Into<Option<Sr25519Keyring>>,
 ) -> (TempDir, MockConsensusNode, EvmDomainNode) {
     let evm_owner = evm_owner.into();
-    println!(
-        "Setting up EVM test nodes with sudo: {:?}, ferdie: {:?}, \
-        and {} evm owner: {:?} (defaults to sudo)",
-        Sr25519Alice.to_account_id(),
-        ferdie_key.to_account_id(),
+    info!(
+        sudo = ?Sr25519Alice.to_account_id(),
+        ferdie = ?ferdie_key.to_account_id(),
+        evm_owner = ?evm_owner.map(|k| k.to_account_id()),
+        "Setting up EVM test nodes with {} evm (EVM ovner defaults to sudo)",
         if private_evm { "private" } else { "public" },
-        evm_owner.map(|k| k.to_account_id()),
     );
 
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -1997,9 +1996,12 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
 // TODO: when the test is fixed, decide if we want to remove the timeouts.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
+    let test = "test_domain_tx_propagate";
+    info!("{test}: Setting up Ferdie and Alice nodes");
     let (directory, mut ferdie, alice) =
         setup_evm_test_nodes(Ferdie, false, None).timeout().await?;
 
+    info!("{test}: Setting up Bob Full node, and connecting to Alice");
     // Run Bob (a evm domain full node)
     let bob = domain_test_service::DomainNodeBuilder::new(
         tokio::runtime::Handle::current(),
@@ -2010,11 +2012,13 @@ async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
     .timeout()
     .await?;
 
+    info!("{test}: Producing 5 blocks");
     produce_blocks!(ferdie, alice, 5, bob)
         .timeout()
         .await?
         .unwrap();
 
+    info!("{test}: Waiting for Alice and Bob to sync");
     async {
         while alice.sync_service.is_major_syncing() || bob.sync_service.is_major_syncing() {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -2028,6 +2032,7 @@ async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
     .timeout()
     .await?;
 
+    info!("{test}: Transferring balance on Bob");
     let pre_bob_free_balance = alice.free_balance(bob.key.to_account_id());
     // Construct and send an extrinsic to bob, as bob is not a authority node, the extrinsic has
     // to propagate to alice to get executed
@@ -2039,10 +2044,13 @@ async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
     .await?
     .expect("Failed to send extrinsic");
 
+    info!("{test}: Waiting for transaction to propagate to Alice and be executed");
     produce_blocks_until!(
         ferdie,
         alice,
         {
+            alice.unban_peer(bob.addr.clone());
+            bob.unban_peer(alice.addr.clone());
             // ensure bob has reduced balance since alice might submit other transactions which cost
             // and so exact balance check is not feasible
             alice.free_balance(bob.key.to_account_id()) <= pre_bob_free_balance - 123
