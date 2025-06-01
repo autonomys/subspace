@@ -1157,8 +1157,8 @@ mod pallet {
                     // NOTE: Skip the following staking related operations when benchmarking the
                     // `submit_bundle` call, these operations will be benchmarked separately.
                     #[cfg(not(feature = "runtime-benchmarks"))]
-                    if accepted_receipt_type == AcceptedReceiptType::NewHead {
-                        if let Some(block_tree_node) =
+                    if accepted_receipt_type == AcceptedReceiptType::NewHead
+                        && let Some(block_tree_node) =
                             prune_receipt::<T>(domain_id, receipt_block_number)
                                 .map_err(Error::<T>::from)?
                         {
@@ -1176,7 +1176,6 @@ mod pallet {
                             )
                             .map_err(Error::<T>::from)?;
                         }
-                    }
 
                     #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
                     let maybe_confirmed_domain_block_info = process_execution_receipt::<T>(
@@ -1772,8 +1771,8 @@ mod pallet {
                     // NOTE: Skip the following staking related operations when benchmarking the
                     // `submit_receipt` call, these operations will be benchmarked separately.
                     #[cfg(not(feature = "runtime-benchmarks"))]
-                    if accepted_receipt_type == AcceptedReceiptType::NewHead {
-                        if let Some(block_tree_node) =
+                    if accepted_receipt_type == AcceptedReceiptType::NewHead
+                        && let Some(block_tree_node) =
                             prune_receipt::<T>(domain_id, receipt.domain_block_number)
                                 .map_err(Error::<T>::from)?
                         {
@@ -1791,7 +1790,6 @@ mod pallet {
                             )
                             .map_err(Error::<T>::from)?;
                         }
-                    }
 
                     #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
                     let maybe_confirmed_domain_block_info = process_execution_receipt::<T>(
