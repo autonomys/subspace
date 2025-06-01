@@ -491,7 +491,7 @@ impl NodeRunner {
             }
             ref event @ SwarmEvent::ExpiredListenAddr { ref address, .. } => {
                 trace!(?event, "Local listener expired event.");
-                self.handle_remove_listeners(&[address.clone()]);
+                self.handle_remove_listeners(std::slice::from_ref(address));
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id,
