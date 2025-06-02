@@ -1,5 +1,7 @@
 //! AES related functionality.
 
+#[cfg(target_arch = "aarch64")]
+mod aarch64;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
@@ -17,6 +19,14 @@ pub(crate) fn create(seed: PotSeed, key: PotKey, checkpoint_iterations: u32) -> 
         if has_aes::get() {
             // SAFETY: Checked `aes` feature
             return unsafe { x86_64::create(seed.as_ref(), key.as_ref(), checkpoint_iterations) };
+        }
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        cpufeatures::new!(has_aes, "aes");
+        if has_aes::get() {
+            // SAFETY: Checked `aes` feature
+            return unsafe { aarch64::create(seed.as_ref(), key.as_ref(), checkpoint_iterations) };
         }
     }
 
@@ -83,6 +93,16 @@ pub(crate) fn verify_sequential(
             };
         }
     }
+    #[cfg(target_arch = "aarch64")]
+    {
+        cpufeatures::new!(has_aes, "aes");
+        if has_aes::get() {
+            // SAFETY: Checked `aes` feature
+            return unsafe {
+                aarch64::verify_sequential_aes(&seed, &key, checkpoints, checkpoint_iterations)
+            };
+        }
+    }
 
     verify_sequential_generic(seed, key, checkpoints, checkpoint_iterations)
 }
@@ -143,9 +163,8 @@ mod tests {
         checkpoint_iterations: u32,
     ) -> bool {
         let sequential = verify_sequential(seed, key, checkpoints, checkpoint_iterations);
-        let sequential_generic =
-            verify_sequential_generic(seed, key, checkpoints, checkpoint_iterations);
-        assert_eq!(sequential, sequential_generic);
+        let generic = verify_sequential_generic(seed, key, checkpoints, checkpoint_iterations);
+        assert_eq!(sequential, generic);
 
         #[cfg(target_arch = "x86_64")]
         {
@@ -180,13 +199,24 @@ mod tests {
             cpufeatures::new!(has_aes_sse41, "aes", "sse4.1");
             if has_aes_sse41::get() {
                 // SAFETY: Checked `aes` and `sse4.1` features
-                let aes = unsafe {
+                let aes_sse41 = unsafe {
                     x86_64::verify_sequential_aes_sse41(
                         &seed,
                         &key,
                         checkpoints,
                         checkpoint_iterations,
                     )
+                };
+                assert_eq!(sequential, aes_sse41);
+            }
+        }
+        #[cfg(target_arch = "aarch64")]
+        {
+            cpufeatures::new!(has_aes, "aes");
+            if has_aes::get() {
+                // SAFETY: Checked `aes` feature
+                let aes = unsafe {
+                    aarch64::verify_sequential_aes(&seed, &key, checkpoints, checkpoint_iterations)
                 };
                 assert_eq!(sequential, aes);
             }
