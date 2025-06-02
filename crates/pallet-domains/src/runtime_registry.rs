@@ -12,20 +12,20 @@ use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use domain_runtime_primitives::{AccountId20, EVMChainId, MultiAccountId, TryConvertBack};
-use frame_support::{ensure, PalletError};
-use frame_system::pallet_prelude::*;
+use frame_support::{PalletError, ensure};
 use frame_system::AccountInfo;
+use frame_system::pallet_prelude::*;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_core::crypto::AccountId32;
 use sp_core::Hasher;
+use sp_core::crypto::AccountId32;
 use sp_domains::storage::{RawGenesis, StorageData, StorageKey};
 use sp_domains::{
     AutoIdDomainRuntimeConfig, DomainId, DomainRuntimeConfig, DomainsDigestItem,
     EvmDomainRuntimeConfig, RuntimeId, RuntimeObject, RuntimeType,
 };
-use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
+use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_std::vec;
 use sp_version::RuntimeVersion;
 
@@ -393,12 +393,12 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
 
 #[cfg(test)]
 mod tests {
+    use crate::Error;
     use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
     use crate::runtime_registry::Error as RuntimeRegistryError;
     use crate::tests::{
-        new_test_ext, Domains, ReadRuntimeVersion, System, Test, TEST_RUNTIME_APIS,
+        Domains, ReadRuntimeVersion, System, TEST_RUNTIME_APIS, Test, new_test_ext,
     };
-    use crate::Error;
     use domain_runtime_primitives::Hash;
     use frame_support::dispatch::RawOrigin;
     use frame_support::traits::OnInitialize;
@@ -408,7 +408,7 @@ mod tests {
     use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeObject, RuntimeType};
     use sp_runtime::traits::BlockNumberProvider;
     use sp_runtime::{Digest, DispatchError};
-    use sp_version::{create_apis_vec, RuntimeVersion};
+    use sp_version::{RuntimeVersion, create_apis_vec};
 
     #[test]
     fn create_domain_runtime() {

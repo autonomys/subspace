@@ -1,6 +1,6 @@
 use crate::aux_schema::{
-    cleanup_chain_channel_storages, get_channel_state, get_xdm_processed_block_number,
-    set_channel_state, set_xdm_message_processed_at, BlockId,
+    BlockId, cleanup_chain_channel_storages, get_channel_state, get_xdm_processed_block_number,
+    set_channel_state, set_xdm_message_processed_at,
 };
 use crate::gossip_worker::{ChannelUpdate, MessageData};
 use crate::{ChainMsg, ChannelDetail};
@@ -18,7 +18,7 @@ use sp_consensus::SyncOracle;
 use sp_core::crypto::AccountId32;
 use sp_core::storage::StorageKey;
 use sp_core::traits::CodeExecutor;
-use sp_core::{Hasher, H256};
+use sp_core::{H256, Hasher};
 use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
 use sp_domains::{DomainId, DomainsApi, RuntimeType};
 use sp_messenger::messages::{ChainId, Channel, ChannelId};
@@ -282,13 +282,12 @@ where
     if let Some(existing_channel_update) = maybe_existing_channel_detail {
         let maybe_block_hash =
             consensus_client.hash(existing_channel_update.block_number.into())?;
-        if let Some(block_hash) = maybe_block_hash {
-            if block_hash.as_ref() == existing_channel_update.block_hash.as_ref()
-                && header.state_root().as_ref() == existing_channel_update.state_root.as_ref()
-                && existing_channel_update.block_number >= consensus_block_number
-            {
-                return Ok(());
-            }
+        if let Some(block_hash) = maybe_block_hash
+            && block_hash.as_ref() == existing_channel_update.block_hash.as_ref()
+            && header.state_root().as_ref() == existing_channel_update.state_root.as_ref()
+            && existing_channel_update.block_number >= consensus_block_number
+        {
+            return Ok(());
         }
     }
 
@@ -389,13 +388,11 @@ where
         // more the new block number, then don't update
         if let Ok((existing_block_hash, _)) =
             is_valid_domain_block_number(existing_channel_update.block_number)
+            && existing_block_hash.as_ref() == existing_channel_update.block_hash.as_ref()
+            && domain_state_root.as_ref() == existing_channel_update.state_root.as_ref()
+            && existing_channel_update.block_number >= domain_block_number
         {
-            if existing_block_hash.as_ref() == existing_channel_update.block_hash.as_ref()
-                && domain_state_root.as_ref() == existing_channel_update.state_root.as_ref()
-                && existing_channel_update.block_number >= domain_block_number
-            {
-                return Ok(());
-            }
+            return Ok(());
         }
     }
 

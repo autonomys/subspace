@@ -1,6 +1,6 @@
 use crate::utils::{
-    parse_cpu_cores_sets, run_future_in_dedicated_thread, thread_pool_core_indices_internal,
-    CpuCoreSet,
+    CpuCoreSet, parse_cpu_cores_sets, run_future_in_dedicated_thread,
+    thread_pool_core_indices_internal,
 };
 use std::future;
 use std::num::NonZeroUsize;

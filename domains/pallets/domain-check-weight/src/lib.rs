@@ -21,6 +21,7 @@ use frame_system::limits::BlockWeights;
 use frame_system::{Config, ConsumedWeight};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_runtime::DispatchResult;
 use sp_runtime::traits::{
     DispatchInfoOf, DispatchOriginOf, Dispatchable, PostDispatchInfoOf, TransactionExtension,
     ValidateResult,
@@ -28,7 +29,6 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     TransactionSource, TransactionValidity, TransactionValidityError,
 };
-use sp_runtime::DispatchResult;
 use sp_weights::Weight;
 
 /// Wrapper of [`frame_system::CheckWeight`]

@@ -1,16 +1,16 @@
 //! Custom genesis block builder to inject correct genesis block.
 
 use hex_literal::hex;
-use sc_chain_spec::{construct_genesis_block, resolve_state_version_from_wasm, BuildGenesisBlock};
+use sc_chain_spec::{BuildGenesisBlock, construct_genesis_block, resolve_state_version_from_wasm};
 use sc_client_api::{Backend, BlockImportOperation};
 use sc_executor::RuntimeVersionOf;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_core::storage::Storage;
 use sp_core::H256;
+use sp_core::storage::Storage;
 use sp_domains::{DomainId, DomainsApi};
-use sp_runtime::traits::{Block as BlockT, HashingFor};
 use sp_runtime::BuildStorage;
+use sp_runtime::traits::{Block as BlockT, HashingFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
 

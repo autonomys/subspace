@@ -5,8 +5,8 @@ mod table;
 mod tables;
 mod utils;
 
-use crate::chiapos::table::metadata_size_bytes;
 pub use crate::chiapos::table::TablesCache;
+use crate::chiapos::table::metadata_size_bytes;
 use crate::chiapos::tables::TablesGeneric;
 use crate::chiapos::utils::EvaluatableUsize;
 

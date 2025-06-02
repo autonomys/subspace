@@ -113,8 +113,8 @@ where
 #[cfg(test)]
 mod tests {
     use crate::cluster::controller::stream_map::StreamMap;
-    use futures::stream::FusedStream;
     use futures::StreamExt;
+    use futures::stream::FusedStream;
     use std::task::Context;
 
     fn assert_is_terminated<'a, R: 'a>(stream_map: &StreamMap<'a, u16, R>) {

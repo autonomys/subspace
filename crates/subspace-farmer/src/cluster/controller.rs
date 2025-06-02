@@ -23,7 +23,7 @@ use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::future::FusedFuture;
 use futures::stream::FuturesUnordered;
-use futures::{select, stream, FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, select, stream};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rand::prelude::*;

@@ -7,7 +7,7 @@ use evm_domain_test_runtime::{
 };
 use parity_scale_codec::Encode;
 use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension};
-use sp_core::{ecdsa, Pair, Public};
+use sp_core::{Pair, Public, ecdsa};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
     DomainId, EvmDomainRuntimeConfig, EvmType, GenesisDomain, OperatorAllowList, OperatorPublicKey,

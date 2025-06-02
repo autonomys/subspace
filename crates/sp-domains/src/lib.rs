@@ -37,11 +37,11 @@ use hex_literal::hex;
 use parity_scale_codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
+use sp_core::H256;
 use sp_core::crypto::KeyTypeId;
 use sp_core::sr25519::vrf::VrfSignature;
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
 use sp_core::sr25519::vrf::{VrfPreOutput, VrfProof};
-use sp_core::H256;
 use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{
     BlakeTwo256, CheckedAdd, Hash as HashT, Header as HeaderT, NumberFor, Zero,
@@ -56,7 +56,7 @@ use sp_version::RuntimeVersion;
 use sp_weights::Weight;
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
-use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
+use subspace_core_primitives::hashes::{Blake3Hash, blake3_hash};
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::solutions::bidirectional_distance;
 use subspace_core_primitives::{Randomness, U256};
@@ -634,12 +634,12 @@ impl<Number, Hash, DomainNumber, DomainHash, Balance>
 }
 
 impl<
-        Number: Encode + Zero,
-        Hash: Encode + Default,
-        DomainNumber: Encode + Zero,
-        DomainHash: Clone + Encode + Default,
-        Balance: Encode + Zero + Default,
-    > ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
+    Number: Encode + Zero,
+    Hash: Encode + Default,
+    DomainNumber: Encode + Zero,
+    DomainHash: Clone + Encode + Default,
+    Balance: Encode + Zero + Default,
+> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
 {
     /// Returns the hash of this execution receipt.
     pub fn hash<DomainHashing: HashT<Output = DomainHash>>(&self) -> DomainHash {

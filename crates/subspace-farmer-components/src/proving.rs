@@ -5,7 +5,7 @@
 
 use crate::auditing::ChunkCandidate;
 use crate::reading::{
-    read_record_metadata, read_sector_record_chunks, ReadSectorRecordChunksMode, ReadingError,
+    ReadSectorRecordChunksMode, ReadingError, read_record_metadata, read_sector_record_chunks,
 };
 use crate::sector::{
     SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadataChecksummed,

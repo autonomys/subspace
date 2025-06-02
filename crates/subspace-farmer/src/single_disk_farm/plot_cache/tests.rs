@@ -1,5 +1,5 @@
 use crate::farm::MaybePieceStoredResult;
-use crate::single_disk_farm::direct_io_file::{DirectIoFile, DISK_SECTOR_SIZE};
+use crate::single_disk_farm::direct_io_file::{DISK_SECTOR_SIZE, DirectIoFile};
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
 use rand::prelude::*;
 use std::assert_matches::assert_matches;
@@ -82,10 +82,12 @@ async fn basic() {
         usize::from(TARGET_SECTOR_COUNT),
         dummy_sector_metadata.clone(),
     );
-    assert!(!disk_plot_cache
-        .try_store_piece(piece_index_0, &piece_0)
-        .await
-        .unwrap());
+    assert!(
+        !disk_plot_cache
+            .try_store_piece(piece_index_0, &piece_0)
+            .await
+            .unwrap()
+    );
     assert_matches!(
         disk_plot_cache.is_piece_maybe_stored(&record_key_0),
         MaybePieceStoredResult::No
@@ -101,10 +103,12 @@ async fn basic() {
     );
 
     // Successfully stores piece if not all sectors are plotted
-    assert!(disk_plot_cache
-        .try_store_piece(piece_index_0, &piece_0)
-        .await
-        .unwrap());
+    assert!(
+        disk_plot_cache
+            .try_store_piece(piece_index_0, &piece_0)
+            .await
+            .unwrap()
+    );
     assert_matches!(
         disk_plot_cache.is_piece_maybe_stored(&record_key_0),
         MaybePieceStoredResult::Yes
@@ -116,10 +120,12 @@ async fn basic() {
         disk_plot_cache.is_piece_maybe_stored(&record_key_1),
         MaybePieceStoredResult::Vacant
     );
-    assert!(disk_plot_cache
-        .try_store_piece(piece_index_1, &piece_1)
-        .await
-        .unwrap());
+    assert!(
+        disk_plot_cache
+            .try_store_piece(piece_index_1, &piece_1)
+            .await
+            .unwrap()
+    );
     assert_matches!(
         disk_plot_cache.is_piece_maybe_stored(&record_key_1),
         MaybePieceStoredResult::Yes
@@ -130,10 +136,12 @@ async fn basic() {
         disk_plot_cache.is_piece_maybe_stored(&record_key_2),
         MaybePieceStoredResult::Vacant
     );
-    assert!(disk_plot_cache
-        .try_store_piece(piece_index_2, &piece_2)
-        .await
-        .unwrap());
+    assert!(
+        disk_plot_cache
+            .try_store_piece(piece_index_2, &piece_2)
+            .await
+            .unwrap()
+    );
     assert_matches!(
         disk_plot_cache.is_piece_maybe_stored(&record_key_2),
         MaybePieceStoredResult::Yes

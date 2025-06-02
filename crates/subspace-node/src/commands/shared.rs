@@ -1,9 +1,9 @@
 use clap::Parser;
 use sc_cli::Error;
 use sc_keystore::LocalKeystore;
+use sp_core::Pair as PairT;
 use sp_core::crypto::{ExposeSecret, SecretString};
 use sp_core::sr25519::Pair;
-use sp_core::Pair as PairT;
 use sp_domains::KEY_TYPE;
 use sp_keystore::Keystore;
 use std::panic;
@@ -37,7 +37,7 @@ pub(super) fn derive_keypair(
             .map(|password| password.expose_secret().as_str()),
     );
 
-    keypair_result.map_err(|err| Error::Input(format!("Invalid password {:?}", err)))
+    keypair_result.map_err(|err| Error::Input(format!("Invalid password {err:?}")))
 }
 
 #[expect(clippy::result_large_err, reason = "Comes from Substrate")]

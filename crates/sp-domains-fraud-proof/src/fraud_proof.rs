@@ -234,11 +234,9 @@ pub enum VerificationError<DomainHash> {
     #[error("Failed to decode the return value of `initialize_block` and `apply_extrinsic`: {0}")]
     InitializeBlockOrApplyExtrinsicDecode(parity_scale_codec::Error),
     /// Failed to decode the storage root produced by verifying `initialize_block` or `apply_extrinsic`.
-    #[
-    error(
-    "Failed to decode the storage root from verifying `initialize_block` and `apply_extrinsic`: {0}"
-    )
-    ]
+    #[error(
+        "Failed to decode the storage root from verifying `initialize_block` and `apply_extrinsic`: {0}"
+    )]
     StorageRootDecode(parity_scale_codec::Error),
     /// Failed to decode the header produced by `finalize_block`.
     #[error("Failed to decode the header from verifying `finalize_block`: {0}")]

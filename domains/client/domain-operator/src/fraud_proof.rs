@@ -1,21 +1,22 @@
-use crate::aux_schema::BundleMismatchType;
 use crate::ExecutionReceiptFor;
+use crate::aux_schema::BundleMismatchType;
 use domain_block_builder::BlockBuilder;
-use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::CheckExtrinsicsValidityError;
+use domain_runtime_primitives::opaque::AccountId;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, BlockBackend, ExecutorProvider, ProofProvider};
 use sc_domains::FPStorageKeyProvider;
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_core::traits::CodeExecutor;
 use sp_core::H256;
+use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{
     DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, InvalidBundleType, RuntimeId,
 };
+use sp_domains_fraud_proof::FraudProofApi;
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, DomainRuntimeCodeAt, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
@@ -24,7 +25,6 @@ use sp_domains_fraud_proof::fraud_proof::{
     InvalidTransfersProof, MmrRootProof, ValidBundleDigest, ValidBundleProof,
 };
 use sp_domains_fraud_proof::storage_proof::{self, *};
-use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::generic::BlockId;
@@ -45,9 +45,7 @@ pub enum TraceDiffType {
 /// Error type for fraud proof generation.
 #[derive(Debug, thiserror::Error)]
 pub enum FraudProofError {
-    #[error(
-        "Out of bounds extrinsic index for creating the fraud proof, got: {index}, max: {max}"
-    )]
+    #[error("Out of bounds extrinsic index for creating the fraud proof, got: {index}, max: {max}")]
     OutOfBoundsExtrinsicIndex { index: usize, max: usize },
     #[error(transparent)]
     Blockchain(#[from] sp_blockchain::Error),
@@ -657,8 +655,7 @@ where
                         .block_number_from_id(&BlockId::Hash(domain_block_parent_hash))?
                         .ok_or_else(|| {
                             FraudProofError::Blockchain(sp_blockchain::Error::Backend(format!(
-                                "unable to get block number for domain block:{:?}",
-                                domain_block_parent_hash
+                                "unable to get block number for domain block:{domain_block_parent_hash:?}"
                             )))
                         })?;
 

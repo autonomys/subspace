@@ -1,4 +1,4 @@
-#![feature(duration_constructors, type_changing_struct_update)]
+#![feature(duration_constructors_lite, type_changing_struct_update)]
 
 mod commands;
 mod utils;

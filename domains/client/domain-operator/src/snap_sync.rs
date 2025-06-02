@@ -9,21 +9,21 @@ use sc_network::PeerId;
 use sc_network_common::sync::message::{
     BlockAttributes, BlockData, BlockRequest, Direction, FromBlock,
 };
+use sc_network_sync::SyncingService;
 use sc_network_sync::block_relay_protocol::BlockDownloader;
 use sc_network_sync::service::network::NetworkServiceHandle;
-use sc_network_sync::SyncingService;
 use sc_subspace_sync_common::snap_sync_engine::SnapSyncingEngine;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_domains::ExecutionReceiptFor;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Header, NumberFor};
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast;
 use tokio::time::sleep;
-use tracing::{debug, error, trace, Instrument};
+use tracing::{Instrument, debug, error, trace};
 
 /// Notification with number of the block that is about to be imported and acknowledgement sender
 /// that pauses block production until the previous block is acknowledged.
@@ -220,7 +220,7 @@ async fn get_last_confirmed_block<Block: BlockT>(
     }
 
     Err(sp_blockchain::Error::Application(
-        format!("Failed to get block {}", block_number).into(),
+        format!("Failed to get block {block_number}").into(),
     ))
 }
 

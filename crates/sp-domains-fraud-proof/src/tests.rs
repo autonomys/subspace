@@ -1,10 +1,10 @@
 use domain_runtime_primitives::{Balance, CheckExtrinsicsValidityError};
-use domain_test_service::evm_domain_test_runtime::{
-    Runtime as TestRuntime, RuntimeCall, Signature, UncheckedExtrinsic as EvmUncheckedExtrinsic,
-};
 use domain_test_service::EcdsaKeyring::{Alice, Charlie};
 use domain_test_service::EvmDomainNode;
 use domain_test_service::Sr25519Keyring::Ferdie;
+use domain_test_service::evm_domain_test_runtime::{
+    Runtime as TestRuntime, RuntimeCall, Signature, UncheckedExtrinsic as EvmUncheckedExtrinsic,
+};
 use ethereum::TransactionV2 as EthereumTransaction;
 use evm_domain_test_runtime::construct_extrinsic_raw_payload;
 use fp_rpc::EthereumRuntimeRPCApi;
@@ -14,14 +14,14 @@ use sc_client_api::{HeaderBackend, StorageProof};
 use sc_service::{BasePath, Role};
 use sp_api::{ApiExt, ProvideRuntimeApi, TransactionOutcome};
 use sp_core::ecdsa::Pair;
-use sp_core::{keccak_256, Pair as _, U256};
+use sp_core::{Pair as _, U256, keccak_256};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::test_ethereum::{generate_eip1559_tx, generate_eip2930_tx, generate_legacy_tx};
-use sp_domains::test_ethereum_tx::{address_build, AccountInfo};
+use sp_domains::test_ethereum_tx::{AccountInfo, address_build};
+use sp_runtime::OpaqueExtrinsic;
 use sp_runtime::traits::Zero;
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
-use sp_runtime::OpaqueExtrinsic;
-use subspace_test_service::{produce_block_with, produce_blocks, MockConsensusNode};
+use subspace_test_service::{MockConsensusNode, produce_block_with, produce_blocks};
 use tempfile::TempDir;
 
 // This function depends on the macro-constructed `TestRuntime::RuntimeCall` enum, so it can't be
@@ -223,7 +223,8 @@ async fn domain_bundle_storage_proof_benchmark() {
         "Result: Storage proof nodes: {:?}, keys accessed: {:?}, Storage proof total size (in mem): {:?}, Storage proof total size (in wire): {:?}",
         storage_proof.iter_nodes().count(),
         recorded_keys.len(),
-        storage_proof.clone()
+        storage_proof
+            .clone()
             .into_iter_nodes()
             .collect::<Vec<Vec<u8>>>()
             .iter()
@@ -372,35 +373,39 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
         // A runtime instance can rollback changes safely.
         let runtime_instance = alice.client.runtime_api();
 
-        assert!(runtime_instance
-            .check_extrinsics_and_do_pre_dispatch(
-                best_hash,
-                vec![transfer_with_big_tip_1.clone().into()],
-                best_number,
-                best_hash,
-            )
-            .unwrap()
-            .is_ok());
+        assert!(
+            runtime_instance
+                .check_extrinsics_and_do_pre_dispatch(
+                    best_hash,
+                    vec![transfer_with_big_tip_1.clone().into()],
+                    best_number,
+                    best_hash,
+                )
+                .unwrap()
+                .is_ok()
+        );
 
-        assert!(runtime_instance
-            .execute_in_transaction(|api| {
-                if commit_mode {
-                    TransactionOutcome::Commit(api.check_extrinsics_and_do_pre_dispatch(
-                        best_hash,
-                        vec![transfer_with_big_tip_2.clone().into()],
-                        best_number,
-                        best_hash,
-                    ))
-                } else {
-                    TransactionOutcome::Rollback(api.check_extrinsics_and_do_pre_dispatch(
-                        best_hash,
-                        vec![transfer_with_big_tip_2.clone().into()],
-                        best_number,
-                        best_hash,
-                    ))
-                }
-            })
-            .is_ok());
+        assert!(
+            runtime_instance
+                .execute_in_transaction(|api| {
+                    if commit_mode {
+                        TransactionOutcome::Commit(api.check_extrinsics_and_do_pre_dispatch(
+                            best_hash,
+                            vec![transfer_with_big_tip_2.clone().into()],
+                            best_number,
+                            best_hash,
+                        ))
+                    } else {
+                        TransactionOutcome::Rollback(api.check_extrinsics_and_do_pre_dispatch(
+                            best_hash,
+                            vec![transfer_with_big_tip_2.clone().into()],
+                            best_number,
+                            best_hash,
+                        ))
+                    }
+                })
+                .is_ok()
+        );
 
         assert_eq!(
             runtime_instance

@@ -2,7 +2,7 @@ use subspace_archiving::piece_reconstructor::{PiecesReconstructor, Reconstructor
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_data_retrieval::segment_downloading::{
-    download_segment_pieces, SegmentDownloadingError,
+    SegmentDownloadingError, download_segment_pieces,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::Kzg;

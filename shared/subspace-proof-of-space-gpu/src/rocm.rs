@@ -5,12 +5,12 @@ mod tests;
 
 use rust_kzg_blst::types::fr::FsFr;
 use std::ops::DerefMut;
+use subspace_core_primitives::ScalarBytes;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::pos::{PosProof, PosSeed};
-use subspace_core_primitives::ScalarBytes;
 use subspace_kzg::Scalar;
 
-extern "C" {
+unsafe extern "C" {
     /// # Returns
     /// * `usize` - The number of available GPUs.
     fn gpu_count() -> usize;

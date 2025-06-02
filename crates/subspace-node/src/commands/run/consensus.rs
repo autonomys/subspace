@@ -1,11 +1,11 @@
 use crate::commands::run::shared::{RpcOptions, TrieCacheParams};
-use crate::{chain_spec, derive_pot_external_entropy, Error};
+use crate::{Error, chain_spec, derive_pot_external_entropy};
 use clap::Parser;
 use prometheus_client::registry::Registry;
 use sc_chain_spec::GenericChainSpec;
 use sc_cli::{
-    generate_node_name, Cors, NodeKeyParams, NodeKeyType, RpcMethods, RuntimeParams,
-    TelemetryParams, TransactionPoolParams, RPC_DEFAULT_PORT,
+    Cors, NodeKeyParams, NodeKeyType, RPC_DEFAULT_PORT, RpcMethods, RuntimeParams, TelemetryParams,
+    TransactionPoolParams, generate_node_name,
 };
 use sc_consensus_subspace::archiver::CreateObjectMappings;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, Role, SetConfig};
@@ -20,8 +20,8 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::BlockNumber;
-use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_service::config::{
     ChainSyncMode, SubspaceConfiguration, SubspaceNetworking, SubstrateConfiguration,
     SubstrateNetworkConfiguration, SubstrateRpcConfiguration,
@@ -356,7 +356,7 @@ impl FromStr for CreateObjectMappingConfig {
 impl fmt::Display for CreateObjectMappingConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Block(block) => write!(f, "{}", block),
+            Self::Block(block) => write!(f, "{block}"),
             Self::Yes => f.write_str("yes"),
             Self::No => f.write_str("no"),
         }
@@ -621,15 +621,15 @@ pub(super) fn create_consensus_chain_configuration(
 
     let node_name = name.unwrap_or_else(generate_node_name);
 
-    if let StatePruningMode::Number(number) = pruning_params.state_pruning {
-        if number < MIN_STATE_PRUNING {
-            // Do not return error because some users may in fact use lower values and we don't want
-            // to break their setups, at least for now
-            error!(
-                "Do not set state pruning number below {MIN_STATE_PRUNING} for safety reasons, \
+    if let StatePruningMode::Number(number) = pruning_params.state_pruning
+        && number < MIN_STATE_PRUNING
+    {
+        // Do not return error because some users may in fact use lower values and we don't want
+        // to break their setups, at least for now
+        error!(
+            "Do not set state pruning number below {MIN_STATE_PRUNING} for safety reasons, \
                 node can break any time!"
-            );
-        }
+        );
     }
 
     let consensus_chain_config = SubstrateConfiguration {

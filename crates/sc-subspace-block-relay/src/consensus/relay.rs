@@ -479,7 +479,7 @@ where
             Ok(None) => {
                 return Err(RelayError::BlockHeader(format!(
                     "Missing header: {block_hash:?}"
-                )))
+                )));
             }
             Err(err) => return Err(RelayError::BlockHeader(format!("{block_hash:?}, {err:?}"))),
         };

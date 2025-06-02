@@ -1,10 +1,10 @@
 use crate::mock::chain_a::{
-    new_test_ext as new_chain_a_ext, Messenger, Runtime, RuntimeEvent, RuntimeOrigin, System,
-    USER_ACCOUNT,
+    Messenger, Runtime, RuntimeEvent, RuntimeOrigin, System, USER_ACCOUNT,
+    new_test_ext as new_chain_a_ext,
 };
 use crate::mock::{
-    chain_a, chain_b, consensus_chain, storage_proof_of_inbox_message_responses,
-    storage_proof_of_outbox_messages, AccountId, Balance, TestExternalities,
+    AccountId, Balance, TestExternalities, chain_a, chain_b, consensus_chain,
+    storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
 };
 use crate::pallet::OutboxMessageCount;
 use crate::{
@@ -18,8 +18,8 @@ use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
 use sp_core::{Blake2Hasher, H256};
-use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
 use sp_domains::DomainAllowlistUpdates;
+use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
     BlockMessagesQuery, ChainId, ChannelOpenParamsV1, CrossDomainMessage, MessageWeightTag,
@@ -877,11 +877,13 @@ fn initiate_transfer_on_chain(chain_a_ext: &mut TestExternalities) {
             channel_id: U256::zero(),
             nonce: U256::one(),
         }));
-        assert!(chain_a::Transporter::outgoing_transfers(
-            chain_b::SelfChainId::get(),
-            (U256::zero(), U256::one()),
+        assert!(
+            chain_a::Transporter::outgoing_transfers(
+                chain_b::SelfChainId::get(),
+                (U256::zero(), U256::one()),
+            )
+            .is_some()
         )
-        .is_some())
     })
 }
 
@@ -902,11 +904,13 @@ fn verify_transfer_on_chain(
                 message_id: (U256::zero(), U256::one()),
             },
         ));
-        assert!(chain_a::Transporter::outgoing_transfers(
-            chain_b::SelfChainId::get(),
-            (U256::zero(), U256::one()),
+        assert!(
+            chain_a::Transporter::outgoing_transfers(
+                chain_b::SelfChainId::get(),
+                (U256::zero(), U256::one()),
+            )
+            .is_none()
         )
-        .is_none())
     });
 
     // chain a should have
@@ -1036,11 +1040,13 @@ fn test_transport_funds_between_chains_if_dst_chain_disallows_after_message_is_s
                 err: Error::<chain_a::Runtime>::ChainNotAllowed.into(),
             },
         ));
-        assert!(chain_a::Transporter::outgoing_transfers(
-            chain_b::SelfChainId::get(),
-            (U256::zero(), U256::one()),
+        assert!(
+            chain_a::Transporter::outgoing_transfers(
+                chain_b::SelfChainId::get(),
+                (U256::zero(), U256::one()),
+            )
+            .is_none()
         )
-        .is_none())
     });
 
     // chain_b should not have successful event from transporter

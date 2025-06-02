@@ -1,7 +1,7 @@
 //! Proof of time-related data structures.
 
-use crate::hashes::{blake3_hash, blake3_hash_list, Blake3Hash};
 use crate::Randomness;
+use crate::hashes::{Blake3Hash, blake3_hash, blake3_hash_list};
 use core::num::NonZeroU8;
 use core::str::FromStr;
 use core::{fmt, mem};

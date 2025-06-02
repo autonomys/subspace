@@ -1,7 +1,7 @@
 //! Utility module for handling Subspace client notifications.
 
 use parking_lot::Mutex;
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
+use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender, tracing_unbounded};
 use std::fmt;
 use std::sync::Arc;
 

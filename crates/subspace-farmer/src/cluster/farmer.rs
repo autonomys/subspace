@@ -22,10 +22,10 @@ use derive_more::{Display, From};
 use event_listener_primitives::Bag;
 use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
-use futures::{select, stream, FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, select, stream};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input, Output};
 use std::future::Future;
-use std::pin::{pin, Pin};
+use std::pin::{Pin, pin};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::{Piece, PieceOffset};
@@ -33,7 +33,7 @@ use subspace_core_primitives::sectors::SectorIndex;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_rpc_primitives::SolutionResponse;
 use tokio::time::MissedTickBehavior;
-use tracing::{debug, error, info_span, trace, warn, Instrument};
+use tracing::{Instrument, debug, error, info_span, trace, warn};
 use ulid::Ulid;
 
 const BROADCAST_NOTIFICATIONS_BUFFER: usize = 1000;
@@ -48,12 +48,12 @@ pub struct ClusterFarmerId(Ulid);
 impl Encode for ClusterFarmerId {
     #[inline]
     fn size_hint(&self) -> usize {
-        Encode::size_hint(&self.0 .0)
+        Encode::size_hint(&self.0.0)
     }
 
     #[inline]
     fn encode_to<O: Output + ?Sized>(&self, output: &mut O) {
-        Encode::encode_to(&self.0 .0, output)
+        Encode::encode_to(&self.0.0, output)
     }
 }
 

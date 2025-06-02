@@ -4,7 +4,7 @@ description = "Subspace proof of space implementation for GPU (low-level proving
 license = "0BSD"
 version = "0.1.0"
 authors = ["Supranational LLC"]
-edition = "2021"
+edition.workspace = true
 include = [
     "/build.rs",
     "/src",

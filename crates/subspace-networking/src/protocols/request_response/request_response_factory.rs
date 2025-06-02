@@ -40,6 +40,7 @@ mod tests;
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::prelude::*;
+use libp2p::StreamProtocol;
 use libp2p::core::transport::PortUse;
 use libp2p::core::{Endpoint, Multiaddr};
 use libp2p::identity::PeerId;
@@ -55,10 +56,9 @@ use libp2p::swarm::handler::multi::MultiHandler;
 use libp2p::swarm::{
     ConnectionDenied, ConnectionId, NetworkBehaviour, THandlerInEvent, THandlerOutEvent, ToSwarm,
 };
-use libp2p::StreamProtocol;
 use std::borrow::Cow;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -349,7 +349,7 @@ impl RequestResponseFactoryBehaviour {
             match protocols.entry(Cow::Borrowed(config.name)) {
                 Entry::Vacant(e) => e.insert((rq_rp, config.inbound_queue)),
                 Entry::Occupied(e) => {
-                    return Err(RegisterError::DuplicateProtocol(e.key().clone()))
+                    return Err(RegisterError::DuplicateProtocol(e.key().clone()));
                 }
             };
 
@@ -666,20 +666,19 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                     None => continue,
                 };
 
-                if let Ok(payload) = result {
-                    if let Some((protocol, _)) = self.protocols.get_mut(&*protocol_name) {
-                        if protocol.send_response(inner_channel, Ok(payload)).is_err() {
-                            // Note: Failure is handled further below when receiving
-                            // `InboundFailure` event from `RequestResponse` behaviour.
-                            debug!(
-                                %request_id,
-                                "Failed to send response for request on protocol {} due to a \
-                                timeout or due to the connection to the peer being closed. \
-                                Dropping response",
-                                protocol_name,
-                            );
-                        }
-                    }
+                if let Ok(payload) = result
+                    && let Some((protocol, _)) = self.protocols.get_mut(&*protocol_name)
+                    && protocol.send_response(inner_channel, Ok(payload)).is_err()
+                {
+                    // Note: Failure is handled further below when receiving
+                    // `InboundFailure` event from `RequestResponse` behaviour.
+                    debug!(
+                        %request_id,
+                        "Failed to send response for request on protocol {} due to a \
+                        timeout or due to the connection to the peer being closed. \
+                        Dropping response",
+                        protocol_name,
+                    );
                 }
             }
 
@@ -715,7 +714,7 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                 peer_id,
                                 handler,
                                 event: ((*protocol).to_string(), event),
-                            })
+                            });
                         }
                         ToSwarm::CloseConnection {
                             peer_id,
@@ -724,22 +723,22 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                             return Poll::Ready(ToSwarm::CloseConnection {
                                 peer_id,
                                 connection,
-                            })
+                            });
                         }
                         ToSwarm::NewExternalAddrCandidate(observed) => {
-                            return Poll::Ready(ToSwarm::NewExternalAddrCandidate(observed))
+                            return Poll::Ready(ToSwarm::NewExternalAddrCandidate(observed));
                         }
                         ToSwarm::ExternalAddrConfirmed(addr) => {
-                            return Poll::Ready(ToSwarm::ExternalAddrConfirmed(addr))
+                            return Poll::Ready(ToSwarm::ExternalAddrConfirmed(addr));
                         }
                         ToSwarm::ExternalAddrExpired(addr) => {
-                            return Poll::Ready(ToSwarm::ExternalAddrExpired(addr))
+                            return Poll::Ready(ToSwarm::ExternalAddrExpired(addr));
                         }
                         ToSwarm::ListenOn { opts } => {
-                            return Poll::Ready(ToSwarm::ListenOn { opts })
+                            return Poll::Ready(ToSwarm::ListenOn { opts });
                         }
                         ToSwarm::RemoveListener { id } => {
-                            return Poll::Ready(ToSwarm::RemoveListener { id })
+                            return Poll::Ready(ToSwarm::RemoveListener { id });
                         }
                         event => {
                             warn!(
@@ -908,7 +907,9 @@ pub enum RequestFailure {
     NotConnected,
     #[error("Given protocol hasn't been registered.")]
     UnknownProtocol,
-    #[error("Remote has closed the substream before answering, thereby signaling that it considers the request as valid, but refused to answer it.")]
+    #[error(
+        "Remote has closed the substream before answering, thereby signaling that it considers the request as valid, but refused to answer it."
+    )]
     Refused,
     #[error("The remote replied, but the local node is no longer interested in the response.")]
     Obsolete,
@@ -987,7 +988,7 @@ impl RequestResponseCodec for GenericCodec {
             Err(unsigned_varint::io::ReadError::Io(err))
                 if matches!(err.kind(), io::ErrorKind::UnexpectedEof) =>
             {
-                return Ok(Err(()))
+                return Ok(Err(()));
             }
             Err(err) => return Err(io::Error::new(io::ErrorKind::InvalidInput, err)),
         };

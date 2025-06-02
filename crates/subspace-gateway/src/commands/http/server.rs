@@ -1,6 +1,6 @@
 //! HTTP server which fetches objects from the DSN based on a hash, using a mapping indexer service.
 
-use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 use std::sync::Arc;
 use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_data_retrieval::object_fetcher::ObjectFetcher;

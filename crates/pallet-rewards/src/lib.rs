@@ -20,8 +20,8 @@ use log::warn;
 pub use pallet::*;
 use serde::{Deserialize, Serialize};
 use sp_core::U256;
-use sp_runtime::traits::{CheckedSub, Zero};
 use sp_runtime::Saturating;
+use sp_runtime::traits::{CheckedSub, Zero};
 use subspace_runtime_primitives::{BlockNumber, FindBlockRewardAddress, FindVotingRewardAddresses};
 
 type BalanceOf<T> =
@@ -310,16 +310,16 @@ impl<T: Config> Pallet<T> {
             }
         }
 
-        if let Some(block_author) = maybe_block_author {
-            if !block_reward.is_zero() {
-                let _imbalance = T::Currency::deposit_creating(&block_author, block_reward);
-                T::OnReward::on_reward(block_author.clone(), block_reward);
+        if let Some(block_author) = maybe_block_author
+            && !block_reward.is_zero()
+        {
+            let _imbalance = T::Currency::deposit_creating(&block_author, block_reward);
+            T::OnReward::on_reward(block_author.clone(), block_reward);
 
-                Self::deposit_event(Event::BlockReward {
-                    block_author,
-                    reward: block_reward,
-                });
-            }
+            Self::deposit_event(Event::BlockReward {
+                block_author,
+                reward: block_reward,
+            });
         }
 
         if old_remaining_issuance != new_remaining_issuance {

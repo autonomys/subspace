@@ -1,7 +1,7 @@
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter, Layer};
+use tracing_subscriber::{EnvFilter, Layer, fmt};
 
 pub fn init_logger() {
     // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
@@ -26,9 +26,8 @@ pub fn init_logger() {
         // In production, this might be a bug in the logging setup.
         // In some tests, it is expected.
         eprintln!(
-            "Failed to initialize logger: {}. \
-            This is expected when running nexttest test functions under `cargo test`.",
-            e
+            "Failed to initialize logger: {e}. \
+            This is expected when running nexttest test functions under `cargo test`."
         );
     }
 }

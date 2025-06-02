@@ -5,13 +5,13 @@ use crate::farmer_cache::FarmerCaches;
 use crate::node_client::NodeClient;
 use async_lock::RwLock as AsyncRwLock;
 use async_trait::async_trait;
+use backoff::ExponentialBackoff;
 use backoff::backoff::Backoff;
 use backoff::future::retry;
-use backoff::ExponentialBackoff;
 use futures::channel::mpsc;
 use futures::future::FusedFuture;
 use futures::stream::FuturesUnordered;
-use futures::{stream, FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, stream};
 use std::fmt;
 use std::hash::Hash;
 use std::pin::Pin;
@@ -164,15 +164,15 @@ where
             .try_read()
             .and_then(|plotted_pieces| plotted_pieces.read_piece(piece_index));
 
-        if let Some(read_piece_fut) = maybe_read_piece_fut {
-            if let Some(piece) = read_piece_fut.await {
-                trace!(%piece_index, "Got piece from local plot successfully");
-                inner
-                    .farmer_caches
-                    .maybe_store_additional_piece(piece_index, &piece)
-                    .await;
-                return Some(piece);
-            }
+        if let Some(read_piece_fut) = maybe_read_piece_fut
+            && let Some(piece) = read_piece_fut.await
+        {
+            trace!(%piece_index, "Got piece from local plot successfully");
+            inner
+                .farmer_caches
+                .maybe_store_additional_piece(piece_index, &piece)
+                .await;
+            return Some(piece);
         }
 
         // L1 piece acquisition
