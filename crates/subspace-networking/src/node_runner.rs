@@ -34,12 +34,12 @@ use nohash_hasher::IntMap;
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use std::fmt;
 use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
+use std::{fmt, slice};
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::task::yield_now;
 use tokio::time::Sleep;
@@ -491,7 +491,7 @@ impl NodeRunner {
             }
             ref event @ SwarmEvent::ExpiredListenAddr { ref address, .. } => {
                 trace!(?event, "Local listener expired event.");
-                self.handle_remove_listeners(std::slice::from_ref(address));
+                self.handle_remove_listeners(slice::from_ref(address));
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id,
