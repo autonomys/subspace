@@ -3,9 +3,9 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::hashes::{blake3_hash, Blake3Hash};
-use crate::pieces::{FlatPieces, Piece, PieceIndex, RawRecord};
 use crate::BlockNumber;
+use crate::hashes::{Blake3Hash, blake3_hash};
+use crate::pieces::{FlatPieces, Piece, PieceIndex, RawRecord};
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 use core::array::TryFromSliceError;
@@ -128,7 +128,7 @@ impl SegmentIndex {
         source_first_piece_indices
     }
 
-    /// Checked integer subtraction. Computes `self - rhs`, returning `None` if overflow occurred.
+    /// Checked integer subtraction. Computes `self - rhs`, returning `None` if underflow occurred.
     #[inline]
     pub const fn checked_sub(self, rhs: Self) -> Option<Self> {
         // TODO: when Option::map becomes const, use it here
@@ -136,6 +136,13 @@ impl SegmentIndex {
             Some(segment_index) => Some(Self(segment_index)),
             None => None,
         }
+    }
+
+    /// Saturating integer subtraction. Computes `self - rhs`, returning zero if underflow
+    /// occurred.
+    #[inline]
+    pub const fn saturating_sub(self, rhs: Self) -> Self {
+        Self(self.0.saturating_sub(rhs.0))
     }
 }
 

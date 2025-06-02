@@ -3,21 +3,21 @@
 extern crate alloc;
 
 use super::*;
-use crate::block_tree::{prune_receipt, BlockTreeNode};
+use crate::block_tree::{BlockTreeNode, prune_receipt};
 use crate::bundle_storage_fund::refund_storage_fee;
-use crate::domain_registry::{into_domain_config, DomainConfigParams};
+use crate::domain_registry::{DomainConfigParams, into_domain_config};
 use crate::runtime_registry::DomainRuntimeUpgradeEntry;
 use crate::staking::{
-    do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_reward_operators,
     Error as StakingError, OperatorConfig, OperatorStatus, WithdrawStake,
+    do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_reward_operators,
 };
 use crate::staking_epoch::{
     do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking, do_slash_operator,
     operator_take_reward_tax_and_stake,
 };
 use crate::{
-    DomainBlockNumberFor, ExecutionReceiptOf, Pallet as Domains, RawOrigin as DomainOrigin,
-    MAX_NOMINATORS_TO_SLASH,
+    DomainBlockNumberFor, ExecutionReceiptOf, MAX_NOMINATORS_TO_SLASH, Pallet as Domains,
+    RawOrigin as DomainOrigin,
 };
 #[cfg(not(feature = "std"))]
 use alloc::borrow::ToOwned;
@@ -25,27 +25,27 @@ use alloc::borrow::ToOwned;
 use alloc::vec::Vec;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
-use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::Hooks;
+use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_system::{Pallet as System, RawOrigin};
 use hex_literal::hex;
 use pallet_subspace::BlockRandomness;
 use sp_consensus_slots::Slot;
+use sp_core::H256;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::sr25519::vrf::{VrfPreOutput, VrfProof, VrfSignature};
-use sp_core::H256;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    dummy_opaque_bundle, BundleHeader, DomainId, ExecutionReceipt, OpaqueBundle, OperatorAllowList,
-    OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature,
+    BundleHeader, DomainId, EMPTY_EXTRINSIC_ROOT, ExecutionReceipt, OpaqueBundle,
+    OperatorAllowList, OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature,
     PermissionedActionAllowedBy, ProofOfElection, RuntimeType, SealedBundleHeader,
-    SealedSingletonReceipt, SingletonReceipt, EMPTY_EXTRINSIC_ROOT,
+    SealedSingletonReceipt, SingletonReceipt, dummy_opaque_bundle,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{CheckedAdd, One, Zero};
 use sp_std::collections::btree_set::BTreeSet;
-use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::Randomness;
+use subspace_core_primitives::pot::PotOutput;
 
 const SEED: u32 = 0;
 const MAX_NOMINATORS_TO_SLASH_WITHOUT_OPERATOR: u32 = MAX_NOMINATORS_TO_SLASH - 1;

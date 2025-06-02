@@ -19,11 +19,11 @@ use async_nats::{
     Client, ConnectOptions, HeaderMap, HeaderValue, Message, PublishError, RequestError,
     RequestErrorKind, Subject, SubscribeError, Subscriber, ToServerAddrs,
 };
-use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
+use backoff::backoff::Backoff;
 use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
-use futures::{select, FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, select};
 use parity_scale_codec::{Decode, Encode};
 use std::any::type_name;
 use std::collections::VecDeque;
@@ -36,7 +36,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use std::{fmt, mem};
 use thiserror::Error;
-use tracing::{debug, error, trace, warn, Instrument};
+use tracing::{Instrument, debug, error, trace, warn};
 use ulid::Ulid;
 
 const EXPECTED_MESSAGE_SIZE: usize = 2 * 1024 * 1024;
@@ -856,10 +856,10 @@ impl NatsClient {
 
         loop {
             // Try to fill the buffer
-            if buffer.is_empty() {
-                if let Some(element) = response_stream.next().await {
-                    buffer.push_back(element);
-                }
+            if buffer.is_empty()
+                && let Some(element) = response_stream.next().await
+            {
+                buffer.push_back(element);
             }
             while buffer.encoded_size() < approximate_max_message_size
                 && let Some(element) = response_stream.next().now_or_never().flatten()

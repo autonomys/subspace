@@ -38,7 +38,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::U256;
     use sp_domains::PermissionedActionAllowedBy;
-    use sp_evm_tracker::{InherentError, InherentType, INHERENT_IDENTIFIER};
+    use sp_evm_tracker::{INHERENT_IDENTIFIER, InherentError, InherentType};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {}

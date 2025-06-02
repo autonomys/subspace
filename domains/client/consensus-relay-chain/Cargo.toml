@@ -3,7 +3,7 @@ name = "domain-client-consensus-relay-chain"
 description = "The relay-chain provided consensus algorithm"
 version = "0.1.0"
 authors = ["Parity Technologies <admin@parity.io>"]
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true

@@ -5,7 +5,7 @@
 //! [`plotting`](crate::plotting) module earlier.
 
 use crate::proving::SolutionCandidates;
-use crate::sector::{sector_size, SectorContentsMap, SectorMetadataChecksummed};
+use crate::sector::{SectorContentsMap, SectorMetadataChecksummed, sector_size};
 use crate::{ReadAtOffset, ReadAtSync};
 use rayon::prelude::*;
 use std::collections::HashSet;

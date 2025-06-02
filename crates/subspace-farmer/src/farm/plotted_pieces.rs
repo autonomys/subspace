@@ -4,8 +4,8 @@ use crate::farm::{FarmError, PieceReader};
 use async_trait::async_trait;
 use rand::prelude::*;
 use rayon::prelude::*;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::fmt;
 use std::future::Future;
 use std::hash::Hash;
@@ -61,7 +61,7 @@ where
     pub fn read_piece(
         &self,
         piece_index: PieceIndex,
-    ) -> Option<impl Future<Output = Option<Piece>> + 'static> {
+    ) -> Option<impl Future<Output = Option<Piece>> + use<FarmIndex>> {
         let piece_details = match self.pieces.get(&piece_index) {
             Some(piece_details) => piece_details
                 .choose(&mut thread_rng())

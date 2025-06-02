@@ -1,16 +1,16 @@
 use sp_api::ProvideRuntimeApi;
 use sp_consensus_slots::Slot;
-use sp_core::bytes::to_hex;
 use sp_core::ByteArray;
+use sp_core::bytes::to_hex;
 use sp_domains::bundle_producer_election::{
-    calculate_threshold, is_below_threshold, make_transcript, BundleProducerElectionParams,
+    BundleProducerElectionParams, calculate_threshold, is_below_threshold, make_transcript,
 };
 use sp_domains::{
     BundleProducerElectionApi, DomainId, OperatorId, OperatorPublicKey, ProofOfElection,
 };
 use sp_keystore::{Keystore, KeystorePtr};
-use sp_runtime::traits::Block as BlockT;
 use sp_runtime::RuntimeAppPublic;
+use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
@@ -107,9 +107,9 @@ where
                     }
                 } else {
                     log::warn!(
-                            "Operator[{operator_id}]'s Signing key[{}] pair is not available in keystore.",
-                            to_hex(operator_signing_key.as_slice(), false)
-                        );
+                        "Operator[{operator_id}]'s Signing key[{}] pair is not available in keystore.",
+                        to_hex(operator_signing_key.as_slice(), false)
+                    );
                     return Ok(None);
                 }
             }

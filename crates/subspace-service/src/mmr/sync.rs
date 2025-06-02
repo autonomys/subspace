@@ -1,6 +1,5 @@
 use crate::mmr::get_offchain_key;
-use crate::mmr::request_handler::{generate_protocol_name, MmrRequest, MmrResponse, MAX_MMR_ITEMS};
-use crate::sync_from_dsn::LOG_TARGET;
+use crate::mmr::request_handler::{MAX_MMR_ITEMS, MmrRequest, MmrResponse, generate_protocol_name};
 use futures::channel::oneshot;
 use parity_scale_codec::{Decode, Encode};
 use sc_network::{IfDisconnected, NetworkRequest, PeerId, RequestFailure};
@@ -9,10 +8,10 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::offchain::{DbExternalities, OffchainStorage, StorageKind};
-use sp_core::{Hasher, H256};
+use sp_core::{H256, Hasher};
 use sp_mmr_primitives::mmr_lib::{MMRStoreReadOps, MMRStoreWriteOps};
 use sp_mmr_primitives::utils::NodesUtils;
-use sp_mmr_primitives::{mmr_lib, DataOrHash, MmrApi};
+use sp_mmr_primitives::{DataOrHash, MmrApi, mmr_lib};
 use sp_runtime::traits::{Block as BlockT, Keccak256, NumberFor};
 use sp_subspace_mmr::MmrLeaf;
 use std::cell::RefCell;
@@ -32,7 +31,7 @@ pub(crate) fn decode_mmr_data(mut data: &[u8]) -> mmr_lib::Result<NodeOf> {
     let node = match NodeOf::decode(&mut data) {
         Ok(node) => node,
         Err(err) => {
-            error!(target: LOG_TARGET, ?err, "Can't decode MMR data");
+            error!(?err, "Can't decode MMR data");
 
             return Err(mmr_lib::Error::StoreError(
                 "Can't decode MMR data".to_string(),
@@ -65,8 +64,7 @@ impl<OS: OffchainStorage> MMRStoreReadOps<NodeOf> for OffchainMmrStorage<OS> {
             .borrow_mut()
             .local_storage_get(StorageKind::PERSISTENT, &canon_key)
         else {
-            error!(target: LOG_TARGET, %pos, "Can't get MMR data.");
-
+            error!( %pos, "Can't get MMR data.");
             return Ok(None);
         };
 
@@ -148,7 +146,7 @@ where
     where
         NR: NetworkRequest,
     {
-        debug!(target: LOG_TARGET, "MMR sync started.");
+        debug!("MMR sync started.");
         let info = self.client.info();
         let protocol_name = generate_protocol_name(info.genesis_hash, fork_id.as_deref());
 
@@ -159,7 +157,7 @@ where
             let peers_info = match sync_service.peers_info().await {
                 Ok(peers_info) => peers_info,
                 Err(error) => {
-                    error!(target: LOG_TARGET, "Peers info request returned an error: {error}",);
+                    error!("Peers info request returned an error: {error}",);
                     sleep(SYNC_PAUSE).await;
                     continue;
                 }
@@ -167,10 +165,10 @@ where
 
             //  Enumerate peers until we find a suitable source for MMR
             'peers: for (peer_id, peer_info) in peers_info.iter() {
-                trace!(target: LOG_TARGET, "MMR sync. peer = {peer_id}, info = {:?}", peer_info);
+                trace!("MMR sync. peer = {peer_id}, info = {:?}", peer_info);
 
                 if !peer_info.is_synced {
-                    trace!(target: LOG_TARGET, "MMR sync skipped (not synced). peer = {peer_id}");
+                    trace!("MMR sync skipped (not synced). peer = {peer_id}");
 
                     continue;
                 }
@@ -183,7 +181,6 @@ where
                         let target_position = nodes.size().saturating_sub(1);
 
                         debug!(
-                            target: LOG_TARGET,
                             "MMR-sync. Target block={}, Node target position={}",
                             target_block, target_position
                         );
@@ -205,10 +202,10 @@ where
 
                     match response {
                         Ok(response) => {
-                            trace!(target: LOG_TARGET, "Response: {:?}", response.mmr_data.len());
+                            trace!("Response: {:?}", response.mmr_data.len());
 
                             if response.mmr_data.is_empty() {
-                                debug!(target: LOG_TARGET, "Empty response from peer={}", peer_id);
+                                debug!("Empty response from peer={}", peer_id);
                                 break;
                             }
 
@@ -217,7 +214,6 @@ where
                                 // Ensure continuous sync
                                 if *position != starting_position {
                                     debug!(
-                                        target: LOG_TARGET,
                                         ?peer_info,
                                         %starting_position,
                                         %position,
@@ -232,7 +228,7 @@ where
                                 let node = match node {
                                     Ok(node) => node,
                                     Err(err) => {
-                                        debug!(target: LOG_TARGET, ?peer_info, ?err, %position, "Can't decode MMR data received from the peer.");
+                                        debug!( ?peer_info, ?err, %position, "Can't decode MMR data received from the peer.");
 
                                         continue 'peers;
                                     }
@@ -240,7 +236,7 @@ where
 
                                 if matches!(node, Node::Data(_)) {
                                     if let Err(err) = self.mmr.push(node) {
-                                        debug!(target: LOG_TARGET, ?peer_info, ?err, %position, "Can't add MMR data received from the peer.");
+                                        debug!( ?peer_info, ?err, %position, "Can't add MMR data received from the peer.");
 
                                         return Err(sp_blockchain::Error::Backend(
                                             "Can't add MMR data to the MMR storage".to_string(),
@@ -254,13 +250,13 @@ where
 
                                 // Did we collect all the necessary data from the last response?
                                 if u64::from(*position) >= target_position {
-                                    debug!(target: LOG_TARGET, %target_position, "MMR-sync: target position reached.");
+                                    debug!( %target_position, "MMR-sync: target position reached.");
                                     break 'data;
                                 }
                             }
                         }
                         Err(error) => {
-                            debug!(target: LOG_TARGET, "MMR sync request failed. peer = {peer_id}: {error}");
+                            debug!("MMR sync request failed. peer = {peer_id}: {error}");
 
                             continue 'peers;
                         }
@@ -269,7 +265,7 @@ where
                     // Should we request a new portion of the data from the last peer?
                     if target_position <= starting_position.into() {
                         if let Err(err) = self.mmr.commit() {
-                            error!(target: LOG_TARGET, ?err, "MMR commit failed.");
+                            error!(?err, "MMR commit failed.");
 
                             return Err(sp_blockchain::Error::Application(
                                 "Failed to commit MMR data.".into(),
@@ -278,59 +274,59 @@ where
 
                         // Actual MMR-nodes may exceed this number, however, we will catch up with the rest
                         // when we sync the remaining data (consensus and domain chains).
-                        debug!(target: LOG_TARGET, "Target position reached: {target_position}");
+                        debug!("Target position reached: {target_position}");
 
                         break 'outer;
                     }
                 }
             }
-            debug!(target: LOG_TARGET, %starting_position, "No synced peers to handle the MMR-sync. Pausing...",);
+            debug!( %starting_position, "No synced peers to handle the MMR-sync. Pausing...",);
             sleep(SYNC_PAUSE).await;
         }
 
-        debug!(target: LOG_TARGET, "MMR sync finished.");
+        debug!("MMR sync finished.");
         self.leaves_number = leaves_number;
         Ok(())
     }
 
     pub(crate) fn verify_mmr_data(&self) -> Result<(), sp_blockchain::Error> {
-        debug!(target: LOG_TARGET, "Verifying MMR data...");
+        debug!("Verifying MMR data...");
 
         let block_number = self.leaves_number;
         let Some(hash) = self.client.hash(block_number.into())? else {
-            error!(target: LOG_TARGET, %block_number, "MMR data verification: error during hash acquisition");
+            error!( %block_number, "MMR data verification: error during hash acquisition");
             return Err(sp_blockchain::Error::UnknownBlock(
                 "Failed to get Block hash for Number: {block_number:?}".to_string(),
             ));
         };
 
         let mmr_root = self.mmr.get_root();
-        trace!(target: LOG_TARGET, "MMR root: {:?}", mmr_root);
+        trace!("MMR root: {:?}", mmr_root);
         let api_root = self.client.runtime_api().mmr_root(hash);
-        trace!(target: LOG_TARGET, "API root: {:?}", api_root);
+        trace!("API root: {:?}", api_root);
 
         let Ok(Node::Hash(mmr_root_hash)) = mmr_root.clone() else {
-            error!(target: LOG_TARGET, %block_number, ?mmr_root, "Can't get MMR root from local storage.");
+            error!( %block_number, ?mmr_root, "Can't get MMR root from local storage.");
             return Err(sp_blockchain::Error::Application(
                 "Can't get MMR root from local storage".into(),
             ));
         };
 
         let Ok(Ok(api_root_hash)) = api_root else {
-            error!(target: LOG_TARGET, %block_number, ?mmr_root, "Can't get MMR root from API.");
+            error!( %block_number, ?mmr_root, "Can't get MMR root from API.");
             return Err(sp_blockchain::Error::Application(
                 "Can't get MMR root from API.".into(),
             ));
         };
 
         if api_root_hash != mmr_root_hash {
-            error!(target: LOG_TARGET, ?api_root_hash, ?mmr_root_hash, "MMR data hashes differ.");
+            error!(?api_root_hash, ?mmr_root_hash, "MMR data hashes differ.");
             return Err(sp_blockchain::Error::Application(
                 "MMR data hashes differ.".into(),
             ));
         }
 
-        debug!(target: LOG_TARGET, "MMR data verified");
+        debug!("MMR data verified");
 
         Ok(())
     }
@@ -360,7 +356,7 @@ async fn send_mmr_request<NR: NetworkRequest>(
 ) -> Result<MmrResponse, MmrResponseError> {
     let (tx, rx) = oneshot::channel();
 
-    debug!(target: LOG_TARGET, "Sending request: {request:?}  (peer={peer_id})");
+    debug!("Sending request: {request:?}  (peer={peer_id})");
 
     let encoded_request = request.encode();
 

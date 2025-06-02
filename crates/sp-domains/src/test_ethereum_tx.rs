@@ -11,7 +11,7 @@ pub use ethereum::{
 use frame_support::parameter_types;
 use rlp::RlpStream;
 use sp_core::crypto::AccountId32;
-use sp_core::{keccak_256, H160, H256, U256};
+use sp_core::{H160, H256, U256, keccak_256};
 
 parameter_types! {
     // `490000` is the genesis evm domain chain id

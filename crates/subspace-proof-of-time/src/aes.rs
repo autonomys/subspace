@@ -3,9 +3,9 @@
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
+use aes::Aes128;
 use aes::cipher::array::Array;
 use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
-use aes::Aes128;
 use subspace_core_primitives::pot::{PotCheckpoints, PotKey, PotOutput, PotSeed};
 
 /// Creates the AES based proof.

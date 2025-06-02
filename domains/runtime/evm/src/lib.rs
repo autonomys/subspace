@@ -16,15 +16,15 @@ use alloc::borrow::Cow;
 use alloc::format;
 use core::mem;
 use domain_runtime_primitives::opaque::Header;
-pub use domain_runtime_primitives::{
-    block_weights, maximum_block_length, maximum_domain_block_weight, opaque, Balance, BlockNumber,
-    EthereumAccountId as AccountId, EthereumSignature as Signature, Hash, Nonce,
-    EXISTENTIAL_DEPOSIT,
-};
 use domain_runtime_primitives::{
-    AccountId20, CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier,
-    TargetBlockFullness, DEFAULT_EXTENSION_VERSION, ERR_BALANCE_OVERFLOW,
-    ERR_CONTRACT_CREATION_NOT_ALLOWED, ERR_NONCE_OVERFLOW, MAX_OUTGOING_MESSAGES, SLOT_DURATION,
+    AccountId20, CheckExtrinsicsValidityError, DEFAULT_EXTENSION_VERSION, DecodeExtrinsicError,
+    ERR_BALANCE_OVERFLOW, ERR_CONTRACT_CREATION_NOT_ALLOWED, ERR_NONCE_OVERFLOW, HoldIdentifier,
+    MAX_OUTGOING_MESSAGES, SLOT_DURATION, TargetBlockFullness,
+};
+pub use domain_runtime_primitives::{
+    Balance, BlockNumber, EXISTENTIAL_DEPOSIT, EthereumAccountId as AccountId,
+    EthereumSignature as Signature, Hash, Nonce, block_weights, maximum_block_length,
+    maximum_domain_block_weight, opaque,
 };
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
@@ -49,13 +49,13 @@ use pallet_evm::{
     Account as EVMAccount, EnsureAddressNever, EnsureAddressRoot, FeeCalculator,
     IdentityAddressMapping, Runner,
 };
-use pallet_evm_tracker::create_contract::{is_create_contract_allowed, CheckContractCreation};
+use pallet_evm_tracker::create_contract::{CheckContractCreation, is_create_contract_allowed};
 use pallet_evm_tracker::traits::{MaybeIntoEthCall, MaybeIntoEvmCall};
 use pallet_transporter::EndpointHandler;
 use parity_scale_codec::{Decode, DecodeLimit, Encode, MaxEncodedLen};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
-use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
+use sp_core::{Get, H160, H256, OpaqueMetadata, U256};
 use sp_domains::{
     ChannelId, DomainAllowlistUpdates, DomainId, PermissionedActionAllowedBy, Transfers,
 };
@@ -68,7 +68,7 @@ use sp_messenger::messages::{
     CrossDomainMessage, MessageId, MessageKey, MessagesWithStorageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
-use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
+use sp_messenger_host_functions::{StorageKeyRequest, get_storage_key};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::generic::{Era, ExtrinsicFormat, Preamble};
 use sp_runtime::traits::{
@@ -80,11 +80,11 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
 use sp_runtime::{
-    generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
-    ExtrinsicInclusionMode,
+    ApplyExtrinsicResult, ConsensusEngineId, Digest, ExtrinsicInclusionMode, generic,
+    impl_opaque_keys,
 };
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
-use sp_std::cmp::{max, Ordering};
+use sp_std::cmp::{Ordering, max};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
@@ -98,8 +98,8 @@ use static_assertions::const_assert;
 use subspace_runtime_primitives::utility::{MaybeNestedCall, MaybeUtilityCall};
 use subspace_runtime_primitives::{
     BlockHashFor, BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, ExtrinsicFor,
-    Hash as ConsensusBlockHash, HeaderFor, Moment, SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee,
-    XdmFeeMultipler, MAX_CALL_RECURSION_DEPTH, SHANNON, SSC,
+    Hash as ConsensusBlockHash, HeaderFor, MAX_CALL_RECURSION_DEPTH, Moment, SHANNON, SSC,
+    SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee, XdmFeeMultipler,
 };
 
 /// The address format for describing accounts.
@@ -959,7 +959,7 @@ pub fn extract_signer(
 fn extrinsic_era(extrinsic: &ExtrinsicFor<Block>) -> Option<Era> {
     match &extrinsic.0.preamble {
         Preamble::Bare(_) | Preamble::General(_, _) => None,
-        Preamble::Signed(_, _, extra) => Some(extra.4 .0),
+        Preamble::Signed(_, _, extra) => Some(extra.4.0),
     }
 }
 
@@ -1070,7 +1070,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.2,
                     extra.3,
                     extra.4,
-                    pallet_evm_tracker::CheckNonce::from(extra.5 .0),
+                    pallet_evm_tracker::CheckNonce::from(extra.5.0),
                     extra.6,
                     extra.7.clone(),
                     extra.8,
@@ -1095,7 +1095,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     extra.2,
                     extra.3,
                     extra.4,
-                    pallet_evm_tracker::CheckNonce::from(extra.5 .0),
+                    pallet_evm_tracker::CheckNonce::from(extra.5.0),
                     extra.6,
                     extra.7.clone(),
                     extra.8,
@@ -1393,7 +1393,7 @@ impl_runtime_apis! {
             UncheckedExtrinsic::decode_with_depth_limit(
                 MAX_CALL_RECURSION_DEPTH,
                 &mut encoded.as_slice(),
-            ).map_err(|err| DecodeExtrinsicError(format!("{}", err)))
+            ).map_err(|err| DecodeExtrinsicError(format!("{err}")))
         }
 
         fn decode_extrinsics_prefix(

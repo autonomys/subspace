@@ -15,14 +15,14 @@
 //!   before the object length is known, and before each new piece is added to the partial object.
 //! - `PartialObject` is used to store the partial object data after the object length is known.
 
-use crate::object_fetcher::segment_header::{strip_segment_header, MAX_SEGMENT_PADDING};
-use crate::object_fetcher::{decode_data_length, Error, MAX_ENCODED_LENGTH_SIZE};
+use crate::object_fetcher::segment_header::{MAX_SEGMENT_PADDING, strip_segment_header};
+use crate::object_fetcher::{Error, MAX_ENCODED_LENGTH_SIZE, decode_data_length};
 use parity_scale_codec::{Decode, Input};
 use std::cmp::min;
 use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::Formatter;
-use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
+use subspace_core_primitives::hashes::{Blake3Hash, blake3_hash};
 use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::pieces::{PieceIndex, RawRecord};
 use subspace_core_primitives::segments::RecordedHistorySegment;

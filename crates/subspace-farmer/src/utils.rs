@@ -9,16 +9,16 @@ use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
 use futures::future::Either;
 use rayon::{
-    current_thread_index, ThreadBuilder, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder,
+    ThreadBuilder, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder, current_thread_index,
 };
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
-use std::pin::{pin, Pin};
+use std::pin::{Pin, pin};
 use std::process::exit;
 use std::task::{Context, Poll};
 use std::{fmt, io, iter, thread};
-use thread_priority::{set_current_thread_priority, ThreadPriority};
+use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::runtime::Handle;
 use tokio::task;
 use tracing::{debug, warn};
@@ -501,10 +501,7 @@ fn create_plotting_thread_pool_manager_thread_pool_pair(
             eprintln!("panic on thread {}: {:?}", thread_name(index), panic_info);
         } else {
             // We want to guarantee exit, rather than panicking in a panic handler.
-            eprintln!(
-                "rayon panic handler called on non-rayon thread: {:?}",
-                panic_info
-            );
+            eprintln!("rayon panic handler called on non-rayon thread: {panic_info:?}");
         }
         exit(1);
     };
@@ -522,10 +519,10 @@ fn create_plotting_thread_pool_manager_thread_pool_pair(
 
                 move || {
                     cpu_core_set.pin_current_thread();
-                    if let Some(thread_priority) = thread_priority {
-                        if let Err(error) = set_current_thread_priority(thread_priority) {
-                            warn!(%error, "Failed to set thread priority");
-                        }
+                    if let Some(thread_priority) = thread_priority
+                        && let Err(error) = set_current_thread_priority(thread_priority)
+                    {
+                        warn!(%error, "Failed to set thread priority");
                     }
                     drop(cpu_core_set);
 

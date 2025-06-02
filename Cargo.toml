@@ -1,3 +1,6 @@
+[workspace.package]
+edition = "2024"
+
 [workspace]
 resolver = "2"
 members = [
@@ -33,7 +36,7 @@ base58 = "0.2.0"
 bip39 = "2.0.0"
 bitvec = "1.0.1"
 blake2 = { version = "0.10.6", default-features = false }
-blake3 = { version = "1.5.4", default-features = false }
+blake3 = { version = "1.8.2", default-features = false }
 blst = "0.3.13"
 bytes = { version = "1.7.2", default-features = false }
 bytesize = "1.3.0"
@@ -88,7 +91,6 @@ futures-timer = "3.0.3"
 hash-db = { version = "0.16.0", default-features = false }
 hex = { version = "0.4.3", default-features = false }
 hex-literal = "0.4.1"
-hexlit = "0.5.5"
 hwlocality = "1.0.0-alpha.6"
 jsonrpsee = "0.24.5"
 kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }

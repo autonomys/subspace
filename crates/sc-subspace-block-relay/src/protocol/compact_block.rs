@@ -3,7 +3,6 @@
 use crate::protocol::{ClientBackend, ProtocolUnitInfo, Resolved, ServerBackend};
 use crate::types::RelayError;
 use crate::utils::NetworkPeerHandle;
-use crate::LOG_TARGET;
 use derive_more::From;
 use parity_scale_codec::{Decode, Encode};
 use std::collections::BTreeMap;
@@ -113,7 +112,6 @@ where
         let context = self.resolve_local(&compact_response, backend)?;
         if context.resolved.len() == compact_response.protocol_units.len() {
             trace!(
-                target: LOG_TARGET,
                 "relay::resolve: {:?}: resolved locally[{}]",
                 compact_response.download_unit_id,
                 compact_response.protocol_units.len()
@@ -131,7 +129,6 @@ where
             .resolve_misses::<Request>(compact_response, context, network_peer_handle)
             .await?;
         trace!(
-            target: LOG_TARGET,
             "relay::resolve: {:?}: resolved by server[{},{}]",
             download_unit_id,
             resolved.len(),
@@ -291,15 +288,11 @@ where
             {
                 protocol_units.insert(missing_id, protocol_unit);
             } else {
-                warn!(
-                    target: LOG_TARGET,
-                    "relay::on_request: missing entry not found"
-                );
+                warn!("relay::on_request: missing entry not found");
             }
         }
         if total_len != protocol_units.len() {
             warn!(
-                target: LOG_TARGET,
                 "relay::compact_blocks::on_request: could not resolve all entries: {total_len}/{}",
                 protocol_units.len()
             );

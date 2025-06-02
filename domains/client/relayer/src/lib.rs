@@ -1,4 +1,3 @@
-#![feature(let_chains)]
 #![warn(rust_2018_idioms)]
 // TODO: Restore once https://github.com/rust-lang/rust/issues/122105 is resolved
 // #![deny(unused_crate_dependencies)]
@@ -7,12 +6,12 @@ mod aux_schema;
 pub mod worker;
 
 use crate::aux_schema::{
-    get_last_processed_nonces, set_channel_inbox_response_processed_state,
-    set_channel_outbox_processed_state, ChannelProcessedState,
+    ChannelProcessedState, get_last_processed_nonces, set_channel_inbox_response_processed_state,
+    set_channel_outbox_processed_state,
 };
 use async_channel::TrySendError;
 use cross_domain_message_gossip::{
-    get_channel_state, ChannelDetail, Message as GossipMessage, MessageData as GossipMessageData,
+    ChannelDetail, Message as GossipMessage, MessageData as GossipMessageData, get_channel_state,
 };
 use parity_scale_codec::{Codec, Encode};
 use rand::seq::SliceRandom;
@@ -27,8 +26,8 @@ use sp_messenger::messages::{
 };
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_mmr_primitives::MmrApi;
-use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One};
 use sp_runtime::ArithmeticError;
+use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use std::cmp::max;
 use std::marker::PhantomData;
@@ -37,9 +36,6 @@ use subspace_runtime_primitives::BlockHashFor;
 
 const CHANNEL_PROCESSED_STATE_CACHE_LIMIT: u32 = 5;
 const MAXIMUM_CHANNELS_TO_PROCESS_IN_BLOCK: usize = 15;
-
-/// The logging target.
-const LOG_TARGET: &str = "message::relayer";
 
 /// Relayer relays messages between domains using consensus chain as trusted third party.
 struct Relayer<Client, Block>(PhantomData<(Client, Block)>);
@@ -162,7 +158,6 @@ where
             Ok(proof) => proof,
             Err(err) => {
                 tracing::error!(
-                    target: LOG_TARGET,
                     "Failed to construct storage proof for message: {:?} bound to chain: {:?} with error: {:?}",
                     (channel_id, msg.nonce),
                     dst_chain_id,
@@ -181,7 +176,6 @@ where
         let (dst_domain, msg_id) = (msg.dst_chain_id, (msg.channel_id, msg.nonce));
         if let Err(err) = submitter(msg) {
             tracing::error!(
-                target: LOG_TARGET,
                 ?err,
                 "Failed to submit message: {msg_id:?} to domain: {dst_domain:?}",
             );
@@ -326,7 +320,6 @@ where
             };
 
         tracing::debug!(
-            target: LOG_TARGET,
             "Checking messages to be submitted from chain: {chain_id:?} at block: ({to_process_consensus_number:?}, {to_process_consensus_hash:?})",
         );
 
@@ -724,9 +717,11 @@ where
     };
 
     tracing::debug!(
-        target: LOG_TARGET,
         "From Chain[{:?}] to Chain[{:?}] and Channel[{:?}] Query: {:?}",
-        self_chain_id, dst_chain_id, channel_id, query
+        self_chain_id,
+        dst_chain_id,
+        channel_id,
+        query
     );
 
     Ok(query)
@@ -762,9 +757,10 @@ fn should_relay_messages_to_channel(
     };
 
     if !should_process {
-        tracing::debug!(target: LOG_TARGET,
+        tracing::debug!(
             "Chain[{:?}] for Channel[{:?}] is closed and no messages to process",
-            dst_chain_id, dst_channel_state.channel_id
+            dst_chain_id,
+            dst_channel_state.channel_id
         );
     }
 

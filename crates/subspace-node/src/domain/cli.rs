@@ -1,8 +1,8 @@
 use crate::commands::{CreateDomainKeyOptions, InsertDomainKeyOptions};
 use crate::domain::{auto_id_chain_spec, evm_chain_spec};
 use clap::{Parser, ValueEnum};
-use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::MultiAccountId;
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use parity_scale_codec::Encode;
 use sc_cli::{
     BlockNumberOrHash, ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams,
@@ -19,9 +19,9 @@ use sp_domains::storage::RawGenesis;
 use sp_domains::{
     DomainId, DomainRuntimeConfig, OperatorAllowList, OperatorId, OperatorPublicKey, RuntimeType,
 };
+use sp_runtime::DigestItem;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Header;
-use sp_runtime::DigestItem;
 use std::io::Write;
 use std::path::Path;
 use subspace_runtime::Block;

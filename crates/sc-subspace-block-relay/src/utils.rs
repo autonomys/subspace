@@ -10,7 +10,7 @@ use sc_network::{NetworkRequest, PeerId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use substrate_prometheus_endpoint::{
-    register, Counter, CounterVec, Opts, PrometheusError, Registry, U64,
+    Counter, CounterVec, Opts, PrometheusError, Registry, U64, register,
 };
 
 type NetworkRequestService = Arc<dyn NetworkRequest + Send + Sync + 'static>;

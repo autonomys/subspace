@@ -1,4 +1,4 @@
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use std::assert_matches::assert_matches;
 use std::iter;
 use std::num::NonZeroUsize;

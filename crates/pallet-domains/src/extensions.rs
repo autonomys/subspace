@@ -8,8 +8,8 @@ use frame_support::weights::Weight;
 use frame_system::pallet_prelude::RuntimeCallFor;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
-use sp_domains_fraud_proof::weights::fraud_proof_verification_weights;
 use sp_domains_fraud_proof::InvalidTransactionCode;
+use sp_domains_fraud_proof::weights::fraud_proof_verification_weights;
 use sp_runtime::impl_tx_ext_default;
 use sp_runtime::traits::{
     AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, Dispatchable, Get, Implication,
@@ -109,10 +109,7 @@ where
         } else {
             let (tag, priority) = match Domains::<Runtime>::validate_fraud_proof(fraud_proof) {
                 Err(e) => {
-                    log::warn!(
-                        target: "runtime::domains",
-                        "Bad fraud proof {fraud_proof:?}, error: {e:?}",
-                    );
+                    log::warn!("Bad fraud proof {fraud_proof:?}, error: {e:?}",);
                     return InvalidTransactionCode::FraudProof.into();
                 }
                 Ok(tp) => tp,

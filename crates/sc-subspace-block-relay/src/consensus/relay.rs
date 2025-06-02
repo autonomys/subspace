@@ -11,7 +11,6 @@ use crate::protocol::compact_block::{
 use crate::protocol::{ClientBackend, ProtocolUnitInfo, ServerBackend};
 use crate::types::{RelayError, RequestResponseErr};
 use crate::utils::{NetworkPeerHandle, NetworkWrapper};
-use crate::LOG_TARGET;
 use async_trait::async_trait;
 use futures::channel::oneshot;
 use futures::stream::StreamExt;
@@ -152,7 +151,6 @@ where
         // Assemble the final response
         let downloaded = vec![initial_response.partial_block.block_data(body)];
         debug!(
-            target: LOG_TARGET,
             block_hash = ?initial_response.block_hash,
             download_bytes = %downloaded.encoded_size(),
             %local_miss,
@@ -181,7 +179,6 @@ where
         let downloaded = full_response.0;
 
         debug!(
-            target: LOG_TARGET,
             ?request,
             download_blocks =  %downloaded.len(),
             download_bytes = %downloaded.encoded_size(),
@@ -217,7 +214,6 @@ where
                 let encoded = entry.protocol_unit.encode();
                 if !entry.locally_resolved {
                     trace!(
-                        target: LOG_TARGET,
                         ?block_hash,
                         tx_hash = ?entry.protocol_unit_id,
                         tx_size = %encoded.len(),
@@ -261,7 +257,6 @@ where
             }
             Err(error) => {
                 debug!(
-                    target: LOG_TARGET,
                     peer=?who,
                     ?request,
                     ?error,
@@ -350,12 +345,7 @@ where
         {
             Ok(msg) => msg,
             Err(err) => {
-                warn!(
-                    target: LOG_TARGET,
-                    ?peer,
-                    ?err,
-                    "Decode failed"
-                );
+                warn!(?peer, ?err, "Decode failed");
                 return;
             }
         };
@@ -374,20 +364,11 @@ where
             Ok(response) => {
                 self.metrics.on_request();
                 self.send_response(peer, response, pending_response);
-                trace!(
-                    target: LOG_TARGET,
-                    ?peer,
-                    "server: request processed from"
-                );
+                trace!(?peer, "server: request processed from");
             }
             Err(error) => {
                 self.metrics.on_failed_request(&error);
-                debug!(
-                    target: LOG_TARGET,
-                    ?peer,
-                    ?error,
-                    "Server error"
-                );
+                debug!(?peer, ?error, "Server error");
             }
         }
     }
@@ -498,7 +479,7 @@ where
             Ok(None) => {
                 return Err(RelayError::BlockHeader(format!(
                     "Missing header: {block_hash:?}"
-                )))
+                )));
             }
             Err(err) => return Err(RelayError::BlockHeader(format!("{block_hash:?}, {err:?}"))),
         };
@@ -560,11 +541,7 @@ where
             sent_feedback: None,
         };
         if sender.send(response).is_err() {
-            warn!(
-                target: LOG_TARGET,
-                ?peer,
-                "Failed to send response"
-            );
+            warn!(?peer, "Failed to send response");
         }
     }
 }
@@ -578,10 +555,7 @@ where
     Pool: TransactionPool<Block = Block> + 'static,
 {
     async fn run(&mut self) {
-        info!(
-            target: LOG_TARGET,
-            "relay::consensus block server: starting"
-        );
+        info!("relay::consensus block server: starting");
         while let Some(request) = self.request_receiver.next().await {
             self.process_incoming_request(request).await;
         }
@@ -658,7 +632,6 @@ where
             }
             Err(err) => {
                 debug!(
-                    target: LOG_TARGET,
                     ?block_hash,
                     ?tx_hash,
                     ?err,

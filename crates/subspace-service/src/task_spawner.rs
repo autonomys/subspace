@@ -17,12 +17,12 @@
 use sc_client_api::{
     BlockBackend, BlockchainEvents, ExecutorProvider, ProofProvider, StorageProvider, UsageProvider,
 };
-use sc_network::multiaddr::Protocol;
 use sc_network::Multiaddr;
+use sc_network::multiaddr::Protocol;
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
-    gen_rpc_module, init_telemetry, propagate_transaction_notifications, start_rpc_servers, Error,
-    MetricsService, RpcHandlers, SpawnTasksParams,
+    Error, MetricsService, RpcHandlers, SpawnTasksParams, gen_rpc_module, init_telemetry,
+    propagate_transaction_notifications, start_rpc_servers,
 };
 use sc_transaction_pool_api::MaintainedTransactionPool;
 use sp_api::{CallApiAt, ProvideRuntimeApi};

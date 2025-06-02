@@ -33,7 +33,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use parity_scale_codec::{Codec, MaxEncodedLen};
     use scale_info::TypeInfo;
-    use sp_block_fees::{InherentError, InherentType, INHERENT_IDENTIFIER};
+    use sp_block_fees::{INHERENT_IDENTIFIER, InherentError, InherentType};
     use sp_domains::{BlockFees, ChainId};
     use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Saturating};
     use sp_runtime::{FixedPointOperand, SaturatedConversion};
@@ -154,10 +154,9 @@ mod pallet {
             if let Call::set_next_consensus_chain_byte_fee {
                 transaction_byte_fee,
             } = call
+                && transaction_byte_fee != &provided_transaction_byte_fee
             {
-                if transaction_byte_fee != &provided_transaction_byte_fee {
-                    return Err(InherentError::IncorrectConsensusChainByteFee);
-                }
+                return Err(InherentError::IncorrectConsensusChainByteFee);
             }
 
             Ok(())

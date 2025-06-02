@@ -4,10 +4,10 @@ use crate::node_client::{NodeClient, RpcNodeClient};
 use anyhow::anyhow;
 use clap::{Parser, ValueHint};
 use subspace_networking::libp2p::kad::Mode;
-use subspace_networking::libp2p::{identity, Multiaddr};
+use subspace_networking::libp2p::{Multiaddr, identity};
 use subspace_networking::protocols::request_response::handlers::cached_piece_by_index::CachedPieceByIndexRequestHandler;
 use subspace_networking::protocols::request_response::handlers::piece_by_index::PieceByIndexRequestHandler;
-use subspace_networking::{construct, Config, KademliaMode, Node, NodeRunner};
+use subspace_networking::{Config, KademliaMode, Node, NodeRunner, construct};
 use tracing::{debug, info};
 
 /// Configuration for network stack
