@@ -40,18 +40,21 @@ use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{fmt, slice};
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::task::yield_now;
 use tokio::time::Sleep;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 /// The maximum time between random Kademlia peer DHT queries.
 const MAX_RANDOM_QUERY_INTERVAL: Duration = Duration::from_secs(60);
 
 /// The time between external address refreshes and peer stats debug logging.
 const PERIODICAL_TASKS_INTERVAL: Duration = Duration::from_secs(5);
+
+/// The time between each peer stats info log.
+const PEER_INFO_LOG_INTERVAL: Duration = Duration::from_secs(30);
 
 /// The maximum number of OS-reported listener addresses we will use.
 const MAX_LISTEN_ADDRESSES: usize = 30;
@@ -113,6 +116,8 @@ pub struct NodeRunner {
     random_query_timeout: Pin<Box<Fuse<Sleep>>>,
     /// Defines an interval between periodical tasks.
     periodical_tasks_interval: Pin<Box<Fuse<Sleep>>>,
+    /// The last time we logged info-level peer stats.
+    last_peer_stats_info_log: Instant,
     /// Manages the networking parameters like known peers and addresses
     known_peers_registry: Box<dyn KnownPeersRegistry>,
     connected_servers: HashSet<PeerId>,
@@ -209,6 +214,8 @@ impl NodeRunner {
             random_query_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             // We'll make the first dial right away and continue at the interval.
             periodical_tasks_interval: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
+            // There's not much point logging immediately, we can wait until we've bootstrapped.
+            last_peer_stats_info_log: Instant::now(),
             known_peers_registry,
             connected_servers: HashSet::new(),
             reserved_peers,
@@ -1604,5 +1611,10 @@ impl NodeRunner {
             %peer_ip_address_count,
             "dsn peers",
         );
+
+        if self.last_peer_stats_info_log.elapsed() >= PEER_INFO_LOG_INTERVAL {
+            self.last_peer_stats_info_log = Instant::now();
+            info!("dsn: actively using {connected_peers}/{kad_peers} known peers");
+        }
     }
 }
