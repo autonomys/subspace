@@ -7,28 +7,28 @@ use crate::sync_from_dsn::import_blocks::import_blocks_from_dsn;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use async_trait::async_trait;
 use futures::channel::mpsc;
-use futures::{select, FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, select};
 use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
-use sc_network::service::traits::NetworkService;
 use sc_network::NetworkBlock;
+use sc_network::service::traits::NetworkService;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::SubspaceApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
 use std::fmt;
 use std::future::Future;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
+use subspace_core_primitives::PublicKey;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::SegmentIndex;
-use subspace_core_primitives::PublicKey;
 use subspace_data_retrieval::piece_getter::PieceGetter;
 use subspace_erasure_coding::ErasureCoding;
-use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use subspace_networking::Node;
+use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tracing::{debug, info, warn};
 
 /// How much time to wait for new block to be imported before timing out and starting sync from DSN
@@ -39,8 +39,6 @@ const CHECK_ONLINE_STATUS_INTERVAL: Duration = Duration::from_secs(1);
 const CHECK_ALMOST_SYNCED_INTERVAL: Duration = Duration::from_secs(1);
 /// Period of time during which node should be offline for DSN sync to kick-in
 const MIN_OFFLINE_PERIOD: Duration = Duration::from_secs(60);
-
-pub(crate) const LOG_TARGET: &str = "consensus_sync";
 
 /// Wrapper type for [`PieceProvider`], so it can implement [`PieceGetter`]
 pub struct DsnPieceGetter<PV: PieceValidator>(PieceProvider<PV>);
@@ -227,11 +225,10 @@ async fn create_imported_blocks_observer<Block, Client>(
             Err(_timeout) => {
                 if let Err(error) =
                     notifications_sender.try_send(NotificationReason::NoImportedBlocks)
+                    && error.is_disconnected()
                 {
-                    if error.is_disconnected() {
-                        // Receiving side was closed
-                        return;
-                    }
+                    // Receiving side was closed
+                    return;
                 }
             }
         }
@@ -253,15 +250,14 @@ async fn create_substrate_network_observer(
         let was_online = last_online
             .map(|last_online| last_online.elapsed() < MIN_OFFLINE_PERIOD)
             .unwrap_or_default();
-        if is_online && !was_online {
-            if let Err(error) =
+        if is_online
+            && !was_online
+            && let Err(error) =
                 notifications_sender.try_send(NotificationReason::WentOnlineSubstrate)
-            {
-                if error.is_disconnected() {
-                    // Receiving side was closed
-                    return;
-                }
-            }
+            && error.is_disconnected()
+        {
+            // Receiving side was closed
+            return;
         }
 
         if is_online {
@@ -321,7 +317,6 @@ where
 
     while let Some(reason) = notifications.next().await {
         info!(
-            target: LOG_TARGET,
             ?reason,
             ?last_completed_segment_index,
             ?last_processed_block_number,
@@ -356,7 +351,6 @@ where
                     .unwrap_or_default()
                 {
                     debug!(
-                        target: LOG_TARGET,
                         best_block = ?info.best_number,
                         ?target_block_number,
                         "Node is almost synced, stopping DSN sync until the next notification"
@@ -370,7 +364,6 @@ where
             result = import_blocks_from_dsn_fut.fuse() => {
                 if let Err(error) = result {
                     warn!(
-                        target: LOG_TARGET,
                         %error,
                         ?last_completed_segment_index,
                         ?last_processed_block_number,
@@ -391,7 +384,6 @@ where
         // gracefully. We do this at the end of the loop, to minimise race conditions which can
         // hide DSN sync bugs.
         debug!(
-            target: LOG_TARGET,
             ?last_completed_segment_index,
             ?last_processed_block_number,
             "Finished DSN sync, activating substrate sync"

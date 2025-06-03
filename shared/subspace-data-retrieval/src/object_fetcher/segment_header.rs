@@ -3,7 +3,7 @@
 //! This module implements segment header stripping. Segment headers are stripped from pieces
 //! before they are used to reconstruct objects.
 
-use crate::object_fetcher::{decode_data_length, Error};
+use crate::object_fetcher::{Error, decode_data_length};
 use parity_scale_codec::{Decode, Encode, Input, IoReader};
 use std::io::Cursor;
 use subspace_archiving::archiver::SegmentItem;

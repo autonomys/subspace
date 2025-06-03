@@ -4,15 +4,15 @@ use crate::{ConsensusLog, PotParametersChange, SUBSPACE_ENGINE_ID};
 use log::trace;
 use parity_scale_codec::{Decode, Encode};
 use sp_consensus_slots::Slot;
-use sp_runtime::traits::{Header as HeaderT, One, Zero};
 use sp_runtime::DigestItem;
+use sp_runtime::traits::{Header as HeaderT, One, Zero};
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use sp_std::num::NonZeroU32;
+use subspace_core_primitives::PublicKey;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::segments::{SegmentCommitment, SegmentIndex};
 use subspace_core_primitives::solutions::{RewardSignature, Solution, SolutionRange};
-use subspace_core_primitives::PublicKey;
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
@@ -596,10 +596,10 @@ where
 
     let mut pre_digest = None;
     for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for pre runtime digest", log);
+        trace!("Checking log {:?}, looking for pre runtime digest", log);
         match (log.as_subspace_pre_digest(), pre_digest.is_some()) {
             (Some(_), true) => return Err(Error::Duplicate(ErrorDigestType::PreDigest)),
-            (None, _) => trace!(target: "subspace", "Ignoring digest not meant for us"),
+            (None, _) => trace!("Ignoring digest not meant for us"),
             (s, false) => pre_digest = s,
         }
     }

@@ -13,14 +13,14 @@ use alloc::vec;
 use core::marker::PhantomData;
 use frame_benchmarking::v2::*;
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
-use frame_system::pallet_prelude::RuntimeCallFor;
 use frame_system::Config;
+use frame_system::pallet_prelude::RuntimeCallFor;
 use pallet_balances::{Call as BalancesCall, Config as BalancesConfig};
 use pallet_multisig::{Call as MultisigCall, Config as MultisigConfig};
 use pallet_utility::{Call as UtilityCall, Config as UtilityConfig};
 use scale_info::prelude::fmt;
-use sp_runtime::traits::{Dispatchable, StaticLookup};
 use sp_runtime::Weight;
+use sp_runtime::traits::{Dispatchable, StaticLookup};
 
 pub struct Pallet<T: BalancesConfig + UtilityConfig + MultisigConfig>(PhantomData<T>);
 

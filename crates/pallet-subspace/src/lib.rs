@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(array_chunks, assert_matches, let_chains, portable_simd)]
+#![feature(array_chunks, assert_matches, portable_simd)]
 #![warn(unused_must_use, unsafe_code, unused_variables)]
 
 #[cfg(not(feature = "std"))]
@@ -37,13 +37,13 @@ use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
     PotParameters, PotParametersChange, SignedVote, Vote, WrappedPotOutput,
 };
+use sp_runtime::Weight;
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, Hash, One, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
 };
-use sp_runtime::Weight;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::pieces::PieceOffset;
@@ -53,12 +53,12 @@ use subspace_core_primitives::segments::{
 };
 use subspace_core_primitives::solutions::{RewardSignature, SolutionRange};
 use subspace_core_primitives::{
-    BlockHash, PublicKey, ScalarBytes, SlotNumber, REWARD_SIGNING_CONTEXT,
+    BlockHash, PublicKey, REWARD_SIGNING_CONTEXT, ScalarBytes, SlotNumber,
 };
 use subspace_runtime_primitives::CreateUnsigned;
 use subspace_verification::{
-    check_reward_signature, derive_next_solution_range, derive_pot_entropy, PieceCheckParams,
-    VerifySolutionParams,
+    PieceCheckParams, VerifySolutionParams, check_reward_signature, derive_next_solution_range,
+    derive_pot_entropy,
 };
 
 /// Trigger an era change, if any should take place.
@@ -114,16 +114,16 @@ struct VoteVerificationData {
 #[frame_support::pallet]
 pub mod pallet {
     use super::{EraChangeTrigger, ExtensionWeightInfo, VoteVerificationData};
-    use crate::weights::WeightInfo;
     use crate::RawOrigin;
+    use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_consensus_slots::Slot;
-    use sp_consensus_subspace::digests::CompatibleDigestItem;
-    use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_consensus_subspace::SignedVote;
-    use sp_runtime::traits::One;
+    use sp_consensus_subspace::digests::CompatibleDigestItem;
+    use sp_consensus_subspace::inherents::{INHERENT_IDENTIFIER, InherentError, InherentType};
     use sp_runtime::DigestItem;
+    use sp_runtime::traits::One;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::num::NonZeroU32;
     use sp_std::prelude::*;
@@ -788,14 +788,14 @@ impl<T: Config> Pallet<T> {
                 .voting_next
                 .replace(next_voting_solution_range);
 
-            if let Some(solution_range_for_rewards) = EnableRewardsBelowSolutionRange::<T>::get() {
-                if next_solution_range <= solution_range_for_rewards {
-                    EnableRewardsBelowSolutionRange::<T>::take();
+            if let Some(solution_range_for_rewards) = EnableRewardsBelowSolutionRange::<T>::get()
+                && next_solution_range <= solution_range_for_rewards
+            {
+                EnableRewardsBelowSolutionRange::<T>::take();
 
-                    let next_block_number =
-                        frame_system::Pallet::<T>::current_block_number() + One::one();
-                    EnableRewards::<T>::put(next_block_number);
-                }
+                let next_block_number =
+                    frame_system::Pallet::<T>::current_block_number() + One::one();
+                EnableRewards::<T>::put(next_block_number);
             }
         });
 
@@ -913,10 +913,8 @@ impl<T: Config> Pallet<T> {
                 && target_slot <= current_slot
             {
                 debug!(
-                    target: "runtime::subspace",
                     "Applying PoT slots update, changing to {} at block #{:?}",
-                    update.slot_iterations,
-                    block_number
+                    update.slot_iterations, block_number
                 );
                 pot_slot_iterations = PotSlotIterationsValue {
                     slot_iterations: update.slot_iterations,
@@ -950,28 +948,22 @@ impl<T: Config> Pallet<T> {
                 );
 
                 // Update target slot for entropy injection once we know it
-                if let Some(entropy_source_block_number) = maybe_entropy_source_block_number {
-                    if let Some(entropy_value) = entropy.get_mut(&entropy_source_block_number) {
-                        let target_slot = pre_digest
-                            .slot()
-                            .saturating_add(pot_entropy_injection_delay);
-                        debug!(
-                            target: "runtime::subspace",
-                            "Pot entropy injection will happen at slot {target_slot:?}",
-                        );
-                        entropy_value.target_slot.replace(target_slot);
+                if let Some(entropy_source_block_number) = maybe_entropy_source_block_number
+                    && let Some(entropy_value) = entropy.get_mut(&entropy_source_block_number)
+                {
+                    let target_slot = pre_digest
+                        .slot()
+                        .saturating_add(pot_entropy_injection_delay);
+                    debug!("Pot entropy injection will happen at slot {target_slot:?}",);
+                    entropy_value.target_slot.replace(target_slot);
 
-                        // Schedule PoT slot iterations update at the same slot as entropy
-                        if let Some(update) = &mut pot_slot_iterations.update
-                            && update.target_slot.is_none()
-                        {
-                            debug!(
-                                target: "runtime::subspace",
-                                "Scheduling PoT slots update to happen at slot {target_slot:?}"
-                            );
-                            update.target_slot.replace(target_slot);
-                            PotSlotIterations::<T>::put(pot_slot_iterations);
-                        }
+                    // Schedule PoT slot iterations update at the same slot as entropy
+                    if let Some(update) = &mut pot_slot_iterations.update
+                        && update.target_slot.is_none()
+                    {
+                        debug!("Scheduling PoT slots update to happen at slot {target_slot:?}");
+                        update.target_slot.replace(target_slot);
+                        PotSlotIterations::<T>::put(pot_slot_iterations);
                     }
                 }
 
@@ -994,10 +986,7 @@ impl<T: Config> Pallet<T> {
                         && let Some(update_target_slot) = update.target_slot
                         && update_target_slot == target_slot
                     {
-                        debug!(
-                            target: "runtime::subspace",
-                            "Applying PoT slots update to the next PoT parameters change"
-                        );
+                        debug!("Applying PoT slots update to the next PoT parameters change");
                         update.slot_iterations
                     } else {
                         pot_slot_iterations.slot_iterations
@@ -1014,13 +1003,12 @@ impl<T: Config> Pallet<T> {
             }
 
             // Clean up old values we'll no longer need
-            if let Some(entry) = entropy.first_entry() {
-                if let Some(target_slot) = entry.get().target_slot
-                    && target_slot < current_slot
-                {
-                    entry.remove();
-                    PotEntropy::<T>::put(entropy);
-                }
+            if let Some(entry) = entropy.first_entry()
+                && let Some(target_slot) = entry.get().target_slot
+                && target_slot < current_slot
+            {
+                entry.remove();
+                PotEntropy::<T>::put(entropy);
             }
         }
     }
@@ -1235,10 +1223,10 @@ where
         let ext = T::create_unsigned(call.into());
         match SubmitTransaction::<T, Call<T>>::submit_transaction(ext) {
             Ok(()) => {
-                debug!(target: "runtime::subspace", "Submitted Subspace vote");
+                debug!("Submitted Subspace vote");
             }
             Err(()) => {
-                error!(target: "runtime::subspace", "Error submitting Subspace vote");
+                error!("Error submitting Subspace vote");
             }
         }
     }
@@ -1258,10 +1246,7 @@ impl<T: Config> Pallet<T> {
             source,
             TransactionSource::Local | TransactionSource::InBlock,
         ) {
-            warn!(
-                target: "runtime::subspace",
-                "Rejecting segment header extrinsic because it is not local/in-block.",
-            );
+            warn!("Rejecting segment header extrinsic because it is not local/in-block.",);
 
             return InvalidTransaction::Call.into();
         }
@@ -1406,10 +1391,7 @@ fn check_vote<T: Config>(
     let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
     if current_block_number <= One::one() || height <= One::one() {
-        debug!(
-            target: "runtime::subspace",
-            "Votes are not expected at height below 2"
-        );
+        debug!("Votes are not expected at height below 2");
 
         return Err(CheckVoteError::UnexpectedBeforeHeightTwo);
     }
@@ -1419,7 +1401,6 @@ fn check_vote<T: Config>(
     // Subtraction will not panic due to check above.
     if !(height == current_block_number || height == current_block_number - One::one()) {
         debug!(
-            target: "runtime::subspace",
             "Vote verification error: bad height {height:?}, current block number is \
             {current_block_number:?}"
         );
@@ -1434,10 +1415,7 @@ fn check_vote<T: Config>(
     //
     // Subtraction will not panic due to check above.
     if *parent_hash != frame_system::Pallet::<T>::block_hash(height - One::one()) {
-        debug!(
-            target: "runtime::subspace",
-            "Vote verification error: parent hash {parent_hash:?}",
-        );
+        debug!("Vote verification error: parent hash {parent_hash:?}",);
         return Err(CheckVoteError::IncorrectParentHash);
     }
 
@@ -1450,10 +1428,7 @@ fn check_vote<T: Config>(
         // same (for votes produced locally)
         let current_slot = current_vote_verification_data.current_slot;
         if slot > current_slot || (slot == current_slot && height != current_block_number) {
-            debug!(
-                target: "runtime::subspace",
-                "Vote slot {slot:?} must be before current slot {current_slot:?}",
-            );
+            debug!("Vote slot {slot:?} must be before current slot {current_slot:?}",);
             return Err(CheckVoteError::SlotInTheFuture);
         }
     }
@@ -1481,10 +1456,7 @@ fn check_vote<T: Config>(
     };
 
     if slot <= parent_slot {
-        debug!(
-            target: "runtime::subspace",
-            "Vote slot {slot:?} must be after parent slot {parent_slot:?}",
-        );
+        debug!("Vote slot {slot:?} must be after parent slot {parent_slot:?}",);
         return Err(CheckVoteError::SlotInThePast);
     }
 
@@ -1494,10 +1466,7 @@ fn check_vote<T: Config>(
         &solution.public_key,
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     ) {
-        debug!(
-            target: "runtime::subspace",
-            "Vote verification error: {error:?}"
-        );
+        debug!("Vote verification error: {error:?}");
         return Err(CheckVoteError::BadRewardSignature(error));
     }
 
@@ -1528,16 +1497,14 @@ fn check_vote<T: Config>(
         )
         .segment_index();
 
-    let segment_commitment =
-        if let Some(segment_commitment) = Pallet::<T>::segment_commitment(segment_index) {
-            segment_commitment
-        } else {
-            debug!(
-                target: "runtime::subspace",
-                "Vote verification error: no segment commitment for segment index {segment_index}"
-            );
-            return Err(CheckVoteError::UnknownSegmentCommitment);
-        };
+    let segment_commitment = if let Some(segment_commitment) =
+        Pallet::<T>::segment_commitment(segment_index)
+    {
+        segment_commitment
+    } else {
+        debug!("Vote verification error: no segment commitment for segment index {segment_index}");
+        return Err(CheckVoteError::UnknownSegmentCommitment);
+    };
 
     let sector_expiration_check_segment_commitment = Pallet::<T>::segment_commitment(
         solution
@@ -1567,18 +1534,12 @@ fn check_vote<T: Config>(
     ) {
         Ok(solution_distance) => {
             if solution_distance <= vote_verification_data.solution_range / 2 {
-                debug!(
-                    target: "runtime::subspace",
-                    "Vote quality is too high"
-                );
+                debug!("Vote quality is too high");
                 return Err(CheckVoteError::QualityTooHigh);
             }
         }
         Err(error) => {
-            debug!(
-                target: "runtime::subspace",
-                "Vote verification error: {error:?}"
-            );
+            debug!("Vote verification error: {error:?}");
             return Err(CheckVoteError::InvalidSolution(error));
         }
     }
@@ -1593,7 +1554,7 @@ fn check_vote<T: Config>(
         // Quick verification when entering transaction pool, but not when constructing the block
         !pre_dispatch,
     ) {
-        debug!(target: "runtime::subspace", "Invalid proof of time");
+        debug!("Invalid proof of time");
 
         return Err(CheckVoteError::InvalidProofOfTime);
     }
@@ -1609,7 +1570,7 @@ fn check_vote<T: Config>(
             false,
         )
     {
-        debug!(target: "runtime::subspace", "Invalid future proof of time");
+        debug!("Invalid future proof of time");
 
         return Err(CheckVoteError::InvalidFutureProofOfTime);
     }
@@ -1636,27 +1597,26 @@ fn check_vote<T: Config>(
             .as_ref()
             == Some(&key);
 
-    if !is_equivocating {
-        if let Some((_reward_address, signature)) = ParentBlockVoters::<T>::get().get(&key) {
-            if signature != &signed_vote.signature {
-                is_equivocating = true;
-            } else {
-                // The same vote should never be included more than once
-                return Err(CheckVoteError::DuplicateVote);
-            }
+    if !is_equivocating
+        && let Some((_reward_address, signature)) = ParentBlockVoters::<T>::get().get(&key)
+    {
+        if signature != &signed_vote.signature {
+            is_equivocating = true;
+        } else {
+            // The same vote should never be included more than once
+            return Err(CheckVoteError::DuplicateVote);
         }
     }
 
-    if !is_equivocating {
-        if let Some((_reward_address, signature)) =
+    if !is_equivocating
+        && let Some((_reward_address, signature)) =
             CurrentBlockVoters::<T>::get().unwrap_or_default().get(&key)
-        {
-            if signature != &signed_vote.signature {
-                is_equivocating = true;
-            } else {
-                // The same vote should never be included more than once
-                return Err(CheckVoteError::DuplicateVote);
-            }
+    {
+        if signature != &signed_vote.signature {
+            is_equivocating = true;
+        } else {
+            // The same vote should never be included more than once
+            return Err(CheckVoteError::DuplicateVote);
         }
     }
 
@@ -1686,11 +1646,10 @@ fn check_vote<T: Config>(
         CurrentBlockAuthorInfo::<T>::mutate(|maybe_info| {
             if let Some((public_key, _sector_index, _piece_offset, _chunk, _slot, reward_address)) =
                 maybe_info
+                && public_key == &offender
             {
-                if public_key == &offender {
-                    // Revoke reward for block author
-                    reward_address.take();
-                }
+                // Revoke reward for block author
+                reward_address.take();
             }
         });
 
@@ -1778,10 +1737,10 @@ impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId
         CurrentBlockAuthorInfo::<T>::get().and_then(
             |(_public_key, _sector_index, _piece_offset, _chunk, _slot, reward_address)| {
                 // Rewards might be disabled, in which case no block reward
-                if let Some(height) = EnableRewards::<T>::get() {
-                    if frame_system::Pallet::<T>::current_block_number() >= height {
-                        return reward_address;
-                    }
+                if let Some(height) = EnableRewards::<T>::get()
+                    && frame_system::Pallet::<T>::current_block_number() >= height
+                {
+                    return reward_address;
                 }
 
                 None
@@ -1793,16 +1752,16 @@ impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId
 impl<T: Config> subspace_runtime_primitives::FindVotingRewardAddresses<T::AccountId> for Pallet<T> {
     fn find_voting_reward_addresses() -> Vec<T::AccountId> {
         // Rewards might be disabled, in which case no voting reward
-        if let Some(height) = EnableRewards::<T>::get() {
-            if frame_system::Pallet::<T>::current_block_number() >= height {
-                // It is possible that this is called during initialization when current block
-                // voters are already moved into parent block voters, handle it accordingly
-                return CurrentBlockVoters::<T>::get()
-                    .unwrap_or_else(ParentBlockVoters::<T>::get)
-                    .into_values()
-                    .filter_map(|(reward_address, _signature)| reward_address)
-                    .collect();
-            }
+        if let Some(height) = EnableRewards::<T>::get()
+            && frame_system::Pallet::<T>::current_block_number() >= height
+        {
+            // It is possible that this is called during initialization when current block
+            // voters are already moved into parent block voters, handle it accordingly
+            return CurrentBlockVoters::<T>::get()
+                .unwrap_or_else(ParentBlockVoters::<T>::get)
+                .into_values()
+                .filter_map(|(reward_address, _signature)| reward_address)
+                .collect();
         }
 
         Vec::new()

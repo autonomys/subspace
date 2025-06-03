@@ -7,36 +7,36 @@ use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::Parser;
 use futures::stream::FuturesUnordered;
-use futures::{select, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, select};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::fs;
 use std::future::Future;
 use std::num::NonZeroUsize;
-use std::pin::{pin, Pin};
+use std::pin::{Pin, pin};
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::PublicKey;
+use subspace_core_primitives::pieces::Record;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::cluster::controller::ClusterNodeClient;
 use subspace_farmer::cluster::farmer::farmer_service;
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::cluster::plotter::ClusterPlotter;
 use subspace_farmer::farm::Farm;
-use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeClient;
 use subspace_farmer::node_client::NodeClient;
+use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeClient;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
-    recommended_number_of_farming_threads, run_future_in_dedicated_thread, AsyncJoinOnDrop,
+    AsyncJoinOnDrop, recommended_number_of_farming_threads, run_future_in_dedicated_thread,
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
-use tracing::{error, info, info_span, warn, Instrument};
+use tracing::{Instrument, error, info, info_span, warn};
 
 const FARM_ERROR_PRINT_INTERVAL: Duration = Duration::from_secs(30);
 /// Interval between farmer self-identification broadcast messages
@@ -190,14 +190,14 @@ where
         }
 
         for farm in &disk_farms {
-            if !farm.directory.exists() {
-                if let Err(error) = fs::create_dir(&farm.directory) {
-                    return Err(anyhow!(
-                        "Directory {} doesn't exist and can't be created: {}",
-                        farm.directory.display(),
-                        error
-                    ));
-                }
+            if !farm.directory.exists()
+                && let Err(error) = fs::create_dir(&farm.directory)
+            {
+                return Err(anyhow!(
+                    "Directory {} doesn't exist and can't be created: {}",
+                    farm.directory.display(),
+                    error
+                ));
             }
         }
         None

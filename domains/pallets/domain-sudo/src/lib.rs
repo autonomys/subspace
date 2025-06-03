@@ -31,7 +31,7 @@ mod pallet {
     use frame_support::traits::UnfilteredDispatchable;
     use frame_system::ensure_none;
     use frame_system::pallet_prelude::OriginFor;
-    use sp_domain_sudo::{InherentError, InherentType, IntoRuntimeCall, INHERENT_IDENTIFIER};
+    use sp_domain_sudo::{INHERENT_IDENTIFIER, InherentError, InherentType, IntoRuntimeCall};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -118,10 +118,10 @@ mod pallet {
 
             if let Some(encoded_call) = inherent_data.maybe_call {
                 let runtime_call = Box::new(T::IntoRuntimeCall::runtime_call(encoded_call));
-                if let Call::sudo { call } = call {
-                    if call != &runtime_call {
-                        return Err(InherentError::IncorrectRuntimeCall);
-                    }
+                if let Call::sudo { call } = call
+                    && call != &runtime_call
+                {
+                    return Err(InherentError::IncorrectRuntimeCall);
                 }
             } else {
                 return Err(InherentError::MissingRuntimeCall);

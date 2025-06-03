@@ -1,12 +1,12 @@
 use clap::Parser;
+use futures::StreamExt;
 use futures::channel::oneshot;
 use futures::future::pending;
-use futures::StreamExt;
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::PieceIndex;
@@ -19,26 +19,26 @@ use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Parser)]
 struct Args {
-    /// Multiaddresses of bootstrap nodes to connect to on startup, multiple are supported
+    /// Multiaddresses of bootstrap nodes to connect to on startup, multiple are supported.
     #[arg(long = "bootstrap-node", required = true)]
     bootstrap_nodes: Vec<Multiaddr>,
-    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
+    /// Keep non-global (private, shared, loopback..) addresses in Kademlia DHT.
     #[arg(long, default_value_t = false)]
     allow_private_ips: bool,
-    /// Protocol version for libp2p stack, should be set as genesis hash of the blockchain for
+    /// Protocol version for libp2p stack, should be set to the genesis hash of the blockchain for
     /// production use.
     #[arg(long, required = true)]
     protocol_version: String,
-    /// Maximum established outgoing connections limit for the peer.
+    /// Maximum established outgoing connections limit for this peer.
     #[arg(long, default_value_t = 100)]
     out_peers: u32,
-    /// Maximum pending outgoing connections limit for the peer.
+    /// Maximum pending outgoing connections limit for this peer.
     #[arg(long, default_value_t = 100)]
     pending_out_peers: u32,
     /// Enable piece retrieval retries on unsuccessful requests.
     #[arg(long, default_value_t = 0)]
     retries: u32,
-    /// Logs peer and their addresses failed on dialing.
+    /// Logs peer addresses that failed all dialing retries.
     #[arg(long, default_value_t = true)]
     print_failed_addresses: bool,
 }
@@ -76,10 +76,12 @@ struct RequestResults {
 struct PeerStats {
     request_results: HashMap<PeerId, RequestResults>,
     no_peers_found: u32,
-    /// error type, number
-    get_closest_peers_errors: HashMap<String, u32>,
+    /// error type, number, sorted by error type
+    get_closest_peers_errors: BTreeMap<String, u32>,
     successful_retries: u32,
     failed_retries: u32,
+    /// Addresses of peers that failed all dialing retries, if `print_failed_addresses` is true.
+    failed_addresses: BTreeMap<PeerId, Option<PeerDiscovered>>,
 }
 impl PeerStats {
     fn report_successful_request(&mut self, peer_id: PeerId, retry: bool) {
@@ -145,10 +147,11 @@ impl PeerStats {
         if total_failed_requests > 0 {
             warn!("Failed piece requests: {}", total_failed_requests);
 
+            // We want the errors to be sorted by error name, so they're easier to compare.
             let errors =
                 self.request_results
                     .values()
-                    .fold(HashMap::new(), |mut acc, peer_result| {
+                    .fold(BTreeMap::new(), |mut acc, peer_result| {
                         for (error_type, err_num) in &peer_result.failed_requests {
                             acc.entry(error_type)
                                 .and_modify(|num| *num += *err_num)
@@ -159,7 +162,14 @@ impl PeerStats {
                     });
 
             for (error_type, err_num) in errors.into_iter() {
-                warn!("Failed piece request type - {} : {}", error_type, err_num);
+                warn!(
+                    "Failed request: {}: {}",
+                    // Make these messages less verbose
+                    error_type
+                        .replace("Underlying protocol returned an error", "Underlying")
+                        .replace("Problem on the network", "Network"),
+                    err_num
+                );
             }
         }
         if !self.get_closest_peers_errors.is_empty() {
@@ -184,7 +194,7 @@ impl PeerStats {
             error!("Failed retries: {}", self.failed_retries);
         }
 
-        // Peers stats
+        // Responsiveness stats
         let unresponsive_peers = self
             .request_results
             .values()
@@ -198,6 +208,15 @@ impl PeerStats {
             .count();
         info!("Responsive peers number: {}", responsive_peers);
         info!("Known peers number: {}", self.request_results.len());
+
+        if !self.failed_addresses.is_empty() {
+            let total_failed_addresses = self.failed_addresses.len();
+            error!("Total failed peer addresses: {}", total_failed_addresses);
+            for (peer, details) in &self.failed_addresses {
+                error!("Failed peer: {} address: {:?}", peer, details);
+            }
+        }
+
         info!("                               ");
         info!("*******************************");
     }
@@ -242,16 +261,23 @@ async fn start_walking(node: Node, retries: u32, print_failed_addresses: bool) {
                     debug!(%peer_id, ?short_key, "get_closest_peers returned an item");
                     no_peers_found = false;
 
-                    let (success, _) =
+                    let (success, last_error) =
                         request_sample_piece(node.clone(), peer_id, short_key, &mut stats, false)
                             .await;
 
-                    if !success && retries > 0 {
-                        retry_jobs.push(RetryJob {
-                            retries_left: retries,
-                            short_key: short_key.to_vec(),
-                            peer_id,
-                        });
+                    if !success {
+                        if retries > 0 {
+                            retry_jobs.push(RetryJob {
+                                retries_left: retries,
+                                short_key: short_key.to_vec(),
+                                peer_id,
+                            });
+                        } else if print_failed_addresses {
+                            let discovered_peers = discovered_peers.lock();
+                            let peer_info = discovered_peers.get(&peer_id);
+                            info!(%peer_id, ?peer_info, ?last_error, "Failed to request piece.");
+                            stats.failed_addresses.insert(peer_id, peer_info.cloned());
+                        }
                     }
                 }
             }
@@ -281,17 +307,20 @@ async fn start_walking(node: Node, retries: u32, print_failed_addresses: bool) {
                     )
                     .await;
 
-                    if !success && retries_left > 0 {
-                        next_retries.push(RetryJob {
-                            retries_left,
-                            short_key: short_key.to_vec(),
-                            peer_id: retry_job.peer_id,
-                        })
-                    } else if print_failed_addresses {
-                        let discovered_peers = discovered_peers.lock();
-                        let peer_id = retry_job.peer_id;
-                        let peer_info = discovered_peers.get(&peer_id);
-                        info!(%peer_id, ?peer_info, ?last_error, "Failed to request piece.");
+                    if !success {
+                        if retries_left > 0 {
+                            next_retries.push(RetryJob {
+                                retries_left,
+                                short_key: short_key.to_vec(),
+                                peer_id: retry_job.peer_id,
+                            });
+                        } else if print_failed_addresses {
+                            let discovered_peers = discovered_peers.lock();
+                            let peer_id = retry_job.peer_id;
+                            let peer_info = discovered_peers.get(&peer_id);
+                            info!(%peer_id, ?peer_info, ?last_error, "Failed to request piece after {retries} retries.");
+                            stats.failed_addresses.insert(peer_id, peer_info.cloned());
+                        }
                     }
                 }
 
@@ -384,10 +413,10 @@ async fn configure_dsn(
         let node_address_sender = Mutex::new(Some(node_address_sender));
 
         move |address| {
-            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
-                if let Some(node_address_sender) = node_address_sender.lock().take() {
-                    node_address_sender.send(address.clone()).unwrap();
-                }
+            if matches!(address.iter().next(), Some(Protocol::Ip4(_)))
+                && let Some(node_address_sender) = node_address_sender.lock().take()
+            {
+                node_address_sender.send(address.clone()).unwrap();
             }
         }
     }));
@@ -410,7 +439,7 @@ async fn configure_dsn(
     drop(on_new_listener_handler);
 
     println!("Node ID is {}", node.id());
-    println!("Node address {}", node_addr);
+    println!("Node address {node_addr}");
 
     node
 }

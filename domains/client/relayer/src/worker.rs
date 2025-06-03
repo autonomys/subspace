@@ -1,4 +1,4 @@
-use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
+use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer};
 use cross_domain_message_gossip::{ChannelUpdate, Message as GossipMessage, MessageData};
 use futures::StreamExt;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
@@ -8,8 +8,8 @@ use sp_domains::{DomainId, DomainsApi};
 use sp_messenger::messages::ChainId;
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_mmr_primitives::MmrApi;
-use sp_runtime::traits::{CheckedSub, NumberFor, One, Zero};
 use sp_runtime::SaturatedConversion;
+use sp_runtime::traits::{CheckedSub, NumberFor, One, Zero};
 use std::sync::Arc;
 
 pub async fn gossip_channel_updates<Client, Block, CBlock, SO>(
@@ -28,21 +28,17 @@ pub async fn gossip_channel_updates<Client, Block, CBlock, SO>(
     Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
     SO: SyncOracle,
 {
-    tracing::info!(
-        target: LOG_TARGET,
-        "Starting Channel updates for chain: {:?}",
-        chain_id,
-    );
+    tracing::info!("Starting Channel updates for chain: {:?}", chain_id,);
     let mut chain_block_imported = client.every_import_notification_stream();
     while let Some(imported_block) = chain_block_imported.next().await {
         // if the client is in major sync, wait until sync is complete
         if sync_oracle.is_major_syncing() {
-            tracing::debug!(target: LOG_TARGET, "Client is in major sync. Skipping...");
+            tracing::debug!("Client is in major sync. Skipping...");
             continue;
         }
 
         if !imported_block.is_new_best {
-            tracing::debug!(target: LOG_TARGET, "Imported non-best block. Skipping...");
+            tracing::debug!("Imported non-best block. Skipping...");
             continue;
         }
 
@@ -63,7 +59,7 @@ pub async fn gossip_channel_updates<Client, Block, CBlock, SO>(
                 let hash = match client.hash(number).ok().flatten() {
                     Some(hash) => hash,
                     None => {
-                        tracing::debug!(target: LOG_TARGET, "Missing block hash for number: {:?}", number);
+                        tracing::debug!("Missing block hash for number: {:?}", number);
                         continue;
                     }
                 };
@@ -79,7 +75,7 @@ pub async fn gossip_channel_updates<Client, Block, CBlock, SO>(
             block_number,
             block_hash,
         ) {
-            tracing::error!(target: LOG_TARGET, ?err, "failed to gossip channel update");
+            tracing::error!(?err, "failed to gossip channel update");
         }
     }
 }
@@ -170,10 +166,7 @@ pub async fn start_relaying_messages<CClient, Client, CBlock, Block, SO>(
         + RelayerApi<CBlock, NumberFor<CBlock>, NumberFor<CBlock>, CBlock::Hash>,
     SO: SyncOracle + Send,
 {
-    tracing::info!(
-        target: LOG_TARGET,
-        "Starting relayer for domain: {domain_id:?} and the consensus chain",
-    );
+    tracing::info!("Starting relayer for domain: {domain_id:?} and the consensus chain",);
     let mut chain_block_imported = consensus_client.every_import_notification_stream();
 
     // from the start block, start processing all the messages assigned
@@ -184,12 +177,12 @@ pub async fn start_relaying_messages<CClient, Client, CBlock, Block, SO>(
     while let Some(imported_block) = chain_block_imported.next().await {
         // if the client is in major sync, wait until sync is complete
         if sync_oracle.is_major_syncing() {
-            tracing::debug!(target: LOG_TARGET, "Client is in major sync. Skipping...");
+            tracing::debug!("Client is in major sync. Skipping...");
             continue;
         }
 
         if !imported_block.is_new_best {
-            tracing::debug!(target: LOG_TARGET, "Imported non-best block. Skipping...");
+            tracing::debug!("Imported non-best block. Skipping...");
             continue;
         }
 
@@ -198,7 +191,7 @@ pub async fn start_relaying_messages<CClient, Client, CBlock, Block, SO>(
             .number()
             .checked_sub(&confirmation_depth_k)
         else {
-            tracing::debug!(target: LOG_TARGET, "Not enough confirmed blocks. Skipping...");
+            tracing::debug!("Not enough confirmed blocks. Skipping...");
             continue;
         };
 
@@ -213,7 +206,6 @@ pub async fn start_relaying_messages<CClient, Client, CBlock, Block, SO>(
 
             if let Err(err) = res {
                 tracing::error!(
-                    target: LOG_TARGET,
                     ?err,
                     "Failed to submit messages from the chain {chain_id:?} at the block ({confirmed_block_number:?}"
                 );

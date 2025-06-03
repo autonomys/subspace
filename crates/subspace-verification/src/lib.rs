@@ -20,11 +20,11 @@ use core::mem;
 #[cfg(feature = "kzg")]
 use core::simd::Simd;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
-use schnorrkel::context::SigningContext;
 use schnorrkel::SignatureError;
+use schnorrkel::context::SigningContext;
 #[cfg(feature = "kzg")]
 use subspace_core_primitives::hashes::blake3_254_hash_to_scalar;
-use subspace_core_primitives::hashes::{blake3_hash_list, blake3_hash_with_key, Blake3Hash};
+use subspace_core_primitives::hashes::{Blake3Hash, blake3_hash_list, blake3_hash_with_key};
 #[cfg(feature = "kzg")]
 use subspace_core_primitives::pieces::{PieceArray, Record, RecordWitness};
 use subspace_core_primitives::pot::PotOutput;

@@ -8,8 +8,8 @@ use parity_scale_codec::{Compact, Encode};
 use sp_std::cmp::max;
 use trie_db::node::Value;
 use trie_db::{
-    nibble_ops, ChildReference, NibbleSlice, NodeCodec, ProcessEncodedNode, TrieHash, TrieLayout,
-    TrieRoot,
+    ChildReference, NibbleSlice, NodeCodec, ProcessEncodedNode, TrieHash, TrieLayout, TrieRoot,
+    nibble_ops,
 };
 
 macro_rules! exponential_out {
@@ -260,8 +260,8 @@ mod test {
     use parity_scale_codec::{Compact, Encode};
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
-    use sp_core::storage::StorageKey;
     use sp_core::H256;
+    use sp_core::storage::StorageKey;
     use sp_runtime::traits::{BlakeTwo256, Hash};
     use sp_trie::{LayoutV1, StorageProof};
     use trie_db::node::Value;
@@ -288,12 +288,11 @@ mod test {
             .iter()
             .zip(exts_length)
             .map(|(ext_hashed, ext_length)| {
-                let value = if ext_length <= 32 {
+                if ext_length <= 32 {
                     Value::Inline(ext_hashed)
                 } else {
                     Value::Node(ext_hashed)
-                };
-                value
+                }
             })
             .collect();
 
@@ -322,12 +321,14 @@ mod test {
             );
 
             // Verifying the proof with a wrong root/key will fail
-            assert!(StorageProofVerifier::<BlakeTwo256>::get_bare_value(
-                &H256::random(),
-                storage_proof.clone(),
-                storage_key.clone(),
-            )
-            .is_err());
+            assert!(
+                StorageProofVerifier::<BlakeTwo256>::get_bare_value(
+                    &H256::random(),
+                    storage_proof.clone(),
+                    storage_key.clone(),
+                )
+                .is_err()
+            );
 
             let storage_key = StorageKey(Compact(i as u32 + 1).encode());
             let result = StorageProofVerifier::<BlakeTwo256>::get_bare_value(
@@ -354,7 +355,7 @@ mod test {
 
     fn craft_valid_storage_proof_with_multiple_keys() -> (sp_core::H256, StorageProof) {
         use sp_state_machine::backend::Backend;
-        use sp_state_machine::{prove_read, InMemoryBackend};
+        use sp_state_machine::{InMemoryBackend, prove_read};
 
         let state_version = sp_runtime::StateVersion::V1;
 

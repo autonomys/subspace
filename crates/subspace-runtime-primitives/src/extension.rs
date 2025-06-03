@@ -3,16 +3,17 @@ pub mod benchmarking;
 pub mod weights;
 
 use crate::extension::weights::WeightInfo as SubstrateWeightInfo;
-use crate::utility::{nested_call_iter, MaybeNestedCall};
+use crate::utility::{MaybeNestedCall, nested_call_iter};
 use core::marker::PhantomData;
-use frame_support::pallet_prelude::Weight;
 use frame_support::RuntimeDebugNoBound;
-use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
+use frame_support::pallet_prelude::Weight;
 use frame_system::Config;
+use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use pallet_balances::Call as BalancesCall;
 use parity_scale_codec::{Decode, Encode};
-use scale_info::prelude::fmt;
 use scale_info::TypeInfo;
+use scale_info::prelude::fmt;
+use sp_runtime::DispatchResult;
 use sp_runtime::traits::{
     AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, Dispatchable, PostDispatchInfoOf,
     TransactionExtension, ValidateResult,
@@ -20,7 +21,6 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidityError, ValidTransaction,
 };
-use sp_runtime::DispatchResult;
 
 /// Maximum number of calls we benchmarked for.
 const MAXIMUM_NUMBER_OF_CALLS: u32 = 1000;

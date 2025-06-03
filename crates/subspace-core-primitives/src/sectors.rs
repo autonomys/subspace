@@ -3,13 +3,13 @@
 #[cfg(test)]
 mod tests;
 
+use crate::U256;
 use crate::hashes::{
-    blake3_hash_list, blake3_hash_list_with_key, blake3_hash_with_key, Blake3Hash,
+    Blake3Hash, blake3_hash_list, blake3_hash_list_with_key, blake3_hash_with_key,
 };
 use crate::pieces::{PieceIndex, PieceOffset, Record};
 use crate::pos::PosSeed;
 use crate::segments::{HistorySize, SegmentCommitment};
-use crate::U256;
 use core::hash::Hash;
 use core::iter::Step;
 use core::num::{NonZeroU64, TryFromIntError};

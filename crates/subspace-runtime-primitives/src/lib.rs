@@ -8,14 +8,14 @@ pub mod utility;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::time::{BLOCKS_IN_AN_MINUTE, BLOCKS_IN_A_DAY};
+use crate::time::{BLOCKS_IN_A_DAY, BLOCKS_IN_AN_MINUTE};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use frame_support::pallet_prelude::Weight;
 use frame_support::traits::tokens;
-use frame_support::weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use frame_support::weights::WeightToFee;
+use frame_support::weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use frame_support::{Deserialize, Serialize};
 use frame_system::limits::BlockLength;
 use frame_system::offchain::CreateTransactionBase;
@@ -118,9 +118,9 @@ parameter_types! {
 /// structures.
 pub mod opaque {
     use super::BlockNumber;
+    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
     use sp_runtime::generic;
     use sp_runtime::traits::BlakeTwo256;
-    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
 
     /// Opaque block header type.
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -320,8 +320,8 @@ pub mod tests_utils {
     use frame_support::weights::Weight;
     use frame_system::limits::BlockWeights;
     use pallet_transaction_payment::{Multiplier, MultiplierUpdate};
-    use sp_runtime::traits::{Convert, Get};
     use sp_runtime::BuildStorage;
+    use sp_runtime::traits::{Convert, Get};
     use std::marker::PhantomData;
 
     pub struct FeeMultiplierUtils<Runtime, BlockWeightsGetter>(

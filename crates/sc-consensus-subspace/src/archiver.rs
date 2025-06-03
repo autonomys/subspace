@@ -40,29 +40,29 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::RwLock;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
-use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
+use rayon::prelude::*;
 use sc_client_api::{
     AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, LockImportRun,
 };
-use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
+use sc_telemetry::{CONSENSUS_INFO, TelemetryHandle, telemetry};
+use sc_utils::mpsc::{TracingUnboundedSender, tracing_unbounded};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_consensus_subspace::{SubspaceApi, SubspaceJustification};
 use sp_objects::ObjectsApi;
+use sp_runtime::Justifications;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{
     Block as BlockT, BlockNumber as BlockNumberT, CheckedSub, Header, NumberFor, One, Zero,
 };
-use sp_runtime::Justifications;
 use std::error::Error;
 use std::future::Future;
 use std::num::NonZeroU32;
 use std::slice;
-use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::objects::{BlockObjectMapping, GlobalObject};
@@ -196,8 +196,7 @@ where
 
                     if segment_index != last_segment_index + SegmentIndex::ONE {
                         let error = format!(
-                            "Segment index {} must strictly follow {}, can't store segment header",
-                            segment_index, last_segment_index
+                            "Segment index {segment_index} must strictly follow {last_segment_index}, can't store segment header"
                         );
                         return Err(sp_blockchain::Error::Application(error.into()));
                     }
@@ -263,9 +262,10 @@ where
         if block_number == 1 {
             // If there is a segment index present, and we store monotonically increasing segment
             // headers, then the first header exists.
-            return vec![self
-                .get_segment_header(SegmentIndex::ZERO)
-                .expect("Segment headers are stored in monotonically increasing order; qed")];
+            return vec![
+                self.get_segment_header(SegmentIndex::ZERO)
+                    .expect("Segment headers are stored in monotonically increasing order; qed"),
+            ];
         }
 
         if last_segment_index == SegmentIndex::ZERO {
@@ -1162,8 +1162,7 @@ where
     if parent_block_hash != best_archived_block_hash {
         let error = format!(
             "Attempt to switch to a different fork beyond archiving depth, \
-            can't do it: parent block hash {}, best archived block hash {}",
-            parent_block_hash, best_archived_block_hash
+            can't do it: parent block hash {parent_block_hash}, best archived block hash {best_archived_block_hash}"
         );
         return Err(sp_blockchain::Error::Consensus(sp_consensus::Error::Other(
             error.into(),

@@ -1,14 +1,14 @@
 use crate::behavior::persistent_parameters::{
-    append_p2p_suffix, remove_p2p_suffix, KnownPeersRegistry, PeerAddressRemovedEvent,
+    KnownPeersRegistry, PeerAddressRemovedEvent, append_p2p_suffix, remove_p2p_suffix,
 };
 use crate::behavior::{Behavior, Event};
-use crate::constructor::temporary_bans::TemporaryBans;
 use crate::constructor::DummyRecordStore;
+use crate::constructor::temporary_bans::TemporaryBans;
 use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, IfDisconnected,
 };
 use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
-use crate::utils::{is_global_address_or_dns, strip_peer_id, SubspaceMetrics};
+use crate::utils::{SubspaceMetrics, is_global_address_or_dns, strip_peer_id};
 use async_lock::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -34,12 +34,12 @@ use nohash_hasher::IntMap;
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use std::fmt;
 use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
+use std::{fmt, slice};
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::task::yield_now;
 use tokio::time::Sleep;
@@ -491,7 +491,7 @@ impl NodeRunner {
             }
             ref event @ SwarmEvent::ExpiredListenAddr { ref address, .. } => {
                 trace!(?event, "Local listener expired event.");
-                self.handle_remove_listeners(&[address.clone()]);
+                self.handle_remove_listeners(slice::from_ref(address));
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id,
@@ -1172,14 +1172,14 @@ impl NodeRunner {
     }
 
     async fn handle_gossipsub_event(&mut self, event: GossipsubEvent) {
-        if let GossipsubEvent::Message { message, .. } = event {
-            if let Some(senders) = self.topic_subscription_senders.get(&message.topic) {
-                let bytes = Bytes::from(message.data);
+        if let GossipsubEvent::Message { message, .. } = event
+            && let Some(senders) = self.topic_subscription_senders.get(&message.topic)
+        {
+            let bytes = Bytes::from(message.data);
 
-                for sender in senders.values() {
-                    // Doesn't matter if receiver is still listening for messages or not.
-                    let _ = sender.unbounded_send(bytes.clone());
-                }
+            for sender in senders.values() {
+                // Doesn't matter if receiver is still listening for messages or not.
+                let _ = sender.unbounded_send(bytes.clone());
             }
         }
     }
@@ -1384,13 +1384,13 @@ impl NodeRunner {
                     if entry.get().is_empty() {
                         entry.remove_entry();
 
-                        if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut() {
-                            if !gossipsub.unsubscribe(&topic) {
-                                warn!(
-                                    "Can't unsubscribe from topic {topic} because subscription doesn't exist, \
+                        if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut()
+                            && !gossipsub.unsubscribe(&topic)
+                        {
+                            warn!(
+                                "Can't unsubscribe from topic {topic} because subscription doesn't exist, \
                                     this is a logic error in the subspace or swarm libraries"
-                                );
-                            }
+                            );
                         }
                     }
                 } else {

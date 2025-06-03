@@ -4,7 +4,7 @@ description = "Subspace proof of space implementation based on Chia"
 license = "0BSD"
 version = "0.1.0"
 authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
-edition = "2021"
+edition.workspace = true
 include = [
     "/benches",
     "/src",
@@ -16,6 +16,7 @@ include = [
 bench = false
 
 [dependencies]
+blake3 = { workspace = true, default-features = false }
 chacha20.workspace = true
 derive_more = { workspace = true, features = ["full"] }
 parking_lot = { workspace = true, optional = true }
@@ -23,7 +24,6 @@ rayon = { workspace = true, optional = true }
 seq-macro.workspace = true
 sha2.workspace = true
 spin.workspace = true
-static_assertions.workspace = true
 subspace-core-primitives.workspace = true
 
 [dev-dependencies]
@@ -38,6 +38,8 @@ harness = false
 [features]
 default = ["std"]
 std = [
+    # TODO: `std` will not be necessary once 1.8.3+ is released with https://github.com/BLAKE3-team/BLAKE3/pull/469
+    "blake3/std",
     "chacha20/std",
     "derive_more/std",
     # In no-std environment we use `spin`

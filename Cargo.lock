@@ -1351,9 +1351,9 @@ dependencies = [
 
 [[package]]
 name = "blake3"
-version = "1.5.4"
+version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d82033247fd8e890df8f740e407ad4d038debb9eb1f40533fffb32e7d17dc6f7"
+checksum = "3888aaa89e4b2a40fca9848e400f6a658a5a3978de7be858e209cafa8be9a4a0"
 dependencies = [
  "arrayref",
  "arrayvec 0.7.6",
@@ -1972,9 +1972,9 @@ dependencies = [
 
 [[package]]
 name = "cpufeatures"
-version = "0.2.14"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "608697df725056feaccfa42cffdaeeec3fccc4ffc38358ecd19b243e716a78e0"
+checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
 dependencies = [
  "libc",
 ]
@@ -2768,7 +2768,7 @@ name = "domain-block-builder"
 version = "0.1.0"
 dependencies = [
  "hash-db",
- "hexlit",
+ "hex-literal",
  "parity-scale-codec",
  "sc-chain-spec",
  "sc-client-api",
@@ -2886,7 +2886,6 @@ dependencies = [
  "futures",
  "futures-timer",
  "hex",
- "hex-literal",
  "pallet-balances",
  "pallet-domain-sudo",
  "pallet-domains",
@@ -4946,12 +4945,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b07f60793ff0a4d9cef0f18e63b5357e06209987153a64648c972c1e5aff336f"
 
 [[package]]
-name = "hexlit"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b6e75c860d4216ac53f9ac88b25c99eaedba075b3a7b2ed31f2adc51a74fffd"
-
-[[package]]
 name = "hickory-proto"
 version = "0.24.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5192,7 +5185,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.9",
  "tokio",
  "tower-service",
  "tracing",
@@ -7957,7 +7950,6 @@ dependencies = [
  "frame-support",
  "frame-system",
  "hex-literal",
- "hexlit",
  "log",
  "pallet-balances",
  "pallet-block-fees",
@@ -12521,11 +12513,12 @@ dependencies = [
  "frame-support",
  "frame-system",
  "hash-db",
- "hexlit",
+ "hex-literal",
  "libsecp256k1",
  "memory-db",
  "num-traits",
  "pallet-evm",
+ "pallet-utility",
  "parity-scale-codec",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
@@ -13746,6 +13739,7 @@ name = "subspace-proof-of-space"
 version = "0.1.0"
 dependencies = [
  "bitvec",
+ "blake3",
  "chacha20",
  "criterion",
  "derive_more 1.0.0",
@@ -13754,7 +13748,6 @@ dependencies = [
  "seq-macro",
  "sha2 0.10.8",
  "spin 0.9.8",
- "static_assertions",
  "subspace-core-primitives",
 ]
 
@@ -13779,8 +13772,10 @@ version = "0.1.0"
 dependencies = [
  "aes 0.9.0-pre.2",
  "core_affinity",
+ "cpufeatures",
  "criterion",
- "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
  "subspace-core-primitives",
  "thiserror 2.0.12",
 ]

@@ -1,13 +1,13 @@
 //! Chain specification for the test runtime.
 
 use sc_chain_spec::{ChainType, GenericChainSpec};
-use sp_core::{sr25519, Pair, Public};
+use sp_core::{Pair, Public, sr25519};
 use sp_domains::{EvmType, PermissionedActionAllowedBy};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_runtime_primitives::{
-    AccountId, Balance, CouncilDemocracyConfigParams, Signature, SSC,
+    AccountId, Balance, CouncilDemocracyConfigParams, SSC, Signature,
 };
 use subspace_test_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, RewardsConfig,

@@ -3,7 +3,7 @@
 #![feature(try_blocks)]
 
 use futures::channel::mpsc;
-use futures::{future, stream, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, future, stream};
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::{ErrorObject, ErrorObjectOwned};
@@ -11,16 +11,16 @@ use jsonrpsee::{Extensions, PendingSubscriptionSink};
 use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus_subspace::archiver::{
-    recreate_genesis_segment, ArchivedSegmentNotification, ObjectMappingNotification,
-    SegmentHeadersStore,
+    ArchivedSegmentNotification, ObjectMappingNotification, SegmentHeadersStore,
+    recreate_genesis_segment,
 };
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::{
     NewSlotNotification, RewardSigningNotification, SubspaceSyncOracle,
 };
-use sc_rpc::utils::{BoundedVecDeque, PendingSubscription};
 use sc_rpc::SubscriptionTaskExecutor;
-use sc_rpc_api::{check_if_safe, UnsafeRpcError};
+use sc_rpc::utils::{BoundedVecDeque, PendingSubscription};
+use sc_rpc_api::{UnsafeRpcError, check_if_safe};
 use sc_utils::mpsc::TracingUnboundedSender;
 use schnellru::{ByLength, LruMap};
 use sp_api::{ApiError, ProvideRuntimeApi};
@@ -48,8 +48,8 @@ use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_kzg::Kzg;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
-    FarmerAppInfo, ObjectMappingResponse, RewardSignatureResponse, RewardSigningInfo, SlotInfo,
-    SolutionResponse, MAX_SEGMENT_HEADERS_PER_REQUEST,
+    FarmerAppInfo, MAX_SEGMENT_HEADERS_PER_REQUEST, ObjectMappingResponse, RewardSignatureResponse,
+    RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use tracing::{debug, error, warn};
 
@@ -527,10 +527,10 @@ where
                 // Wait for solutions and transform proposed proof of space solutions into
                 // data structure `sc-consensus-subspace` expects
                 let forward_signature_fut = async move {
-                    if let Ok(reward_signature) = response_receiver.await {
-                        if let Some(signature) = reward_signature.signature {
-                            let _ = signature_sender.unbounded_send(signature);
-                        }
+                    if let Ok(reward_signature) = response_receiver.await
+                        && let Some(signature) = reward_signature.signature
+                    {
+                        let _ = signature_sender.unbounded_send(signature);
                     }
                 };
 
@@ -576,10 +576,10 @@ where
         //  multiple (https://github.com/paritytech/jsonrpsee/issues/452)
         let mut reward_signature_senders = reward_signature_senders.lock();
 
-        if reward_signature_senders.current_hash == reward_signature.hash.into() {
-            if let Some(mut sender) = reward_signature_senders.senders.pop() {
-                let _ = sender.send(reward_signature);
-            }
+        if reward_signature_senders.current_hash == reward_signature.hash.into()
+            && let Some(mut sender) = reward_signature_senders.senders.pop()
+        {
+            let _ = sender.send(reward_signature);
         }
 
         Ok(())
@@ -702,12 +702,11 @@ where
                 .flatten()
         };
 
-        if let Some(sender) = maybe_sender {
-            if let Err(error) = sender.unbounded_send(()) {
-                if !error.is_closed() {
-                    warn!("Failed to acknowledge archived segment: {error}");
-                }
-            }
+        if let Some(sender) = maybe_sender
+            && let Err(error) = sender.unbounded_send(())
+            && !error.is_closed()
+        {
+            warn!("Failed to acknowledge archived segment: {error}");
         }
 
         debug!(%segment_index, "Acknowledged archived segment.");
@@ -806,8 +805,7 @@ where
             );
 
             return Err(Error::StringError(format!(
-                "Request limit ({}) exceed the server limit: {} ",
-                limit, MAX_SEGMENT_HEADERS_PER_REQUEST
+                "Request limit ({limit}) exceed the server limit: {MAX_SEGMENT_HEADERS_PER_REQUEST} "
             )));
         };
 

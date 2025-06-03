@@ -3,9 +3,9 @@
 
 use crate::{PosTableType, Table, TableGenerator};
 use core::iter;
+use subspace_core_primitives::U256;
 use subspace_core_primitives::hashes::blake3_hash;
 use subspace_core_primitives::pos::{PosProof, PosSeed};
-use subspace_core_primitives::U256;
 
 /// Subspace proof of space table generator.
 ///

@@ -4,7 +4,7 @@ description = "Domains fraud proof primitves for Consensus chain"
 license = "0BSD"
 version = "0.1.0"
 authors = ["Subspace Labs <https://subspace.network>"]
-edition = "2021"
+edition.workspace = true
 include = [
     "/src",
     "/Cargo.toml",

@@ -5,19 +5,19 @@ pub(super) mod types;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use crate::chiapos::Seed;
 use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT, PARAM_M};
 use crate::chiapos::table::types::{Metadata, Position, X, Y};
 use crate::chiapos::utils::EvaluatableUsize;
-use crate::chiapos::Seed;
 #[cfg(not(feature = "std"))]
 use alloc::vec;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::{ChaCha8, Key, Nonce};
-use core::mem;
-use core::simd::num::SimdUint;
+use core::array;
 use core::simd::Simd;
+use core::simd::num::SimdUint;
 #[cfg(all(feature = "std", any(feature = "parallel", test)))]
 use parking_lot::Mutex;
 #[cfg(any(feature = "parallel", test))]
@@ -25,12 +25,9 @@ use rayon::prelude::*;
 use seq_macro::seq;
 #[cfg(all(not(feature = "std"), any(feature = "parallel", test)))]
 use spin::Mutex;
-use static_assertions::const_assert;
-use subspace_core_primitives::hashes::{blake3_hash, blake3_hash_list};
 
 pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
 pub(super) const FIND_MATCHES_AND_COMPUTE_UNROLL_FACTOR: usize = 8;
-pub(super) const HAS_MATCH_UNROLL_FACTOR: usize = 8;
 
 /// Compute the size of `y` in bits
 pub(super) const fn y_size_bits(k: u8) -> usize {
@@ -201,43 +198,27 @@ pub(super) fn compute_f1<const K: u8>(x: X, partial_y: &[u8], partial_y_offset: 
 }
 
 pub(super) fn compute_f1_simd<const K: u8>(
-    xs: [X; COMPUTE_F1_SIMD_FACTOR],
+    xs: [u32; COMPUTE_F1_SIMD_FACTOR],
     partial_ys: &[u8; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize],
 ) -> [Y; COMPUTE_F1_SIMD_FACTOR] {
     // Each element contains `K` desired bits of `partial_ys` in the final offset of eventual `ys`
     // with the rest of bits being in undefined state
-    let pre_ys_bytes: Simd<_, COMPUTE_F1_SIMD_FACTOR> = Simd::from(seq!(N in 0..8 {
-        [
-        #(
-        {
-            #[allow(clippy::erasing_op, clippy::identity_op)]
-            let partial_y_offset = N * usize::from(K);
-            let partial_y_length =
-                (partial_y_offset % u8::BITS as usize + usize::from(K)).div_ceil(u8::BITS as usize);
-            let mut pre_y_bytes = 0u64.to_be_bytes();
-            pre_y_bytes[..partial_y_length].copy_from_slice(
-                &partial_ys[partial_y_offset / u8::BITS as usize..][..partial_y_length],
-            );
+    let pre_ys_bytes = array::from_fn(|i| {
+        let partial_y_offset = i * usize::from(K);
+        let partial_y_length =
+            (partial_y_offset % u8::BITS as usize + usize::from(K)).div_ceil(u8::BITS as usize);
+        let mut pre_y_bytes = 0u64.to_be_bytes();
+        pre_y_bytes[..partial_y_length].copy_from_slice(
+            &partial_ys[partial_y_offset / u8::BITS as usize..][..partial_y_length],
+        );
 
-            u64::from_be_bytes(pre_y_bytes)
-        },
-        )*
-        ]
-    }));
-    let pre_ys_right_offset: Simd<_, COMPUTE_F1_SIMD_FACTOR> = Simd::from(seq!(N in 0..8 {
-        [
-        #(
-        {
-            #[allow(clippy::erasing_op, clippy::identity_op)]
-            let partial_y_offset = N * u32::from(K);
-            u64::from(u64::BITS - u32::from(K + PARAM_EXT) - partial_y_offset % u8::BITS)
-        },
-        )*
-        ]
-    }));
-    // TODO: both this and above operations are most likely possible on x86-64 with a special
-    //  intrinsic in a more efficient way
-    let pre_ys = pre_ys_bytes >> pre_ys_right_offset;
+        u64::from_be_bytes(pre_y_bytes)
+    });
+    let pre_ys_right_offset = array::from_fn(|i| {
+        let partial_y_offset = i as u32 * u32::from(K);
+        u64::from(u64::BITS - u32::from(K + PARAM_EXT) - partial_y_offset % u8::BITS)
+    });
+    let pre_ys = Simd::from_array(pre_ys_bytes) >> Simd::from_array(pre_ys_right_offset);
 
     // Mask for clearing the rest of bits of `pre_ys`.
     let pre_ys_mask = Simd::splat(
@@ -245,24 +226,15 @@ pub(super) fn compute_f1_simd<const K: u8>(
             & (u32::MAX >> (u32::BITS as usize - usize::from(K + PARAM_EXT))),
     );
 
-    // SAFETY: `X` is `#[repr(transparent)]` and guaranteed to have the same memory layout as `u32`
-    let xs =
-        unsafe { mem::transmute::<[X; COMPUTE_F1_SIMD_FACTOR], [u32; COMPUTE_F1_SIMD_FACTOR]>(xs) };
     // Extract `PARAM_EXT` most significant bits from `xs` and store in the final offset of
     // eventual `ys` with the rest of bits being in undefined state.
-    let pre_exts = Simd::from(xs) >> Simd::splat(u32::from(K - PARAM_EXT));
-
-    // Mask for clearing the rest of bits of `pre_exts`.
-    let pre_exts_mask = Simd::splat(u32::MAX >> (u32::BITS as usize - usize::from(PARAM_EXT)));
+    let pre_exts = Simd::from_array(xs) >> Simd::splat(u32::from(K - PARAM_EXT));
 
     // Combine all of the bits together:
     // [padding zero bits][`K` bits rom `partial_y`][`PARAM_EXT` bits from `x`]
-    // NOTE: `pre_exts_mask` is unnecessary here and makes no difference, but it allows compiler to
-    // generate faster code 🤷‍
-    let ys = (pre_ys.cast() & pre_ys_mask) | (pre_exts & pre_exts_mask);
+    let ys = (pre_ys.cast() & pre_ys_mask) | pre_exts;
 
-    // SAFETY: `Y` is `#[repr(transparent)]` and guaranteed to have the same memory layout as `u32`
-    unsafe { mem::transmute(ys.to_array()) }
+    Y::array_from_repr(ys.to_array())
 }
 
 /// `rmap_scratch` is just an optimization to reuse allocations between calls.
@@ -320,11 +292,7 @@ fn find_matches<T, Map>(
         let (a, b) = left_targets
             .left_targets
             .split_at(left_targets.left_targets.len() / 2);
-        if parity == 0 {
-            a
-        } else {
-            b
-        }
+        if parity == 0 { a } else { b }
     };
 
     for (&y, left_position) in left_bucket_ys.iter().zip(left_bucket_start_position..) {
@@ -334,7 +302,9 @@ fn find_matches<T, Map>(
             .nth(r)
             .expect("r is valid");
 
-        const_assert!(PARAM_M as usize % FIND_MATCHES_AND_COMPUTE_UNROLL_FACTOR == 0);
+        const _: () = {
+            assert!(PARAM_M as usize % FIND_MATCHES_AND_COMPUTE_UNROLL_FACTOR == 0);
+        };
 
         for r_targets in left_targets_r
             .array_chunks::<{ FIND_MATCHES_AND_COMPUTE_UNROLL_FACTOR }>()
@@ -370,25 +340,11 @@ pub(super) fn has_match(left_y: Y, right_y: Y) -> bool {
     let parity = (u32::from(left_y) / u32::from(PARAM_BC)) % 2;
     let left_r = u32::from(left_y) % u32::from(PARAM_BC);
 
-    const_assert!(PARAM_M as usize % HAS_MATCH_UNROLL_FACTOR == 0);
+    let r_targets = array::from_fn::<_, { PARAM_M as usize }, _>(|i| {
+        calculate_left_target_on_demand(parity, left_r, i as u32)
+    });
 
-    for m in 0..u32::from(PARAM_M) / HAS_MATCH_UNROLL_FACTOR as u32 {
-        let _: [(); HAS_MATCH_UNROLL_FACTOR] = seq!(N in 0..8 {
-            [
-            #(
-            {
-                #[allow(clippy::identity_op)]
-                let r_target = calculate_left_target_on_demand(parity, left_r, m * HAS_MATCH_UNROLL_FACTOR as u32 + N);
-                if r_target == right_r {
-                    return true;
-                }
-            },
-            )*
-            ]
-        });
-    }
-
-    false
+    r_targets.contains(&right_r)
 }
 
 pub(super) fn compute_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
@@ -434,25 +390,22 @@ where
             // Collect bits of `right_metadata` that will spill over into `input_b`
             let input_b = right_metadata << (u128::BITS as usize - right_bits_pushed_into_input_b);
 
-            blake3_hash_list(&[
-                &input_a.to_be_bytes(),
-                &input_b.to_be_bytes()
-                    [..right_bits_pushed_into_input_b.div_ceil(u8::BITS as usize)],
-            ])
+            let input = [input_a.to_be_bytes(), input_b.to_be_bytes()];
+            let input_len =
+                size_of::<u128>() + right_bits_pushed_into_input_b.div_ceil(u8::BITS as usize);
+            blake3::hash(&input.as_flattened()[..input_len])
         } else {
             let right_bits_a = right_metadata << (right_bits_start_offset - y_and_left_bits);
             let input_a = y_bits | left_metadata_bits | right_bits_a;
 
-            blake3_hash(&input_a.to_be_bytes()[..num_bytes_with_data])
+            blake3::hash(&input_a.to_be_bytes()[..num_bytes_with_data])
         }
     };
+    let hash = <[u8; 32]>::from(hash);
 
     let y_output = Y::from(
-        u32::from_be_bytes(
-            hash[..mem::size_of::<u32>()]
-                .try_into()
-                .expect("Hash if statically guaranteed to have enough bytes; qed"),
-        ) >> (u32::BITS as usize - y_size_bits(K)),
+        u32::from_be_bytes([hash[0], hash[1], hash[2], hash[3]])
+            >> (u32::BITS as usize - y_size_bits(K)),
     );
 
     let metadata_size_bits = metadata_size_bits(K, TABLE_NUMBER);
@@ -464,7 +417,7 @@ where
         // We collect bytes necessary, potentially with extra bits at the start and end of the bytes
         // that will be taken care of later.
         let metadata = u128::from_be_bytes(
-            hash[y_size_bits(K) / u8::BITS as usize..][..mem::size_of::<u128>()]
+            hash[y_size_bits(K) / u8::BITS as usize..][..size_of::<u128>()]
                 .try_into()
                 .expect("Always enough bits for any K; qed"),
         );
@@ -560,24 +513,16 @@ where
         let partial_ys = partial_ys::<K>(seed);
 
         let mut t_1 = Vec::with_capacity(1_usize << K);
-        for (x_start, partial_ys) in X::all::<K>().step_by(COMPUTE_F1_SIMD_FACTOR).zip(
-            partial_ys
-                .array_chunks::<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>()
-                .copied(),
-        ) {
-            let xs: [_; COMPUTE_F1_SIMD_FACTOR] = seq!(N in 0..8 {
-                [
-                #(
-                #[allow(clippy::erasing_op, clippy::identity_op)]
-                {
-                    x_start + X::from(N)
-                },
-                )*
-                ]
+        for (x_batch, partial_ys) in partial_ys
+            .array_chunks::<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>()
+            .copied()
+            .enumerate()
+        {
+            let xs = array::from_fn::<_, COMPUTE_F1_SIMD_FACTOR, _>(|i| {
+                (x_batch * COMPUTE_F1_SIMD_FACTOR + i) as u32
             });
-
             let ys = compute_f1_simd::<K>(xs, &partial_ys);
-            t_1.extend(ys.into_iter().zip(xs));
+            t_1.extend(ys.into_iter().zip(X::array_from_repr(xs)));
         }
 
         t_1.sort_unstable();
@@ -596,24 +541,16 @@ where
         let partial_ys = partial_ys::<K>(seed);
 
         let mut t_1 = Vec::with_capacity(1_usize << K);
-        for (x_start, partial_ys) in X::all::<K>().step_by(COMPUTE_F1_SIMD_FACTOR).zip(
-            partial_ys
-                .array_chunks::<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>()
-                .copied(),
-        ) {
-            let xs: [_; COMPUTE_F1_SIMD_FACTOR] = seq!(N in 0..8 {
-                [
-                #(
-                #[allow(clippy::erasing_op, clippy::identity_op)]
-                {
-                    x_start + X::from(N)
-                },
-                )*
-                ]
+        for (x_batch, partial_ys) in partial_ys
+            .array_chunks::<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>()
+            .copied()
+            .enumerate()
+        {
+            let xs = array::from_fn::<_, COMPUTE_F1_SIMD_FACTOR, _>(|i| {
+                (x_batch * COMPUTE_F1_SIMD_FACTOR + i) as u32
             });
-
             let ys = compute_f1_simd::<K>(xs, &partial_ys);
-            t_1.extend(ys.into_iter().zip(xs));
+            t_1.extend(ys.into_iter().zip(X::array_from_repr(xs)));
         }
 
         t_1.par_sort_unstable();
