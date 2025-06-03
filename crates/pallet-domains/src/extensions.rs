@@ -3,6 +3,7 @@
 use crate::pallet::Call as DomainsCall;
 use crate::weights::WeightInfo;
 use crate::{Config, FraudProofFor, OpaqueBundleOf, Origin, Pallet as Domains, SingletonReceiptOf};
+use frame_support::ensure;
 use frame_support::pallet_prelude::{PhantomData, TypeInfo};
 use frame_support::weights::Weight;
 use frame_system::pallet_prelude::RuntimeCallFor;
@@ -26,6 +27,12 @@ where
     Runtime: Config,
 {
     fn maybe_domains_call(&self) -> Option<&DomainsCall<Runtime>>;
+}
+
+/// Trait to check if the Domains are enabled on Consensus.
+pub trait DomainsCheck {
+    /// Check if the domains are enabled on Runtime.
+    fn is_domains_enabled() -> bool;
 }
 
 /// Extensions for pallet-domains unsigned extrinsics.
@@ -165,7 +172,7 @@ where
 
 impl<Runtime> TransactionExtension<RuntimeCallFor<Runtime>> for DomainsExtension<Runtime>
 where
-    Runtime: Config + scale_info::TypeInfo + fmt::Debug + Send + Sync,
+    Runtime: Config + scale_info::TypeInfo + fmt::Debug + Send + Sync + DomainsCheck,
     <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
         AsSystemOriginSigner<<Runtime as frame_system::Config>::AccountId> + From<Origin> + Clone,
     RuntimeCallFor<Runtime>: MaybeDomainsCall<Runtime>,
@@ -177,19 +184,24 @@ where
 
     fn weight(&self, call: &Runtime::RuntimeCall) -> Weight {
         // This extension only apply to the following 3 calls thus only return weight for them.
-        match call.maybe_domains_call() {
+        let maybe_weight = match call.maybe_domains_call() {
             Some(DomainsCall::submit_bundle { .. }) => {
-                <Runtime as Config>::WeightInfo::validate_submit_bundle()
+                Some(<Runtime as Config>::WeightInfo::validate_submit_bundle())
             }
-            Some(DomainsCall::submit_fraud_proof { fraud_proof }) => {
+            Some(DomainsCall::submit_fraud_proof { fraud_proof }) => Some(
                 <Runtime as Config>::WeightInfo::fraud_proof_pre_check()
-                    .saturating_add(fraud_proof_verification_weights::<_, _, _, _>(fraud_proof))
-            }
+                    .saturating_add(fraud_proof_verification_weights::<_, _, _, _>(fraud_proof)),
+            ),
             Some(DomainsCall::submit_receipt { .. }) => {
-                <Runtime as Config>::WeightInfo::validate_singleton_receipt()
+                Some(<Runtime as Config>::WeightInfo::validate_singleton_receipt())
             }
-            _ => Weight::zero(),
-        }
+            _ => None,
+        };
+
+        // There is one additional runtime read to check if the domains are enabled
+        maybe_weight
+            .and_then(|weight| weight.checked_add(&Runtime::DbWeight::get().reads(1)))
+            .unwrap_or(Runtime::DbWeight::get().reads(1))
     }
 
     fn validate(
@@ -211,6 +223,9 @@ where
             Some(domains_call) => domains_call,
             None => return Ok((ValidTransaction::default(), (), origin)),
         };
+
+        // ensure domains are enabled
+        ensure!(Runtime::is_domains_enabled(), InvalidTransaction::Call);
 
         let validity = match domains_call {
             DomainsCall::submit_bundle { opaque_bundle } => {
