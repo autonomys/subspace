@@ -15,25 +15,25 @@ pub(super) fn create(
 ) -> PotCheckpoints {
     let mut checkpoints = PotCheckpoints::default();
 
-    let keys_reg = expand_key(key);
-    let xor_key = _mm_xor_si128(keys_reg[10], keys_reg[0]);
-    let mut seed_reg = __m128i::from(u8x16::from_array(*seed));
-    seed_reg = _mm_xor_si128(seed_reg, keys_reg[0]);
+    let keys = expand_key(key);
+    let xor_key = _mm_xor_si128(keys[10], keys[0]);
+    let mut seed = __m128i::from(u8x16::from_array(*seed));
+    seed = _mm_xor_si128(seed, keys[0]);
     for checkpoint in checkpoints.iter_mut() {
         for _ in 0..checkpoint_iterations {
-            seed_reg = _mm_aesenc_si128(seed_reg, keys_reg[1]);
-            seed_reg = _mm_aesenc_si128(seed_reg, keys_reg[2]);
-            seed_reg = _mm_aesenc_si128(seed_reg, keys_reg[3]);
-            seed_reg = _mm_aesenc_si128(seed_reg, keys_reg[4]);
-            seed_reg = _mm_aesenc_si128(seed_reg, keys_reg[5]);
-            seed_reg = _mm_aesenc_si128(seed_reg, keys_reg[6]);
-            seed_reg = _mm_aesenc_si128(seed_reg, keys_reg[7]);
-            seed_reg = _mm_aesenc_si128(seed_reg, keys_reg[8]);
-            seed_reg = _mm_aesenc_si128(seed_reg, keys_reg[9]);
-            seed_reg = _mm_aesenclast_si128(seed_reg, xor_key);
+            seed = _mm_aesenc_si128(seed, keys[1]);
+            seed = _mm_aesenc_si128(seed, keys[2]);
+            seed = _mm_aesenc_si128(seed, keys[3]);
+            seed = _mm_aesenc_si128(seed, keys[4]);
+            seed = _mm_aesenc_si128(seed, keys[5]);
+            seed = _mm_aesenc_si128(seed, keys[6]);
+            seed = _mm_aesenc_si128(seed, keys[7]);
+            seed = _mm_aesenc_si128(seed, keys[8]);
+            seed = _mm_aesenc_si128(seed, keys[9]);
+            seed = _mm_aesenclast_si128(seed, xor_key);
         }
 
-        let checkpoint_reg = _mm_xor_si128(seed_reg, keys_reg[0]);
+        let checkpoint_reg = _mm_xor_si128(seed, keys[0]);
         **checkpoint = u8x16::from(checkpoint_reg).to_array();
     }
 
@@ -62,7 +62,7 @@ pub(super) fn verify_sequential_aes_sse41(
         inv_keys[i] = _mm_aesimc_si128(keys[10 - i]);
     }
 
-    let mut inputs: [__m128i; 8] = [
+    let mut inputs: [__m128i; PotCheckpoints::NUM_CHECKPOINTS.get() as usize] = [
         __m128i::from(u8x16::from(*seed)),
         __m128i::from(u8x16::from(checkpoints[0])),
         __m128i::from(u8x16::from(checkpoints[1])),
@@ -73,7 +73,7 @@ pub(super) fn verify_sequential_aes_sse41(
         __m128i::from(u8x16::from(checkpoints[6])),
     ];
 
-    let mut outputs: [__m128i; 8] = [
+    let mut outputs: [__m128i; PotCheckpoints::NUM_CHECKPOINTS.get() as usize] = [
         __m128i::from(u8x16::from(checkpoints[0])),
         __m128i::from(u8x16::from(checkpoints[1])),
         __m128i::from(u8x16::from(checkpoints[2])),

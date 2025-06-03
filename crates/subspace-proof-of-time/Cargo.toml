@@ -19,7 +19,7 @@ aes.workspace = true
 subspace-core-primitives.workspace = true
 thiserror.workspace = true
 
-[target.'cfg(target_arch = "x86_64")'.dependencies]
+[target.'cfg(any(target_arch = "aarch64", target_arch = "x86_64"))'.dependencies]
 cpufeatures = { workspace = true }
 
 [dev-dependencies]
