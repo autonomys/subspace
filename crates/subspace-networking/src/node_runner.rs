@@ -1,3 +1,5 @@
+//! DSN node behaviour implementation.
+
 use crate::behavior::persistent_parameters::{
     KnownPeersRegistry, PeerAddressRemovedEvent, append_p2p_suffix, remove_p2p_suffix,
 };
@@ -44,6 +46,15 @@ use tokio::sync::OwnedSemaphorePermit;
 use tokio::task::yield_now;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
+
+/// The maximum time between random Kademlia peer DHT queries.
+const MAX_RANDOM_QUERY_INTERVAL: Duration = Duration::from_secs(60);
+
+/// The time between external address refreshes and peer stats debug logging.
+const PERIODICAL_TASKS_INTERVAL: Duration = Duration::from_secs(5);
+
+/// The maximum number of OS-reported listener addresses we will use.
+const MAX_LISTEN_ADDRESSES: usize = 30;
 
 enum QueryResultSender {
     Value {
@@ -238,11 +249,11 @@ impl NodeRunner {
             futures::select! {
                 _ = &mut self.random_query_timeout => {
                     self.handle_random_query_interval();
-                    // Increase interval 2x, but to at most 60 seconds.
+                    // Increase interval 2x, but limit it to MAX_RANDOM_QUERY_INTERVAL.
                     self.random_query_timeout =
                         Box::pin(tokio::time::sleep(self.next_random_query_interval).fuse());
                     self.next_random_query_interval =
-                        (self.next_random_query_interval * 2).min(Duration::from_secs(60));
+                        (self.next_random_query_interval * 2).min(MAX_RANDOM_QUERY_INTERVAL);
                 },
                 swarm_event = self.swarm.next() => {
                     if let Some(swarm_event) = swarm_event {
@@ -264,9 +275,8 @@ impl NodeRunner {
                 },
                 _ = &mut self.periodical_tasks_interval => {
                     self.handle_periodical_tasks().await;
-
                     self.periodical_tasks_interval =
-                        Box::pin(tokio::time::sleep(Duration::from_secs(5)).fuse());
+                        Box::pin(tokio::time::sleep(PERIODICAL_TASKS_INTERVAL).fuse());
                 },
                 event = self.removed_addresses_rx.select_next_some() => {
                     self.handle_removed_address_event(event);
@@ -759,14 +769,14 @@ impl NodeRunner {
             // Remove temporary ban if there was any
             self.temporary_bans.lock().remove(&peer_id);
 
-            if info.listen_addrs.len() > 30 {
+            if info.listen_addrs.len() > MAX_LISTEN_ADDRESSES {
                 debug!(
                     %local_peer_id,
                     %peer_id,
-                    "Node has reported more than 30 addresses; it is identified by {} and {}",
-                    info.protocol_version, info.agent_version
+                    "Node has reported more than {} addresses; it is identified by {} and {}",
+                    MAX_LISTEN_ADDRESSES, info.protocol_version, info.agent_version
                 );
-                info.listen_addrs.truncate(30);
+                info.listen_addrs.truncate(MAX_LISTEN_ADDRESSES);
             }
 
             let kademlia = &mut self.swarm.behaviour_mut().kademlia;
