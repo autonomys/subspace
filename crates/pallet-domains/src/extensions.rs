@@ -201,7 +201,7 @@ where
         // There is one additional runtime read to check if the domains are enabled
         maybe_weight
             .and_then(|weight| weight.checked_add(&Runtime::DbWeight::get().reads(1)))
-            .unwrap_or(Weight::zero())
+            .unwrap_or(Runtime::DbWeight::get().reads(1))
     }
 
     fn validate(

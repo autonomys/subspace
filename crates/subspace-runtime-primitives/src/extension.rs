@@ -114,6 +114,13 @@ pub enum Pre {
     Refund(Weight),
 }
 
+/// Data passed from validate to prepare.
+#[derive(RuntimeDebugNoBound)]
+pub enum Val {
+    FullRefund,
+    PartialRefund(Option<u32>),
+}
+
 impl<Runtime> TransactionExtension<RuntimeCallFor<Runtime>>
     for BalanceTransferCheckExtension<Runtime>
 where
@@ -130,7 +137,7 @@ where
 {
     const IDENTIFIER: &'static str = "BalanceTransferCheckExtension";
     type Implicit = ();
-    type Val = Option<u32>;
+    type Val = Val;
     type Pre = Pre;
 
     fn weight(&self, _call: &RuntimeCallFor<Runtime>) -> Weight {
@@ -147,13 +154,15 @@ where
         _inherited_implication: &impl Encode,
         _source: TransactionSource,
     ) -> ValidateResult<Self::Val, RuntimeCallFor<Runtime>> {
-        let (validity, maybe_calls) = if origin.as_system_origin_signer().is_some() {
-            Self::do_validate_signed(call).map(|(valid, calls)| (valid, Some(calls)))?
+        let (validity, val) = if origin.as_system_origin_signer().is_some() {
+            let (valid, maybe_calls) =
+                Self::do_validate_signed(call).map(|(valid, calls)| (valid, Some(calls)))?;
+            (valid, Val::PartialRefund(maybe_calls))
         } else {
-            (ValidTransaction::default(), None)
+            (ValidTransaction::default(), Val::FullRefund)
         };
 
-        Ok((validity, maybe_calls, origin))
+        Ok((validity, val, origin))
     }
 
     fn prepare(
@@ -164,12 +173,16 @@ where
         _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
         _len: usize,
     ) -> Result<Self::Pre, TransactionValidityError> {
-        let assigned_weight = Self::get_weights(MAXIMUM_NUMBER_OF_CALLS);
+        let total_weight = Self::get_weights(MAXIMUM_NUMBER_OF_CALLS);
         match val {
-            None => Ok(Pre::Refund(assigned_weight)),
-            Some(calls) => {
-                let actual_weights = Self::get_weights(calls);
-                Ok(Pre::Refund(assigned_weight.saturating_sub(actual_weights)))
+            // not a signed transaction, so return full refund.
+            Val::FullRefund => Ok(Pre::Refund(total_weight)),
+
+            // signed transaction with a minimum of one read weight,
+            // so refund any extra call weight
+            Val::PartialRefund(maybe_calls) => {
+                let actual_weights = Self::get_weights(maybe_calls.unwrap_or(0));
+                Ok(Pre::Refund(total_weight.saturating_sub(actual_weights)))
             }
         }
     }
