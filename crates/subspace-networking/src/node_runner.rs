@@ -384,13 +384,13 @@ impl NodeRunner {
         let network_info = self.swarm.network_info();
         let connections = network_info.connection_counters();
 
-        debug!(?connections, "Current connections and limits.");
+        debug!(?connections, "Current DSN connections and limits.");
 
         // Renew known external addresses.
         let mut external_addresses = self.swarm.external_addresses().cloned().collect::<Vec<_>>();
 
         if let Some(shared) = self.shared_weak.upgrade() {
-            debug!(?external_addresses, "Renew external addresses.");
+            debug!(?external_addresses, "Renew DSN external addresses.");
             let mut addresses = shared.external_addresses.lock();
             addresses.clear();
             addresses.append(&mut external_addresses);
@@ -1561,21 +1561,38 @@ impl NodeRunner {
     }
 
     fn log_kademlia_stats(&mut self) {
-        let mut peer_counter = 0;
-        let mut peer_with_no_address_counter = 0;
+        let mut kad_peers = 0;
+        let mut kad_peers_with_no_address = 0;
+
         for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
             for entry in kbucket.iter() {
-                peer_counter += 1;
+                kad_peers += 1;
                 if entry.node.value.len() == 0 {
-                    peer_with_no_address_counter += 1;
+                    kad_peers_with_no_address += 1;
                 }
             }
         }
 
+        let (known_peers, known_peer_addresses) = self.known_peers_registry.count_known_peers();
+
+        let connected_peers = self.connected_servers.len();
+
+        let peers_with_ip_address = self.peer_ip_addresses.len();
+        let peer_ip_address_count = self
+            .peer_ip_addresses
+            .values()
+            .map(|addresses| addresses.len())
+            .sum::<usize>();
+
         debug!(
-            peers = %peer_counter,
-            peers_with_no_address = %peer_with_no_address_counter,
-            "Kademlia stats"
+            %connected_peers,
+            %kad_peers,
+            %kad_peers_with_no_address,
+            %known_peers,
+            %known_peer_addresses,
+            %peers_with_ip_address,
+            %peer_ip_address_count,
+            "dsn peers",
         );
     }
 }
