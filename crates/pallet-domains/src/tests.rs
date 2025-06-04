@@ -48,7 +48,7 @@ use subspace_core_primitives::segments::HistorySize;
 use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{SlotNumber, U256 as P256};
 use subspace_runtime_primitives::{
-    ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, SSC, StorageFee,
+    AI3, ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -155,17 +155,17 @@ impl pallet_balances::Config for Test {
 }
 
 parameter_types! {
-    pub const MinOperatorStake: Balance = 100 * SSC;
-    pub const MinNominatorStake: Balance = SSC;
+    pub const MinOperatorStake: Balance = 100 * AI3;
+    pub const MinNominatorStake: Balance = AI3;
     pub const StakeWithdrawalLockingPeriod: DomainBlockNumber = 5;
     pub const StakeEpochDuration: DomainBlockNumber = 5;
     pub TreasuryAccount: u128 = PalletId(*b"treasury").into_account_truncating();
-    pub const BlockReward: Balance = 10 * SSC;
+    pub const BlockReward: Balance = 10 * AI3;
     pub const MaxPendingStakingOperation: u32 = 512;
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const DomainChainByteFee: Balance = 1;
     pub const MaxInitialDomainAccounts: u32 = 5;
-    pub const MinInitialDomainAccountBalance: Balance = SSC;
+    pub const MinInitialDomainAccountBalance: Balance = AI3;
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 10;
 }
@@ -192,7 +192,7 @@ pub struct DummyStorageFee;
 
 impl StorageFee<Balance> for DummyStorageFee {
     fn transaction_byte_fee() -> Balance {
-        SSC
+        AI3
     }
     fn note_storage_fees(_fee: Balance) {}
 }
@@ -550,7 +550,7 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
 
     let pair = OperatorPair::from_seed(&[0; 32]);
     for operator_id in operator_ids {
-        Operators::<Test>::insert(operator_id, Operator::dummy(domain_id, pair.public(), SSC));
+        Operators::<Test>::insert(operator_id, Operator::dummy(domain_id, pair.public(), AI3));
         OperatorIdOwner::<Test>::insert(operator_id, creator);
     }
 

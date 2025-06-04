@@ -394,7 +394,7 @@ mod tests {
     use sp_runtime::traits::Convert;
     use sp_std::vec;
     use sp_version::{RuntimeVersion, create_apis_vec};
-    use subspace_runtime_primitives::SSC;
+    use subspace_runtime_primitives::AI3;
 
     type Balances = pallet_balances::Pallet<Test>;
 
@@ -571,7 +571,7 @@ mod tests {
             maybe_bundle_limit: None,
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
-            initial_balances: vec![(MultiAccountId::Raw(vec![0, 1, 2, 3, 4, 5]), 1_000_000 * SSC)],
+            initial_balances: vec![(MultiAccountId::Raw(vec![0, 1, 2, 3, 4, 5]), 1_000_000 * AI3)],
             domain_runtime_config: Default::default(),
         };
 
@@ -606,7 +606,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                     // for domain total issuance
-                    + 1_000_000 * SSC
+                    + 1_000_000 * AI3
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -624,13 +624,13 @@ mod tests {
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
             ];
 
@@ -645,37 +645,37 @@ mod tests {
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cbc"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566ccc"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cdc"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cec"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cfc"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
             ];
 
@@ -701,7 +701,7 @@ mod tests {
                 AccountId20Converter::convert(AccountId20::from(hex!(
                     "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
                 ))),
-                1_000_000 * SSC,
+                1_000_000 * AI3,
             )];
 
             // Set enough fund to creator
@@ -709,7 +709,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                     // for domain total issuance
-                    + 1_000_000 * SSC
+                    + 1_000_000 * AI3
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -743,7 +743,7 @@ mod tests {
                 AccountId20Converter::convert(AccountId20::from(hex!(
                     "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
                 ))),
-                1_000_000 * SSC,
+                1_000_000 * AI3,
             )],
             domain_runtime_config: Default::default(),
         };
@@ -779,7 +779,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                     // for domain total issuance
-                    + 1_000_000 * SSC
+                    + 1_000_000 * AI3
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -815,7 +815,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                                 // for domain total issuance
-                                + 1_000_000 * SSC
+                                + 1_000_000 * AI3
                                 + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -856,7 +856,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                     // for domain total issuance
-                    + 1_000_000 * SSC
+                    + 1_000_000 * AI3
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -897,7 +897,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                     // for domain total issuance
-                    + 1_000_000 * SSC
+                    + 1_000_000 * AI3
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -942,7 +942,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                     // for domain total issuance
-                    + 1_000_000 * SSC
+                    + 1_000_000 * AI3
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
