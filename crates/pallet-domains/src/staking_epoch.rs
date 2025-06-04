@@ -553,7 +553,7 @@ mod tests {
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Percent};
     use std::collections::BTreeMap;
-    use subspace_runtime_primitives::SSC;
+    use subspace_runtime_primitives::AI3;
 
     type Balances = pallet_balances::Pallet<Test>;
 
@@ -567,7 +567,7 @@ mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let pair = OperatorPair::from_seed(&[0; 32]);
-        let minimum_free_balance = 10 * SSC;
+        let minimum_free_balance = 10 * AI3;
         let mut nominators = BTreeMap::from_iter(
             nominators
                 .into_iter()
@@ -593,7 +593,7 @@ mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(nominators.clone()),
             );
@@ -627,7 +627,7 @@ mod tests {
 
             // After de-register both deposit and withdraw will be rejected
             assert_err!(
-                do_nominate_operator::<Test>(operator_id, operator_account, SSC),
+                do_nominate_operator::<Test>(operator_id, operator_account, AI3),
                 TransitionError::OperatorNotRegistered
             );
             assert_err!(
@@ -678,10 +678,10 @@ mod tests {
     #[test]
     fn unlock_operator_with_no_rewards() {
         unlock_nominator(
-            vec![(1, 150 * SSC), (2, 50 * SSC), (3, 10 * SSC)],
-            vec![(2, 10 * SSC), (4, 10 * SSC)],
-            vec![(1, 20 * SSC), (2, 10 * SSC)],
-            vec![(1, 150 * SSC), (2, 60 * SSC), (3, 10 * SSC), (4, 10 * SSC)],
+            vec![(1, 150 * AI3), (2, 50 * AI3), (3, 10 * AI3)],
+            vec![(2, 10 * AI3), (4, 10 * AI3)],
+            vec![(1, 20 * AI3), (2, 10 * AI3)],
+            vec![(1, 150 * AI3), (2, 60 * AI3), (3, 10 * AI3), (4, 10 * AI3)],
             0,
         );
     }
@@ -689,16 +689,16 @@ mod tests {
     #[test]
     fn unlock_operator_with_rewards() {
         unlock_nominator(
-            vec![(1, 150 * SSC), (2, 50 * SSC), (3, 10 * SSC)],
-            vec![(2, 10 * SSC), (4, 10 * SSC)],
-            vec![(1, 20 * SSC), (2, 10 * SSC)],
+            vec![(1, 150 * AI3), (2, 50 * AI3), (3, 10 * AI3)],
+            vec![(2, 10 * AI3), (4, 10 * AI3)],
+            vec![(1, 20 * AI3), (2, 10 * AI3)],
             vec![
                 (1, 164285714327278911577),
                 (2, 64761904775759637192),
                 (3, 10952380955151927438),
-                (4, 10 * SSC),
+                (4, 10 * AI3),
             ],
-            20 * SSC,
+            20 * AI3,
         );
     }
 
@@ -720,7 +720,7 @@ mod tests {
             deposits,
         } = params;
 
-        let minimum_free_balance = 10 * SSC;
+        let minimum_free_balance = 10 * AI3;
         let mut nominators = BTreeMap::from_iter(
             nominators
                 .into_iter()
@@ -744,7 +744,7 @@ mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(nominators),
             );
@@ -801,20 +801,20 @@ mod tests {
     #[test]
     fn finalize_domain_epoch_no_rewards() {
         finalize_domain_epoch(FinalizeDomainParams {
-            total_deposit: 210 * SSC,
+            total_deposit: 210 * AI3,
             rewards: 0,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            deposits: vec![(1, 50 * SSC), (3, 10 * SSC)],
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            deposits: vec![(1, 50 * AI3), (3, 10 * AI3)],
         })
     }
 
     #[test]
     fn finalize_domain_epoch_with_rewards() {
         finalize_domain_epoch(FinalizeDomainParams {
-            total_deposit: 210 * SSC,
-            rewards: 20 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            deposits: vec![(1, 50 * SSC), (3, 10 * SSC)],
+            total_deposit: 210 * AI3,
+            rewards: 20 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            deposits: vec![(1, 50 * AI3), (3, 10 * AI3)],
         })
     }
 
@@ -823,9 +823,9 @@ mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let pair = OperatorPair::from_seed(&[0; 32]);
-        let operator_rewards = 10 * SSC;
+        let operator_rewards = 10 * AI3;
         let mut nominators =
-            BTreeMap::from_iter(vec![(1, (110 * SSC, 100 * SSC)), (2, (60 * SSC, 50 * SSC))]);
+            BTreeMap::from_iter(vec![(1, (110 * AI3, 100 * AI3)), (2, (60 * AI3, 50 * AI3))]);
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
@@ -836,7 +836,7 @@ mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(nominators),
             );
@@ -866,7 +866,7 @@ mod tests {
                 operator.total_storage_fee_deposit - pre_storage_fund_deposit;
             assert_eq!(
                 operator.current_total_stake - pre_total_stake,
-                (10 * SSC - expected_operator_tax)
+                (10 * AI3 - expected_operator_tax)
             );
 
             let staking_deposit = Deposits::<Test>::get(operator_id, operator_account)

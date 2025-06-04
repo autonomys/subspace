@@ -71,8 +71,8 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_runtime_primitives::utility::DefaultNonceProvider;
 use subspace_runtime_primitives::{
-    BlockHashFor, BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, ExtrinsicFor,
-    Hash as ConsensusBlockHash, HeaderFor, MAX_CALL_RECURSION_DEPTH, Moment, SHANNON, SSC,
+    AI3, BlockHashFor, BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, ExtrinsicFor,
+    Hash as ConsensusBlockHash, HeaderFor, MAX_CALL_RECURSION_DEPTH, Moment, SHANNON,
     SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee, XdmFeeMultipler,
 };
 
@@ -223,7 +223,7 @@ parameter_types! {
     pub const MaxReserves: u32 = 50;
 }
 
-/// `DustRemovalHandler` used to collect all the SSC dust left when the account is reaped.
+/// `DustRemovalHandler` used to collect all the AI3 dust left when the account is reaped.
 pub struct DustRemovalHandler;
 
 impl OnUnbalanced<Credit<AccountId, Balances>> for DustRemovalHandler {
@@ -407,7 +407,7 @@ impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
 }
 
 parameter_types! {
-    pub const ChannelReserveFee: Balance = 100 * SSC;
+    pub const ChannelReserveFee: Balance = 100 * AI3;
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
 }
@@ -457,7 +457,7 @@ where
 
 parameter_types! {
     pub const TransporterEndpointId: EndpointId = 1;
-    pub const MinimumTransfer: Balance = SSC;
+    pub const MinimumTransfer: Balance = AI3;
 }
 
 impl pallet_transporter::Config for Runtime {

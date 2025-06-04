@@ -6,7 +6,7 @@ use sp_domains::{EvmType, PermissionedActionAllowedBy};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
-use subspace_runtime_primitives::{AccountId, Balance, SSC, Signature};
+use subspace_runtime_primitives::{AI3, AccountId, Balance, Signature};
 use subspace_test_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, RewardsConfig,
     RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, WASM_BINARY,
@@ -50,27 +50,27 @@ pub fn subspace_local_testnet_config(
     // Pre-funded accounts
     // Alice and the EVM owner get more funds that are used during domain instantiation
     let mut balances = vec![
-        (get_account_id_from_seed("Alice"), 1_000_000_000 * SSC),
-        (get_account_id_from_seed("Bob"), 1_000 * SSC),
-        (get_account_id_from_seed("Charlie"), 1_000 * SSC),
-        (get_account_id_from_seed("Dave"), 1_000 * SSC),
-        (get_account_id_from_seed("Eve"), 1_000 * SSC),
-        (get_account_id_from_seed("Ferdie"), 1_000 * SSC),
-        (get_account_id_from_seed("Alice//stash"), 1_000 * SSC),
-        (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
-        (get_account_id_from_seed("Charlie//stash"), 1_000 * SSC),
-        (get_account_id_from_seed("Dave//stash"), 1_000 * SSC),
-        (get_account_id_from_seed("Eve//stash"), 1_000 * SSC),
-        (get_account_id_from_seed("Ferdie//stash"), 1_000 * SSC),
+        (get_account_id_from_seed("Alice"), 1_000_000_000 * AI3),
+        (get_account_id_from_seed("Bob"), 1_000 * AI3),
+        (get_account_id_from_seed("Charlie"), 1_000 * AI3),
+        (get_account_id_from_seed("Dave"), 1_000 * AI3),
+        (get_account_id_from_seed("Eve"), 1_000 * AI3),
+        (get_account_id_from_seed("Ferdie"), 1_000 * AI3),
+        (get_account_id_from_seed("Alice//stash"), 1_000 * AI3),
+        (get_account_id_from_seed("Bob//stash"), 1_000 * AI3),
+        (get_account_id_from_seed("Charlie//stash"), 1_000 * AI3),
+        (get_account_id_from_seed("Dave//stash"), 1_000 * AI3),
+        (get_account_id_from_seed("Eve//stash"), 1_000 * AI3),
+        (get_account_id_from_seed("Ferdie//stash"), 1_000 * AI3),
     ];
 
     if let Some((_existing_account, balance)) = balances
         .iter_mut()
         .find(|(account_id, _balance)| account_id == &evm_owner_account)
     {
-        *balance = 1_000_000_000 * SSC;
+        *balance = 1_000_000_000 * AI3;
     } else {
-        balances.push((evm_owner_account.clone(), 1_000_000_000 * SSC));
+        balances.push((evm_owner_account.clone(), 1_000_000_000 * AI3));
     }
 
     Ok(GenericChainSpec::builder(
@@ -116,7 +116,7 @@ fn create_genesis_config(
             phantom: PhantomData,
         },
         rewards: RewardsConfig {
-            remaining_issuance: 1_000_000 * SSC,
+            remaining_issuance: 1_000_000 * AI3,
             proposer_subsidy_points: Default::default(),
             voter_subsidy_points: Default::default(),
         },

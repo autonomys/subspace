@@ -94,8 +94,8 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_runtime_primitives::utility::{MaybeNestedCall, MaybeUtilityCall};
 use subspace_runtime_primitives::{
-    BlockHashFor, BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, ExtrinsicFor,
-    Hash as ConsensusBlockHash, HeaderFor, MAX_CALL_RECURSION_DEPTH, Moment, SHANNON, SSC,
+    AI3, BlockHashFor, BlockNumber as ConsensusBlockNumber, DomainEventSegmentSize, ExtrinsicFor,
+    Hash as ConsensusBlockHash, HeaderFor, MAX_CALL_RECURSION_DEPTH, Moment, SHANNON,
     SlowAdjustingFeeUpdate, XdmAdjustedWeightToFee, XdmFeeMultipler,
 };
 
@@ -572,7 +572,7 @@ impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
 }
 
 parameter_types! {
-    pub const ChannelReserveFee: Balance = SSC;
+    pub const ChannelReserveFee: Balance = AI3;
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
 }

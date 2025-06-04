@@ -71,7 +71,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::{Balance, BlockHashFor, HeaderFor, SSC};
+use subspace_runtime_primitives::{AI3, Balance, BlockHashFor, HeaderFor};
 use subspace_test_primitives::{DOMAINS_BLOCK_PRUNING_DEPTH, OnchainStateApi as _};
 use subspace_test_runtime::Runtime;
 use subspace_test_service::{
@@ -4330,8 +4330,8 @@ async fn test_invalid_transfers_fraud_proof() {
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.transfers = Transfers {
-            transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
-            transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
+            transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
+            transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
             rejected_transfers_claimed: Default::default(),
             transfers_rejected: Default::default(),
         };
@@ -6565,7 +6565,7 @@ async fn test_bad_receipt_chain() {
     ferdie
         .construct_and_send_extrinsic_with(pallet_domains::Call::register_operator {
             domain_id: EVM_DOMAIN_ID,
-            amount: 1000 * SSC,
+            amount: 1000 * AI3,
             config: OperatorConfig {
                 signing_key: Sr25519Keyring::Charlie.public().into(),
                 minimum_nominator_stake: Balance::MAX,

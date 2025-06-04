@@ -104,12 +104,11 @@ use subspace_runtime_primitives::utility::{
     DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
 };
 use subspace_runtime_primitives::{
-    AccountId, BLOCK_WEIGHT_FOR_2_SEC, Balance, BlockHashFor, BlockNumber,
+    AI3, AccountId, BLOCK_WEIGHT_FOR_2_SEC, Balance, BlockHashFor, BlockNumber,
     ConsensusEventSegmentSize, DOMAINS_BLOCK_PRUNING_DEPTH, ExtrinsicFor, FindBlockRewardAddress,
     Hash, HeaderFor, HoldIdentifier, MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, Moment,
-    NORMAL_DISPATCH_RATIO, Nonce, SHANNON, SLOT_PROBABILITY, SSC, Signature,
-    SlowAdjustingFeeUpdate, TargetBlockFullness, XdmAdjustedWeightToFee, XdmFeeMultipler,
-    maximum_normal_block_length,
+    NORMAL_DISPATCH_RATIO, Nonce, SHANNON, SLOT_PROBABILITY, Signature, SlowAdjustingFeeUpdate,
+    TargetBlockFullness, XdmAdjustedWeightToFee, XdmFeeMultipler, maximum_normal_block_length,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -517,8 +516,8 @@ impl pallet_collective::Config<CouncilCollective> for Runtime {
 
 // TODO: update params for mainnnet
 parameter_types! {
-    pub PreimageBaseDeposit: Balance = 100 * SSC;
-    pub PreimageByteDeposit: Balance = SSC;
+    pub PreimageBaseDeposit: Balance = 100 * AI3;
+    pub PreimageByteDeposit: Balance = AI3;
     pub const PreImageHoldReason: HoldIdentifierWrapper = HoldIdentifierWrapper(HoldIdentifier::Preimage);
 }
 
@@ -620,7 +619,7 @@ impl pallet_democracy::Config for Runtime {
     type MaxVotes = ConstU32<100>;
     /// The minimum amount to be used as a deposit for a public referendum
     /// proposal.
-    type MinimumDeposit = ConstU128<{ 1000 * SSC }>;
+    type MinimumDeposit = ConstU128<{ 1000 * AI3 }>;
     type PalletsOrigin = OriginCaller;
     type Preimages = Preimage;
     type RuntimeEvent = RuntimeEvent;
@@ -720,7 +719,7 @@ impl sp_messenger::StorageKeys for StorageKeys {
 
 parameter_types! {
     // TODO: update value
-    pub const ChannelReserveFee: Balance = 100 * SSC;
+    pub const ChannelReserveFee: Balance = 100 * AI3;
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
 }
@@ -798,7 +797,7 @@ where
 
 parameter_types! {
     pub const TransporterEndpointId: EndpointId = 1;
-    pub const MinimumTransfer: Balance = SSC;
+    pub const MinimumTransfer: Balance = AI3;
 }
 
 impl pallet_transporter::Config for Runtime {
@@ -819,15 +818,15 @@ parameter_types! {
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
     /// Minimum operator stake to become an operator.
     // TODO: this value should be properly updated before mainnet
-    pub const MinOperatorStake: Balance = 100 * SSC;
+    pub const MinOperatorStake: Balance = 100 * AI3;
     /// Minimum nominator stake to nominate and operator.
     // TODO: this value should be properly updated before mainnet
-    pub const MinNominatorStake: Balance = SSC;
+    pub const MinNominatorStake: Balance = AI3;
     /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
     pub MaxDomainBlockSize: u32 = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH;
     /// Use the consensus chain's `Normal` extrinsics block weight limit as the domain block weight limit
     pub MaxDomainBlockWeight: Weight = maximum_domain_block_weight();
-    pub const DomainInstantiationDeposit: Balance = 100 * SSC;
+    pub const DomainInstantiationDeposit: Balance = 100 * AI3;
     pub const MaxDomainNameLength: u32 = 32;
     pub const BlockTreePruningDepth: u32 = DOMAINS_BLOCK_PRUNING_DEPTH;
     pub const StakeWithdrawalLockingPeriod: DomainNumber = 14_400;
@@ -838,7 +837,7 @@ parameter_types! {
     pub const MaxPendingStakingOperation: u32 = 512;
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const MaxInitialDomainAccounts: u32 = 10;
-    pub const MinInitialDomainAccountBalance: Balance = SSC;
+    pub const MinInitialDomainAccountBalance: Balance = AI3;
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 32;
 }
@@ -1019,8 +1018,8 @@ macro_rules! deposit {
 }
 
 // One storage item; key size is 32; value is size 4+4+16+32 bytes = 56 bytes.
-// Each multisig costs 20 SSC + bytes_of_storge * TransactionByteFee
-deposit!(DepositBaseFee, 20 * SSC, 1u32, 88u32);
+// Each multisig costs 20 AI3 + bytes_of_storge * TransactionByteFee
+deposit!(DepositBaseFee, 20 * AI3, 1u32, 88u32);
 
 // Additional storage item size of 32 bytes.
 deposit!(DepositFactor, 0u128, 0u32, 32u32);

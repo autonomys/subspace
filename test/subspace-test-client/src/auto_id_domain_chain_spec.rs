@@ -13,7 +13,7 @@ use sp_domains::{
 };
 use sp_runtime::traits::{Convert, IdentifyAccount};
 use sp_runtime::{BuildStorage, MultiSigner, Percent};
-use subspace_runtime_primitives::{AccountId, Balance, SSC};
+use subspace_runtime_primitives::{AI3, AccountId, Balance};
 
 /// Get public key from keypair seed.
 pub(crate) fn get_public_key_from_seed<TPublic: Public>(
@@ -89,12 +89,12 @@ pub fn get_genesis_domain(
         operator_allow_list: OperatorAllowList::Anyone,
 
         signing_key: get_from_seed::<OperatorPublicKey>("Bob"),
-        minimum_nominator_stake: 100 * SSC,
+        minimum_nominator_stake: 100 * AI3,
         nomination_tax: Percent::from_percent(5),
         initial_balances: endowed_accounts()
             .iter()
             .cloned()
-            .map(|k| (AccountIdConverter::convert(k), 2_000_000 * SSC))
+            .map(|k| (AccountIdConverter::convert(k), 2_000_000 * AI3))
             .collect(),
 
         domain_runtime_config: DomainRuntimeConfig::default_auto_id(),

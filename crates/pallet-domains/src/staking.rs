@@ -36,8 +36,8 @@ pub(crate) struct Deposit<Share: Copy, Balance: Copy> {
     pub(crate) pending: Option<PendingDeposit<Balance>>,
 }
 
-/// A share price is parts per billion of shares/ssc.
-/// Note: Shares must always be equal to or lower than ssc.
+/// A share price is parts per billion of shares/ai3.
+/// Note: Shares must always be equal to or lower than ai3.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Default)]
 pub struct SharePrice(Perbill);
 
@@ -98,7 +98,7 @@ pub(crate) struct KnownDeposit<Share: Copy, Balance: Copy> {
     pub(crate) storage_fee_deposit: Balance,
 }
 
-/// A nominators pending deposit in SSC that needs to be converted to shares once domain epoch is complete.
+/// A nominators pending deposit in AI3 that needs to be converted to shares once domain epoch is complete.
 #[derive(TypeInfo, Debug, Encode, Decode, Copy, Clone, PartialEq, Eq)]
 pub(crate) struct PendingDeposit<Balance: Copy> {
     pub(crate) effective_domain_epoch: DomainEpoch,
@@ -1218,7 +1218,7 @@ pub(crate) fn do_unlock_nominator<T: Config>(
         }
 
         // if there are any withdrawals from this operator, account for them
-        // if the withdrawals has share price noted, then convert them to SSC
+        // if the withdrawals has share price noted, then convert them to AI3
         // if no share price, then it must be intitated in the epoch before operator de-registered,
         // so get the shares as is and include them in the total staked shares.
         let (
@@ -1532,7 +1532,7 @@ pub(crate) mod tests {
     use sp_runtime::{PerThing, Perbill, Percent};
     use std::collections::{BTreeMap, BTreeSet};
     use std::vec;
-    use subspace_runtime_primitives::SSC;
+    use subspace_runtime_primitives::AI3;
 
     type Balances = pallet_balances::Pallet<Test>;
     type Domains = crate::Pallet<Test>;
@@ -1685,10 +1685,10 @@ pub(crate) mod tests {
     fn test_register_operator() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let operator_free_balance = 2500 * SSC;
-        let operator_total_stake = 1000 * SSC;
-        let operator_stake = 800 * SSC;
-        let operator_storage_fee_deposit = 200 * SSC;
+        let operator_free_balance = 2500 * AI3;
+        let operator_total_stake = 1000 * AI3;
+        let operator_stake = 800 * AI3;
+        let operator_storage_fee_deposit = 200 * AI3;
         let pair = OperatorPair::from_seed(&[0; 32]);
 
         let mut ext = new_test_ext();
@@ -1698,7 +1698,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_total_stake,
-                SSC,
+                AI3,
                 pair.public(),
                 BTreeMap::new(),
             );
@@ -1715,7 +1715,7 @@ pub(crate) mod tests {
                     signing_key: pair.public(),
                     current_domain_id: domain_id,
                     next_domain_id: domain_id,
-                    minimum_nominator_stake: SSC,
+                    minimum_nominator_stake: AI3,
                     nomination_tax: Default::default(),
                     current_total_stake: operator_stake,
                     current_total_shares: operator_stake,
@@ -1767,17 +1767,17 @@ pub(crate) mod tests {
     fn nominate_operator() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let operator_free_balance = 1500 * SSC;
-        let operator_total_stake = 1000 * SSC;
-        let operator_stake = 800 * SSC;
-        let operator_storage_fee_deposit = 200 * SSC;
+        let operator_free_balance = 1500 * AI3;
+        let operator_total_stake = 1000 * AI3;
+        let operator_stake = 800 * AI3;
+        let operator_storage_fee_deposit = 200 * AI3;
         let pair = OperatorPair::from_seed(&[0; 32]);
 
         let nominator_account = 2;
-        let nominator_free_balance = 150 * SSC;
-        let nominator_total_stake = 100 * SSC;
-        let nominator_stake = 80 * SSC;
-        let nominator_storage_fee_deposit = 20 * SSC;
+        let nominator_free_balance = 150 * AI3;
+        let nominator_total_stake = 100 * AI3;
+        let nominator_stake = 80 * AI3;
+        let nominator_storage_fee_deposit = 20 * AI3;
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
@@ -1786,7 +1786,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_total_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(vec![(
                     nominator_account,
@@ -1823,9 +1823,9 @@ pub(crate) mod tests {
             );
 
             // another transfer with an existing transfer in place should lead to single
-            let addtional_nomination_total_stake = 40 * SSC;
-            let addtional_nomination_stake = 32 * SSC;
-            let addtional_nomination_storage_fee_deposit = 8 * SSC;
+            let addtional_nomination_total_stake = 40 * AI3;
+            let addtional_nomination_stake = 32 * AI3;
+            let addtional_nomination_storage_fee_deposit = 8 * AI3;
             let res = Domains::nominate_operator(
                 RuntimeOrigin::signed(nominator_account),
                 operator_id,
@@ -1882,8 +1882,8 @@ pub(crate) mod tests {
     fn operator_deregistration() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let operator_stake = 200 * SSC;
-        let operator_free_balance = 250 * SSC;
+        let operator_stake = 200 * AI3;
+        let operator_free_balance = 250 * AI3;
         let pair = OperatorPair::from_seed(&[0; 32]);
         let mut ext = new_test_ext();
         ext.execute_with(|| {
@@ -1892,7 +1892,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                SSC,
+                AI3,
                 pair.public(),
                 BTreeMap::new(),
             );
@@ -1953,7 +1953,7 @@ pub(crate) mod tests {
 
             // nominations will not work since the is frozen
             let nominator_account = 100;
-            let nominator_stake = 100 * SSC;
+            let nominator_stake = 100 * AI3;
             let res = Domains::nominate_operator(
                 RuntimeOrigin::signed(nominator_account),
                 operator_id,
@@ -1973,7 +1973,7 @@ pub(crate) mod tests {
     /// since ED is not holded back from usable balance when there are no holds on the account.
     type ExpectedWithdrawAmount = Option<(BalanceOf<Test>, bool)>;
 
-    /// The storage fund change in SSC, `true` means increase of the storage fund, `false` means decrease.
+    /// The storage fund change in AI3, `true` means increase of the storage fund, `false` means decrease.
     type StorageFundChange = (bool, u32);
 
     pub(crate) type Share = <Test as Config>::Share;
@@ -2059,15 +2059,15 @@ pub(crate) mod tests {
             let (is_storage_fund_increased, storage_fund_change_amount) = storage_fund_change;
             if is_storage_fund_increased {
                 bundle_storage_fund::refund_storage_fee::<Test>(
-                    storage_fund_change_amount as u128 * SSC,
+                    storage_fund_change_amount as u128 * AI3,
                     BTreeMap::from_iter([(operator_id, 1)]),
                 )
                 .unwrap();
                 assert_eq!(
-                    operator.total_storage_fee_deposit + storage_fund_change_amount as u128 * SSC,
+                    operator.total_storage_fee_deposit + storage_fund_change_amount as u128 * AI3,
                     bundle_storage_fund::total_balance::<Test>(operator_id)
                 );
-                total_balance += storage_fund_change_amount as u128 * SSC;
+                total_balance += storage_fund_change_amount as u128 * AI3;
             } else {
                 bundle_storage_fund::charge_bundle_storage_fee::<Test>(
                     operator_id,
@@ -2075,10 +2075,10 @@ pub(crate) mod tests {
                 )
                 .unwrap();
                 assert_eq!(
-                    operator.total_storage_fee_deposit - storage_fund_change_amount as u128 * SSC,
+                    operator.total_storage_fee_deposit - storage_fund_change_amount as u128 * AI3,
                     bundle_storage_fund::total_balance::<Test>(operator_id)
                 );
-                total_balance -= storage_fund_change_amount as u128 * SSC;
+                total_balance -= storage_fund_change_amount as u128 * AI3;
             }
 
             for (withdraw, expected_result) in withdraws {
@@ -2145,11 +2145,11 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_operator_all() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            operator_reward: 20 * SSC,
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            operator_reward: 20 * AI3,
             nominator_id: 0,
-            withdraws: vec![(150 * SSC, Err(StakingError::MinimumOperatorStake))],
+            withdraws: vec![(150 * AI3, Err(StakingError::MinimumOperatorStake))],
             maybe_deposit: None,
             expected_withdraw: None,
             expected_nominator_count_reduced_by: 0,
@@ -2160,11 +2160,11 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_operator_below_minimum() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            operator_reward: 20 * SSC,
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            operator_reward: 20 * AI3,
             nominator_id: 0,
-            withdraws: vec![(65 * SSC, Err(StakingError::MinimumOperatorStake))],
+            withdraws: vec![(65 * AI3, Err(StakingError::MinimumOperatorStake))],
             maybe_deposit: None,
             expected_withdraw: None,
             expected_nominator_count_reduced_by: 0,
@@ -2175,11 +2175,11 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_operator_below_minimum_no_rewards() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 0,
-            withdraws: vec![(51 * SSC, Err(StakingError::MinimumOperatorStake))],
+            withdraws: vec![(51 * AI3, Err(StakingError::MinimumOperatorStake))],
             maybe_deposit: None,
             expected_withdraw: None,
             expected_nominator_count_reduced_by: 0,
@@ -2190,12 +2190,12 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_operator_above_minimum() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            operator_reward: 20 * SSC,
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            operator_reward: 20 * AI3,
             nominator_id: 0,
-            withdraws: vec![(58 * SSC, Ok(()))],
-            // given the reward, operator will get 164.28 SSC
+            withdraws: vec![(58 * AI3, Ok(()))],
+            // given the reward, operator will get 164.28 AI3
             // taking 58 shares will give this following approximate amount.
             maybe_deposit: None,
             expected_withdraw: Some((63523809519881179143, false)),
@@ -2207,13 +2207,13 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_operator_above_minimum_multiple_withdraws_error() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            operator_reward: 20 * SSC,
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            operator_reward: 20 * AI3,
             nominator_id: 0,
             withdraws: vec![
-                (58 * SSC, Ok(())),
-                (5 * SSC, Err(StakingError::MinimumOperatorStake)),
+                (58 * AI3, Ok(())),
+                (5 * AI3, Err(StakingError::MinimumOperatorStake)),
             ],
             maybe_deposit: None,
             expected_withdraw: Some((63523809519881179143, false)),
@@ -2225,11 +2225,11 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_operator_above_minimum_multiple_withdraws() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            operator_reward: 20 * SSC,
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            operator_reward: 20 * AI3,
             nominator_id: 0,
-            withdraws: vec![(53 * SSC, Ok(())), (5 * SSC, Ok(()))],
+            withdraws: vec![(53 * AI3, Ok(())), (5 * AI3, Ok(()))],
             maybe_deposit: None,
             expected_withdraw: Some((63523809515796643053, false)),
             expected_nominator_count_reduced_by: 0,
@@ -2240,11 +2240,11 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_operator_above_minimum_no_rewards() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 0,
-            withdraws: vec![(49 * SSC, Ok(()))],
+            withdraws: vec![(49 * AI3, Ok(()))],
             maybe_deposit: None,
             expected_withdraw: Some((48999999980000000000, false)),
             expected_nominator_count_reduced_by: 0,
@@ -2255,11 +2255,11 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_operator_above_minimum_multiple_withdraws_no_rewards() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 0,
-            withdraws: vec![(29 * SSC, Ok(())), (20 * SSC, Ok(()))],
+            withdraws: vec![(29 * AI3, Ok(())), (20 * AI3, Ok(()))],
             maybe_deposit: None,
             expected_withdraw: Some((48999999986852892560, false)),
             expected_nominator_count_reduced_by: 0,
@@ -2270,14 +2270,14 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_operator_above_minimum_multiple_withdraws_no_rewards_with_errors() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 0,
             withdraws: vec![
-                (29 * SSC, Ok(())),
-                (20 * SSC, Ok(())),
-                (20 * SSC, Err(StakingError::MinimumOperatorStake)),
+                (29 * AI3, Ok(())),
+                (20 * AI3, Ok(())),
+                (20 * AI3, Err(StakingError::MinimumOperatorStake)),
             ],
             maybe_deposit: None,
             expected_withdraw: Some((48999999986852892560, false)),
@@ -2289,11 +2289,11 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_below_minimum_with_rewards() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            operator_reward: 20 * SSC,
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            operator_reward: 20 * AI3,
             nominator_id: 1,
-            withdraws: vec![(45 * SSC, Ok(()))],
+            withdraws: vec![(45 * AI3, Ok(()))],
             // given nominator remaining stake goes below minimum
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
@@ -2307,11 +2307,11 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_below_minimum_with_rewards_multiple_withdraws() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            operator_reward: 20 * SSC,
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            operator_reward: 20 * AI3,
             nominator_id: 1,
-            withdraws: vec![(25 * SSC, Ok(())), (20 * SSC, Ok(()))],
+            withdraws: vec![(25 * AI3, Ok(())), (20 * AI3, Ok(()))],
             // given nominator remaining stake goes below minimum
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
@@ -2325,14 +2325,14 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_below_minimum_with_rewards_multiple_withdraws_with_errors() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            operator_reward: 20 * SSC,
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            operator_reward: 20 * AI3,
             nominator_id: 1,
             withdraws: vec![
-                (25 * SSC, Ok(())),
-                (20 * SSC, Ok(())),
-                (20 * SSC, Err(StakingError::InsufficientShares)),
+                (25 * AI3, Ok(())),
+                (20 * AI3, Ok(())),
+                (20 * AI3, Err(StakingError::InsufficientShares)),
             ],
             // given nominator remaining stake goes below minimum
             // we withdraw everything, so for their 50 shares with reward,
@@ -2347,13 +2347,13 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_below_minimum_no_reward() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(45 * SSC, Ok(()))],
+            withdraws: vec![(45 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((50 * SSC, true)),
+            expected_withdraw: Some((50 * AI3, true)),
             expected_nominator_count_reduced_by: 1,
             storage_fund_change: (true, 0),
         })
@@ -2362,13 +2362,13 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_below_minimum_no_reward_multiple_rewards() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(25 * SSC, Ok(())), (20 * SSC, Ok(()))],
+            withdraws: vec![(25 * AI3, Ok(())), (20 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((50 * SSC, true)),
+            expected_withdraw: Some((50 * AI3, true)),
             expected_nominator_count_reduced_by: 1,
             storage_fund_change: (true, 0),
         })
@@ -2377,17 +2377,17 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_below_minimum_no_reward_multiple_rewards_with_errors() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
             withdraws: vec![
-                (25 * SSC, Ok(())),
-                (20 * SSC, Ok(())),
-                (20 * SSC, Err(StakingError::InsufficientShares)),
+                (25 * AI3, Ok(())),
+                (20 * AI3, Ok(())),
+                (20 * AI3, Err(StakingError::InsufficientShares)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((50 * SSC, true)),
+            expected_withdraw: Some((50 * AI3, true)),
             expected_nominator_count_reduced_by: 1,
             storage_fund_change: (true, 0),
         })
@@ -2396,11 +2396,11 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_above_minimum() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            operator_reward: 20 * SSC,
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            operator_reward: 20 * AI3,
             nominator_id: 1,
-            withdraws: vec![(40 * SSC, Ok(()))],
+            withdraws: vec![(40 * AI3, Ok(()))],
             maybe_deposit: None,
             expected_withdraw: Some((43809523820607709753, false)),
             expected_nominator_count_reduced_by: 0,
@@ -2411,11 +2411,11 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_above_minimum_multiple_withdraws() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            operator_reward: 20 * SSC,
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            operator_reward: 20 * AI3,
             nominator_id: 1,
-            withdraws: vec![(35 * SSC, Ok(())), (5 * SSC, Ok(()))],
+            withdraws: vec![(35 * AI3, Ok(())), (5 * AI3, Ok(()))],
             maybe_deposit: None,
             expected_withdraw: Some((43809523819607709753, false)),
             expected_nominator_count_reduced_by: 0,
@@ -2426,14 +2426,14 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_above_minimum_withdraw_all_multiple_withdraws_error() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            operator_reward: 20 * SSC,
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            operator_reward: 20 * AI3,
             nominator_id: 1,
             withdraws: vec![
-                (35 * SSC, Ok(())),
-                (5 * SSC, Ok(())),
-                (15 * SSC, Err(StakingError::InsufficientShares)),
+                (35 * AI3, Ok(())),
+                (5 * AI3, Ok(())),
+                (15 * AI3, Err(StakingError::InsufficientShares)),
             ],
             maybe_deposit: None,
             expected_withdraw: Some((43809523819607709753, false)),
@@ -2445,13 +2445,13 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_above_minimum_no_rewards() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(39 * SSC, Ok(()))],
+            withdraws: vec![(39 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((39 * SSC, false)),
+            expected_withdraw: Some((39 * AI3, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2460,11 +2460,11 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_above_minimum_no_rewards_multiple_withdraws() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(35 * SSC, Ok(())), (5 * SSC - 100000000000, Ok(()))],
+            withdraws: vec![(35 * AI3, Ok(())), (5 * AI3 - 100000000000, Ok(()))],
             maybe_deposit: None,
             expected_withdraw: Some((39999999898000000000, false)),
             expected_nominator_count_reduced_by: 0,
@@ -2475,14 +2475,14 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_above_minimum_no_rewards_multiple_withdraws_with_errors() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
             withdraws: vec![
-                (35 * SSC, Ok(())),
-                (5 * SSC - 100000000000, Ok(())),
-                (15 * SSC, Err(StakingError::InsufficientShares)),
+                (35 * AI3, Ok(())),
+                (5 * AI3 - 100000000000, Ok(())),
+                (15 * AI3, Err(StakingError::InsufficientShares)),
             ],
             maybe_deposit: None,
             expected_withdraw: Some((39999999898000000000, false)),
@@ -2494,16 +2494,16 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_no_rewards_multiple_withdraws_with_error_min_nominator_stake() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
             withdraws: vec![
-                (35 * SSC, Ok(())),
-                (5 * SSC - 100000000000, Ok(())),
-                (10 * SSC, Err(StakingError::MinimumNominatorStake)),
+                (35 * AI3, Ok(())),
+                (5 * AI3 - 100000000000, Ok(())),
+                (10 * AI3, Err(StakingError::MinimumNominatorStake)),
             ],
-            maybe_deposit: Some(2 * SSC),
+            maybe_deposit: Some(2 * AI3),
             expected_withdraw: Some((39999999898000000000, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
@@ -2513,19 +2513,19 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_with_rewards_multiple_withdraws_with_error_min_nominator_stake() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            operator_reward: 20 * SSC,
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            operator_reward: 20 * AI3,
             nominator_id: 1,
             withdraws: vec![
-                (35 * SSC, Ok(())),
-                (5 * SSC, Ok(())),
-                (10 * SSC, Err(StakingError::MinimumNominatorStake)),
+                (35 * AI3, Ok(())),
+                (5 * AI3, Ok(())),
+                (10 * AI3, Err(StakingError::MinimumNominatorStake)),
             ],
             // given nominator remaining stake goes below minimum
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
-            maybe_deposit: Some(2 * SSC),
+            maybe_deposit: Some(2 * AI3),
             expected_withdraw: Some((43809523819607709753, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
@@ -2535,8 +2535,8 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_zero_amount() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
             withdraws: vec![(0, Err(StakingError::ZeroWithdraw))],
@@ -2550,14 +2550,14 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_all_with_storage_fee_profit() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(50 * SSC, Ok(()))],
+            withdraws: vec![(50 * AI3, Ok(()))],
             maybe_deposit: None,
-            // The storage fund increased 50% (i.e. 21 * SSC) thus the nominator make 50%
-            // storage fee profit i.e. 5 * SSC with rounding dust deducted
+            // The storage fund increased 50% (i.e. 21 * AI3) thus the nominator make 50%
+            // storage fee profit i.e. 5 * AI3 with rounding dust deducted
             storage_fund_change: (true, 21),
             expected_withdraw: Some((54999999994000000000, true)),
             expected_nominator_count_reduced_by: 1,
@@ -2567,14 +2567,14 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_all_with_storage_fee_loss() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(50 * SSC, Ok(()))],
+            withdraws: vec![(50 * AI3, Ok(()))],
             maybe_deposit: None,
-            // The storage fund decreased 50% (i.e. 21 * SSC) thus the nominator loss 50%
-            // storage fee deposit i.e. 5 * SSC with rounding dust deducted
+            // The storage fund decreased 50% (i.e. 21 * AI3) thus the nominator loss 50%
+            // storage fee deposit i.e. 5 * AI3 with rounding dust deducted
             storage_fund_change: (false, 21),
             expected_withdraw: Some((44999999998000000000, true)),
             expected_nominator_count_reduced_by: 1,
@@ -2584,16 +2584,16 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_all_with_storage_fee_loss_all() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(50 * SSC, Ok(()))],
+            withdraws: vec![(50 * AI3, Ok(()))],
             maybe_deposit: None,
-            // The storage fund decreased 100% (i.e. 42 * SSC) thus the nominator loss 100%
-            // storage fee deposit i.e. 10 * SSC
+            // The storage fund decreased 100% (i.e. 42 * AI3) thus the nominator loss 100%
+            // storage fee deposit i.e. 10 * AI3
             storage_fund_change: (false, 42),
-            expected_withdraw: Some((40 * SSC, true)),
+            expected_withdraw: Some((40 * AI3, true)),
             expected_nominator_count_reduced_by: 1,
         })
     }
@@ -2601,17 +2601,17 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_multiple_withdraws_with_storage_fee_profit() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(5 * SSC, Ok(())), (10 * SSC, Ok(())), (15 * SSC, Ok(()))],
+            withdraws: vec![(5 * AI3, Ok(())), (10 * AI3, Ok(())), (15 * AI3, Ok(()))],
             maybe_deposit: None,
-            // The storage fund increased 50% (i.e. 21 * SSC) thus the nominator make 50%
-            // storage fee profit i.e. 5 * SSC with rounding dust deducted, withdraw 60% of
+            // The storage fund increased 50% (i.e. 21 * AI3) thus the nominator make 50%
+            // storage fee profit i.e. 5 * AI3 with rounding dust deducted, withdraw 60% of
             // the stake and the storage fee profit
             storage_fund_change: (true, 21),
-            expected_withdraw: Some((30 * SSC + 2999999855527204374, false)),
+            expected_withdraw: Some((30 * AI3 + 2999999855527204374, false)),
             expected_nominator_count_reduced_by: 0,
         })
     }
@@ -2619,17 +2619,17 @@ pub(crate) mod tests {
     #[test]
     fn withdraw_stake_nominator_multiple_withdraws_with_storage_fee_loss() {
         withdraw_stake(WithdrawParams {
-            minimum_nominator_stake: 10 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            minimum_nominator_stake: 10 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(5 * SSC, Ok(())), (5 * SSC, Ok(())), (10 * SSC, Ok(()))],
+            withdraws: vec![(5 * AI3, Ok(())), (5 * AI3, Ok(())), (10 * AI3, Ok(()))],
             maybe_deposit: None,
-            // The storage fund increased 50% (i.e. 21 * SSC) thus the nominator loss 50%
-            // storage fee i.e. 5 * SSC with rounding dust deducted, withdraw 40% of
+            // The storage fund increased 50% (i.e. 21 * AI3) thus the nominator loss 50%
+            // storage fee i.e. 5 * AI3 with rounding dust deducted, withdraw 40% of
             // the stake and 40% of the storage fee loss are deducted
             storage_fund_change: (false, 21),
-            expected_withdraw: Some((20 * SSC - 2 * SSC - 33331097576, false)),
+            expected_withdraw: Some((20 * AI3 - 2 * AI3 - 33331097576, false)),
             expected_nominator_count_reduced_by: 0,
         })
     }
@@ -2638,19 +2638,19 @@ pub(crate) mod tests {
     fn unlock_multiple_withdrawals() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let operator_free_balance = 250 * SSC;
-        let operator_stake = 200 * SSC;
+        let operator_free_balance = 250 * AI3;
+        let operator_stake = 200 * AI3;
         let pair = OperatorPair::from_seed(&[0; 32]);
         let nominator_account = 2;
-        let nominator_free_balance = 150 * SSC;
-        let nominator_stake = 100 * SSC;
+        let nominator_free_balance = 150 * AI3;
+        let nominator_stake = 100 * AI3;
 
         let nominators = vec![
             (operator_account, (operator_free_balance, operator_stake)),
             (nominator_account, (nominator_free_balance, nominator_stake)),
         ];
 
-        let total_deposit = 300 * SSC;
+        let total_deposit = 300 * AI3;
         let init_total_stake = STORAGE_FEE_RESERVE.left_from_one() * total_deposit;
         let init_total_storage_fund = STORAGE_FEE_RESERVE * total_deposit;
 
@@ -2661,7 +2661,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(nominators),
             );
@@ -2769,29 +2769,29 @@ pub(crate) mod tests {
     fn slash_operator() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let operator_free_balance = 250 * SSC;
-        let operator_stake = 200 * SSC;
-        let operator_extra_deposit = 40 * SSC;
+        let operator_free_balance = 250 * AI3;
+        let operator_stake = 200 * AI3;
+        let operator_extra_deposit = 40 * AI3;
         let pair = OperatorPair::from_seed(&[0; 32]);
         let nominator_account = 2;
-        let nominator_free_balance = 150 * SSC;
-        let nominator_stake = 100 * SSC;
-        let nominator_extra_deposit = 40 * SSC;
+        let nominator_free_balance = 150 * AI3;
+        let nominator_stake = 100 * AI3;
+        let nominator_extra_deposit = 40 * AI3;
 
         let nominators = vec![
             (operator_account, (operator_free_balance, operator_stake)),
             (nominator_account, (nominator_free_balance, nominator_stake)),
         ];
 
-        let unlocking = vec![(operator_account, 10 * SSC), (nominator_account, 10 * SSC)];
+        let unlocking = vec![(operator_account, 10 * AI3), (nominator_account, 10 * AI3)];
 
         let deposits = vec![
             (operator_account, operator_extra_deposit),
             (nominator_account, nominator_extra_deposit),
         ];
 
-        let init_total_stake = STORAGE_FEE_RESERVE.left_from_one() * 300 * SSC;
-        let init_total_storage_fund = STORAGE_FEE_RESERVE * 300 * SSC;
+        let init_total_stake = STORAGE_FEE_RESERVE.left_from_one() * 300 * AI3;
+        let init_total_storage_fund = STORAGE_FEE_RESERVE * 300 * AI3;
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
@@ -2800,7 +2800,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(nominators),
             );
@@ -2826,7 +2826,7 @@ pub(crate) mod tests {
                 domain_id,
                 OperatorRewardSource::Dummy,
                 vec![operator_id].into_iter(),
-                20 * SSC,
+                20 * AI3,
             )
             .unwrap();
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
@@ -2864,7 +2864,7 @@ pub(crate) mod tests {
             assert_eq!(21666666668472222222, total_stake_withdrawal);
             assert_eq!(5000000000000000000, total_storage_fee_withdrawal);
             assert_eq!(
-                320 * SSC,
+                320 * AI3,
                 total_deposit + total_stake_withdrawal + total_storage_fee_withdrawal
             );
             assert_eq!(
@@ -2913,7 +2913,7 @@ pub(crate) mod tests {
                 nominator_free_balance - nominator_stake
             );
 
-            assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 320 * SSC);
+            assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 320 * AI3);
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
         });
     }
@@ -2922,17 +2922,17 @@ pub(crate) mod tests {
     fn slash_operator_with_more_than_max_nominators_to_slash() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let operator_free_balance = 250 * SSC;
-        let operator_stake = 200 * SSC;
-        let operator_extra_deposit = 40 * SSC;
-        let operator_extra_withdraw = 5 * SSC;
+        let operator_free_balance = 250 * AI3;
+        let operator_stake = 200 * AI3;
+        let operator_extra_deposit = 40 * AI3;
+        let operator_extra_withdraw = 5 * AI3;
         let pair = OperatorPair::from_seed(&[0; 32]);
 
         let nominator_accounts: Vec<crate::tests::AccountId> = (2..22).collect();
-        let nominator_free_balance = 150 * SSC;
-        let nominator_stake = 100 * SSC;
-        let nominator_extra_deposit = 40 * SSC;
-        let nominator_extra_withdraw = 5 * SSC;
+        let nominator_free_balance = 150 * AI3;
+        let nominator_stake = 100 * AI3;
+        let nominator_extra_deposit = 40 * AI3;
+        let nominator_extra_withdraw = 5 * AI3;
 
         let mut nominators = vec![(operator_account, (operator_free_balance, operator_stake))];
         for nominator_account in nominator_accounts.clone() {
@@ -2941,8 +2941,8 @@ pub(crate) mod tests {
 
         let last_nominator_account = nominator_accounts.last().cloned().unwrap();
         let unlocking = vec![
-            (operator_account, 10 * SSC),
-            (last_nominator_account, 10 * SSC),
+            (operator_account, 10 * AI3),
+            (last_nominator_account, 10 * AI3),
         ];
 
         let deposits = vec![
@@ -2956,9 +2956,9 @@ pub(crate) mod tests {
 
         let init_total_stake = STORAGE_FEE_RESERVE.left_from_one()
             * (200 + (100 * nominator_accounts.len() as u128))
-            * SSC;
+            * AI3;
         let init_total_storage_fund =
-            STORAGE_FEE_RESERVE * (200 + (100 * nominator_accounts.len() as u128)) * SSC;
+            STORAGE_FEE_RESERVE * (200 + (100 * nominator_accounts.len() as u128)) * AI3;
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
@@ -2967,7 +2967,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(nominators),
             );
@@ -2993,7 +2993,7 @@ pub(crate) mod tests {
                 domain_id,
                 OperatorRewardSource::Dummy,
                 vec![operator_id].into_iter(),
-                20 * SSC,
+                20 * AI3,
             )
             .unwrap();
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
@@ -3031,7 +3031,7 @@ pub(crate) mod tests {
             assert_eq!(20227272746580578530, total_stake_withdrawal);
             assert_eq!(5000000000000000000, total_storage_fee_withdrawal);
             assert_eq!(
-                2220 * SSC,
+                2220 * AI3,
                 total_deposit + total_stake_withdrawal + total_storage_fee_withdrawal
             );
 
@@ -3098,7 +3098,7 @@ pub(crate) mod tests {
                 );
             }
 
-            assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 2220 * SSC);
+            assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 2220 * AI3);
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
         });
     }
@@ -3106,8 +3106,8 @@ pub(crate) mod tests {
     #[test]
     fn slash_operators() {
         let domain_id = DomainId::new(0);
-        let operator_free_balance = 250 * SSC;
-        let operator_stake = 200 * SSC;
+        let operator_free_balance = 250 * AI3;
+        let operator_stake = 200 * AI3;
 
         let operator_account_1 = 1;
         let operator_account_2 = 2;
@@ -3124,7 +3124,7 @@ pub(crate) mod tests {
                 operator_account_1,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair_1.public(),
                 Default::default(),
             );
@@ -3134,7 +3134,7 @@ pub(crate) mod tests {
                 operator_account_2,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair_2.public(),
                 Default::default(),
             );
@@ -3144,7 +3144,7 @@ pub(crate) mod tests {
                 operator_account_3,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair_3.public(),
                 Default::default(),
             );
@@ -3156,7 +3156,7 @@ pub(crate) mod tests {
             assert!(domain_stake_summary.next_operators.contains(&operator_id_3));
             assert_eq!(
                 domain_stake_summary.current_total_stake,
-                STORAGE_FEE_RESERVE.left_from_one() * 600 * SSC
+                STORAGE_FEE_RESERVE.left_from_one() * 600 * AI3
             );
             for operator_id in [operator_id_1, operator_id_2, operator_id_3] {
                 let operator = Operators::<Test>::get(operator_id).unwrap();
@@ -3229,7 +3229,7 @@ pub(crate) mod tests {
 
             assert_eq!(
                 Balances::total_balance(&crate::tests::TreasuryAccount::get()),
-                600 * SSC
+                600 * AI3
             );
             for operator_id in [operator_id_1, operator_id_2, operator_id_3] {
                 assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
@@ -3241,10 +3241,10 @@ pub(crate) mod tests {
     fn bundle_storage_fund_charged_and_refund_storege_fee() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let operator_free_balance = 150 * SSC;
-        let operator_total_stake = 100 * SSC;
-        let operator_stake = 80 * SSC;
-        let operator_storage_fee_deposit = 20 * SSC;
+        let operator_free_balance = 150 * AI3;
+        let operator_total_stake = 100 * AI3;
+        let operator_stake = 80 * AI3;
+        let operator_storage_fee_deposit = 20 * AI3;
         let pair = OperatorPair::from_seed(&[0; 32]);
         let nominator_account = 2;
 
@@ -3255,7 +3255,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_total_stake,
-                SSC,
+                AI3,
                 pair.public(),
                 BTreeMap::default(),
             );
@@ -3274,8 +3274,8 @@ pub(crate) mod tests {
             // Drain the bundle storage fund
             bundle_storage_fund::charge_bundle_storage_fee::<Test>(
                 operator_id,
-                // the transaction fee is one SSC per byte thus div SSC here
-                (operator_storage_fee_deposit / SSC) as u32,
+                // the transaction fee is one AI3 per byte thus div AI3 here
+                (operator_storage_fee_deposit / AI3) as u32,
             )
             .unwrap();
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
@@ -3285,32 +3285,32 @@ pub(crate) mod tests {
             );
 
             // The operator add more stake thus add deposit to the bundle storage fund
-            do_nominate_operator::<Test>(operator_id, operator_account, 5 * SSC).unwrap();
-            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), SSC);
+            do_nominate_operator::<Test>(operator_id, operator_account, 5 * AI3).unwrap();
+            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), AI3);
 
             bundle_storage_fund::charge_bundle_storage_fee::<Test>(operator_id, 1).unwrap();
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
 
             // New nominator add deposit to the bundle storage fund
-            Balances::set_balance(&nominator_account, 100 * SSC);
-            do_nominate_operator::<Test>(operator_id, nominator_account, 5 * SSC).unwrap();
-            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), SSC);
+            Balances::set_balance(&nominator_account, 100 * AI3);
+            do_nominate_operator::<Test>(operator_id, nominator_account, 5 * AI3).unwrap();
+            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), AI3);
 
             bundle_storage_fund::charge_bundle_storage_fee::<Test>(operator_id, 1).unwrap();
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
 
             // Refund of the storage fee add deposit to the bundle storage fund
             bundle_storage_fund::refund_storage_fee::<Test>(
-                10 * SSC,
+                10 * AI3,
                 BTreeMap::from_iter([(operator_id, 1), (operator_id + 1, 9)]),
             )
             .unwrap();
-            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), SSC);
+            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), AI3);
 
             // The operator `operator_id + 1` not exist thus the refund storage fee added to treasury
             assert_eq!(
                 Balances::total_balance(&crate::tests::TreasuryAccount::get()),
-                9 * SSC
+                9 * AI3
             );
 
             bundle_storage_fund::charge_bundle_storage_fee::<Test>(operator_id, 1).unwrap();
@@ -3322,19 +3322,19 @@ pub(crate) mod tests {
     fn zero_amount_deposit_and_withdraw() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let operator_free_balance = 250 * SSC;
-        let operator_stake = 200 * SSC;
+        let operator_free_balance = 250 * AI3;
+        let operator_stake = 200 * AI3;
         let pair = OperatorPair::from_seed(&[0; 32]);
         let nominator_account = 2;
-        let nominator_free_balance = 150 * SSC;
-        let nominator_stake = 100 * SSC;
+        let nominator_free_balance = 150 * AI3;
+        let nominator_stake = 100 * AI3;
 
         let nominators = vec![
             (operator_account, (operator_free_balance, operator_stake)),
             (nominator_account, (nominator_free_balance, nominator_stake)),
         ];
 
-        let total_deposit = 300 * SSC;
+        let total_deposit = 300 * AI3;
         let init_total_stake = STORAGE_FEE_RESERVE.left_from_one() * total_deposit;
 
         let mut ext = new_test_ext();
@@ -3344,7 +3344,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(nominators),
             );
@@ -3401,19 +3401,19 @@ pub(crate) mod tests {
     fn deposit_and_withdraw_should_be_rejected_due_to_missing_share_price() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let operator_free_balance = 250 * SSC;
-        let operator_stake = 200 * SSC;
+        let operator_free_balance = 250 * AI3;
+        let operator_stake = 200 * AI3;
         let pair = OperatorPair::from_seed(&[0; 32]);
         let nominator_account = 2;
-        let nominator_free_balance = 150 * SSC;
-        let nominator_stake = 100 * SSC;
+        let nominator_free_balance = 150 * AI3;
+        let nominator_stake = 100 * AI3;
 
         let nominators = vec![
             (operator_account, (operator_free_balance, operator_stake)),
             (nominator_account, (nominator_free_balance, nominator_stake)),
         ];
 
-        let total_deposit = 300 * SSC;
+        let total_deposit = 300 * AI3;
         let init_total_stake = STORAGE_FEE_RESERVE.left_from_one() * total_deposit;
 
         let mut ext = new_test_ext();
@@ -3423,7 +3423,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(nominators),
             );
@@ -3432,11 +3432,11 @@ pub(crate) mod tests {
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert_eq!(domain_stake_summary.current_total_stake, init_total_stake);
 
-            do_nominate_operator::<Test>(operator_id, nominator_account, 5 * SSC).unwrap();
+            do_nominate_operator::<Test>(operator_id, nominator_account, 5 * AI3).unwrap();
             do_withdraw_stake::<Test>(
                 operator_id,
                 nominator_account,
-                WithdrawStake::Stake(3 * SSC),
+                WithdrawStake::Stake(3 * AI3),
             )
             .unwrap();
 
@@ -3450,7 +3450,7 @@ pub(crate) mod tests {
 
             // Both deposit and withdraw should fail due to the share price is missing unexpectly
             assert_err!(
-                do_nominate_operator::<Test>(operator_id, nominator_account, SSC),
+                do_nominate_operator::<Test>(operator_id, nominator_account, AI3),
                 StakingError::MissingOperatorEpochSharePrice
             );
             assert_err!(
@@ -3468,19 +3468,19 @@ pub(crate) mod tests {
     fn allowed_use_default_share_price_if_missing() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let operator_free_balance = 250 * SSC;
-        let operator_stake = 200 * SSC;
+        let operator_free_balance = 250 * AI3;
+        let operator_stake = 200 * AI3;
         let pair = OperatorPair::from_seed(&[0; 32]);
         let nominator_account = 2;
-        let nominator_free_balance = 150 * SSC;
-        let nominator_stake = 100 * SSC;
+        let nominator_free_balance = 150 * AI3;
+        let nominator_stake = 100 * AI3;
 
         let nominators = vec![
             (operator_account, (operator_free_balance, operator_stake)),
             (nominator_account, (nominator_free_balance, nominator_stake)),
         ];
 
-        let total_deposit = 300 * SSC;
+        let total_deposit = 300 * AI3;
         let init_total_stake = STORAGE_FEE_RESERVE.left_from_one() * total_deposit;
 
         let mut ext = new_test_ext();
@@ -3490,7 +3490,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(nominators),
             );
@@ -3503,7 +3503,7 @@ pub(crate) mod tests {
             do_withdraw_stake::<Test>(
                 operator_id,
                 nominator_account,
-                WithdrawStake::Stake(3 * SSC),
+                WithdrawStake::Stake(3 * AI3),
             )
             .unwrap();
 

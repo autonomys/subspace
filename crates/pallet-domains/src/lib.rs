@@ -481,9 +481,8 @@ mod pallet {
 
     impl Get<EVMChainId> for StartingEVMChainId {
         fn get() -> EVMChainId {
-            // after looking at `https://chainlist.org/?testnets=false`
-            // we think starting with `490000` would not have much clashes
-            490000
+            // Starting EVM chainID for domains.
+            870
         }
     }
 
