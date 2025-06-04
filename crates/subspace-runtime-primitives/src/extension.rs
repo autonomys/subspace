@@ -27,7 +27,7 @@ const MAXIMUM_NUMBER_OF_CALLS: u32 = 1000;
 
 /// Weights for the balance transfer check extension.
 pub trait WeightInfo {
-    fn balance_transfer_check_mixed(c: u32) -> Weight;
+    fn balance_transfer_check_multiple(c: u32) -> Weight;
     fn balance_transfer_check_utility(c: u32) -> Weight;
     fn balance_transfer_check_multisig(c: u32) -> Weight;
 }
@@ -103,7 +103,7 @@ where
 
     fn get_weights(n: u32) -> Weight {
         SubstrateWeightInfo::<Runtime>::balance_transfer_check_multisig(n)
-            .max(SubstrateWeightInfo::<Runtime>::balance_transfer_check_mixed(n))
+            .max(SubstrateWeightInfo::<Runtime>::balance_transfer_check_multiple(n))
             .max(SubstrateWeightInfo::<Runtime>::balance_transfer_check_utility(n))
     }
 }

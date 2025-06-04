@@ -1,15 +1,8 @@
 //! Benchmarking for `BalanceTransferCheck` extensions.
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
 use crate::extension::{
     BalanceTransferCheckExtension, BalanceTransferChecks, MaybeBalancesCall, MaybeNestedCall,
 };
-#[cfg(not(feature = "std"))]
-use alloc::boxed::Box;
-#[cfg(not(feature = "std"))]
-use alloc::vec;
 use core::marker::PhantomData;
 use frame_benchmarking::v2::*;
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
@@ -18,7 +11,9 @@ use frame_system::pallet_prelude::RuntimeCallFor;
 use pallet_balances::{Call as BalancesCall, Config as BalancesConfig};
 use pallet_multisig::{Call as MultisigCall, Config as MultisigConfig};
 use pallet_utility::{Call as UtilityCall, Config as UtilityConfig};
-use scale_info::prelude::fmt;
+use scale_info::prelude::boxed::Box;
+use scale_info::prelude::vec::Vec;
+use scale_info::prelude::{fmt, vec};
 use sp_runtime::Weight;
 use sp_runtime::traits::{Dispatchable, StaticLookup};
 
@@ -41,15 +36,16 @@ mod benchmarks {
     use frame_system::pallet_prelude::RuntimeCallFor;
 
     #[benchmark]
-    fn balance_transfer_check_mixed(c: Linear<0, 1000>) {
-        let mut call = construct_balance_call::<T>();
-        for i in 0..=c {
-            if i % 2 == 0 {
-                call = construct_utility_call::<T>(call);
-            } else {
-                call = construct_multisig_call::<T>(call);
-            }
+    fn balance_transfer_check_multiple(c: Linear<0, 1000>) {
+        let mut calls = Vec::with_capacity(c as usize + 1);
+        for _i in 0..=c {
+            // Non-balance calls are more expensive to check, because we have to read them all.
+            // (We can only exit the check loop early if we encounter a balance transfer call.)
+            calls.push(construct_non_balance_call::<T>());
         }
+
+        let call = construct_utility_call_list::<T>(calls);
+
         #[block]
         {
             BalanceTransferCheckExtension::<T>::do_validate_signed(&call).unwrap();
@@ -94,12 +90,33 @@ where
     .into()
 }
 
+fn construct_non_balance_call<T: BalancesConfig>() -> RuntimeCallFor<T>
+where
+    RuntimeCallFor<T>: From<BalancesCall<T>>,
+{
+    let recipient: T::AccountId = account("recipient", 0, SEED);
+    BalancesCall::upgrade_accounts {
+        who: vec![recipient],
+    }
+    .into()
+}
+
 fn construct_utility_call<T: UtilityConfig>(call: RuntimeCallFor<T>) -> RuntimeCallFor<T>
 where
     RuntimeCallFor<T>: From<UtilityCall<T>>,
 {
     UtilityCall::batch_all {
         calls: vec![call.into()],
+    }
+    .into()
+}
+
+fn construct_utility_call_list<T: UtilityConfig>(calls: Vec<RuntimeCallFor<T>>) -> RuntimeCallFor<T>
+where
+    RuntimeCallFor<T>: From<UtilityCall<T>>,
+{
+    UtilityCall::batch_all {
+        calls: calls.into_iter().map(Into::into).collect(),
     }
     .into()
 }
