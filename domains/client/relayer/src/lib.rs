@@ -200,11 +200,13 @@ where
 {
     let best_hash = client.info().best_hash;
     let dst_chain_id = msg.dst_chain_id;
+    let msg_id = (msg.dst_chain_id, msg.channel_id, msg.nonce);
     let ext = client
         .runtime_api()
         .outbox_message_unsigned(best_hash, msg)?
         .ok_or(Error::FailedToConstructExtrinsic)?;
 
+    tracing::trace!("Submitting Outbox message: {:?}", msg_id);
     sink.unbounded_send(GossipMessage {
         chain_id: dst_chain_id,
         data: GossipMessageData::Xdm(ext.encode()),
@@ -229,11 +231,13 @@ where
 {
     let best_hash = client.info().best_hash;
     let dst_chain_id = msg.dst_chain_id;
+    let msg_id = (msg.dst_chain_id, msg.channel_id, msg.nonce);
     let ext = client
         .runtime_api()
         .inbox_response_message_unsigned(best_hash, msg)?
         .ok_or(Error::FailedToConstructExtrinsic)?;
 
+    tracing::trace!("Submitting Inbox response message: {:?}", msg_id);
     sink.unbounded_send(GossipMessage {
         chain_id: dst_chain_id,
         data: GossipMessageData::Xdm(ext.encode()),
@@ -358,6 +362,7 @@ where
 
         // short circuit if the there are no messages to relay
         if block_messages.is_empty() {
+            tracing::debug!("No messages from chain[{:?}]. Skipping..", chain_id);
             return Ok(());
         }
 
@@ -380,6 +385,12 @@ where
         };
 
         for (dst_chain_id, channel_id, messages) in block_messages {
+            tracing::debug!(
+                "Submitting messages to chain[{:?}] on Channel[{:?}] with [{:?}] Outbox messages",
+                dst_chain_id,
+                channel_id,
+                messages.outbox.len()
+            );
             construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
                 (chain_id, dst_chain_id, channel_id, messages.outbox),
                 |key, dst_chain_id| {
@@ -395,6 +406,12 @@ where
                 |msg| gossip_outbox_message(domain_client, msg, gossip_message_sink),
             )?;
 
+            tracing::debug!(
+                "Submitting messages to chain[{:?}] on Channel[{:?}] with [{:?}] Inbox response messages",
+                dst_chain_id,
+                channel_id,
+                messages.inbox_responses.len()
+            );
             construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
                 (chain_id, dst_chain_id, channel_id, messages.inbox_responses),
                 |key, dst_chain_id| {
