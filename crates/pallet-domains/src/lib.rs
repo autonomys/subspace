@@ -25,9 +25,9 @@ use crate::block_tree::{Error as BlockTreeError, verify_execution_receipt};
 use crate::bundle_storage_fund::{charge_bundle_storage_fee, storage_fund_account};
 use crate::domain_registry::{DomainConfig, Error as DomainRegistryError};
 use crate::runtime_registry::into_complete_raw_genesis;
+use crate::staking::OperatorStatus;
 #[cfg(feature = "runtime-benchmarks")]
 pub use crate::staking::do_register_operator;
-use crate::staking::{OperatorStatus, do_reward_operators};
 use crate::staking_epoch::EpochTransitionResult;
 use crate::weights::WeightInfo;
 #[cfg(not(feature = "std"))]
@@ -55,8 +55,7 @@ use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     ChainId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, DomainBundleLimit, DomainId,
     DomainInstanceData, EMPTY_EXTRINSIC_ROOT, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, OperatorRewardSource, OperatorSignature, ProofOfElection, RuntimeId,
-    SealedSingletonReceipt,
+    OperatorPublicKey, OperatorSignature, ProofOfElection, RuntimeId, SealedSingletonReceipt,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
@@ -777,6 +776,12 @@ mod pallet {
     /// use the current share price as the default.
     #[pallet::storage]
     pub type AllowedDefaultSharePriceEpoch<T> = StorageValue<_, DomainEpoch, OptionQuery>;
+
+    /// Storage for chain rewards specific to each domain.
+    /// These rewards to equally distributed to active operators during epoch migration.
+    #[pallet::storage]
+    pub type DomainChainRewards<T: Config> =
+        StorageMap<_, Identity, DomainId, BalanceOf<T>, ValueQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -2926,19 +2931,10 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Reward the active operators of this domain epoch.
-    pub fn reward_domain_operators(
-        domain_id: DomainId,
-        source: OperatorRewardSource<BlockNumberFor<T>>,
-        rewards: BalanceOf<T>,
-    ) {
-        // If domain is not instantiated, then we don't care at the moment.
-        if let Some(domain_stake_summary) = DomainStakingSummary::<T>::get(domain_id) {
-            let operators = domain_stake_summary
-                .current_epoch_rewards
-                .into_keys()
-                .collect::<Vec<OperatorId>>();
-            let _ = do_reward_operators::<T>(domain_id, source, operators.into_iter(), rewards);
-        }
+    pub fn reward_domain_operators(domain_id: DomainId, rewards: BalanceOf<T>) {
+        DomainChainRewards::<T>::mutate(domain_id, |current_rewards| {
+            current_rewards.saturating_add(rewards)
+        });
     }
 
     pub fn storage_fund_account_balance(operator_id: OperatorId) -> BalanceOf<T> {
