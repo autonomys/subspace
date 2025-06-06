@@ -10,8 +10,8 @@ use crate::staking::{
     do_cleanup_operator, do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal,
 };
 use crate::{
-    BalanceOf, Config, DepositOnHold, ElectionVerificationParams, Event, HoldIdentifier,
-    OperatorEpochSharePrice, Pallet, bundle_storage_fund,
+    BalanceOf, Config, DepositOnHold, DomainChainRewards, ElectionVerificationParams, Event,
+    HoldIdentifier, OperatorEpochSharePrice, Pallet, bundle_storage_fund,
 };
 use frame_support::PalletError;
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
@@ -21,9 +21,9 @@ use frame_support::traits::tokens::{
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::{DomainId, EpochIndex, OperatorId};
-use sp_runtime::Saturating;
+use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorRewardSource};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
+use sp_runtime::{Perquintill, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 
@@ -67,12 +67,19 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
 ) -> Result<u32, Error> {
     let mut rewarded_operator_count = 0;
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
-        let mut to_treasury = BalanceOf::<T>::zero();
         let stake_summary = maybe_domain_stake_summary
             .as_mut()
             .ok_or(TransitionError::DomainNotInitialized)?;
 
-        while let Some((operator_id, reward)) = stake_summary.current_epoch_rewards.pop_first() {
+        let domain_rewards = DomainChainRewards::<T>::take(domain_id);
+        let active_operator_count = stake_summary.current_epoch_rewards.len() as u64;
+        let reward_per_operator = Perquintill::from_rational(1, active_operator_count).mul_floor(domain_rewards);
+        let total_allocated_rewards = reward_per_operator.saturating_mul(BalanceOf::<T>::from(active_operator_count));
+
+        let mut to_treasury = domain_rewards.saturating_sub(total_allocated_rewards);
+
+        while let Some((operator_id, mut reward)) = stake_summary.current_epoch_rewards.pop_first() {
+            reward = reward.saturating_add(reward_per_operator);
             Operators::<T>::try_mutate(operator_id, |maybe_operator| {
                 let operator = match maybe_operator.as_mut() {
                     // It is possible that operator may have de registered and unlocked by the time they
@@ -88,6 +95,12 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                     }
                     Some(operator) => operator,
                 };
+
+                Pallet::<T>::deposit_event(Event::OperatorRewarded {
+                    source: OperatorRewardSource::XDMProtocolFees,
+                    operator_id,
+                    reward: reward_per_operator,
+                });
 
                 // calculate operator tax, mint the balance, and stake them
                 let operator_tax_amount = operator.nomination_tax.mul_floor(reward);
