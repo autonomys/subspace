@@ -550,9 +550,10 @@ where
                     continue;
                 }
             };
-            let sector_expiration_check_segment_commitment = runtime_api
-                .segment_commitment(parent_hash, sector_expiration_check_segment_index)
-                .ok()?;
+            let sector_expiration_check_segment_commitment = self
+                .segment_headers_store
+                .get_segment_header(sector_expiration_check_segment_index)
+                .map(|segment_header| segment_header.segment_commitment());
 
             let solution_verification_result = verify_solution::<PosTable, _>(
                 &solution,
