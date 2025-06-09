@@ -1,7 +1,8 @@
 //! Benchmarking for `BalanceTransferCheck` extensions.
 
 use crate::extension::{
-    BalanceTransferCheckExtension, BalanceTransferChecks, MaybeBalancesCall, MaybeNestedCall,
+    BalanceTransferCheckExtension, BalanceTransferChecks, MAXIMUM_NUMBER_OF_CALLS,
+    MaybeBalancesCall, MaybeNestedCall,
 };
 use core::marker::PhantomData;
 use frame_benchmarking::v2::*;
@@ -36,7 +37,7 @@ mod benchmarks {
     use frame_system::pallet_prelude::RuntimeCallFor;
 
     #[benchmark]
-    fn balance_transfer_check_multiple(c: Linear<0, 1000>) {
+    fn balance_transfer_check_multiple(c: Linear<0, MAXIMUM_NUMBER_OF_CALLS>) {
         let mut calls = Vec::with_capacity(c as usize + 1);
         for _i in 0..=c {
             // Non-balance calls are more expensive to check, because we have to read them all.
@@ -53,7 +54,7 @@ mod benchmarks {
     }
 
     #[benchmark]
-    fn balance_transfer_check_utility(c: Linear<0, 1000>) {
+    fn balance_transfer_check_utility(c: Linear<0, MAXIMUM_NUMBER_OF_CALLS>) {
         let mut call = construct_balance_call::<T>();
         for _i in 0..=c {
             call = construct_utility_call::<T>(call);
@@ -65,7 +66,7 @@ mod benchmarks {
     }
 
     #[benchmark]
-    fn balance_transfer_check_multisig(c: Linear<0, 1000>) {
+    fn balance_transfer_check_multisig(c: Linear<0, MAXIMUM_NUMBER_OF_CALLS>) {
         let mut call = construct_balance_call::<T>();
         for _i in 0..=c {
             call = construct_multisig_call::<T>(call);

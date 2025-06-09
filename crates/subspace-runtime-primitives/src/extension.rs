@@ -23,7 +23,7 @@ use sp_runtime::transaction_validity::{
 };
 
 /// Maximum number of calls we benchmarked for.
-const MAXIMUM_NUMBER_OF_CALLS: u32 = 1000;
+const MAXIMUM_NUMBER_OF_CALLS: u32 = 5_000;
 
 /// Weights for the balance transfer check extension.
 pub trait WeightInfo {
