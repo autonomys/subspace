@@ -71,36 +71,55 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
             .as_mut()
             .ok_or(TransitionError::DomainNotInitialized)?;
 
+        let mut to_treasury = BalanceOf::<T>::zero();
+        let mut maybe_reward_per_operator = None;
+
         let domain_rewards = DomainChainRewards::<T>::take(domain_id);
         let active_operator_count = stake_summary.current_epoch_rewards.len() as u64;
-        let reward_per_operator = Perquintill::from_rational(1, active_operator_count).mul_floor(domain_rewards);
-        let total_allocated_rewards = reward_per_operator.saturating_mul(BalanceOf::<T>::from(active_operator_count));
+        match (active_operator_count > 0, !domain_rewards.is_zero()) {
+            // active operators exist and rewards are non-zero
+            (true, true) => {
+                let reward_per_operator = Perquintill::from_rational(1, active_operator_count).mul_floor(domain_rewards);
+                let total_allocated_rewards = reward_per_operator.saturating_mul(BalanceOf::<T>::from(active_operator_count));
+                maybe_reward_per_operator = Some(reward_per_operator);
+                to_treasury = domain_rewards.saturating_sub(total_allocated_rewards);
+            }
 
-        let mut to_treasury = domain_rewards.saturating_sub(total_allocated_rewards);
+            // no active operators but non-zero rewards
+            (false, true) => {
+                to_treasury = domain_rewards
+            }
+
+            // other cases are irrelevant here
+            _ => {}
+        }
+
 
         while let Some((operator_id, mut reward)) = stake_summary.current_epoch_rewards.pop_first() {
-            reward = reward.saturating_add(reward_per_operator);
+            reward = reward.saturating_add(maybe_reward_per_operator.unwrap_or_default());
             Operators::<T>::try_mutate(operator_id, |maybe_operator| {
                 let operator = match maybe_operator.as_mut() {
                     // It is possible that operator may have de registered and unlocked by the time they
                     // got rewards, in this case, move the reward to the treasury
                     None => {
                         to_treasury += reward;
-                        return Ok(())
+                        return Ok(());
                     }
                     // Move the reward of slashed and pening slash operator to the treasury
                     Some(operator) if matches!(*operator.status::<T>(operator_id), OperatorStatus::Slashed | OperatorStatus::PendingSlash) => {
                         to_treasury += reward;
-                        return Ok(())
+                        return Ok(());
                     }
                     Some(operator) => operator,
                 };
 
-                Pallet::<T>::deposit_event(Event::OperatorRewarded {
-                    source: OperatorRewardSource::XDMProtocolFees,
-                    operator_id,
-                    reward: reward_per_operator,
-                });
+                if let Some(reward_per_operator) = maybe_reward_per_operator {
+                    Pallet::<T>::deposit_event(Event::OperatorRewarded {
+                        source: OperatorRewardSource::XDMProtocolFees,
+                        operator_id,
+                        reward: reward_per_operator,
+                    });
+                }
 
                 // calculate operator tax, mint the balance, and stake them
                 let operator_tax_amount = operator.nomination_tax.mul_floor(reward);
@@ -135,11 +154,11 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
 
                     let current_domain_epoch = (domain_id, stake_summary.current_epoch_index).into();
                     crate::staking::do_calculate_previous_epoch_deposit_shares_and_add_new_deposit::<T>(
-                            operator_id,
-                            nominator_id,
-                            current_domain_epoch,
-                            operator_tax_deposit,
-                        )?;
+                        operator_id,
+                        nominator_id,
+                        current_domain_epoch,
+                        operator_tax_deposit,
+                    )?;
 
                     Pallet::<T>::deposit_event(Event::OperatorTaxCollected {
                         operator_id,
@@ -168,7 +187,7 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
 
         Ok(())
     })
-    .map_err(Error::OperatorRewardStaking)?;
+        .map_err(Error::OperatorRewardStaking)?;
 
     Ok(rewarded_operator_count)
 }
