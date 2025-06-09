@@ -76,12 +76,24 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
 
         let domain_rewards = DomainChainRewards::<T>::take(domain_id);
         let active_operator_count = stake_summary.current_epoch_rewards.len() as u64;
-        if !domain_rewards.is_zero() && active_operator_count > 0 {
-            let reward_per_operator = Perquintill::from_rational(1, active_operator_count).mul_floor(domain_rewards);
-            let total_allocated_rewards = reward_per_operator.saturating_mul(BalanceOf::<T>::from(active_operator_count));
-            maybe_reward_per_operator = Some(reward_per_operator);
-            to_treasury = domain_rewards.saturating_sub(total_allocated_rewards);
+        match (active_operator_count > 0, !domain_rewards.is_zero()) {
+            // active operators exist and rewards are non-zero
+            (true, true) => {
+                let reward_per_operator = Perquintill::from_rational(1, active_operator_count).mul_floor(domain_rewards);
+                let total_allocated_rewards = reward_per_operator.saturating_mul(BalanceOf::<T>::from(active_operator_count));
+                maybe_reward_per_operator = Some(reward_per_operator);
+                to_treasury = domain_rewards.saturating_sub(total_allocated_rewards);
+            }
+
+            // no active operators but non-zero rewards
+            (false, true) => {
+                to_treasury = domain_rewards
+            }
+
+            // other cases are irrelevant here
+            _ => {}
         }
+
 
         while let Some((operator_id, mut reward)) = stake_summary.current_epoch_rewards.pop_first() {
             reward = reward.saturating_add(maybe_reward_per_operator.unwrap_or_default());
