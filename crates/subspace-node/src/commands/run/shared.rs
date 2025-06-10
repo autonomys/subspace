@@ -4,22 +4,19 @@ use sc_cli::{
     RPC_DEFAULT_MESSAGE_CAPACITY_PER_CONN, RpcMethods,
 };
 use sc_service::config::IpNetwork;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::num::NonZeroU32;
 
 /// Options for RPC
 #[derive(Debug, Parser)]
-pub(super) struct RpcOptions<const DEFAULT_PORT: u16> {
+pub(super) struct RpcOptions {
     /// IP and port (TCP) on which to listen for RPC requests.
     ///
     /// Note: not all RPC methods are safe to be exposed publicly. Use an RPC proxy server to filter out
     /// dangerous methods.
     /// More details: <https://docs.substrate.io/main-docs/build/custom-rpc/#public-rpcs>.
-    #[arg(long, default_value_t = SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::LOCALHOST),
-        DEFAULT_PORT,
-    ))]
-    pub(super) rpc_listen_on: SocketAddr,
+    #[arg(long)]
+    pub(super) rpc_listen_on: Option<SocketAddr>,
 
     /// RPC methods to expose.
     /// - `unsafe`: Exposes every RPC method.

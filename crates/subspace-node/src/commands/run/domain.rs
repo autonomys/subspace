@@ -34,7 +34,7 @@ use sp_consensus_subspace::SubspaceApi;
 use sp_core::crypto::{AccountId32, SecretString};
 use sp_domains::{DomainId, DomainInstanceData, OperatorId, RuntimeType};
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
@@ -102,7 +102,7 @@ pub(super) struct DomainOptions {
 
     /// Options for RPC
     #[clap(flatten)]
-    rpc_options: RpcOptions<{ RPC_DEFAULT_PORT + 1 }>,
+    rpc_options: RpcOptions,
 
     /// IP and port (TCP) to start Prometheus exporter on
     // TODO: Use the same registry as consensus chain instead
@@ -350,6 +350,10 @@ pub(super) fn create_domain_configuration(
         keystore_config
     };
 
+    let rpc_listen_on = rpc_options.rpc_listen_on.unwrap_or(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        RPC_DEFAULT_PORT + 1,
+    ));
     let domain_config = SubstrateConfiguration {
         impl_name: consensus_chain_configuration.impl_name.clone(),
         impl_version: consensus_chain_configuration.impl_version.clone(),
@@ -392,12 +396,12 @@ pub(super) fn create_domain_configuration(
         state_pruning: pruning_params.state_pruning.into(),
         blocks_pruning: pruning_params.blocks_pruning.into(),
         rpc_options: SubstrateRpcConfiguration {
-            listen_on: Some(rpc_options.rpc_listen_on),
+            listen_on: Some(rpc_listen_on),
             max_connections: rpc_options.rpc_max_connections,
             cors: rpc_cors.into(),
             methods: match rpc_options.rpc_methods {
                 RpcMethods::Auto => {
-                    if rpc_options.rpc_listen_on.ip().is_loopback() {
+                    if rpc_listen_on.ip().is_loopback() {
                         sc_service::RpcMethods::Unsafe
                     } else {
                         sc_service::RpcMethods::Safe
