@@ -5,8 +5,8 @@ mod tests;
 
 extern crate alloc;
 
-use alloc::collections::btree_map::Entry;
 use alloc::collections::BTreeMap;
+use alloc::collections::btree_map::Entry;
 #[cfg(not(feature = "std"))]
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
@@ -15,7 +15,7 @@ use alloc::vec::Vec;
 use core::mem;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
 use kzg::eip_4844::{BYTES_PER_G1, BYTES_PER_G2};
-use kzg::{FFTFr, FFTSettings, Fr, KZGSettings, G1, G2};
+use kzg::{FFTFr, FFTSettings, Fr, G1, G2, KZGSettings};
 #[cfg(feature = "std")]
 use parking_lot::Mutex;
 use rust_kzg_blst::types::fft_settings::FsFFTSettings;
@@ -27,10 +27,10 @@ use rust_kzg_blst::types::poly::FsPoly;
 #[cfg(not(feature = "std"))]
 use spin::Mutex;
 use static_assertions::const_assert_eq;
+use subspace_core_primitives::ScalarBytes;
 use subspace_core_primitives::pieces::{RecordCommitment, RecordWitness};
 use subspace_core_primitives::segments::SegmentCommitment;
 use subspace_core_primitives::solutions::ChunkWitness;
-use subspace_core_primitives::ScalarBytes;
 use tracing::debug;
 
 /// Embedded KZG settings as bytes, too big for `no_std` in most cases

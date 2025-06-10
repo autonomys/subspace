@@ -9,7 +9,6 @@
 //! 5. Push back the potential new domain runtime extrisnic.
 
 #![warn(rust_2018_idioms)]
-#![feature(let_chains)]
 
 pub mod inherents;
 pub mod stateless_runtime;
@@ -17,14 +16,14 @@ pub mod stateless_runtime;
 use crate::inherents::is_runtime_upgraded;
 use crate::stateless_runtime::StatelessRuntime;
 use domain_runtime_primitives::opaque::AccountId;
-use domain_runtime_primitives::{opaque, CheckExtrinsicsValidityError};
+use domain_runtime_primitives::{CheckExtrinsicsValidityError, opaque};
 use parity_scale_codec::Encode;
-use sc_client_api::{backend, BlockBackend};
+use sc_client_api::{BlockBackend, backend};
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_core::traits::{CodeExecutor, FetchRuntimeCode};
 use sp_core::H256;
+use sp_core::traits::{CodeExecutor, FetchRuntimeCode};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
@@ -34,8 +33,8 @@ use sp_domains::{
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, NumberFor};
-use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::LayoutV1;
+use sp_state_machine::backend::AsTrieBackend;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_weights::Weight;
 use std::collections::VecDeque;
@@ -271,8 +270,7 @@ where
                 return Err(sp_blockchain::Error::RuntimeApiError(
                     ApiError::Application(
                         format!(
-                            "Unexpected bundle in consensus block: {:?}, something must be wrong",
-                            at_consensus_hash
+                            "Unexpected bundle in consensus block: {at_consensus_hash:?}, something must be wrong"
                         )
                         .into(),
                     ),

@@ -4,12 +4,12 @@ mod timekeeper;
 
 use crate::source::gossip::{GossipProof, PotGossipWorker, ToGossipMessage};
 use crate::source::state::{PotState, PotStateUpdateOutcome};
-use crate::source::timekeeper::{run_timekeeper, TimekeeperProof};
+use crate::source::timekeeper::{TimekeeperProof, run_timekeeper};
 use crate::verifier::PotVerifier;
 use core_affinity::CoreId;
 use derive_more::{Deref, DerefMut};
 use futures::channel::mpsc;
-use futures::{select, StreamExt};
+use futures::{StreamExt, select};
 use sc_client_api::BlockchainEvents;
 use sc_network::{NotificationService, PeerId};
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
@@ -24,11 +24,11 @@ use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::thread;
-use subspace_core_primitives::pot::PotCheckpoints;
 use subspace_core_primitives::PublicKey;
-use thread_priority::{set_current_thread_priority, ThreadPriority};
+use subspace_core_primitives::pot::PotCheckpoints;
+use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::broadcast;
-use tracing::{debug, error, trace, warn, Span};
+use tracing::{Span, debug, error, trace, warn};
 
 const LOCAL_PROOFS_CHANNEL_CAPACITY: usize = 10;
 const SLOTS_CHANNEL_CAPACITY: usize = 10;
@@ -144,14 +144,14 @@ where
                 .spawn(move || {
                     let _guard = span.enter();
 
-                    if let Some(core) = timekeeper_cpu_cores.into_iter().next() {
-                        if !core_affinity::set_for_current(CoreId { id: core }) {
-                            warn!(
-                                %core,
-                                "Failed to set core affinity, timekeeper will run on random CPU \
-                                core",
-                            );
-                        }
+                    if let Some(core) = timekeeper_cpu_cores.into_iter().next()
+                        && !core_affinity::set_for_current(CoreId { id: core })
+                    {
+                        warn!(
+                            %core,
+                            "Failed to set core affinity, timekeeper will run on random CPU \
+                            core",
+                        );
                     }
 
                     if let Err(error) = set_current_thread_priority(ThreadPriority::Max) {

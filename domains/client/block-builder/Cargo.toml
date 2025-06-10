@@ -2,7 +2,7 @@
 name = "domain-block-builder"
 version = "0.1.0"
 authors = ["Parity Technologies <admin@parity.io>"]
-edition = "2021"
+edition.workspace = true
 license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
 homepage = "https://substrate.io"
 repository = "https://github.com/paritytech/substrate/"
@@ -15,7 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 parity-scale-codec = { workspace = true, features = ["derive"] }
 hash-db.workspace = true
-hexlit.workspace = true
+hex-literal.workspace = true
 sc-chain-spec.workspace = true
 sc-client-api.workspace = true
 sc-executor.workspace = true

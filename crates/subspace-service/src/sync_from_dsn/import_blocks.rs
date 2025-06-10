@@ -1,20 +1,20 @@
+use crate::sync_from_dsn::PieceGetter;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
-use crate::sync_from_dsn::{PieceGetter, LOG_TARGET};
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
-use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::IncomingBlock;
-use sc_consensus_subspace::archiver::{decode_block, encode_block, SegmentHeadersStore};
+use sc_consensus::import_queue::ImportQueueService;
+use sc_consensus_subspace::archiver::{SegmentHeadersStore, decode_block, encode_block};
 use sc_service::Error;
-use sc_tracing::tracing::{debug, trace};
+use sc_tracing::tracing::{debug, info, trace};
 use sp_consensus::BlockOrigin;
+use sp_runtime::Saturating;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
-use sp_runtime::Saturating;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
-use subspace_core_primitives::segments::SegmentIndex;
 use subspace_core_primitives::BlockNumber;
+use subspace_core_primitives::segments::SegmentIndex;
 use subspace_data_retrieval::segment_downloading::download_segment_pieces;
 use subspace_erasure_coding::ErasureCoding;
 use tokio::task;
@@ -35,7 +35,7 @@ pub(super) async fn import_blocks_from_dsn<Block, AS, Client, PG, IQS>(
     client: &Client,
     piece_getter: &PG,
     import_queue_service: &mut IQS,
-    last_processed_segment_index: &mut SegmentIndex,
+    last_completed_segment_index: &mut SegmentIndex,
     last_processed_block_number: &mut NumberFor<Block>,
     erasure_coding: &ErasureCoding,
 ) -> Result<u64, Error>
@@ -60,7 +60,7 @@ where
             .await
             .map_err(|error| error.to_string())?;
 
-        debug!(target: LOG_TARGET, "Found {} new segment headers", new_segment_headers.len());
+        debug!("Found {} new segment headers", new_segment_headers.len());
 
         if !new_segment_headers.is_empty() {
             segment_headers_store.add_segment_headers(&new_segment_headers)?;
@@ -70,14 +70,14 @@ where
     let mut imported_blocks = 0;
     let mut reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
     // Start from the first unprocessed segment and process all segments known so far
-    let segment_indices_iter = (*last_processed_segment_index + SegmentIndex::ONE)
+    let segment_indices_iter = (*last_completed_segment_index + SegmentIndex::ONE)
         ..=segment_headers_store
             .max_segment_index()
             .expect("Exists, we have inserted segment headers above; qed");
     let mut segment_indices_iter = segment_indices_iter.peekable();
 
     while let Some(segment_index) = segment_indices_iter.next() {
-        debug!(target: LOG_TARGET, %segment_index, "Processing segment");
+        debug!( %segment_index, "Processing segment");
 
         let segment_header = segment_headers_store
             .get_segment_header(segment_index)
@@ -91,7 +91,6 @@ where
             .is_some();
 
         trace!(
-            target: LOG_TARGET,
             %segment_index,
             last_archived_maybe_partial_block_number,
             last_archived_block_partial,
@@ -105,20 +104,53 @@ where
         // so it can't change. Resetting the reconstructor loses any partial blocks, so we
         // only reset if the (possibly partial) last block has been processed.
         if *last_processed_block_number >= last_archived_maybe_partial_block_number {
-            *last_processed_segment_index = segment_index;
+            debug!(
+                %segment_index,
+                %last_processed_block_number,
+                %last_archived_maybe_partial_block_number,
+                %last_archived_block_partial,
+                "Already processed last (possibly partial) block in segment, resetting reconstructor",
+            );
+            *last_completed_segment_index = segment_index;
             // Reset reconstructor instance
             reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
             continue;
         }
         // Just one partial unprocessed block and this was the last segment available, so nothing to
-        // import
+        // import. (But we also haven't finished this segment yet, because of the partial block.)
         if last_archived_maybe_partial_block_number == *last_processed_block_number + One::one()
             && last_archived_block_partial
-            && segment_indices_iter.peek().is_none()
         {
-            // Reset reconstructor instance
-            reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
-            continue;
+            if segment_indices_iter.peek().is_none() {
+                // We haven't fully processed this segment yet, because it ends with a partial block.
+                *last_completed_segment_index = segment_index.saturating_sub(SegmentIndex::ONE);
+
+                // We don't need to reset the reconstructor here. We've finished getting blocks, so
+                // we're about to return and drop the reconstructor and its partial block anyway.
+                // (Normally, we'd need that partial block to avoid a block gap. But we should be close
+                // enough to the tip that normal syncing will fill any gaps.)
+                debug!(
+                    %segment_index,
+                    %last_processed_block_number,
+                    %last_archived_maybe_partial_block_number,
+                    %last_archived_block_partial,
+                    "No more segments, snap sync is about to finish",
+                );
+                continue;
+            } else {
+                // Downloading an entire segment for one partial block should be rare, but if it
+                // happens a lot we want to see it in the logs.
+                //
+                // TODO: if this happens a lot, check for network/DSN sync bugs - we should be able
+                // to sync to near the tip reliably, so we don't have to keep reconstructor state.
+                info!(
+                    %segment_index,
+                    %last_processed_block_number,
+                    %last_archived_maybe_partial_block_number,
+                    %last_archived_block_partial,
+                    "Downloading entire segment for one partial block",
+                );
+            }
         }
 
         let segment_pieces = download_segment_pieces(segment_index, piece_getter)
@@ -140,7 +172,7 @@ where
             .expect("Panic if blocking task panicked")
             .map_err(|error| error.to_string())?
             .blocks;
-        trace!(target: LOG_TARGET, %segment_index, "Segment reconstructed successfully");
+        trace!( %segment_index, "Segment reconstructed successfully");
 
         let mut blocks_to_import = Vec::with_capacity(QUEUED_BLOCKS_LIMIT as usize);
 
@@ -184,7 +216,6 @@ where
                         .import_blocks(BlockOrigin::NetworkInitialSync, importing_blocks);
                 }
                 trace!(
-                    target: LOG_TARGET,
                     %block_number,
                     %best_block_number,
                     %just_queued_blocks_count,
@@ -230,7 +261,7 @@ where
             imported_blocks += 1;
 
             if imported_blocks % 1000 == 0 {
-                debug!(target: LOG_TARGET, "Adding block {} from DSN to the import queue", block_number);
+                debug!("Adding block {} from DSN to the import queue", block_number);
             }
         }
 
@@ -239,7 +270,12 @@ where
             import_queue_service.import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
         }
 
-        *last_processed_segment_index = segment_index;
+        // Segments are only fully processed when all their blocks are fully processed.
+        if last_archived_block_partial {
+            *last_completed_segment_index = segment_index.saturating_sub(SegmentIndex::ONE);
+        } else {
+            *last_completed_segment_index = segment_index;
+        }
     }
 
     Ok(imported_blocks)

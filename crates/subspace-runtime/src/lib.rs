@@ -32,22 +32,22 @@ use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
-    maximum_domain_block_weight, AccountIdConverter, BlockNumber as DomainNumber,
-    EthereumAccountId, Hash as DomainHash, MAX_OUTGOING_MESSAGES,
+    AccountIdConverter, BlockNumber as DomainNumber, EthereumAccountId, Hash as DomainHash,
+    MAX_OUTGOING_MESSAGES, maximum_domain_block_weight,
 };
 use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::fungible::HoldConsideration;
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, ConstU8, Currency, EitherOfDiverse, EqualPrivilegeOnly,
+    ConstU8, ConstU16, ConstU32, ConstU64, Currency, EitherOfDiverse, EqualPrivilegeOnly,
     Everything, Get, LinearStoragePrice, OnUnbalanced, Time, VariantCount,
 };
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, Weight};
-use frame_support::{construct_runtime, parameter_types, PalletId};
+use frame_support::{PalletId, construct_runtime, parameter_types};
+use frame_system::EnsureRoot;
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::pallet_prelude::RuntimeCallFor;
-use frame_system::EnsureRoot;
 use pallet_collective::{EnsureMember, EnsureProportionAtLeast};
 pub use pallet_rewards::RewardPoint;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
@@ -58,12 +58,12 @@ use sp_api::impl_runtime_apis;
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionRanges, Vote};
 use sp_core::crypto::KeyTypeId;
-use sp_core::{ConstBool, OpaqueMetadata, H256};
+use sp_core::{ConstBool, H256, OpaqueMetadata};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor,
-    OperatorId, OperatorPublicKey, OperatorRewardSource, PermissionedActionAllowedBy,
-    DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
+    ChannelId, DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates, DomainId, DomainInstanceData,
+    ExecutionReceiptFor, INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey,
+    PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -75,20 +75,20 @@ use sp_messenger::messages::{
     CrossDomainMessage, MessageId, MessageKey, MessagesWithStorageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
-use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
+use sp_messenger_host_functions::{StorageKeyRequest, get_storage_key};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::traits::{
     AccountIdConversion, AccountIdLookup, BlakeTwo256, ConstU128, Keccak256, NumberFor,
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::type_with_default::TypeWithDefault;
-use sp_runtime::{generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill};
+use sp_runtime::{AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill, generic};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-use sp_subspace_mmr::subspace_mmr_runtime_interface::consensus_block_hash;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
+use sp_subspace_mmr::subspace_mmr_runtime_interface::consensus_block_hash;
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -97,19 +97,18 @@ use subspace_core_primitives::segments::{
     HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
 use subspace_core_primitives::solutions::{
-    pieces_to_solution_range, solution_range_to_pieces, SolutionRange,
+    SolutionRange, pieces_to_solution_range, solution_range_to_pieces,
 };
 use subspace_core_primitives::{PublicKey, Randomness, SlotNumber, U256};
 use subspace_runtime_primitives::utility::{
     DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
 };
 use subspace_runtime_primitives::{
-    maximum_normal_block_length, AccountId, Balance, BlockHashFor, BlockNumber,
-    ConsensusEventSegmentSize, ExtrinsicFor, FindBlockRewardAddress, Hash, HeaderFor,
-    HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, TargetBlockFullness,
-    XdmAdjustedWeightToFee, XdmFeeMultipler, BLOCK_WEIGHT_FOR_2_SEC, DOMAINS_BLOCK_PRUNING_DEPTH,
-    MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY,
-    SSC,
+    AI3, AccountId, BLOCK_WEIGHT_FOR_2_SEC, Balance, BlockHashFor, BlockNumber,
+    ConsensusEventSegmentSize, DOMAINS_BLOCK_PRUNING_DEPTH, ExtrinsicFor, FindBlockRewardAddress,
+    Hash, HeaderFor, HoldIdentifier, MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, Moment,
+    NORMAL_DISPATCH_RATIO, Nonce, SHANNON, SLOT_PROBABILITY, Signature, SlowAdjustingFeeUpdate,
+    TargetBlockFullness, XdmAdjustedWeightToFee, XdmFeeMultipler, maximum_normal_block_length,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -517,8 +516,8 @@ impl pallet_collective::Config<CouncilCollective> for Runtime {
 
 // TODO: update params for mainnnet
 parameter_types! {
-    pub PreimageBaseDeposit: Balance = 100 * SSC;
-    pub PreimageByteDeposit: Balance = SSC;
+    pub PreimageBaseDeposit: Balance = 100 * AI3;
+    pub PreimageByteDeposit: Balance = AI3;
     pub const PreImageHoldReason: HoldIdentifierWrapper = HoldIdentifierWrapper(HoldIdentifier::Preimage);
 }
 
@@ -620,7 +619,7 @@ impl pallet_democracy::Config for Runtime {
     type MaxVotes = ConstU32<100>;
     /// The minimum amount to be used as a deposit for a public referendum
     /// proposal.
-    type MinimumDeposit = ConstU128<{ 1000 * SSC }>;
+    type MinimumDeposit = ConstU128<{ 1000 * AI3 }>;
     type PalletsOrigin = OriginCaller;
     type Preimages = Preimage;
     type RuntimeEvent = RuntimeEvent;
@@ -656,7 +655,7 @@ impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
         // on consensus chain, reward the domain operators
         // balance is already on this consensus runtime
         if let ChainId::Domain(domain_id) = chain_id {
-            Domains::reward_domain_operators(domain_id, OperatorRewardSource::XDMProtocolFees, fees)
+            Domains::reward_domain_operators(domain_id, fees)
         }
     }
 }
@@ -720,7 +719,7 @@ impl sp_messenger::StorageKeys for StorageKeys {
 
 parameter_types! {
     // TODO: update value
-    pub const ChannelReserveFee: Balance = 100 * SSC;
+    pub const ChannelReserveFee: Balance = 100 * AI3;
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
 }
@@ -798,7 +797,7 @@ where
 
 parameter_types! {
     pub const TransporterEndpointId: EndpointId = 1;
-    pub const MinimumTransfer: Balance = SSC;
+    pub const MinimumTransfer: Balance = AI3;
 }
 
 impl pallet_transporter::Config for Runtime {
@@ -819,15 +818,15 @@ parameter_types! {
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
     /// Minimum operator stake to become an operator.
     // TODO: this value should be properly updated before mainnet
-    pub const MinOperatorStake: Balance = 100 * SSC;
+    pub const MinOperatorStake: Balance = 100 * AI3;
     /// Minimum nominator stake to nominate and operator.
     // TODO: this value should be properly updated before mainnet
-    pub const MinNominatorStake: Balance = SSC;
+    pub const MinNominatorStake: Balance = AI3;
     /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
     pub MaxDomainBlockSize: u32 = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH;
     /// Use the consensus chain's `Normal` extrinsics block weight limit as the domain block weight limit
     pub MaxDomainBlockWeight: Weight = maximum_domain_block_weight();
-    pub const DomainInstantiationDeposit: Balance = 100 * SSC;
+    pub const DomainInstantiationDeposit: Balance = 100 * AI3;
     pub const MaxDomainNameLength: u32 = 32;
     pub const BlockTreePruningDepth: u32 = DOMAINS_BLOCK_PRUNING_DEPTH;
     pub const StakeWithdrawalLockingPeriod: DomainNumber = 14_400;
@@ -838,7 +837,7 @@ parameter_types! {
     pub const MaxPendingStakingOperation: u32 = 512;
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const MaxInitialDomainAccounts: u32 = 10;
-    pub const MinInitialDomainAccountBalance: Balance = SSC;
+    pub const MinInitialDomainAccountBalance: Balance = AI3;
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 32;
 }
@@ -888,11 +887,7 @@ impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
                     let _ = Balances::deposit_creating(&block_author, reward);
                 }
             }
-            ChainId::Domain(domain_id) => Domains::reward_domain_operators(
-                domain_id,
-                OperatorRewardSource::XDMProtocolFees,
-                reward,
-            ),
+            ChainId::Domain(domain_id) => Domains::reward_domain_operators(domain_id, reward),
         }
     }
 }
@@ -1019,8 +1014,8 @@ macro_rules! deposit {
 }
 
 // One storage item; key size is 32; value is size 4+4+16+32 bytes = 56 bytes.
-// Each multisig costs 20 SSC + bytes_of_storge * TransactionByteFee
-deposit!(DepositBaseFee, 20 * SSC, 1u32, 88u32);
+// Each multisig costs 20 AI3 + bytes_of_storge * TransactionByteFee
+deposit!(DepositBaseFee, 20 * AI3, 1u32, 88u32);
 
 // Additional storage item size of 32 bytes.
 deposit!(DepositFactor, 0u128, 0u32, 32u32);

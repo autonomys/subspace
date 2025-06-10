@@ -1,9 +1,8 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 #![feature(
-    duration_constructors,
+    duration_constructors_lite,
     impl_trait_in_assoc_type,
     int_roundings,
-    let_chains,
     type_alias_impl_trait,
     type_changing_struct_update
 )]
@@ -18,19 +17,19 @@ mod task_spawner;
 mod utils;
 
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
-use crate::dsn::{create_dsn_instance, DsnConfigurationError};
+use crate::dsn::{DsnConfigurationError, create_dsn_instance};
 use crate::metrics::NodeMetrics;
 use crate::mmr::request_handler::MmrRequestHandler;
+use crate::sync_from_dsn::DsnPieceGetter;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::sync_from_dsn::snap_sync::snap_sync;
-use crate::sync_from_dsn::DsnPieceGetter;
 use async_lock::Semaphore;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::xdm_gossip_peers_set_config;
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 use frame_system_rpc_runtime_api::AccountNonceApi;
-use futures::channel::oneshot;
 use futures::FutureExt;
+use futures::channel::oneshot;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use parity_scale_codec::Decode;
@@ -47,9 +46,10 @@ use sc_consensus::{
     DefaultImportQueue, ImportQueue, ImportResult,
 };
 use sc_consensus_slots::SlotProportion;
+use sc_consensus_subspace::SubspaceLink;
 use sc_consensus_subspace::archiver::{
-    create_subspace_archiver, ArchivedSegmentNotification, ObjectMappingNotification,
-    SegmentHeadersStore,
+    ArchivedSegmentNotification, ObjectMappingNotification, SegmentHeadersStore,
+    create_subspace_archiver,
 };
 use sc_consensus_subspace::block_import::{BlockImportingNotification, SubspaceBlockImport};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -58,9 +58,8 @@ use sc_consensus_subspace::slot_worker::{
     SubspaceSyncOracle,
 };
 use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
-use sc_consensus_subspace::SubspaceLink;
-use sc_domains::domain_block_er::execution_receipt_protocol::DomainBlockERRequestHandler;
 use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
+use sc_domains::domain_block_er::execution_receipt_protocol::DomainBlockERRequestHandler;
 use sc_network::service::traits::NetworkService;
 use sc_network::{NetworkWorker, NotificationMetrics, NotificationService, Roles};
 use sc_network_sync::block_relay_protocol::BlockRelayParams;
@@ -71,11 +70,11 @@ use sc_proof_of_time::source::{PotSlotInfo, PotSourceWorker};
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_service::error::Error as ServiceError;
 use sc_service::{
-    build_network_advanced, build_polkadot_syncing_strategy, BuildNetworkAdvancedParams,
-    Configuration, NetworkStarter, SpawnTasksParams, TaskManager,
+    BuildNetworkAdvancedParams, Configuration, NetworkStarter, SpawnTasksParams, TaskManager,
+    build_network_advanced, build_polkadot_syncing_strategy,
 };
 use sc_subspace_block_relay::{
-    build_consensus_relay, BlockRelayConfigurationError, NetworkWrapper,
+    BlockRelayConfigurationError, NetworkWrapper, build_consensus_relay,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sc_transaction_pool::TransactionPoolHandle;
@@ -89,10 +88,10 @@ use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_consensus_subspace::{
     KzgExtension, PosExtension, PotExtension, PotNextSlotInput, SubspaceApi,
 };
-use sp_core::offchain::storage::OffchainDb;
-use sp_core::offchain::OffchainDbExt;
-use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
+use sp_core::offchain::OffchainDbExt;
+use sp_core::offchain::storage::OffchainDb;
+use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::storage::StorageKey;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_domains_fraud_proof::{FraudProofApi, FraudProofExtension, FraudProofHostFunctionsImpl};
@@ -122,7 +121,7 @@ use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, BlockHashFor, Hash, Nonce};
 use tokio::sync::broadcast;
-use tracing::{debug, error, info, Instrument};
+use tracing::{Instrument, debug, error, info};
 pub use utils::wait_for_block_import;
 
 // There are multiple places where it is assumed that node is running on 64-bit system, refuse to
@@ -854,12 +853,11 @@ where
                 let node_address_sender = Mutex::new(Some(node_address_sender));
 
                 move |address| {
-                    if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
-                        if let Some(node_address_sender) = node_address_sender.lock().take() {
-                            if let Err(err) = node_address_sender.send(address.clone()) {
-                                debug!(?err, "Couldn't send a node address to the channel.");
-                            }
-                        }
+                    if matches!(address.iter().next(), Some(Protocol::Ip4(_)))
+                        && let Some(node_address_sender) = node_address_sender.lock().take()
+                        && let Err(err) = node_address_sender.send(address.clone())
+                    {
+                        debug!(?err, "Couldn't send a node address to the channel.");
                     }
                 }
             }));
@@ -1122,11 +1120,11 @@ where
             Some("sync-from-dsn"),
             Box::pin(async move {
                 // Run snap-sync before DSN-sync.
-                if config.sync == ChainSyncMode::Snap {
-                    if let Err(error) = snap_sync_task.in_current_span().await {
-                        error!(%error, "Snap sync exited with a fatal error");
-                        return;
-                    }
+                if config.sync == ChainSyncMode::Snap
+                    && let Err(error) = snap_sync_task.in_current_span().await
+                {
+                    error!(%error, "Snap sync exited with a fatal error");
+                    return;
                 }
 
                 if let Err(error) = worker.await {
@@ -1276,7 +1274,7 @@ where
             }
         };
 
-        info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
+        info!("🧑‍🌾 Starting Subspace Authorship worker");
         let slot_worker_task = sc_proof_of_time::start_slot_worker(
             subspace_link.chain_constants().slot_duration(),
             client.clone(),
@@ -1384,7 +1382,7 @@ fn extract_confirmation_depth(chain_spec: &dyn ChainSpec) -> Option<u32> {
     let spec: serde_json::Value =
         serde_json::from_str(chain_spec.as_json(true).ok()?.as_str()).ok()?;
     let encoded_confirmation_depth = hex::decode(
-        spec.pointer(format!("/genesis/raw/top/{}", storage_key).as_str())?
+        spec.pointer(format!("/genesis/raw/top/{storage_key}").as_str())?
             .as_str()?
             .trim_start_matches("0x"),
     )

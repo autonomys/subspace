@@ -3,7 +3,7 @@
 use super::*;
 use crate::create_contract::CheckContractCreation;
 use crate::traits::{AccountIdFor, MaybeIntoEthCall, MaybeIntoEvmCall};
-use crate::{EthereumAccountId, PermissionedActionAllowedBy, MAXIMUM_NUMBER_OF_CALLS};
+use crate::{EthereumAccountId, MAXIMUM_NUMBER_OF_CALLS, PermissionedActionAllowedBy};
 use frame_benchmarking::v2::*;
 use frame_support::pallet_prelude::DispatchClass;
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};

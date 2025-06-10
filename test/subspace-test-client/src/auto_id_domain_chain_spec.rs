@@ -6,14 +6,14 @@ use domain_runtime_primitives::AccountIdConverter;
 use parity_scale_codec::Encode;
 use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension};
 use sp_core::crypto::AccountId32;
-use sp_core::{sr25519, Pair, Public};
+use sp_core::{Pair, Public, sr25519};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
     DomainRuntimeConfig, GenesisDomain, OperatorAllowList, OperatorPublicKey, RuntimeType,
 };
 use sp_runtime::traits::{Convert, IdentifyAccount};
 use sp_runtime::{BuildStorage, MultiSigner, Percent};
-use subspace_runtime_primitives::{AccountId, Balance, SSC};
+use subspace_runtime_primitives::{AI3, AccountId, Balance};
 
 /// Get public key from keypair seed.
 pub(crate) fn get_public_key_from_seed<TPublic: Public>(
@@ -89,12 +89,12 @@ pub fn get_genesis_domain(
         operator_allow_list: OperatorAllowList::Anyone,
 
         signing_key: get_from_seed::<OperatorPublicKey>("Bob"),
-        minimum_nominator_stake: 100 * SSC,
+        minimum_nominator_stake: 100 * AI3,
         nomination_tax: Percent::from_percent(5),
         initial_balances: endowed_accounts()
             .iter()
             .cloned()
-            .map(|k| (AccountIdConverter::convert(k), 2_000_000 * SSC))
+            .map(|k| (AccountIdConverter::convert(k), 2_000_000 * AI3))
             .collect(),
 
         domain_runtime_config: DomainRuntimeConfig::default_auto_id(),

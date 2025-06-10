@@ -1,5 +1,5 @@
-use crate::mock::Test;
 use crate::RewardPoint;
+use crate::mock::Test;
 
 type Pallet = crate::Pallet<Test>;
 

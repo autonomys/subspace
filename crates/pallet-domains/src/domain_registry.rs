@@ -8,8 +8,8 @@ use crate::pallet::{DomainStakingSummary, NextEVMChainId};
 use crate::runtime_registry::DomainRuntimeInfo;
 use crate::staking::StakingSummary;
 use crate::{
-    into_complete_raw_genesis, BalanceOf, Config, DomainHashingFor, DomainRegistry,
-    DomainSudoCalls, ExecutionReceiptOf, HoldIdentifier, NextDomainId, RuntimeRegistry,
+    BalanceOf, Config, DomainHashingFor, DomainRegistry, DomainSudoCalls, ExecutionReceiptOf,
+    HoldIdentifier, NextDomainId, RuntimeRegistry, into_complete_raw_genesis,
 };
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
@@ -19,18 +19,18 @@ use domain_runtime_primitives::MultiAccountId;
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::weights::Weight;
-use frame_support::{ensure, PalletError};
+use frame_support::{PalletError, ensure};
 use frame_system::pallet_prelude::*;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{
-    calculate_max_bundle_weight_and_size, derive_domain_block_hash, DomainBundleLimit, DomainId,
-    DomainRuntimeConfig, DomainSudoCall, DomainsDigestItem, DomainsTransfersTracker,
-    OnDomainInstantiated, OperatorAllowList, RuntimeId, RuntimeType,
+    DomainBundleLimit, DomainId, DomainRuntimeConfig, DomainSudoCall, DomainsDigestItem,
+    DomainsTransfersTracker, OnDomainInstantiated, OperatorAllowList, RuntimeId, RuntimeType,
+    calculate_max_bundle_weight_and_size, derive_domain_block_hash,
 };
-use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
+use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 
@@ -384,7 +384,7 @@ pub(crate) fn do_update_domain_allow_list<T: Config>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::{new_test_ext, Test};
+    use crate::tests::{TEST_RUNTIME_APIS, Test, new_test_ext};
     use domain_runtime_primitives::{AccountId20, AccountId20Converter};
     use frame_support::traits::Currency;
     use frame_support::{assert_err, assert_ok};
@@ -393,8 +393,8 @@ mod tests {
     use sp_domains::{EvmDomainRuntimeConfig, EvmType, PermissionedActionAllowedBy, RuntimeObject};
     use sp_runtime::traits::Convert;
     use sp_std::vec;
-    use sp_version::RuntimeVersion;
-    use subspace_runtime_primitives::SSC;
+    use sp_version::{RuntimeVersion, create_apis_vec};
+    use subspace_runtime_primitives::AI3;
 
     type Balances = pallet_balances::Pallet<Test>;
 
@@ -470,6 +470,7 @@ mod tests {
                         spec_version: 1,
                         impl_version: 1,
                         transaction_version: 1,
+                        apis: create_apis_vec!(TEST_RUNTIME_APIS),
                         ..Default::default()
                     },
                     created_at: Default::default(),
@@ -570,7 +571,7 @@ mod tests {
             maybe_bundle_limit: None,
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
-            initial_balances: vec![(MultiAccountId::Raw(vec![0, 1, 2, 3, 4, 5]), 1_000_000 * SSC)],
+            initial_balances: vec![(MultiAccountId::Raw(vec![0, 1, 2, 3, 4, 5]), 1_000_000 * AI3)],
             domain_runtime_config: Default::default(),
         };
 
@@ -591,6 +592,7 @@ mod tests {
                         spec_version: 1,
                         impl_version: 1,
                         transaction_version: 1,
+                        apis: create_apis_vec!(TEST_RUNTIME_APIS),
                         ..Default::default()
                     },
                     created_at: Default::default(),
@@ -604,7 +606,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                     // for domain total issuance
-                    + 1_000_000 * SSC
+                    + 1_000_000 * AI3
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -622,13 +624,13 @@ mod tests {
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
             ];
 
@@ -643,37 +645,37 @@ mod tests {
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cbc"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566ccc"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cdc"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cec"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cfc"
                     ))),
-                    1_000_000 * SSC,
+                    1_000_000 * AI3,
                 ),
             ];
 
@@ -699,7 +701,7 @@ mod tests {
                 AccountId20Converter::convert(AccountId20::from(hex!(
                     "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
                 ))),
-                1_000_000 * SSC,
+                1_000_000 * AI3,
             )];
 
             // Set enough fund to creator
@@ -707,7 +709,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                     // for domain total issuance
-                    + 1_000_000 * SSC
+                    + 1_000_000 * AI3
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -741,7 +743,7 @@ mod tests {
                 AccountId20Converter::convert(AccountId20::from(hex!(
                     "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
                 ))),
-                1_000_000 * SSC,
+                1_000_000 * AI3,
             )],
             domain_runtime_config: Default::default(),
         };
@@ -763,6 +765,7 @@ mod tests {
                         spec_version: 1,
                         impl_version: 1,
                         transaction_version: 1,
+                        apis: create_apis_vec!(TEST_RUNTIME_APIS),
                         ..Default::default()
                     },
                     created_at: Default::default(),
@@ -776,7 +779,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                     // for domain total issuance
-                    + 1_000_000 * SSC
+                    + 1_000_000 * AI3
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -812,7 +815,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                                 // for domain total issuance
-                                + 1_000_000 * SSC
+                                + 1_000_000 * AI3
                                 + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -853,7 +856,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                     // for domain total issuance
-                    + 1_000_000 * SSC
+                    + 1_000_000 * AI3
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -894,7 +897,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                     // for domain total issuance
-                    + 1_000_000 * SSC
+                    + 1_000_000 * AI3
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -939,7 +942,7 @@ mod tests {
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
                     // for domain total issuance
-                    + 1_000_000 * SSC
+                    + 1_000_000 * AI3
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 

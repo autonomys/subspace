@@ -1,8 +1,8 @@
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_test_service::EcdsaKeyring::{Alice, Bob};
 use domain_test_service::Sr25519Keyring::{self, Ferdie};
-use domain_test_service::{EvmDomainNode, EVM_DOMAIN_ID};
+use domain_test_service::{EVM_DOMAIN_ID, EvmDomainNode};
 use pallet_domains::OpaqueBundleOf;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::execution_extensions::ExtensionsFactory;
@@ -10,7 +10,7 @@ use sc_client_api::{Backend, HeaderBackend};
 use sc_domains::{ExtensionsFactory as DomainsExtensionFactory, FPStorageKeyProvider};
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
-use sp_core::{Pair as _, H256};
+use sp_core::{H256, Pair as _};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     BundleValidity, ChainId, DomainsApi, ExecutionReceiptFor, InvalidBundleType, Transfers,
@@ -19,16 +19,16 @@ use sp_domains_fraud_proof::fraud_proof::{DomainRuntimeCodeAt, FraudProof, Fraud
 use sp_domains_fraud_proof::storage_proof::{BasicStorageProof, DomainRuntimeCodeProof};
 use sp_domains_fraud_proof::verification::*;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
-use sp_runtime::traits::{BlakeTwo256, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
+use sp_runtime::traits::{BlakeTwo256, NumberFor};
 use sp_state_machine::{Ext, OverlayedChanges};
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrProofVerifier as _};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{Balance, BlockHashFor, BlockHashingFor, HeaderFor, SSC};
-use subspace_test_runtime::{mmr, MmrProofVerifier, Runtime, StorageKeyProvider};
-use subspace_test_service::{produce_block_with, produce_blocks, MockConsensusNode};
+use subspace_runtime_primitives::{AI3, Balance, BlockHashFor, BlockHashingFor, HeaderFor};
+use subspace_test_runtime::{MmrProofVerifier, Runtime, StorageKeyProvider, mmr};
+use subspace_test_service::{MockConsensusNode, produce_block_with, produce_blocks};
 use tempfile::TempDir;
 use tokio::runtime::{Handle, Runtime as TokioRuntime};
 
@@ -204,8 +204,8 @@ fn mmr_proof_and_runtime_code_proof_verification(c: &mut Criterion) {
 async fn prepare_fraud_proof(
     tokio_handle: Handle,
     bad_receipt_maker: impl Fn(&mut ExecutionReceiptFor<HeaderFor<DomainBlock>, Block, Balance>)
-        + Send
-        + 'static,
+    + Send
+    + 'static,
 ) -> (
     (TempDir, MockConsensusNode, EvmDomainNode),
     TestExternalities,
@@ -282,9 +282,11 @@ async fn prepare_fraud_proof(
     )
     .await
     .unwrap();
-    assert!(ferdie
-        .does_receipt_exist(bad_receipt.hash::<BlakeTwo256>())
-        .unwrap());
+    assert!(
+        ferdie
+            .does_receipt_exist(bad_receipt.hash::<BlakeTwo256>())
+            .unwrap()
+    );
 
     let fp: FraudProofFor<Block, DomainBlock> = {
         let fp = wait_for_fraud_proof_fut.await;
@@ -372,8 +374,8 @@ fn invalid_state_transition_proof_verification(c: &mut Criterion) {
                     )
                 },
                 |(bad_receipt, bad_receipt_parent, domain_runtime_code)| {
-                    assert!(ext
-                        .execute_with(|| verify_invalid_state_transition_fraud_proof::<
+                    assert!(
+                        ext.execute_with(|| verify_invalid_state_transition_fraud_proof::<
                             Block,
                             HeaderFor<DomainBlock>,
                             _,
@@ -383,7 +385,8 @@ fn invalid_state_transition_proof_verification(c: &mut Criterion) {
                             &invalid_state_transition_proof,
                             domain_runtime_code,
                         ))
-                        .is_ok());
+                        .is_ok()
+                    );
                 },
                 BatchSize::SmallInput,
             )
@@ -407,8 +410,8 @@ fn valid_bundle_proof_verification(c: &mut Criterion) {
             b.iter_batched(
                 || (bad_receipt.clone(), domain_runtime_code.clone()),
                 |(bad_receipt, domain_runtime_code)| {
-                    assert!(ext
-                        .execute_with(|| verify_valid_bundle_fraud_proof::<
+                    assert!(
+                        ext.execute_with(|| verify_valid_bundle_fraud_proof::<
                             Block,
                             HeaderFor<DomainBlock>,
                             Balance,
@@ -420,7 +423,8 @@ fn valid_bundle_proof_verification(c: &mut Criterion) {
                             consensus_state_root,
                             domain_runtime_code,
                         ))
-                        .is_ok());
+                        .is_ok()
+                    );
                 },
                 BatchSize::SmallInput,
             )
@@ -444,8 +448,8 @@ fn invalid_domain_extrinsics_root_fraud_proof(c: &mut Criterion) {
             b.iter_batched(
                 || (bad_receipt.clone(), domain_runtime_code.clone()),
                 |(bad_receipt, domain_runtime_code)| {
-                    assert!(ext
-                        .execute_with(|| verify_invalid_domain_extrinsics_root_fraud_proof::<
+                    assert!(
+                        ext.execute_with(|| verify_invalid_domain_extrinsics_root_fraud_proof::<
                             Block,
                             Balance,
                             HeaderFor<DomainBlock>,
@@ -459,7 +463,8 @@ fn invalid_domain_extrinsics_root_fraud_proof(c: &mut Criterion) {
                             consensus_state_root,
                             domain_runtime_code,
                         ))
-                        .is_ok());
+                        .is_ok()
+                    );
                 },
                 BatchSize::SmallInput,
             )
@@ -489,8 +494,8 @@ fn invalid_domain_block_hash_fraud_proof_verification(c: &mut Criterion) {
                     )
                 },
                 |(bad_receipt, bad_receipt_parent, invalid_domain_block_hash_fraud_proof)| {
-                    assert!(ext
-                        .execute_with(|| verify_invalid_domain_block_hash_fraud_proof::<
+                    assert!(
+                        ext.execute_with(|| verify_invalid_domain_block_hash_fraud_proof::<
                             Block,
                             Balance,
                             HeaderFor<DomainBlock>,
@@ -501,7 +506,8 @@ fn invalid_domain_block_hash_fraud_proof_verification(c: &mut Criterion) {
                                 .clone(),
                             bad_receipt_parent.domain_block_hash
                         ))
-                        .is_ok());
+                        .is_ok()
+                    );
                 },
                 BatchSize::SmallInput,
             )
@@ -523,8 +529,8 @@ fn invalid_block_fees_fraud_proof_verification(c: &mut Criterion) {
             b.iter_batched(
                 || (bad_receipt.clone(), domain_runtime_code.clone()),
                 |(bad_receipt, domain_runtime_code)| {
-                    assert!(ext
-                        .execute_with(|| verify_invalid_block_fees_fraud_proof::<
+                    assert!(
+                        ext.execute_with(|| verify_invalid_block_fees_fraud_proof::<
                             Block,
                             NumberFor<DomainBlock>,
                             BlockHashFor<DomainBlock>,
@@ -535,7 +541,8 @@ fn invalid_block_fees_fraud_proof_verification(c: &mut Criterion) {
                             &invalid_block_fees_fraud_proof.storage_proof.clone(),
                             domain_runtime_code,
                         ))
-                        .is_ok());
+                        .is_ok()
+                    );
                 },
                 BatchSize::SmallInput,
             )
@@ -550,8 +557,8 @@ fn invalid_transfers_fraud_proof_verification(c: &mut Criterion) {
     let (_placeholder, mut ext, _, bad_receipt, _, domain_runtime_code, fp) = tokio_handle
         .block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
             receipt.transfers = Transfers {
-                transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
-                transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
+                transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
+                transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
                 rejected_transfers_claimed: Default::default(),
                 transfers_rejected: Default::default(),
             }
@@ -562,8 +569,8 @@ fn invalid_transfers_fraud_proof_verification(c: &mut Criterion) {
             b.iter_batched(
                 || (bad_receipt.clone(), domain_runtime_code.clone()),
                 |(bad_receipt, domain_runtime_code)| {
-                    assert!(ext
-                        .execute_with(|| verify_invalid_transfers_fraud_proof::<
+                    assert!(
+                        ext.execute_with(|| verify_invalid_transfers_fraud_proof::<
                             Block,
                             NumberFor<DomainBlock>,
                             BlockHashFor<DomainBlock>,
@@ -574,7 +581,8 @@ fn invalid_transfers_fraud_proof_verification(c: &mut Criterion) {
                             &invalid_transfers_fraud_proof.storage_proof.clone(),
                             domain_runtime_code,
                         ))
-                        .is_ok());
+                        .is_ok()
+                    );
                 },
                 BatchSize::SmallInput,
             )
@@ -614,8 +622,8 @@ fn invalid_bundle_undecodable_tx_fraud_proof_verification(c: &mut Criterion) {
                     )
                 },
                 |(bad_receipt, bad_receipt_parent, domain_runtime_code)| {
-                    assert!(ext
-                        .execute_with(|| verify_invalid_bundles_fraud_proof::<
+                    assert!(
+                        ext.execute_with(|| verify_invalid_bundles_fraud_proof::<
                             Block,
                             HeaderFor<DomainBlock>,
                             mmr::Hash,
@@ -630,7 +638,8 @@ fn invalid_bundle_undecodable_tx_fraud_proof_verification(c: &mut Criterion) {
                             consensus_state_root,
                             domain_runtime_code,
                         ))
-                        .is_ok());
+                        .is_ok()
+                    );
                 },
                 BatchSize::SmallInput,
             )
@@ -670,8 +679,8 @@ fn invalid_bundle_out_of_range_tx_fraud_proof_verification(c: &mut Criterion) {
                     )
                 },
                 |(bad_receipt, bad_receipt_parent, domain_runtime_code)| {
-                    assert!(ext
-                        .execute_with(|| verify_invalid_bundles_fraud_proof::<
+                    assert!(
+                        ext.execute_with(|| verify_invalid_bundles_fraud_proof::<
                             Block,
                             HeaderFor<DomainBlock>,
                             mmr::Hash,
@@ -686,7 +695,8 @@ fn invalid_bundle_out_of_range_tx_fraud_proof_verification(c: &mut Criterion) {
                             consensus_state_root,
                             domain_runtime_code,
                         ))
-                        .is_ok());
+                        .is_ok()
+                    );
                 },
                 BatchSize::SmallInput,
             )
@@ -726,8 +736,8 @@ fn invalid_bundle_illegal_tx_fraud_proof_verification(c: &mut Criterion) {
                     )
                 },
                 |(bad_receipt, bad_receipt_parent, domain_runtime_code)| {
-                    assert!(ext
-                        .execute_with(|| verify_invalid_bundles_fraud_proof::<
+                    assert!(
+                        ext.execute_with(|| verify_invalid_bundles_fraud_proof::<
                             Block,
                             HeaderFor<DomainBlock>,
                             mmr::Hash,
@@ -742,7 +752,8 @@ fn invalid_bundle_illegal_tx_fraud_proof_verification(c: &mut Criterion) {
                             consensus_state_root,
                             domain_runtime_code,
                         ))
-                        .is_ok());
+                        .is_ok()
+                    );
                 },
                 BatchSize::SmallInput,
             )
@@ -782,8 +793,8 @@ fn invalid_bundle_invalid_xdm_fraud_proof_verification(c: &mut Criterion) {
                     )
                 },
                 |(bad_receipt, bad_receipt_parent, domain_runtime_code)| {
-                    assert!(ext
-                        .execute_with(|| verify_invalid_bundles_fraud_proof::<
+                    assert!(
+                        ext.execute_with(|| verify_invalid_bundles_fraud_proof::<
                             Block,
                             HeaderFor<DomainBlock>,
                             mmr::Hash,
@@ -798,7 +809,8 @@ fn invalid_bundle_invalid_xdm_fraud_proof_verification(c: &mut Criterion) {
                             consensus_state_root,
                             domain_runtime_code,
                         ))
-                        .is_ok());
+                        .is_ok()
+                    );
                 },
                 BatchSize::SmallInput,
             )
@@ -838,8 +850,8 @@ fn invalid_bundle_inherent_extrinsic_fraud_proof_verification(c: &mut Criterion)
                     )
                 },
                 |(bad_receipt, bad_receipt_parent, domain_runtime_code)| {
-                    assert!(ext
-                        .execute_with(|| verify_invalid_bundles_fraud_proof::<
+                    assert!(
+                        ext.execute_with(|| verify_invalid_bundles_fraud_proof::<
                             Block,
                             HeaderFor<DomainBlock>,
                             mmr::Hash,
@@ -854,7 +866,8 @@ fn invalid_bundle_inherent_extrinsic_fraud_proof_verification(c: &mut Criterion)
                             consensus_state_root,
                             domain_runtime_code,
                         ))
-                        .is_ok());
+                        .is_ok()
+                    );
                 },
                 BatchSize::SmallInput,
             )
@@ -894,8 +907,8 @@ fn invalid_bundle_weight_fraud_proof_verification(c: &mut Criterion) {
                     )
                 },
                 |(bad_receipt, bad_receipt_parent, domain_runtime_code)| {
-                    assert!(ext
-                        .execute_with(|| verify_invalid_bundles_fraud_proof::<
+                    assert!(
+                        ext.execute_with(|| verify_invalid_bundles_fraud_proof::<
                             Block,
                             HeaderFor<DomainBlock>,
                             mmr::Hash,
@@ -910,7 +923,8 @@ fn invalid_bundle_weight_fraud_proof_verification(c: &mut Criterion) {
                             consensus_state_root,
                             domain_runtime_code,
                         ))
-                        .is_ok());
+                        .is_ok()
+                    );
                 },
                 BatchSize::SmallInput,
             )

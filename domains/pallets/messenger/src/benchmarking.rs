@@ -10,8 +10,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
-use frame_support::traits::fungible::Mutate;
 use frame_support::traits::Get;
+use frame_support::traits::fungible::Mutate;
 use frame_system::RawOrigin;
 use sp_messenger::endpoint::{
     CollectedFee, Endpoint, EndpointRequest, EndpointRequestWithCollectedFee,

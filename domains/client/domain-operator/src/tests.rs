@@ -1,59 +1,58 @@
+use crate::OperatorSlotInfo;
 use crate::aux_schema::BundleMismatchType;
 use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
 use crate::domain_bundle_producer::{BundleProducer, TestBundleProducer};
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
 use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
-use crate::OperatorSlotInfo;
 use cross_domain_message_gossip::get_channel_state;
 use domain_block_builder::BlockBuilderApi;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_runtime_primitives::{
-    AccountId20Converter, AccountIdConverter, EthereumAccountId, Hash,
-};
+use domain_runtime_primitives::{AccountId20Converter, AccountIdConverter, Hash};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
+use domain_test_service::EcdsaKeyring::{self, Alice, Bob, Charlie, Dave, Eve};
+use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
 use domain_test_service::evm_domain_test_runtime::{
     Header, Runtime as TestRuntime, RuntimeCall, UncheckedExtrinsic as EvmUncheckedExtrinsic,
 };
-use domain_test_service::EcdsaKeyring::{self, Alice, Bob, Charlie, Dave, Eve};
-use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
-use domain_test_service::{EvmDomainNode, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID};
+use domain_test_service::{AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID, EvmDomainNode};
 use ethereum::TransactionV2 as EthereumTransaction;
 use fp_rpc::EthereumRuntimeRPCApi;
 use futures::StreamExt;
-use hex_literal::hex;
 use pallet_domains::{FraudProofFor, OpaqueBundleOf, OperatorConfig};
 use pallet_messenger::ChainAllowlistUpdate;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
 use sc_domains::generate_mmr_proof;
 use sc_service::{BasePath, Role};
-use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionPool;
+use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::{ApiExt, Core, ProvideRuntimeApi, StorageProof};
 use sp_blockchain::ApplyExtrinsicFailed;
 use sp_consensus::SyncOracle;
 use sp_core::storage::StateVersion;
 use sp_core::traits::{FetchRuntimeCode, SpawnEssentialNamed};
-use sp_core::{Pair, H160, H256, U256};
+use sp_core::{H160, H256, Pair, U256};
 use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::test_ethereum::{generate_legacy_tx, max_extrinsic_gas};
-use sp_domains::test_ethereum_tx::{address_build, contract_address, AccountInfo};
+use sp_domains::test_ethereum::{
+    EvmAccountList, generate_evm_account_list, generate_evm_domain_call, generate_legacy_tx,
+};
+use sp_domains::test_ethereum_tx::{AccountInfo, address_build, contract_address};
 use sp_domains::{
     BlockFees, Bundle, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor,
     InboxedBundle, InvalidBundleType, PermissionedActionAllowedBy, Transfers,
 };
+use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProofVariant,
     InvalidBlockFeesProof, InvalidBundlesProofData, InvalidDomainBlockHashProof,
     InvalidExtrinsicsRootProof, InvalidTransfersProof,
 };
-use sp_domains_fraud_proof::InvalidTransactionCode;
-use sp_messenger::messages::{CrossDomainMessage, Proof};
 use sp_messenger::MessengerApi;
+use sp_messenger::messages::{CrossDomainMessage, Proof};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Convert, Hash as HashT, Header as HeaderT, Zero};
@@ -72,14 +71,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::{Balance, BlockHashFor, HeaderFor, SSC};
-use subspace_test_primitives::{OnchainStateApi as _, DOMAINS_BLOCK_PRUNING_DEPTH};
+use subspace_runtime_primitives::{AI3, Balance, BlockHashFor, HeaderFor};
+use subspace_test_primitives::{DOMAINS_BLOCK_PRUNING_DEPTH, OnchainStateApi as _};
 use subspace_test_runtime::Runtime;
 use subspace_test_service::{
-    produce_block_with, produce_blocks, produce_blocks_until, MockConsensusNode,
+    MockConsensusNode, produce_block_with, produce_blocks, produce_blocks_until,
 };
 use tempfile::TempDir;
-use tracing::error;
+use tracing::{error, info};
 
 /// The general timeout for test operations that could hang.
 const TIMEOUT: Duration = Duration::from_mins(10);
@@ -132,110 +131,18 @@ pub fn generate_eth_domain_sc_extrinsic(tx: EthereumTransaction) -> EvmUnchecked
     fp_self_contained::UncheckedExtrinsic::new_bare(RuntimeCall::Ethereum(call))
 }
 
-/// Generate a pallet-evm call, which can be passed to `construct_and_send_extrinsic()`.
-/// `use_create` determines whether to use `create`, `create2`, or a non-create call.
-/// `recursion_depth` determines the number of `pallet_utility::Call` wrappers to use.
-pub fn generate_evm_domain_call(
-    account_info: AccountInfo,
-    use_create: ethereum::TransactionAction,
-    recursion_depth: u8,
-    nonce: U256,
-    gas_price: U256,
-) -> <TestRuntime as frame_system::Config>::RuntimeCall {
-    if recursion_depth > 0 {
-        let inner_call = generate_evm_domain_call(
-            account_info,
-            use_create,
-            recursion_depth - 1,
-            nonce,
-            gas_price,
-        );
-
-        // TODO:
-        // - randomly choose from the 6 different utility wrapper calls
-        // - test this call as the second call in a batch
-        // - test __Ignore calls are ignored
-        return RuntimeCall::Utility(pallet_utility::Call::<TestRuntime>::batch {
-            calls: vec![inner_call],
-        });
-    }
-
-    let call = match use_create {
-        // TODO:
-        // - randomly choose from Create or Create2 calls
-        ethereum::TransactionAction::Create => pallet_evm::Call::<TestRuntime>::create {
-            source: account_info.address,
-            init: vec![0; 100],
-            value: U256::zero(),
-            gas_limit: max_extrinsic_gas::<TestRuntime>(1000),
-            max_fee_per_gas: gas_price,
-            access_list: vec![],
-            max_priority_fee_per_gas: Some(U256::from(1)),
-            nonce: Some(nonce),
-        },
-        ethereum::TransactionAction::Call(contract) => pallet_evm::Call::<TestRuntime>::call {
-            source: account_info.address,
-            target: contract,
-            input: vec![0; 100],
-            value: U256::zero(),
-            gas_limit: max_extrinsic_gas::<TestRuntime>(1000),
-            max_fee_per_gas: gas_price,
-            max_priority_fee_per_gas: Some(U256::from(1)),
-            nonce: Some(nonce),
-            access_list: vec![],
-        },
-    };
-
-    RuntimeCall::EVM(call)
-}
-
-/// The kind of account list to generate.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum EvmAccountList {
-    Anyone,
-    NoOne,
-    One,
-    Multiple,
-}
-
-/// Generate the supplied kind of account list.
-pub fn generate_evm_account_list(
-    account_infos: &[AccountInfo],
-    account_list_type: EvmAccountList,
-) -> PermissionedActionAllowedBy<EthereumAccountId> {
-    // The signer of pallet-evm transactions is the EVM domain in these tests, so we also add it to
-    // the account lists.
-    let evm_domain_account = hex!("e04cc55ebee1cbce552f250e85c57b70b2e2625b");
-
-    match account_list_type {
-        EvmAccountList::Anyone => PermissionedActionAllowedBy::Anyone,
-        EvmAccountList::NoOne => PermissionedActionAllowedBy::Accounts(Vec::new()),
-        EvmAccountList::One => PermissionedActionAllowedBy::Accounts(vec![
-            EthereumAccountId::from(evm_domain_account),
-            EthereumAccountId::from(account_infos[0].address),
-        ]),
-        EvmAccountList::Multiple => PermissionedActionAllowedBy::Accounts(vec![
-            EthereumAccountId::from(evm_domain_account),
-            EthereumAccountId::from(account_infos[0].address),
-            EthereumAccountId::from(account_infos[1].address),
-            EthereumAccountId::from(account_infos[2].address),
-        ]),
-    }
-}
-
 async fn setup_evm_test_nodes(
     ferdie_key: Sr25519Keyring,
     private_evm: bool,
     evm_owner: impl Into<Option<Sr25519Keyring>>,
 ) -> (TempDir, MockConsensusNode, EvmDomainNode) {
     let evm_owner = evm_owner.into();
-    println!(
-        "Setting up EVM test nodes with sudo: {:?}, ferdie: {:?}, \
-        and {} evm owner: {:?} (defaults to sudo)",
-        Sr25519Alice.to_account_id(),
-        ferdie_key.to_account_id(),
+    info!(
+        sudo = ?Sr25519Alice.to_account_id(),
+        ferdie = ?ferdie_key.to_account_id(),
+        evm_owner = ?evm_owner.map(|k| k.to_account_id()),
+        "Setting up EVM test nodes with {} evm (EVM ovner defaults to sudo)",
         if private_evm { "private" } else { "public" },
-        evm_owner.map(|k| k.to_account_id()),
     );
 
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -396,7 +303,7 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
         .account_basic(alice.client.info().best_hash, account_infos[1].address)
         .unwrap()
         .nonce;
-    let mut evm_tx = generate_evm_domain_call(
+    let mut evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -434,7 +341,7 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
         .unwrap();
 
     // Nested should behave exactly the same
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
         1,
@@ -450,7 +357,7 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
         "Unexpectedly failed to send nested signed extrinsic"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -523,7 +430,7 @@ async fn test_public_evm_domain_create_contracts() {
         .account_basic(alice.client.info().best_hash, account_infos[1].address)
         .unwrap()
         .nonce;
-    let mut evm_tx = generate_evm_domain_call(
+    let mut evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -561,7 +468,7 @@ async fn test_public_evm_domain_create_contracts() {
         .unwrap();
 
     // Nested should behave exactly the same
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
         1,
@@ -577,7 +484,7 @@ async fn test_public_evm_domain_create_contracts() {
         "Unexpectedly failed to send nested signed extrinsic"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -646,7 +553,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         .account_basic(alice.client.info().best_hash, account_infos[1].address)
         .unwrap()
         .nonce;
-    let mut evm_tx = generate_evm_domain_call(
+    let mut evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -709,7 +616,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         "Create contract self-contained extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -725,7 +632,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         "Create contract signed extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         2,
@@ -741,7 +648,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         "Create contract nested signed extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -774,7 +681,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         "Contract call self-contained extrinsic should have been allowed"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[3].clone(),
         ethereum::TransactionAction::Call(evm_contract_address),
         0,
@@ -812,7 +719,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
         .unwrap();
 
     // Nested should be able to call existing contracts
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[3].clone(),
         ethereum::TransactionAction::Call(evm_contract_address),
         3,
@@ -878,7 +785,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
         .account_basic(alice.client.info().best_hash, account_infos[1].address)
         .unwrap()
         .nonce;
-    let mut evm_tx = generate_evm_domain_call(
+    let mut evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[1].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -943,7 +850,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
         eth_nonce - U256::one(),
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -987,7 +894,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
         .unwrap();
 
     // Nested should also work
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
         4,
@@ -1025,7 +932,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
         "Create contract self-contained extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -1043,7 +950,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
         "Create contract unsigned extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         5,
@@ -1137,7 +1044,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
         .account_basic(alice.client.info().best_hash, account_infos[2].address)
         .unwrap()
         .nonce;
-    let mut evm_tx = generate_evm_domain_call(
+    let mut evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[2].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -1176,7 +1083,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
         .unwrap();
 
     // Nested should also work
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
         6,
@@ -1209,7 +1116,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
         "Create contract self-contained extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[4].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -1227,7 +1134,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
         "Create contract unsigned extrinsic should have been rejected"
     );
 
-    evm_tx = generate_evm_domain_call(
+    evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[4].clone(),
         ethereum::TransactionAction::Create,
         7,
@@ -1308,9 +1215,7 @@ async fn test_evm_domain_gas_estimates() {
                     ),
                     // The exact estimate is not important, but we want to know if it changes
                     (53_408.into(), 53_408.into()),
-                    "Incorrect EVM Create gas estimate: {:?} {:?}",
-                    evm_call,
-                    create_info,
+                    "Incorrect EVM Create gas estimate: {evm_call:?} {create_info:?}",
                 );
             }
             pallet_evm::Call::call {
@@ -1348,9 +1253,7 @@ async fn test_evm_domain_gas_estimates() {
                     (call_info.used_gas.standard, call_info.used_gas.effective),
                     // The exact estimate is not important, but we want to know if it changes
                     (21_400.into(), 21_400.into()),
-                    "Incorrect EVM Call gas estimate: {:?} {:?}",
-                    evm_call,
-                    call_info,
+                    "Incorrect EVM Call gas estimate: {evm_call:?} {call_info:?}",
                 );
             }
             _ => panic!("Unexpected pallet_evm::Call type"),
@@ -1369,7 +1272,7 @@ async fn test_evm_domain_gas_estimates() {
         .account_basic(alice.client.info().best_hash, account_infos[0].address)
         .unwrap()
         .nonce;
-    let evm_create = generate_evm_domain_call(
+    let evm_create = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -1384,7 +1287,7 @@ async fn test_evm_domain_gas_estimates() {
         .account_basic(alice.client.info().best_hash, account_infos[0].address)
         .unwrap()
         .nonce;
-    let evm_call = generate_evm_domain_call(
+    let evm_call = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Call(H160::zero()),
         0,
@@ -1400,7 +1303,7 @@ async fn test_evm_domain_gas_estimates() {
         .account_basic(alice.client.info().best_hash, account_infos[0].address)
         .unwrap()
         .nonce;
-    let evm_create = generate_evm_domain_call(
+    let evm_create = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -1419,7 +1322,7 @@ async fn test_evm_domain_gas_estimates() {
         .account_basic(alice.client.info().best_hash, account_infos[0].address)
         .unwrap()
         .nonce;
-    let evm_call = generate_evm_domain_call(
+    let evm_call = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Call(evm_contract_address),
         0,
@@ -1437,7 +1340,7 @@ async fn test_evm_domain_gas_estimates() {
         .account_basic(alice.client.info().best_hash, account_infos[0].address)
         .unwrap()
         .nonce;
-    let evm_tx = generate_evm_domain_call(
+    let evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Create,
         0,
@@ -1485,7 +1388,7 @@ async fn test_evm_domain_gas_estimates() {
         .account_basic(alice.client.info().best_hash, account_infos[0].address)
         .unwrap()
         .nonce;
-    let evm_tx = generate_evm_domain_call(
+    let evm_tx = generate_evm_domain_call::<TestRuntime>(
         account_infos[0].clone(),
         ethereum::TransactionAction::Call(evm_contract_address),
         0,
@@ -2089,9 +1992,12 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
 // TODO: when the test is fixed, decide if we want to remove the timeouts.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
+    let test = "test_domain_tx_propagate";
+    info!("{test}: Setting up Ferdie and Alice nodes");
     let (directory, mut ferdie, alice) =
         setup_evm_test_nodes(Ferdie, false, None).timeout().await?;
 
+    info!("{test}: Setting up Bob Full node, and connecting to Alice");
     // Run Bob (a evm domain full node)
     let bob = domain_test_service::DomainNodeBuilder::new(
         tokio::runtime::Handle::current(),
@@ -2102,11 +2008,13 @@ async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
     .timeout()
     .await?;
 
+    info!("{test}: Producing 5 blocks");
     produce_blocks!(ferdie, alice, 5, bob)
         .timeout()
         .await?
         .unwrap();
 
+    info!("{test}: Waiting for Alice and Bob to sync");
     async {
         while alice.sync_service.is_major_syncing() || bob.sync_service.is_major_syncing() {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -2120,6 +2028,7 @@ async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
     .timeout()
     .await?;
 
+    info!("{test}: Transferring balance on Bob");
     let pre_bob_free_balance = alice.free_balance(bob.key.to_account_id());
     // Construct and send an extrinsic to bob, as bob is not a authority node, the extrinsic has
     // to propagate to alice to get executed
@@ -2131,10 +2040,13 @@ async fn test_domain_tx_propagate() -> Result<(), tokio::time::error::Elapsed> {
     .await?
     .expect("Failed to send extrinsic");
 
+    info!("{test}: Waiting for transaction to propagate to Alice and be executed");
     produce_blocks_until!(
         ferdie,
         alice,
         {
+            alice.unban_peer(bob.addr.clone());
+            bob.unban_peer(alice.addr.clone());
             // ensure bob has reduced balance since alice might submit other transactions which cost
             // and so exact balance check is not feasible
             alice.free_balance(bob.key.to_account_id()) <= pre_bob_free_balance - 123
@@ -2524,9 +2436,11 @@ async fn test_bad_fraud_proof_is_rejected() {
     let valid_receipt_hash = valid_receipt.hash::<BlakeTwo256>();
     assert_eq!(valid_receipt.execution_trace.len(), 5);
 
-    let mut fraud_proofs = vec![fraud_proof_generator
-        .generate_valid_bundle_proof(EVM_DOMAIN_ID, &valid_receipt, 0, valid_receipt_hash)
-        .unwrap()];
+    let mut fraud_proofs = vec![
+        fraud_proof_generator
+            .generate_valid_bundle_proof(EVM_DOMAIN_ID, &valid_receipt, 0, valid_receipt_hash)
+            .unwrap(),
+    ];
 
     fraud_proofs.push(
         fraud_proof_generator
@@ -2685,9 +2599,11 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
             );
 
             assert!(result_execution_phase.is_ok());
-            assert!(result_execution_phase
-                .as_ref()
-                .is_ok_and(|maybe_execution_phase| maybe_execution_phase.is_some()));
+            assert!(
+                result_execution_phase
+                    .as_ref()
+                    .is_ok_and(|maybe_execution_phase| maybe_execution_phase.is_some())
+            );
 
             let execution_phase = result_execution_phase
                 .expect("already checked for error above; qed")
@@ -2813,8 +2729,8 @@ async fn test_short_trace_for_inherent_apply_extrinsic_proof_creation_and_verifi
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_short_trace_for_normal_ext_apply_extrinsic_proof_creation_and_verification_should_work(
-) {
+async fn test_short_trace_for_normal_ext_apply_extrinsic_proof_creation_and_verification_should_work()
+ {
     test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Shorter, 3).await
 }
 
@@ -3116,11 +3032,11 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
-                assert!(proof.is_good_invalid_fraud_proof);
-                return true;
-            }
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type
+        {
+            assert!(proof.is_good_invalid_fraud_proof);
+            return true;
         }
         false
     });
@@ -3226,11 +3142,11 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
-                assert!(!proof.is_good_invalid_fraud_proof);
-                return true;
-            }
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type
+        {
+            assert!(!proof.is_good_invalid_fraud_proof);
+            return true;
         }
         false
     });
@@ -3365,11 +3281,11 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type {
-                assert!(proof.is_good_invalid_fraud_proof);
-                return true;
-            }
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type
+        {
+            assert!(proof.is_good_invalid_fraud_proof);
+            return true;
         }
         false
     });
@@ -3475,11 +3391,11 @@ async fn test_false_invalid_bundles_undecodeable_tx_proof_creation_and_verificat
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type {
-                assert!(!proof.is_good_invalid_fraud_proof);
-                return true;
-            }
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type
+        {
+            assert!(!proof.is_good_invalid_fraud_proof);
+            return true;
         }
         false
     });
@@ -3625,12 +3541,12 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
-                assert!(proof.is_good_invalid_fraud_proof);
-                assert_eq!(extrinsic_index, 0);
-                return true;
-            }
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type
+        {
+            assert!(proof.is_good_invalid_fraud_proof);
+            assert_eq!(extrinsic_index, 0);
+            return true;
         }
         false
     });
@@ -3787,12 +3703,12 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
-                assert!(proof.is_good_invalid_fraud_proof);
-                assert_eq!(extrinsic_index, 2);
-                return true;
-            }
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type
+        {
+            assert!(proof.is_good_invalid_fraud_proof);
+            assert_eq!(extrinsic_index, 2);
+            return true;
         }
         false
     });
@@ -3917,12 +3833,12 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
-                assert!(!proof.is_good_invalid_fraud_proof);
-                assert_eq!(extrinsic_index, 1);
-                return true;
-            }
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type
+        {
+            assert!(!proof.is_good_invalid_fraud_proof);
+            assert_eq!(extrinsic_index, 1);
+            return true;
         }
         false
     });
@@ -4035,11 +3951,11 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type {
-                assert!(proof.is_good_invalid_fraud_proof);
-                return true;
-            }
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type
+        {
+            assert!(proof.is_good_invalid_fraud_proof);
+            return true;
         }
         false
     });
@@ -4143,11 +4059,11 @@ async fn test_false_invalid_bundle_weight_proof_creation_and_verification() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type {
-                assert!(!proof.is_good_invalid_fraud_proof);
-                return true;
-            }
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type
+        {
+            assert!(!proof.is_good_invalid_fraud_proof);
+            return true;
         }
         false
     });
@@ -4252,11 +4168,11 @@ async fn test_false_invalid_bundles_non_exist_extrinsic_proof_creation_and_verif
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundlesProofData::Bundle(_) = proof.proof_data {
-                assert_eq!(fp.targeted_bad_receipt_hash(), bad_receipt_hash);
-                return true;
-            }
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundlesProofData::Bundle(_) = proof.proof_data
+        {
+            assert_eq!(fp.targeted_bad_receipt_hash(), bad_receipt_hash);
+            return true;
         }
         false
     });
@@ -4414,8 +4330,8 @@ async fn test_invalid_transfers_fraud_proof() {
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.transfers = Transfers {
-            transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
-            transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
+            transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
+            transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
             rejected_transfers_claimed: Default::default(),
             transfers_rejected: Default::default(),
         };
@@ -4922,9 +4838,11 @@ async fn test_valid_bundle_proof_generation_and_verification() {
     )
     .await
     .unwrap();
-    assert!(ferdie
-        .does_receipt_exist(bad_receipt.hash::<BlakeTwo256>())
-        .unwrap());
+    assert!(
+        ferdie
+            .does_receipt_exist(bad_receipt.hash::<BlakeTwo256>())
+            .unwrap()
+    );
 
     // When the domain node operator processes the primary block that contains `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
@@ -4940,38 +4858,39 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         if let subspace_test_runtime::RuntimeCall::Domains(
             pallet_domains::Call::submit_fraud_proof { fraud_proof },
         ) = ext.function
+            && let FraudProofVariant::ValidBundle(ref proof) = fraud_proof.proof
         {
-            if let FraudProofVariant::ValidBundle(ref proof) = fraud_proof.proof {
-                // The fraud proof is targetting the `bad_receipt`
-                assert_eq!(
-                    fraud_proof.bad_receipt_hash,
-                    bad_receipt.hash::<HeaderHashingFor<Header>>()
-                );
+            // The fraud proof is targetting the `bad_receipt`
+            assert_eq!(
+                fraud_proof.bad_receipt_hash,
+                bad_receipt.hash::<HeaderHashingFor<Header>>()
+            );
 
-                // If the fraud proof target a non-exist receipt then it is invalid
-                let mut bad_fraud_proof = fraud_proof.clone();
-                bad_fraud_proof.bad_receipt_hash = H256::random();
-                let ext = proof_to_tx(&ferdie, bad_fraud_proof);
-                assert!(ferdie.submit_transaction(ext).await.is_err());
+            // If the fraud proof target a non-exist receipt then it is invalid
+            let mut bad_fraud_proof = fraud_proof.clone();
+            bad_fraud_proof.bad_receipt_hash = H256::random();
+            let ext = proof_to_tx(&ferdie, bad_fraud_proof);
+            assert!(ferdie.submit_transaction(ext).await.is_err());
 
-                // If the fraud proof point to non-exist bundle then it is invalid
-                let (mut bad_fraud_proof, mut bad_proof) = (fraud_proof.clone(), proof.clone());
-                bad_proof.bundle_with_proof.bundle_index = u32::MAX;
-                bad_fraud_proof.proof = FraudProofVariant::ValidBundle(bad_proof);
-                let ext = proof_to_tx(&ferdie, bad_fraud_proof);
-                assert!(ferdie.submit_transaction(ext).await.is_err());
+            // If the fraud proof point to non-exist bundle then it is invalid
+            let (mut bad_fraud_proof, mut bad_proof) = (fraud_proof.clone(), proof.clone());
+            bad_proof.bundle_with_proof.bundle_index = u32::MAX;
+            bad_fraud_proof.proof = FraudProofVariant::ValidBundle(bad_proof);
+            let ext = proof_to_tx(&ferdie, bad_fraud_proof);
+            assert!(ferdie.submit_transaction(ext).await.is_err());
 
-                break;
-            }
+            break;
         }
     }
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
     // and executed, and prune the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
-    assert!(!ferdie
-        .does_receipt_exist(bad_receipt.hash::<BlakeTwo256>())
-        .unwrap());
+    assert!(
+        !ferdie
+            .does_receipt_exist(bad_receipt.hash::<BlakeTwo256>())
+            .unwrap()
+    );
 }
 
 // TODO: Add a new test which simulates a situation that an executor produces a fraud proof
@@ -6089,10 +6008,10 @@ async fn test_unordered_cross_domains_message_should_work() {
                 while let Some(xdm) = reorder_xdm_receiver.next().await {
                     if i % 3 == 0 {
                         msg_buffer.push_back(xdm);
-                        if let Some(xdm) = msg_buffer.pop_front() {
-                            if i % 2 == 0 {
-                                evm_domain_tx_pool_sink.unbounded_send(xdm).unwrap();
-                            }
+                        if let Some(xdm) = msg_buffer.pop_front()
+                            && i % 2 == 0
+                        {
+                            evm_domain_tx_pool_sink.unbounded_send(xdm).unwrap();
                         }
                     } else {
                         evm_domain_tx_pool_sink.unbounded_send(xdm).unwrap();
@@ -6613,9 +6532,11 @@ async fn test_bad_receipt_chain() {
     let runtime_api = ferdie.client.runtime_api();
     for receipt_hash in &bad_receipt_descendants {
         assert!(ferdie.does_receipt_exist(*receipt_hash).unwrap());
-        assert!(runtime_api
-            .is_bad_er_pending_to_prune(ferdie_best_hash, EVM_DOMAIN_ID, *receipt_hash)
-            .unwrap());
+        assert!(
+            runtime_api
+                .is_bad_er_pending_to_prune(ferdie_best_hash, EVM_DOMAIN_ID, *receipt_hash)
+                .unwrap()
+        );
     }
 
     // There should be a receipt gap
@@ -6644,7 +6565,7 @@ async fn test_bad_receipt_chain() {
     ferdie
         .construct_and_send_extrinsic_with(pallet_domains::Call::register_operator {
             domain_id: EVM_DOMAIN_ID,
-            amount: 1000 * SSC,
+            amount: 1000 * AI3,
             config: OperatorConfig {
                 signing_key: Sr25519Keyring::Charlie.public().into(),
                 minimum_nominator_stake: Balance::MAX,
@@ -7238,12 +7159,12 @@ async fn test_xdm_false_invalid_fraud_proof() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
-                assert!(!proof.is_good_invalid_fraud_proof);
-                assert_eq!(extrinsic_index, 0);
-                return true;
-            }
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type
+        {
+            assert!(!proof.is_good_invalid_fraud_proof);
+            assert_eq!(extrinsic_index, 0);
+            return true;
         }
         false
     });
@@ -7438,12 +7359,12 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
-                assert!(proof.is_good_invalid_fraud_proof);
-                assert_eq!(extrinsic_index, 0);
-                return true;
-            }
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type
+        {
+            assert!(proof.is_good_invalid_fraud_proof);
+            assert_eq!(extrinsic_index, 0);
+            return true;
         }
         false
     });
@@ -7960,9 +7881,11 @@ async fn test_xdm_transfer_below_existential_deposit() {
             .unwrap();
         if channel_nonce.relay_response_msg_nonce == Some(U256::from(0)) {
             let post_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
-            assert!(alice
-                .free_balance(EcdsaKeyring::One.to_account_id())
-                .is_zero());
+            assert!(
+                alice
+                    .free_balance(EcdsaKeyring::One.to_account_id())
+                    .is_zero()
+            );
             assert_eq!(post_ferdie_free_balance, pre_ferdie_free_balance);
             true
         } else {

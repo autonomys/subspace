@@ -1,6 +1,6 @@
+use crate::StorageKeyRequest;
 #[cfg(feature = "std")]
 use crate::host_functions::MessengerExtension;
-use crate::StorageKeyRequest;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 #[cfg(feature = "std")]

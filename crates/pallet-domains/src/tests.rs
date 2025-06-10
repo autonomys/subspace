@@ -1,4 +1,4 @@
-use crate::block_tree::{verify_execution_receipt, BlockTreeNode};
+use crate::block_tree::{BlockTreeNode, verify_execution_receipt};
 use crate::domain_registry::{DomainConfig, DomainConfigParams, DomainObject};
 use crate::pallet::OperatorIdOwner;
 use crate::runtime_registry::ScheduledRuntimeUpgrade;
@@ -11,13 +11,13 @@ use crate::{
     RawOrigin as DomainOrigin, RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
 use core::mem;
-use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
+use domain_runtime_primitives::opaque::Header as DomainHeader;
 use frame_support::dispatch::{DispatchInfo, RawOrigin};
 use frame_support::traits::{ConstU64, Currency, Hooks, VariantCount};
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{IdentityFee, Weight};
-use frame_support::{assert_err, assert_ok, derive_impl, parameter_types, PalletId};
+use frame_support::{PalletId, assert_err, assert_ok, derive_impl, parameter_types};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
 use pallet_subspace::NormalEraChange;
@@ -33,7 +33,7 @@ use sp_domains::{
     SealedBundleHeader,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
-use sp_runtime::generic::{Preamble, EXTRINSIC_FORMAT_VERSION};
+use sp_runtime::generic::{EXTRINSIC_FORMAT_VERSION, Preamble};
 use sp_runtime::traits::{
     AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, ConstU16, Hash as HashT,
     IdentityLookup, One, Zero,
@@ -41,14 +41,14 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
-use sp_version::RuntimeVersion;
+use sp_version::{ApiId, RuntimeVersion, create_apis_vec};
 use std::num::NonZeroU64;
 use subspace_core_primitives::pieces::Piece;
 use subspace_core_primitives::segments::HistorySize;
 use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{SlotNumber, U256 as P256};
 use subspace_runtime_primitives::{
-    ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee, SSC,
+    AI3, ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -60,6 +60,16 @@ const DOMAIN_ID: DomainId = DomainId::new(0);
 
 // Operator id used for testing
 const OPERATOR_ID: OperatorId = 0u64;
+
+// Core Api version ID and default APIs
+// RuntimeVersion's Decode is handwritten to accommodate Backward Compatibility for very old
+// RuntimeVersion that do not have TransactionVersion or SystemVersion.
+// So the Decode function always assume apis being present, at least CoreApi,
+// to derive the correct TransactionVersion and SystemVersion.
+// So we should always add the TEST_RUNTIME_APIS to the RuntimeVersion to ensure it is decoded correctly.
+// More here - https://github.com/paritytech/polkadot-sdk/blob/master/substrate/primitives/version/src/lib.rs#L637
+pub(crate) const CORE_API_ID: [u8; 8] = [223, 106, 203, 104, 153, 7, 96, 155];
+pub(crate) const TEST_RUNTIME_APIS: [(ApiId, u32); 1] = [(CORE_API_ID, 5)];
 
 frame_support::construct_runtime!(
     pub struct Test {
@@ -145,17 +155,17 @@ impl pallet_balances::Config for Test {
 }
 
 parameter_types! {
-    pub const MinOperatorStake: Balance = 100 * SSC;
-    pub const MinNominatorStake: Balance = SSC;
+    pub const MinOperatorStake: Balance = 100 * AI3;
+    pub const MinNominatorStake: Balance = AI3;
     pub const StakeWithdrawalLockingPeriod: DomainBlockNumber = 5;
     pub const StakeEpochDuration: DomainBlockNumber = 5;
     pub TreasuryAccount: u128 = PalletId(*b"treasury").into_account_truncating();
-    pub const BlockReward: Balance = 10 * SSC;
+    pub const BlockReward: Balance = 10 * AI3;
     pub const MaxPendingStakingOperation: u32 = 512;
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const DomainChainByteFee: Balance = 1;
     pub const MaxInitialDomainAccounts: u32 = 5;
-    pub const MinInitialDomainAccountBalance: Balance = SSC;
+    pub const MinInitialDomainAccountBalance: Balance = AI3;
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 10;
 }
@@ -182,7 +192,7 @@ pub struct DummyStorageFee;
 
 impl StorageFee<Balance> for DummyStorageFee {
     fn transaction_byte_fee() -> Balance {
-        SSC
+        AI3
     }
     fn note_storage_fees(_fee: Balance) {}
 }
@@ -382,7 +392,7 @@ pub(crate) fn new_test_ext_with_extensions() -> sp_io::TestExternalities {
         authoring_version: 0,
         spec_version: 1,
         impl_version: 1,
-        apis: Default::default(),
+        apis: create_apis_vec!(TEST_RUNTIME_APIS),
         transaction_version: 1,
         system_version: 2,
     };
@@ -540,7 +550,7 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
 
     let pair = OperatorPair::from_seed(&[0; 32]);
     for operator_id in operator_ids {
-        Operators::<Test>::insert(operator_id, Operator::dummy(domain_id, pair.public(), SSC));
+        Operators::<Test>::insert(operator_id, Operator::dummy(domain_id, pair.public(), AI3));
         OperatorIdOwner::<Test>::insert(operator_id, creator);
     }
 

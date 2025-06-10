@@ -5,7 +5,7 @@ use parity_scale_codec::Encode;
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
 use sp_core::crypto::AccountId32;
-use sp_core::{sr25519, Pair, Public};
+use sp_core::{Pair, Public, sr25519};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
     DomainRuntimeConfig, OperatorAllowList, OperatorPublicKey, PermissionedActionAllowedBy,
@@ -20,7 +20,7 @@ use subspace_runtime::{
     RewardsConfig, RuntimeConfigsConfig, SubspaceConfig,
 };
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
+    AI3, AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams,
 };
 
 fn endowed_accounts() -> Vec<(MultiAccountId, Balance)> {
@@ -35,7 +35,7 @@ fn endowed_accounts() -> Vec<(MultiAccountId, Balance)> {
         AccountId20::from(hex!("773539d4Ac0e786233D90A233654ccEE26a613D9")),
     ]
     .into_iter()
-    .map(|k| (AccountId20Converter::convert(k), 1_000_000 * SSC))
+    .map(|k| (AccountId20Converter::convert(k), 1_000_000 * AI3))
     .collect()
 }
 
@@ -166,9 +166,9 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                 // Pre-funded accounts
                 vec![
                     (get_account_id_from_seed("Alice"), Balance::MAX / 2),
-                    (get_account_id_from_seed("Bob"), 1_000 * SSC),
-                    (get_account_id_from_seed("Alice//stash"), 1_000 * SSC),
-                    (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
+                    (get_account_id_from_seed("Bob"), 1_000 * AI3),
+                    (get_account_id_from_seed("Alice//stash"), 1_000 * AI3),
+                    (get_account_id_from_seed("Bob//stash"), 1_000 * AI3),
                 ],
                 GenesisParams {
                     enable_rewards_at: EnableRewardsAt::Manually,
@@ -179,7 +179,7 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     enable_balance_transfers: true,
                     confirmation_depth_k: 5,
                     rewards_config: RewardsConfig {
-                        remaining_issuance: 1_000_000 * SSC,
+                        remaining_issuance: 1_000_000 * AI3,
                         proposer_subsidy_points: Default::default(),
                         voter_subsidy_points: Default::default(),
                     },
@@ -259,7 +259,7 @@ fn subspace_genesis_config(
                 operator_allow_list: genesis_domain_params.operator_allow_list,
                 signing_key: genesis_domain_params.operator_signing_key,
                 nomination_tax: Percent::from_percent(5),
-                minimum_nominator_stake: 100 * SSC,
+                minimum_nominator_stake: 100 * AI3,
                 initial_balances: genesis_domain_params.initial_balances,
                 domain_runtime_config: genesis_domain_params.domain_runtime_config,
             }],

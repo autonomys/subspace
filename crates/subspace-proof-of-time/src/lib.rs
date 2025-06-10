@@ -1,10 +1,14 @@
 //! Proof of time implementation.
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(target_arch = "aarch64", feature(array_chunks))]
+#![cfg_attr(target_arch = "x86_64", feature(stdarch_x86_avx512))]
+#![feature(portable_simd)]
+#![no_std]
+
 mod aes;
 
 use core::num::NonZeroU32;
-use subspace_core_primitives::pot::{PotCheckpoints, PotOutput, PotSeed};
+use subspace_core_primitives::pot::{PotCheckpoints, PotSeed};
 
 /// Proof of time error
 #[derive(Debug, thiserror::Error)]
@@ -46,7 +50,7 @@ pub fn prove(seed: PotSeed, iterations: NonZeroU32) -> Result<PotCheckpoints, Po
 pub fn verify(
     seed: PotSeed,
     iterations: NonZeroU32,
-    checkpoints: &[PotOutput],
+    checkpoints: &PotCheckpoints,
 ) -> Result<bool, PotError> {
     let num_checkpoints = checkpoints.len() as u32;
     if iterations.get() % (num_checkpoints * 2) != 0 {

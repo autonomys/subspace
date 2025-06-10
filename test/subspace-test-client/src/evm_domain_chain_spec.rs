@@ -7,7 +7,7 @@ use evm_domain_test_runtime::{
 };
 use parity_scale_codec::Encode;
 use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension};
-use sp_core::{ecdsa, Pair, Public};
+use sp_core::{Pair, Public, ecdsa};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
     DomainId, EvmDomainRuntimeConfig, EvmType, GenesisDomain, OperatorAllowList, OperatorPublicKey,
@@ -15,7 +15,7 @@ use sp_domains::{
 };
 use sp_runtime::traits::{Convert, IdentifyAccount, Verify};
 use sp_runtime::{BuildStorage, Percent};
-use subspace_runtime_primitives::{AccountId, Balance, SSC};
+use subspace_runtime_primitives::{AI3, AccountId, Balance};
 
 type AccountPublic = <Signature as Verify>::Signer;
 
@@ -129,12 +129,12 @@ pub fn get_genesis_domain(
         operator_allow_list: OperatorAllowList::Anyone,
 
         signing_key: get_from_seed::<OperatorPublicKey>("Alice"),
-        minimum_nominator_stake: 100 * SSC,
+        minimum_nominator_stake: 100 * AI3,
         nomination_tax: Percent::from_percent(5),
         initial_balances: endowed_accounts()
             .iter()
             .cloned()
-            .map(|k| (AccountId20Converter::convert(k), 2_000_000 * SSC))
+            .map(|k| (AccountId20Converter::convert(k), 2_000_000 * AI3))
             .collect(),
 
         domain_runtime_config: EvmDomainRuntimeConfig { evm_type }.into(),

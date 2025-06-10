@@ -6,10 +6,10 @@ use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_messenger::messages::ChainId;
-use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::DispatchResult;
+use sp_runtime::traits::BlakeTwo256;
 use sp_state_machine::backend::Backend;
-use sp_state_machine::{prove_read, InMemoryBackend};
+use sp_state_machine::{InMemoryBackend, prove_read};
 use sp_trie::StorageProof;
 
 pub(crate) type Balance = u64;
@@ -211,6 +211,7 @@ macro_rules! impl_runtime {
 
 pub(crate) type MessageId = (ChannelId, Nonce);
 
+#[allow(dead_code)]
 pub struct MockEndpoint {}
 
 impl EndpointHandler<MessageId> for MockEndpoint {
@@ -309,12 +310,14 @@ pub(crate) fn storage_proof_of_domain_state_root<T: pallet_domains::Config>(
     backend: InMemoryBackend<T::Hashing>,
     domain_id: DomainId,
 ) -> (StateRootOf<T>, StorageKey, StorageProof) {
+    use core::slice;
+
     let key = pallet_domains::LatestConfirmedDomainExecutionReceipt::<T>::hashed_key_for(domain_id);
     let storage_key = StorageKey(key);
     let state_version = sp_runtime::StateVersion::default();
     let root = backend.storage_root(std::iter::empty(), state_version).0;
     let proof = StorageProof::new(
-        prove_read(backend, &[storage_key.clone()])
+        prove_read(backend, slice::from_ref(&storage_key))
             .unwrap()
             .iter_nodes()
             .cloned(),

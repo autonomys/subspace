@@ -1,18 +1,18 @@
 //! Tests translated into Rust from
 //! https://github.com/Chia-Network/chiapos/blob/a2049c5367fe60930533a995f7ffded538f04dc4/tests/test.cpp
 
+use crate::chiapos::Seed;
 use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT};
 use crate::chiapos::table::types::{Metadata, Position, X, Y};
 use crate::chiapos::table::{
-    calculate_left_targets, compute_f1, compute_f1_simd, compute_fn, find_matches,
-    metadata_size_bytes, partial_y, COMPUTE_F1_SIMD_FACTOR,
+    COMPUTE_F1_SIMD_FACTOR, calculate_left_targets, compute_f1, compute_f1_simd, compute_fn,
+    find_matches, metadata_size_bytes, partial_y,
 };
 use crate::chiapos::utils::EvaluatableUsize;
-use crate::chiapos::Seed;
 use bitvec::prelude::*;
 use std::collections::BTreeMap;
 
-/// Chia does this for some reason 🤷‍
+/// Chia does this for some reason 🤷
 fn to_chia_seed(seed: &Seed) -> Seed {
     let mut chia_seed = [1u8; 32];
     chia_seed[1..].copy_from_slice(&seed[..31]);
@@ -40,7 +40,7 @@ fn test_compute_f1_k25() {
         let mut partial_ys = [0; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize];
         partial_ys.view_bits_mut::<Msb0>()[..usize::from(K)]
             .copy_from_bitslice(&partial_y.view_bits()[partial_y_offset..][..usize::from(K)]);
-        let y = compute_f1_simd::<K>([x; COMPUTE_F1_SIMD_FACTOR], &partial_ys);
+        let y = compute_f1_simd::<K>([x.into(); COMPUTE_F1_SIMD_FACTOR], &partial_ys);
         assert_eq!(y[0], Y::from(expected_y));
     }
 }
@@ -66,7 +66,7 @@ fn test_compute_f1_k22() {
         let mut partial_ys = [0; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize];
         partial_ys.view_bits_mut::<Msb0>()[..usize::from(K)]
             .copy_from_bitslice(&partial_y.view_bits()[partial_y_offset..][..usize::from(K)]);
-        let y = compute_f1_simd::<K>([x; COMPUTE_F1_SIMD_FACTOR], &partial_ys);
+        let y = compute_f1_simd::<K>([x.into(); COMPUTE_F1_SIMD_FACTOR], &partial_ys);
         assert_eq!(y[0], Y::from(expected_y));
     }
 }

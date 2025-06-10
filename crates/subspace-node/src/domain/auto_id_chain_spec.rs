@@ -13,10 +13,10 @@ use sc_service::ChainType;
 use sp_core::crypto::{AccountId32, UncheckedFrom};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{DomainRuntimeConfig, OperatorAllowList, OperatorPublicKey, RuntimeType};
-use sp_runtime::traits::Convert;
 use sp_runtime::BuildStorage;
+use sp_runtime::traits::Convert;
 use std::collections::BTreeSet;
-use subspace_runtime_primitives::{Balance, SSC};
+use subspace_runtime_primitives::{AI3, Balance};
 
 /// Development keys that will be injected automatically on polkadotjs apps
 fn get_dev_accounts() -> Vec<AccountId32> {
@@ -106,12 +106,12 @@ pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAcc
     match spec_id {
         SpecId::Dev => get_dev_accounts()
             .into_iter()
-            .map(|acc| (AccountIdConverter::convert(acc), 1_000_000 * SSC))
+            .map(|acc| (AccountIdConverter::convert(acc), 1_000_000 * AI3))
             .collect(),
         SpecId::DevNet => {
             let accounts = get_dev_accounts();
             let alice_account = accounts[0].clone();
-            vec![(AccountIdConverter::convert(alice_account), 1_000_000 * SSC)]
+            vec![(AccountIdConverter::convert(alice_account), 1_000_000 * AI3)]
         }
         SpecId::Taurus => vec![],
     }

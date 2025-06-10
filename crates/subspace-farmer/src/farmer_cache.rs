@@ -18,7 +18,7 @@ use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
 use futures::future::{Either, FusedFuture};
 use futures::stream::{FuturesOrdered, FuturesUnordered};
-use futures::{select, stream, FutureExt, SinkExt, Stream, StreamExt};
+use futures::{FutureExt, SinkExt, Stream, StreamExt, select, stream};
 use parking_lot::{Mutex, RwLock};
 use prometheus_client::registry::Registry;
 use rand::prelude::*;
@@ -26,21 +26,21 @@ use rayon::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::future::join;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::Poll;
 use std::time::Duration;
 use std::{fmt, mem};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_data_retrieval::piece_getter::PieceGetter;
-use subspace_networking::libp2p::kad::RecordKey;
-use subspace_networking::libp2p::PeerId;
-use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::KeyWithDistance;
+use subspace_networking::libp2p::PeerId;
+use subspace_networking::libp2p::kad::RecordKey;
+use subspace_networking::utils::multihash::ToMultihash;
 use tokio::sync::Semaphore;
 use tokio::task::yield_now;
-use tracing::{debug, error, info, info_span, trace, warn, Instrument};
+use tracing::{Instrument, debug, error, info, info_span, trace, warn};
 
 const WORKER_CHANNEL_CAPACITY: usize = 100;
 const SYNC_BATCH_SIZE: usize = 256;
@@ -1487,11 +1487,7 @@ impl FarmerCache {
                         .any(|found| async move { found })
                         .await;
 
-                    if found {
-                        None
-                    } else {
-                        Some(piece_index)
-                    }
+                    if found { None } else { Some(piece_index) }
                 })
                 .collect::<FuturesUnordered<_>>()
                 .filter_map(|maybe_piece_index| async move { maybe_piece_index })

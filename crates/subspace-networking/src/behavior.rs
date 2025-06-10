@@ -14,6 +14,7 @@ use crate::protocols::reserved_peers::{
 };
 use crate::protocols::subspace_connection_limits::Behaviour as ConnectionLimitsBehaviour;
 use derive_more::From;
+use libp2p::PeerId;
 use libp2p::allow_block_list::{Behaviour as AllowBlockListBehaviour, BlockedPeers};
 use libp2p::autonat::Event as AutonatEvent;
 use libp2p::connection_limits::ConnectionLimits;
@@ -23,9 +24,8 @@ use libp2p::gossipsub::{
 use libp2p::identify::{Behaviour as Identify, Config as IdentifyConfig, Event as IdentifyEvent};
 use libp2p::kad::{Behaviour as Kademlia, Config as KademliaConfig, Event as KademliaEvent};
 use libp2p::ping::{Behaviour as Ping, Event as PingEvent};
-use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
-use libp2p::PeerId;
+use libp2p::swarm::behaviour::toggle::Toggle;
 use std::convert::Infallible;
 use void::Void as VoidEvent;
 

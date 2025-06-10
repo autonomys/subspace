@@ -7,8 +7,8 @@ use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 pub use sp_domains::{ChainId, ChannelId};
-use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::DispatchError;
+use sp_runtime::app_crypto::sp_core::U256;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
 

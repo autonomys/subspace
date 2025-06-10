@@ -3,15 +3,14 @@
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Info, Result as ClientResult};
-use sp_core::bytes::to_hex;
 use sp_core::H256;
+use sp_core::bytes::to_hex;
 use sp_messenger::messages::{ChainId, ChannelId, ChannelState, Nonce};
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use subspace_runtime_primitives::BlockNumber;
 
 const CHANNEL_DETAIL: &[u8] = b"channel_detail";
-const LOG_TARGET: &str = "gossip_aux_schema";
 
 fn channel_detail_key(
     src_chain_id: ChainId,
@@ -94,8 +93,8 @@ where
 mod xdm_keys {
     use parity_scale_codec::Encode;
     use sp_domains::{ChainId, ChannelId};
-    use sp_messenger::messages::MessageKey;
     use sp_messenger::XdmId;
+    use sp_messenger::messages::MessageKey;
 
     const XDM: &[u8] = b"xdm";
     const XDM_RELAY: &[u8] = b"relay_msg";
@@ -221,7 +220,6 @@ where
         };
 
         tracing::debug!(
-            target: LOG_TARGET,
             "[{:?}]Cleaning Relay xdm keys for {:?} channel: {:?} from: {:?} to: {:?}",
             to_hex(prefix, false),
             chain_id,
@@ -253,7 +251,6 @@ where
         };
 
         tracing::debug!(
-            target: LOG_TARGET,
             "[{:?}]Cleaning Relay response xdm keys for {:?} channel: {:?} from: {:?} to: {:?}",
             to_hex(prefix, false),
             chain_id,

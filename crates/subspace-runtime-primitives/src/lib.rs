@@ -7,14 +7,14 @@ pub mod utility;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::time::{BLOCKS_IN_AN_MINUTE, BLOCKS_IN_A_DAY};
+use crate::time::{BLOCKS_IN_A_DAY, BLOCKS_IN_AN_MINUTE};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use frame_support::pallet_prelude::Weight;
 use frame_support::traits::tokens;
-use frame_support::weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use frame_support::weights::WeightToFee;
+use frame_support::weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use frame_support::{Deserialize, Serialize};
 use frame_system::limits::BlockLength;
 use frame_system::offchain::CreateTransactionBase;
@@ -37,7 +37,7 @@ pub const SHANNON: Balance = 1;
 /// Subspace Credits have 18 decimal places.
 pub const DECIMAL_PLACES: u8 = 18;
 /// One Subspace Credit.
-pub const SSC: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
+pub const AI3: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
 pub const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
@@ -117,9 +117,9 @@ parameter_types! {
 /// structures.
 pub mod opaque {
     use super::BlockNumber;
+    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
     use sp_runtime::generic;
     use sp_runtime::traits::BlakeTwo256;
-    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
 
     /// Opaque block header type.
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -319,8 +319,8 @@ pub mod tests_utils {
     use frame_support::weights::Weight;
     use frame_system::limits::BlockWeights;
     use pallet_transaction_payment::{Multiplier, MultiplierUpdate};
-    use sp_runtime::traits::{Convert, Get};
     use sp_runtime::BuildStorage;
+    use sp_runtime::traits::{Convert, Get};
     use std::marker::PhantomData;
 
     pub struct FeeMultiplierUtils<Runtime, BlockWeightsGetter>(

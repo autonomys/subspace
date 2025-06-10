@@ -5,7 +5,7 @@ use parity_scale_codec::Encode;
 use sc_client_api::{BlockBackend, BlockImportNotification, ImportNotifications};
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
-use substrate_prometheus_endpoint::{register, Counter, PrometheusError, Registry, U64};
+use substrate_prometheus_endpoint::{Counter, PrometheusError, Registry, U64, register};
 
 pub struct NodeMetrics<Block: BlockT, Client> {
     client: Arc<Client>,

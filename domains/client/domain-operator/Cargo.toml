@@ -2,7 +2,7 @@
 name = "domain-client-operator"
 version = "0.1.0"
 authors = ["Subspace Labs <https://subspace.network>"]
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
@@ -61,7 +61,6 @@ evm-domain-test-runtime.workspace = true
 fp-rpc.workspace = true
 fp-self-contained.workspace = true
 frame-system.workspace = true
-hex-literal.workspace = true
 pallet-balances.workspace = true
 pallet-domains.workspace = true
 pallet-domain-sudo.workspace = true

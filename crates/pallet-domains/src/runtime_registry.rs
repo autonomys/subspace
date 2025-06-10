@@ -12,20 +12,20 @@ use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use domain_runtime_primitives::{AccountId20, EVMChainId, MultiAccountId, TryConvertBack};
-use frame_support::{ensure, PalletError};
-use frame_system::pallet_prelude::*;
+use frame_support::{PalletError, ensure};
 use frame_system::AccountInfo;
+use frame_system::pallet_prelude::*;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_core::crypto::AccountId32;
 use sp_core::Hasher;
+use sp_core::crypto::AccountId32;
 use sp_domains::storage::{RawGenesis, StorageData, StorageKey};
 use sp_domains::{
     AutoIdDomainRuntimeConfig, DomainId, DomainRuntimeConfig, DomainsDigestItem,
     EvmDomainRuntimeConfig, RuntimeId, RuntimeObject, RuntimeType,
 };
-use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
+use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_std::vec;
 use sp_version::RuntimeVersion;
 
@@ -393,19 +393,22 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
 
 #[cfg(test)]
 mod tests {
+    use crate::Error;
     use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
     use crate::runtime_registry::Error as RuntimeRegistryError;
-    use crate::tests::{new_test_ext, Domains, ReadRuntimeVersion, System, Test};
-    use crate::Error;
+    use crate::tests::{
+        Domains, ReadRuntimeVersion, System, TEST_RUNTIME_APIS, Test, new_test_ext,
+    };
+    use domain_runtime_primitives::Hash;
     use frame_support::dispatch::RawOrigin;
     use frame_support::traits::OnInitialize;
     use frame_support::{assert_err, assert_ok};
-    use parity_scale_codec::Encode;
+    use parity_scale_codec::{Decode, Encode};
     use sp_domains::storage::RawGenesis;
     use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeObject, RuntimeType};
     use sp_runtime::traits::BlockNumberProvider;
     use sp_runtime::{Digest, DispatchError};
-    use sp_version::RuntimeVersion;
+    use sp_version::{RuntimeVersion, create_apis_vec};
 
     #[test]
     fn create_domain_runtime() {
@@ -458,6 +461,7 @@ mod tests {
                         spec_version: 1,
                         impl_version: 1,
                         transaction_version: 1,
+                        apis: create_apis_vec!(TEST_RUNTIME_APIS),
                         ..Default::default()
                     },
                     created_at: Default::default(),
@@ -493,6 +497,7 @@ mod tests {
                 spec_version,
                 impl_version: 1,
                 transaction_version: 1,
+                apis: create_apis_vec!(TEST_RUNTIME_APIS),
                 ..Default::default()
             };
             let read_runtime_version = ReadRuntimeVersion(version.encode());
@@ -539,6 +544,7 @@ mod tests {
                     spec_version: 1,
                     impl_version: 1,
                     transaction_version: 1,
+                    apis: create_apis_vec!(TEST_RUNTIME_APIS),
                     ..Default::default()
                 }
             );
@@ -556,6 +562,7 @@ mod tests {
                     spec_version: 2,
                     impl_version: 1,
                     transaction_version: 1,
+                    apis: create_apis_vec!(TEST_RUNTIME_APIS),
                     ..Default::default()
                 }
             )
@@ -598,7 +605,7 @@ mod tests {
             authoring_version: 0,
             spec_version: 1,
             impl_version: 1,
-            apis: Default::default(),
+            apis: create_apis_vec!(TEST_RUNTIME_APIS),
             transaction_version: 1,
             system_version: 0,
         };
@@ -647,9 +654,62 @@ mod tests {
 
             let runtime_obj = RuntimeRegistry::<Test>::get(0).unwrap();
             assert_eq!(runtime_obj.version, version);
+            assert_eq!(runtime_obj.created_at, 0);
+            assert_eq!(runtime_obj.updated_at, 1);
 
             let digest = System::digest();
             assert_eq!(Some(0), fetch_upgraded_runtime_from_digest(digest))
         });
+    }
+
+    #[test]
+    fn test_runtime_version_encode_decode_with_core_api() {
+        let runtime_obj = RuntimeObject {
+            runtime_name: "evm".to_owned(),
+            runtime_type: Default::default(),
+            runtime_upgrades: 100,
+            hash: Default::default(),
+            raw_genesis: RawGenesis::dummy(vec![1, 2, 3, 4]),
+            version: RuntimeVersion {
+                spec_name: "test".into(),
+                spec_version: 100,
+                impl_version: 34,
+                transaction_version: 256,
+                apis: create_apis_vec!(TEST_RUNTIME_APIS),
+                ..Default::default()
+            },
+            created_at: 100,
+            updated_at: 200,
+            instance_count: 500,
+        };
+
+        let encoded = runtime_obj.encode();
+        let decoded = RuntimeObject::<u32, Hash>::decode(&mut &encoded[..]).unwrap();
+        assert_eq!(decoded, runtime_obj);
+    }
+
+    #[test]
+    fn test_runtime_version_encode_decode_without_core_api() {
+        let runtime_obj = RuntimeObject {
+            runtime_name: "evm".to_owned(),
+            runtime_type: Default::default(),
+            runtime_upgrades: 100,
+            hash: Default::default(),
+            raw_genesis: RawGenesis::dummy(vec![1, 2, 3, 4]),
+            version: RuntimeVersion {
+                spec_name: "test".into(),
+                spec_version: 100,
+                impl_version: 34,
+                transaction_version: 256,
+                ..Default::default()
+            },
+            created_at: 100,
+            updated_at: 200,
+            instance_count: 500,
+        };
+
+        let encoded = runtime_obj.encode();
+        let decoded = RuntimeObject::<u32, Hash>::decode(&mut &encoded[..]).unwrap();
+        assert_ne!(decoded, runtime_obj);
     }
 }

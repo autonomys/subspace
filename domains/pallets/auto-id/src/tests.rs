@@ -14,9 +14,9 @@ use ring::rand::SystemRandom;
 use ring::signature::RsaKeyPair;
 use sp_auto_id::{DerVec, Validity};
 use sp_core::bytes::to_hex;
-use sp_core::{blake2_256, H256, U256};
-use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
+use sp_core::{H256, U256, blake2_256};
 use sp_runtime::BuildStorage;
+use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use std::sync::Arc;
 use subspace_runtime_primitives::{DomainEventSegmentSize, Moment};
 use x509_parser::der_parser::asn1_rs::ToDer;
@@ -395,9 +395,11 @@ fn test_self_revoke_certificate() {
         )
         .unwrap();
         let auto_id = AutoIds::<Test>::get(auto_id_identifier).unwrap();
-        assert!(CertificateRevocationList::<Test>::get(auto_id_identifier)
-            .unwrap()
-            .contains(&auto_id.certificate.serial()));
+        assert!(
+            CertificateRevocationList::<Test>::get(auto_id_identifier)
+                .unwrap()
+                .contains(&auto_id.certificate.serial())
+        );
 
         assert_eq!(auto_id.certificate.nonce(), U256::one());
 
@@ -458,9 +460,11 @@ fn test_revoke_leaf_certificate() {
         Pallet::<Test>::revoke_certificate(RawOrigin::Signed(1).into(), leaf_id, signature)
             .unwrap();
 
-        assert!(CertificateRevocationList::<Test>::get(issuer_id)
-            .unwrap()
-            .contains(&leaf_auto_id.certificate.serial()));
+        assert!(
+            CertificateRevocationList::<Test>::get(issuer_id)
+                .unwrap()
+                .contains(&leaf_auto_id.certificate.serial())
+        );
 
         // revoking the same certificate again should fail
         let signing_data = CertificateAction {

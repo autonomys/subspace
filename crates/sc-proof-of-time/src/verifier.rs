@@ -272,7 +272,7 @@ impl PotVerifier {
             drop(cache);
 
             let verified_successfully =
-                subspace_proof_of_time::verify(seed, slot_iterations, checkpoints.as_slice())
+                subspace_proof_of_time::verify(seed, slot_iterations, checkpoints)
                     .unwrap_or_default();
 
             if !verified_successfully {
