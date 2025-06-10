@@ -38,7 +38,7 @@ pub const SHANNON: Balance = 1;
 /// Subspace Credits have 18 decimal places.
 pub const DECIMAL_PLACES: u8 = 18;
 /// One Subspace Credit.
-pub const SSC: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
+pub const AI3: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
 pub const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 /// 1 in 6 slots (on average, not counting collisions) will have a block.

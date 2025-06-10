@@ -22,7 +22,7 @@ use subspace_runtime::{
     SubspaceConfig, SudoConfig, SystemConfig, WASM_BINARY,
 };
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
+    AI3, AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams,
 };
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.foundation/submit/";
@@ -56,7 +56,7 @@ fn get_genesis_allocations(contents: &str) -> Vec<(AccountId, Balance)> {
 
     allocations
         .into_iter()
-        .map(|GenesisAllocation(account, balance)| (account, balance.get() * SSC))
+        .map(|GenesisAllocation(account, balance)| (account, balance.get() * AI3))
         .collect()
 }
 
@@ -125,7 +125,7 @@ pub fn mainnet_compiled() -> Result<GenericChainSpec, String> {
                 // TODO: Proper value here
                 confirmation_depth_k: 100,
                 rewards_config: RewardsConfig {
-                    remaining_issuance: 350_000_000 * SSC,
+                    remaining_issuance: 350_000_000 * AI3,
                     proposer_subsidy_points: BoundedVec::try_from(vec![
                         RewardPoint {
                             block: 0,
@@ -289,7 +289,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                 confirmation_depth_k: 100,
                 // TODO: Proper value here
                 rewards_config: RewardsConfig {
-                    remaining_issuance: 1_000_000_000 * SSC,
+                    remaining_issuance: 1_000_000_000 * AI3,
                     proposer_subsidy_points: Default::default(),
                     voter_subsidy_points: Default::default(),
                 },
@@ -334,9 +334,9 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                 // Pre-funded accounts
                 vec![
                     (sudo_account.clone(), Balance::MAX / 2),
-                    (get_account_id_from_seed("Bob"), 1_000 * SSC),
-                    (get_account_id_from_seed("Alice//stash"), 1_000 * SSC),
-                    (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
+                    (get_account_id_from_seed("Bob"), 1_000 * AI3),
+                    (get_account_id_from_seed("Alice//stash"), 1_000 * AI3),
+                    (get_account_id_from_seed("Bob//stash"), 1_000 * AI3),
                 ],
                 GenesisParams {
                     enable_rewards_at: EnableRewardsAt::Manually,
@@ -347,7 +347,7 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     enable_balance_transfers: true,
                     confirmation_depth_k: 5,
                     rewards_config: RewardsConfig {
-                        remaining_issuance: 1_000_000 * SSC,
+                        remaining_issuance: 1_000_000 * AI3,
                         proposer_subsidy_points: Default::default(),
                         voter_subsidy_points: Default::default(),
                     },
@@ -412,7 +412,7 @@ fn subspace_genesis_config(
                     operator_allow_list: genesis_domain.operator_allow_list.clone(),
                     signing_key: genesis_domain.operator_signing_key.clone(),
                     nomination_tax: Percent::from_percent(5),
-                    minimum_nominator_stake: 100 * SSC,
+                    minimum_nominator_stake: 100 * AI3,
                     initial_balances: genesis_domain.initial_balances,
                     domain_runtime_config: genesis_domain.domain_runtime_config,
                 }

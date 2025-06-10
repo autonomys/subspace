@@ -26,7 +26,7 @@ use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrProofVerifier as _};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{Balance, BlockHashFor, BlockHashingFor, HeaderFor, SSC};
+use subspace_runtime_primitives::{AI3, Balance, BlockHashFor, BlockHashingFor, HeaderFor};
 use subspace_test_runtime::{MmrProofVerifier, Runtime, StorageKeyProvider, mmr};
 use subspace_test_service::{MockConsensusNode, produce_block_with, produce_blocks};
 use tempfile::TempDir;
@@ -557,8 +557,8 @@ fn invalid_transfers_fraud_proof_verification(c: &mut Criterion) {
     let (_placeholder, mut ext, _, bad_receipt, _, domain_runtime_code, fp) = tokio_handle
         .block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
             receipt.transfers = Transfers {
-                transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
-                transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
+                transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
+                transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
                 rejected_transfers_claimed: Default::default(),
                 transfers_rejected: Default::default(),
             }

@@ -10,8 +10,8 @@ use crate::staking::{
     do_cleanup_operator, do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal,
 };
 use crate::{
-    BalanceOf, Config, DepositOnHold, ElectionVerificationParams, Event, HoldIdentifier,
-    OperatorEpochSharePrice, Pallet, bundle_storage_fund,
+    BalanceOf, Config, DepositOnHold, DomainChainRewards, ElectionVerificationParams, Event,
+    HoldIdentifier, OperatorEpochSharePrice, Pallet, bundle_storage_fund,
 };
 use frame_support::PalletError;
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
@@ -21,9 +21,9 @@ use frame_support::traits::tokens::{
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::{DomainId, EpochIndex, OperatorId};
-use sp_runtime::Saturating;
+use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorRewardSource};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
+use sp_runtime::{Perquintill, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 
@@ -67,27 +67,59 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
 ) -> Result<u32, Error> {
     let mut rewarded_operator_count = 0;
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
-        let mut to_treasury = BalanceOf::<T>::zero();
         let stake_summary = maybe_domain_stake_summary
             .as_mut()
             .ok_or(TransitionError::DomainNotInitialized)?;
 
-        while let Some((operator_id, reward)) = stake_summary.current_epoch_rewards.pop_first() {
+        let mut to_treasury = BalanceOf::<T>::zero();
+        let mut maybe_reward_per_operator = None;
+
+        let domain_rewards = DomainChainRewards::<T>::take(domain_id);
+        let active_operator_count = stake_summary.current_epoch_rewards.len() as u64;
+        match (active_operator_count > 0, !domain_rewards.is_zero()) {
+            // active operators exist and rewards are non-zero
+            (true, true) => {
+                let reward_per_operator = Perquintill::from_rational(1, active_operator_count).mul_floor(domain_rewards);
+                let total_allocated_rewards = reward_per_operator.saturating_mul(BalanceOf::<T>::from(active_operator_count));
+                maybe_reward_per_operator = Some(reward_per_operator);
+                to_treasury = domain_rewards.saturating_sub(total_allocated_rewards);
+            }
+
+            // no active operators but non-zero rewards
+            (false, true) => {
+                to_treasury = domain_rewards
+            }
+
+            // other cases are irrelevant here
+            _ => {}
+        }
+
+
+        while let Some((operator_id, mut reward)) = stake_summary.current_epoch_rewards.pop_first() {
+            reward = reward.saturating_add(maybe_reward_per_operator.unwrap_or_default());
             Operators::<T>::try_mutate(operator_id, |maybe_operator| {
                 let operator = match maybe_operator.as_mut() {
                     // It is possible that operator may have de registered and unlocked by the time they
                     // got rewards, in this case, move the reward to the treasury
                     None => {
                         to_treasury += reward;
-                        return Ok(())
+                        return Ok(());
                     }
                     // Move the reward of slashed and pening slash operator to the treasury
                     Some(operator) if matches!(*operator.status::<T>(operator_id), OperatorStatus::Slashed | OperatorStatus::PendingSlash) => {
                         to_treasury += reward;
-                        return Ok(())
+                        return Ok(());
                     }
                     Some(operator) => operator,
                 };
+
+                if let Some(reward_per_operator) = maybe_reward_per_operator {
+                    Pallet::<T>::deposit_event(Event::OperatorRewarded {
+                        source: OperatorRewardSource::XDMProtocolFees,
+                        operator_id,
+                        reward: reward_per_operator,
+                    });
+                }
 
                 // calculate operator tax, mint the balance, and stake them
                 let operator_tax_amount = operator.nomination_tax.mul_floor(reward);
@@ -122,11 +154,11 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
 
                     let current_domain_epoch = (domain_id, stake_summary.current_epoch_index).into();
                     crate::staking::do_calculate_previous_epoch_deposit_shares_and_add_new_deposit::<T>(
-                            operator_id,
-                            nominator_id,
-                            current_domain_epoch,
-                            operator_tax_deposit,
-                        )?;
+                        operator_id,
+                        nominator_id,
+                        current_domain_epoch,
+                        operator_tax_deposit,
+                    )?;
 
                     Pallet::<T>::deposit_event(Event::OperatorTaxCollected {
                         operator_id,
@@ -155,7 +187,7 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
 
         Ok(())
     })
-    .map_err(Error::OperatorRewardStaking)?;
+        .map_err(Error::OperatorRewardStaking)?;
 
     Ok(rewarded_operator_count)
 }
@@ -553,7 +585,7 @@ mod tests {
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Percent};
     use std::collections::BTreeMap;
-    use subspace_runtime_primitives::SSC;
+    use subspace_runtime_primitives::AI3;
 
     type Balances = pallet_balances::Pallet<Test>;
 
@@ -567,7 +599,7 @@ mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let pair = OperatorPair::from_seed(&[0; 32]);
-        let minimum_free_balance = 10 * SSC;
+        let minimum_free_balance = 10 * AI3;
         let mut nominators = BTreeMap::from_iter(
             nominators
                 .into_iter()
@@ -593,7 +625,7 @@ mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(nominators.clone()),
             );
@@ -627,7 +659,7 @@ mod tests {
 
             // After de-register both deposit and withdraw will be rejected
             assert_err!(
-                do_nominate_operator::<Test>(operator_id, operator_account, SSC),
+                do_nominate_operator::<Test>(operator_id, operator_account, AI3),
                 TransitionError::OperatorNotRegistered
             );
             assert_err!(
@@ -678,10 +710,10 @@ mod tests {
     #[test]
     fn unlock_operator_with_no_rewards() {
         unlock_nominator(
-            vec![(1, 150 * SSC), (2, 50 * SSC), (3, 10 * SSC)],
-            vec![(2, 10 * SSC), (4, 10 * SSC)],
-            vec![(1, 20 * SSC), (2, 10 * SSC)],
-            vec![(1, 150 * SSC), (2, 60 * SSC), (3, 10 * SSC), (4, 10 * SSC)],
+            vec![(1, 150 * AI3), (2, 50 * AI3), (3, 10 * AI3)],
+            vec![(2, 10 * AI3), (4, 10 * AI3)],
+            vec![(1, 20 * AI3), (2, 10 * AI3)],
+            vec![(1, 150 * AI3), (2, 60 * AI3), (3, 10 * AI3), (4, 10 * AI3)],
             0,
         );
     }
@@ -689,16 +721,16 @@ mod tests {
     #[test]
     fn unlock_operator_with_rewards() {
         unlock_nominator(
-            vec![(1, 150 * SSC), (2, 50 * SSC), (3, 10 * SSC)],
-            vec![(2, 10 * SSC), (4, 10 * SSC)],
-            vec![(1, 20 * SSC), (2, 10 * SSC)],
+            vec![(1, 150 * AI3), (2, 50 * AI3), (3, 10 * AI3)],
+            vec![(2, 10 * AI3), (4, 10 * AI3)],
+            vec![(1, 20 * AI3), (2, 10 * AI3)],
             vec![
                 (1, 164285714327278911577),
                 (2, 64761904775759637192),
                 (3, 10952380955151927438),
-                (4, 10 * SSC),
+                (4, 10 * AI3),
             ],
-            20 * SSC,
+            20 * AI3,
         );
     }
 
@@ -720,7 +752,7 @@ mod tests {
             deposits,
         } = params;
 
-        let minimum_free_balance = 10 * SSC;
+        let minimum_free_balance = 10 * AI3;
         let mut nominators = BTreeMap::from_iter(
             nominators
                 .into_iter()
@@ -744,7 +776,7 @@ mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(nominators),
             );
@@ -801,20 +833,20 @@ mod tests {
     #[test]
     fn finalize_domain_epoch_no_rewards() {
         finalize_domain_epoch(FinalizeDomainParams {
-            total_deposit: 210 * SSC,
+            total_deposit: 210 * AI3,
             rewards: 0,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            deposits: vec![(1, 50 * SSC), (3, 10 * SSC)],
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            deposits: vec![(1, 50 * AI3), (3, 10 * AI3)],
         })
     }
 
     #[test]
     fn finalize_domain_epoch_with_rewards() {
         finalize_domain_epoch(FinalizeDomainParams {
-            total_deposit: 210 * SSC,
-            rewards: 20 * SSC,
-            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
-            deposits: vec![(1, 50 * SSC), (3, 10 * SSC)],
+            total_deposit: 210 * AI3,
+            rewards: 20 * AI3,
+            nominators: vec![(0, 150 * AI3), (1, 50 * AI3), (2, 10 * AI3)],
+            deposits: vec![(1, 50 * AI3), (3, 10 * AI3)],
         })
     }
 
@@ -823,9 +855,9 @@ mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let pair = OperatorPair::from_seed(&[0; 32]);
-        let operator_rewards = 10 * SSC;
+        let operator_rewards = 10 * AI3;
         let mut nominators =
-            BTreeMap::from_iter(vec![(1, (110 * SSC, 100 * SSC)), (2, (60 * SSC, 50 * SSC))]);
+            BTreeMap::from_iter(vec![(1, (110 * AI3, 100 * AI3)), (2, (60 * AI3, 50 * AI3))]);
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
@@ -836,7 +868,7 @@ mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                10 * SSC,
+                10 * AI3,
                 pair.public(),
                 BTreeMap::from_iter(nominators),
             );
@@ -866,7 +898,7 @@ mod tests {
                 operator.total_storage_fee_deposit - pre_storage_fund_deposit;
             assert_eq!(
                 operator.current_total_stake - pre_total_stake,
-                (10 * SSC - expected_operator_tax)
+                (10 * AI3 - expected_operator_tax)
             );
 
             let staking_deposit = Deposits::<Test>::get(operator_id, operator_account)

@@ -71,7 +71,7 @@ use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates, DomainId, DomainInstanceData,
     ExecutionReceiptFor, INITIAL_DOMAIN_TX_RANGE, OpaqueBundle, OpaqueBundles, OperatorId,
-    OperatorPublicKey, OperatorRewardSource, PermissionedActionAllowedBy,
+    OperatorPublicKey, PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -114,9 +114,9 @@ use subspace_runtime_primitives::utility::{
     DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
 };
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockHashFor, BlockNumber, ConsensusEventSegmentSize, ExtrinsicFor,
+    AI3, AccountId, Balance, BlockHashFor, BlockNumber, ConsensusEventSegmentSize, ExtrinsicFor,
     FindBlockRewardAddress, Hash, HeaderFor, HoldIdentifier, MAX_BLOCK_LENGTH,
-    MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR, Moment, Nonce, SHANNON, SSC, Signature,
+    MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR, Moment, Nonce, SHANNON, Signature,
     SlowAdjustingFeeUpdate, TargetBlockFullness, XdmAdjustedWeightToFee, XdmFeeMultipler,
 };
 use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
@@ -686,7 +686,7 @@ impl sp_messenger::DomainRegistration for DomainRegistration {
 }
 
 parameter_types! {
-    pub const ChannelReserveFee: Balance = SSC;
+    pub const ChannelReserveFee: Balance = AI3;
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
     pub const MaxOutgoingMessages: u32 = MAX_OUTGOING_MESSAGES;
 }
@@ -707,7 +707,7 @@ impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
         // on consensus chain, reward the domain operators
         // balance is already on this consensus runtime
         if let ChainId::Domain(domain_id) = chain_id {
-            Domains::reward_domain_operators(domain_id, OperatorRewardSource::XDMProtocolFees, fees)
+            Domains::reward_domain_operators(domain_id, fees)
         }
     }
 }
@@ -782,13 +782,13 @@ parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 2;
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
-    pub const MinOperatorStake: Balance = 100 * SSC;
-    pub const MinNominatorStake: Balance = SSC;
+    pub const MinOperatorStake: Balance = 100 * AI3;
+    pub const MinNominatorStake: Balance = AI3;
     /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
     pub MaxDomainBlockSize: u32 = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH;
     /// Use the consensus chain's `Normal` extrinsics block weight limit as the domain block weight limit
     pub MaxDomainBlockWeight: Weight = NORMAL_DISPATCH_RATIO * BLOCK_WEIGHT_FOR_2_SEC;
-    pub const DomainInstantiationDeposit: Balance = 100 * SSC;
+    pub const DomainInstantiationDeposit: Balance = 100 * AI3;
     pub const MaxDomainNameLength: u32 = 32;
     pub const BlockTreePruningDepth: u32 = DOMAINS_BLOCK_PRUNING_DEPTH;
     pub const StakeWithdrawalLockingPeriod: BlockNumber = 20;
@@ -797,7 +797,7 @@ parameter_types! {
     pub const MaxPendingStakingOperation: u32 = 512;
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const MaxInitialDomainAccounts: u32 = 20;
-    pub const MinInitialDomainAccountBalance: Balance = SSC;
+    pub const MinInitialDomainAccountBalance: Balance = AI3;
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 32;
 }
@@ -844,11 +844,7 @@ impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
                     let _ = Balances::deposit_creating(&block_author, reward);
                 }
             }
-            ChainId::Domain(domain_id) => Domains::reward_domain_operators(
-                domain_id,
-                OperatorRewardSource::XDMProtocolFees,
-                reward,
-            ),
+            ChainId::Domain(domain_id) => Domains::reward_domain_operators(domain_id, reward),
         }
     }
 }
@@ -982,8 +978,8 @@ macro_rules! deposit {
 }
 
 // One storage item; key size is 32; value is size 4+4+16+32 bytes = 56 bytes.
-// Each multisig costs 20 SSC + bytes_of_storge * TransactionByteFee
-deposit!(DepositBaseFee, 20 * SSC, 1u32, 88u32);
+// Each multisig costs 20 AI3 + bytes_of_storge * TransactionByteFee
+deposit!(DepositBaseFee, 20 * AI3, 1u32, 88u32);
 
 // Additional storage item size of 32 bytes.
 deposit!(DepositFactor, 0u128, 0u32, 32u32);
