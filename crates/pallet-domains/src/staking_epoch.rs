@@ -563,8 +563,8 @@ pub(crate) fn do_slash_operator<T: Config>(
 mod tests {
     use crate::bundle_storage_fund::STORAGE_FEE_RESERVE;
     use crate::pallet::{
-        Deposits, DomainStakingSummary, HeadDomainNumber, LastEpochStakingDistribution,
-        NominatorCount, OperatorIdOwner, Operators, Withdrawals,
+        DepositOnHold, Deposits, DomainStakingSummary, HeadDomainNumber,
+        LastEpochStakingDistribution, NominatorCount, OperatorIdOwner, Operators, Withdrawals,
     };
     use crate::staking::tests::{Share, register_operator};
     use crate::staking::{
@@ -801,7 +801,11 @@ mod tests {
 
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
             for deposit in deposits {
-                Deposits::<Test>::contains_key(operator_id, deposit.0);
+                assert!(Deposits::<Test>::contains_key(operator_id, deposit.0));
+                assert!(DepositOnHold::<Test>::contains_key((
+                    operator_id,
+                    deposit.0
+                )));
             }
 
             // should also store the previous epoch details in-block
