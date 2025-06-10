@@ -411,7 +411,7 @@ pub(super) struct ConsensusChainOptions {
 
     /// Options for RPC
     #[clap(flatten)]
-    rpc_options: RpcOptions<{ RPC_DEFAULT_PORT }>,
+    rpc_options: RpcOptions,
 
     /// The human-readable name for this node.
     ///
@@ -632,6 +632,10 @@ pub(super) fn create_consensus_chain_configuration(
         );
     }
 
+    let rpc_listen_on = rpc_options.rpc_listen_on.unwrap_or(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        RPC_DEFAULT_PORT,
+    ));
     let consensus_chain_config = SubstrateConfiguration {
         impl_name: env!("CARGO_PKG_NAME").to_string(),
         impl_version: env!("SUBSTRATE_CLI_IMPL_VERSION").into(),
@@ -670,12 +674,12 @@ pub(super) fn create_consensus_chain_configuration(
         state_pruning: pruning_params.state_pruning.into(),
         blocks_pruning: pruning_params.blocks_pruning.into(),
         rpc_options: SubstrateRpcConfiguration {
-            listen_on: Some(rpc_options.rpc_listen_on),
+            listen_on: Some(rpc_listen_on),
             max_connections: rpc_options.rpc_max_connections,
             cors: rpc_cors.into(),
             methods: match rpc_options.rpc_methods {
                 RpcMethods::Auto => {
-                    if rpc_options.rpc_listen_on.ip().is_loopback() {
+                    if rpc_listen_on.ip().is_loopback() {
                         sc_service::RpcMethods::Unsafe
                     } else {
                         sc_service::RpcMethods::Safe
