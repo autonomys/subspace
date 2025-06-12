@@ -766,7 +766,13 @@ impl pallet_messenger::Config for Runtime {
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
     type NoteChainTransfer = Transporter;
-    type ExtensionWeightInfo = pallet_messenger::extensions::weights::SubstrateWeight<Runtime>;
+    type ExtensionWeightInfo = pallet_messenger::extensions::weights::SubstrateWeight<
+        Runtime,
+        // NOTE: use `()` as `FromConsensusWeightInfo` since the consensus chain should
+        // never process XDM that come from the consensus chain itself.
+        (),
+        pallet_messenger::extensions::WeightsFromDomains<Runtime>,
+    >;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
