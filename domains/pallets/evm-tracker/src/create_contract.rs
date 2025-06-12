@@ -5,6 +5,7 @@ use crate::weights::SubstrateWeightInfo;
 use crate::{MAXIMUM_NUMBER_OF_CALLS, WeightInfo};
 use domain_runtime_primitives::{ERR_CONTRACT_CREATION_NOT_ALLOWED, EthereumAccountId};
 use frame_support::RuntimeDebugNoBound;
+use frame_support::dispatch::PostDispatchInfo;
 use frame_support::pallet_prelude::{DispatchResult, PhantomData, TypeInfo};
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use pallet_ethereum::{Transaction as EthereumTransaction, TransactionAction};
@@ -12,7 +13,7 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
 use sp_runtime::traits::{
     AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, Dispatchable, PostDispatchInfoOf,
-    TransactionExtension, ValidateResult,
+    RefundWeight, TransactionExtension, ValidateResult,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -219,6 +220,7 @@ where
     Result<pallet_ethereum::RawOrigin, OriginFor<Runtime>>: From<OriginFor<Runtime>>,
     <RuntimeCallFor<Runtime> as Dispatchable>::RuntimeOrigin:
         AsSystemOriginSigner<AccountIdFor<Runtime>> + Clone,
+    for<'a> &'a mut PostDispatchInfoOf<RuntimeCallFor<Runtime>>: Into<&'a mut PostDispatchInfo>,
 {
     const IDENTIFIER: &'static str = "CheckContractCreation";
     type Implicit = ();
@@ -283,7 +285,6 @@ where
         Ok(weight)
     }
 
-    // TODO: handle weights here?
     fn bare_validate(
         call: &RuntimeCallFor<Runtime>,
         _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
@@ -298,6 +299,32 @@ where
         _len: usize,
     ) -> Result<(), TransactionValidityError> {
         Self::do_validate_unsigned(call)?;
+        Ok(())
+    }
+
+    // Weights for bare calls are calculated in the runtime, and excess weight refunded here.
+    fn bare_post_dispatch(
+        _info: &DispatchInfoOf<RuntimeCallFor<Runtime>>,
+        post_info: &mut PostDispatchInfoOf<RuntimeCallFor<Runtime>>,
+        _len: usize,
+        _result: &DispatchResult,
+    ) -> Result<(), TransactionValidityError> {
+        let pre_dispatch_weights = Self::get_weights(MAXIMUM_NUMBER_OF_CALLS);
+        // The number of Ethereum calls in a RuntimeCall is always 1, this is checked by
+        // is_self_contained() in the runtime.
+        let actual_weights = Self::get_weights(1);
+
+        // TODO: use frame_system::Pallet::<Runtime>::reclaim_weight when we upgrade to 40.1.0
+        let unspent = pre_dispatch_weights.saturating_sub(actual_weights);
+
+        // If we overcharged the weight, refund the extra weight.
+        let post_info = Into::<&mut PostDispatchInfo>::into(post_info);
+        if let Some(actual_weight) = post_info.actual_weight
+            && actual_weight.ref_time() >= pre_dispatch_weights.ref_time()
+        {
+            post_info.refund(unspent);
+        }
+
         Ok(())
     }
 }
