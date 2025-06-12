@@ -193,7 +193,7 @@ impl frame_system::Config for Runtime {
     /// The basic call filter to use in dispatchable.
     type BaseCallFilter = Everything;
     /// Weight information for the extrinsics of this pallet.
-    type SystemWeightInfo = frame_system::weights::SubstrateWeight<Runtime>;
+    type SystemWeightInfo = weights::frame_system::WeightInfo<Runtime>;
     /// Block & extrinsics weights: base values and limits.
     type BlockWeights = RuntimeBlockWeights;
     /// The maximum length of a block (in bytes).
@@ -216,7 +216,7 @@ impl pallet_timestamp::Config for Runtime {
     type Moment = Moment;
     type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
-    type WeightInfo = pallet_timestamp::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_timestamp::WeightInfo<Runtime>;
 }
 
 parameter_types! {
@@ -244,7 +244,7 @@ impl pallet_balances::Config for Runtime {
     type DustRemoval = DustRemovalHandler;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
-    type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_balances::WeightInfo<Runtime>;
     type MaxReserves = MaxReserves;
     type ReserveIdentifier = [u8; 8];
     type FreezeIdentifier = ();
@@ -279,13 +279,13 @@ impl pallet_transaction_payment::Config for Runtime {
     type LengthToFee = ConstantMultiplier<Balance, FinalDomainTransactionByteFee>;
     type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime, TargetBlockFullness>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
-    type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_transaction_payment::WeightInfo<Runtime>;
 }
 
 impl pallet_auto_id::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Time = Timestamp;
-    type Weights = pallet_auto_id::weights::SubstrateWeight<Self>;
+    type Weights = weights::pallet_auto_id::WeightInfo<Runtime>;
 }
 
 pub struct ExtrinsicStorageFees;
@@ -321,7 +321,7 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
 
 impl domain_pallet_executive::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type WeightInfo = domain_pallet_executive::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::domain_pallet_executive::WeightInfo<Runtime>;
     type Currency = Balances;
     type LengthToFee = <Runtime as pallet_transaction_payment::Config>::LengthToFee;
     type ExtrinsicStorageFees = ExtrinsicStorageFees;
@@ -430,7 +430,7 @@ impl pallet_messenger::Config for Runtime {
     }
 
     type Currency = Balances;
-    type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_messenger::WeightInfo<Runtime>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type AdjustedWeightToFee = XdmAdjustedWeightToFee<Runtime>;
     type FeeMultiplier = XdmFeeMultipler;
@@ -451,8 +451,8 @@ impl pallet_messenger::Config for Runtime {
     type NoteChainTransfer = Transporter;
     type ExtensionWeightInfo = pallet_messenger::extensions::weights::SubstrateWeight<
         Runtime,
-        pallet_messenger::extensions::WeightsFromConsensus<Runtime>,
-        pallet_messenger::extensions::WeightsFromDomains<Runtime>,
+        weights::pallet_messenger_from_consensus_extension::WeightInfo<Runtime>,
+        weights::pallet_messenger_between_domains_extension::WeightInfo<Runtime>,
     >;
 }
 
@@ -476,7 +476,7 @@ impl pallet_transporter::Config for Runtime {
     type Currency = Balances;
     type Sender = Messenger;
     type AccountIdConverter = domain_runtime_primitives::AccountIdConverter;
-    type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_transporter::WeightInfo<Runtime>;
     type SkipBalanceTransferChecks = ();
     type MinimumTransfer = MinimumTransfer;
 }
@@ -503,7 +503,7 @@ impl pallet_utility::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
     type PalletsOrigin = OriginCaller;
-    type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_utility::WeightInfo<Runtime>;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
