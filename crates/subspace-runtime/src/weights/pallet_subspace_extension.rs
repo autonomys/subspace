@@ -31,7 +31,7 @@ use core::marker::PhantomData;
 
 /// Weight functions for `pallet_subspace_extension`.
 pub struct WeightInfo<T>(PhantomData<T>);
-impl<T: frame_system::Config> pallet_subspace_extension::WeightInfo for WeightInfo<T> {
+impl<T: frame_system::Config> pallet_subspace::extensions::WeightInfo for WeightInfo<T> {
 	/// Storage: `System::BlockHash` (r:1 w:0)
 	/// Proof: `System::BlockHash` (`max_values`: None, `max_size`: Some(44), added: 2519, mode: `MaxEncodedLen`)
 	/// Storage: `Subspace::SolutionRanges` (r:1 w:0)

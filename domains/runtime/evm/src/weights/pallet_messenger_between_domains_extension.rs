@@ -32,7 +32,7 @@ use core::marker::PhantomData;
 
 /// Weight functions for `pallet_messenger_between_domains_extension`.
 pub struct WeightInfo<T>(PhantomData<T>);
-impl<T: frame_system::Config> pallet_messenger_between_domains_extension::WeightInfo for WeightInfo<T> {
+impl<T: frame_system::Config> pallet_messenger::extensions::FromDomainWeightInfo for WeightInfo<T> {
 	/// Storage: `Messenger::Channels` (r:1 w:1)
 	/// Proof: `Messenger::Channels` (`max_values`: None, `max_size`: None, mode: `Measured`)
 	/// Storage: `SelfDomainId::SelfDomainId` (r:1 w:0)
