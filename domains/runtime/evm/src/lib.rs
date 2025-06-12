@@ -4,6 +4,7 @@
 #![recursion_limit = "256"]
 
 mod precompiles;
+mod weights;
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]

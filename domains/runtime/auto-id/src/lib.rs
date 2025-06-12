@@ -9,6 +9,8 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 extern crate alloc;
 
+mod weights;
+
 use alloc::borrow::Cow;
 #[cfg(not(feature = "std"))]
 use alloc::format;

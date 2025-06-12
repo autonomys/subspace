@@ -17,6 +17,7 @@ mod domains;
 mod fees;
 mod object_mapping;
 mod signed_extensions;
+mod weights;
 
 extern crate alloc;
 
