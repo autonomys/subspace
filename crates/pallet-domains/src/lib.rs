@@ -29,7 +29,7 @@ use crate::staking::OperatorStatus;
 #[cfg(feature = "runtime-benchmarks")]
 pub use crate::staking::do_register_operator;
 use crate::staking_epoch::EpochTransitionResult;
-use crate::weights::WeightInfo;
+pub use crate::weights::WeightInfo;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;

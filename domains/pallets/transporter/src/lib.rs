@@ -43,6 +43,7 @@ use sp_messenger::endpoint::EndpointResponse;
 use sp_messenger::messages::ChainId;
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Get};
 use sp_std::vec;
+pub use weights::WeightInfo;
 
 /// Location that either sends or receives transfers between chains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
