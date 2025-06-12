@@ -1,6 +1,8 @@
 //! Extensions for unsigned general extrinsics
 
 #[cfg(feature = "runtime-benchmarks")]
+pub mod benchmarking_between_domains;
+#[cfg(feature = "runtime-benchmarks")]
 pub mod benchmarking_from_consensus;
 #[cfg(feature = "runtime-benchmarks")]
 pub mod benchmarking_from_domains;
