@@ -124,7 +124,10 @@ runtime-benchmarks = [
     "frame-system/runtime-benchmarks",
     "pallet-auto-id/runtime-benchmarks",
     "pallet-balances/runtime-benchmarks",
+    "pallet-block-fees/runtime-benchmarks",
     "pallet-messenger/runtime-benchmarks",
     "pallet-domain-id/runtime-benchmarks",
-    "pallet-utility/runtime-benchmarks"
+    "pallet-transaction-payment/runtime-benchmarks",
+    "pallet-transporter/runtime-benchmarks",
+    "pallet-utility/runtime-benchmarks",
 ]

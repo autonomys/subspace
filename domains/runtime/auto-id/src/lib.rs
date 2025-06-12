@@ -435,6 +435,9 @@ impl pallet_messenger::Config for Runtime {
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = MmrHash;
     type MmrProofVerifier = MmrProofVerifier;
+    #[cfg(feature = "runtime-benchmarks")]
+    type StorageKeys = sp_messenger::BenchmarkStorageKeys;
+    #[cfg(not(feature = "runtime-benchmarks"))]
     type StorageKeys = StorageKeys;
     type DomainOwner = ();
     type HoldIdentifier = HoldIdentifierWrapper;
@@ -660,7 +663,14 @@ mod benches {
         [frame_system, SystemBench::<Runtime>]
         [domain_pallet_executive, ExecutivePallet]
         [pallet_messenger, Messenger]
+        [pallet_messenger_from_consensus_extension, MessengerFromConsensusExtensionBench::<Runtime>]
+        [pallet_messenger_between_domains_extension, MessengerBetweenDomainsExtensionBench::<Runtime>]
         [pallet_auto_id, AutoId]
+        [pallet_timestamp, Timestamp]
+        [pallet_utility, Utility]
+        [pallet_balances, Balances]
+        [pallet_transporter, Transporter]
+        [pallet_transaction_payment, TransactionPayment]
     );
 }
 
@@ -1204,6 +1214,8 @@ impl_runtime_apis! {
             use frame_support::traits::StorageInfoTrait;
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
+            use pallet_messenger::extensions::benchmarking_from_consensus::Pallet as MessengerFromConsensusExtensionBench;
+            use pallet_messenger::extensions::benchmarking_between_domains::Pallet as MessengerBetweenDomainsExtensionBench;
 
             let mut list = Vec::<BenchmarkList>::new();
 
@@ -1222,6 +1234,8 @@ impl_runtime_apis! {
             use frame_system_benchmarking::Pallet as SystemBench;
             use frame_support::traits::WhitelistedStorageKeys;
             use baseline::Pallet as BaselineBench;
+            use pallet_messenger::extensions::benchmarking_from_consensus::Pallet as MessengerFromConsensusExtensionBench;
+            use pallet_messenger::extensions::benchmarking_between_domains::Pallet as MessengerBetweenDomainsExtensionBench;
 
             let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
 

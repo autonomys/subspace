@@ -1268,6 +1268,14 @@ mod benches {
         [pallet_transporter, Transporter]
         [pallet_subspace_extension, SubspaceExtensionBench::<Runtime>]
         [pallet_messenger_from_domains_extension, MessengerFromDomainsExtensionBench::<Runtime>]
+        [pallet_transaction_payment, TransactionPayment]
+        [pallet_utility, Utility]
+        [pallet_sudo, Sudo]
+        [pallet_collective, Council]
+        [pallet_preimage, Preimage]
+        [pallet_scheduler, Scheduler]
+        [pallet_democracy, Democracy]
+        [pallet_multisig, Multisig]
     );
 }
 

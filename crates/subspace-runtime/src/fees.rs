@@ -1,5 +1,7 @@
 use crate::{Balances, Runtime, RuntimeCall, TransactionFees};
 use frame_support::traits::fungible::Inspect;
+#[cfg(feature = "runtime-benchmarks")]
+use frame_support::traits::fungible::Mutate;
 use frame_support::traits::tokens::WithdrawConsequence;
 use frame_support::traits::{Currency, ExistenceRequirement, Get, Imbalance, WithdrawReasons};
 use pallet_balances::NegativeImbalance;
@@ -119,5 +121,15 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
             WithdrawConsequence::Success => Ok(()),
             _ => Err(InvalidTransaction::Payment.into()),
         }
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn endow_account(who: &AccountId, amount: Self::Balance) {
+        Balances::set_balance(who, amount);
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn minimum_balance() -> Self::Balance {
+        <Balances as Currency<AccountId>>::minimum_balance()
     }
 }
