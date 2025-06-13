@@ -16,7 +16,6 @@
 mod domains;
 mod fees;
 mod object_mapping;
-mod signed_extensions;
 mod weights;
 
 extern crate alloc;
@@ -27,7 +26,6 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
-pub use crate::signed_extensions::DisablePallets;
 use alloc::borrow::Cow;
 use core::mem;
 use core::num::NonZeroU64;
@@ -101,6 +99,8 @@ use subspace_core_primitives::solutions::{
     SolutionRange, pieces_to_solution_range, solution_range_to_pieces,
 };
 use subspace_core_primitives::{PublicKey, Randomness, SlotNumber, U256};
+pub use subspace_runtime_primitives::extension::BalanceTransferCheckExtension;
+use subspace_runtime_primitives::extension::{BalanceTransferChecks, MaybeBalancesCall};
 use subspace_runtime_primitives::utility::{
     DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
 };
@@ -414,6 +414,27 @@ impl pallet_utility::Config for Runtime {
     type RuntimeCall = RuntimeCall;
     type PalletsOrigin = OriginCaller;
     type WeightInfo = weights::pallet_utility::WeightInfo<Runtime>;
+}
+
+impl MaybeBalancesCall<Runtime> for RuntimeCall {
+    fn maybe_balance_call(&self) -> Option<&pallet_balances::Call<Runtime>> {
+        match self {
+            RuntimeCall::Balances(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl BalanceTransferChecks for Runtime {
+    fn is_balance_transferable() -> bool {
+        let enabled = RuntimeConfigs::enable_balance_transfers();
+        // for benchmarks, always return enabled.
+        if cfg!(feature = "runtime-benchmarks") {
+            true
+        } else {
+            enabled
+        }
+    }
 }
 
 impl MaybeMultisigCall<Runtime> for RuntimeCall {
@@ -965,6 +986,12 @@ impl pallet_runtime_configs::Config for Runtime {
     type WeightInfo = weights::pallet_runtime_configs::WeightInfo<Runtime>;
 }
 
+impl pallet_domains::extensions::DomainsCheck for Runtime {
+    fn is_domains_enabled() -> bool {
+        RuntimeConfigs::enable_domains()
+    }
+}
+
 mod mmr {
     use super::Runtime;
     pub use pallet_mmr::primitives::*;
@@ -1092,7 +1119,7 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
-    DisablePallets,
+    BalanceTransferCheckExtension<Runtime>,
     pallet_subspace::extensions::SubspaceExtension<Runtime>,
     pallet_domains::extensions::DomainsExtension<Runtime>,
     pallet_messenger::extensions::MessengerExtension<Runtime>,
@@ -1194,7 +1221,7 @@ fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
         // for unsigned extrinsic, transaction fee check will be skipped
         // so set a default value
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
-        DisablePallets,
+        BalanceTransferCheckExtension::<Runtime>::default(),
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
         pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
@@ -1277,6 +1304,8 @@ mod benches {
         [pallet_scheduler, Scheduler]
         [pallet_democracy, Democracy]
         [pallet_multisig, Multisig]
+        // TODO: benchmark this extension
+        [balance_transfer_check_extension, BalanceTransferCheckBench::<Runtime>]
     );
 }
 
@@ -1816,6 +1845,7 @@ impl_runtime_apis! {
             use baseline::Pallet as BaselineBench;
             use pallet_subspace::extensions::benchmarking::Pallet as SubspaceExtensionBench;
             use pallet_messenger::extensions::benchmarking_from_domains::Pallet as MessengerFromDomainsExtensionBench;
+            use subspace_runtime_primitives::extension::benchmarking::Pallet as BalanceTransferCheckBench;
 
             let mut list = Vec::<BenchmarkList>::new();
             list_benchmarks!(list, extra);
@@ -1835,6 +1865,7 @@ impl_runtime_apis! {
             use baseline::Pallet as BaselineBench;
             use pallet_subspace::extensions::benchmarking::Pallet as SubspaceExtensionBench;
             use pallet_messenger::extensions::benchmarking_from_domains::Pallet as MessengerFromDomainsExtensionBench;
+            use subspace_runtime_primitives::extension::benchmarking::Pallet as BalanceTransferCheckBench;
 
             use frame_support::traits::WhitelistedStorageKeys;
             let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();

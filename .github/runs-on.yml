@@ -1,7 +1,7 @@
 runners:
   self-hosted-ubuntu-22.04-x86-64:
     cpu: [16, 32, 64]
-    ram: [32, 64, 128]
+    ram: [64, 128, 192]
     disk: default
     family: ["c7a", "c7i", "m7a", "m7i"]
     spot: capacity-optimized

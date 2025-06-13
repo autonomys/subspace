@@ -201,6 +201,9 @@ pub trait KnownPeersRegistry: Send + Sync {
     /// Returns all known peers and their addresses without P2P suffix at the end
     async fn all_known_peers(&mut self) -> Vec<(PeerId, Vec<Multiaddr>)>;
 
+    /// Returns the number of known peers, and the number of addresses known for those peers.
+    fn count_known_peers(&mut self) -> (usize, usize);
+
     /// Drive async work in the persistence provider
     async fn run(&mut self);
 
@@ -235,6 +238,10 @@ impl KnownPeersRegistry for StubNetworkingParametersManager {
 
     async fn all_known_peers(&mut self) -> Vec<(PeerId, Vec<Multiaddr>)> {
         Vec::new()
+    }
+
+    fn count_known_peers(&mut self) -> (usize, usize) {
+        (0, 0)
     }
 
     async fn run(&mut self) {
@@ -627,6 +634,20 @@ impl KnownPeersRegistry for KnownPeersManager {
                 )
             })
             .collect()
+    }
+
+    fn count_known_peers(&mut self) -> (usize, usize) {
+        if !self.config.enable_known_peers_source {
+            return (0, 0);
+        }
+
+        (
+            self.known_peers.len(),
+            self.known_peers
+                .iter()
+                .map(|(_peer, addresses)| addresses.len())
+                .sum(),
+        )
     }
 
     async fn run(&mut self) {

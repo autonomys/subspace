@@ -163,4 +163,5 @@ runtime-benchmarks = [
     "sp-consensus-subspace/runtime-benchmarks",
     "sp-messenger/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",
+    "subspace-runtime-primitives/runtime-benchmarks",
 ]
