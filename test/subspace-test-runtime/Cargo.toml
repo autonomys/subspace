@@ -131,6 +131,7 @@ runtime-benchmarks = [
     "pallet-runtime-configs/runtime-benchmarks",
     "pallet-subspace/runtime-benchmarks",
     "pallet-timestamp/runtime-benchmarks",
+    "pallet-transaction-payment/runtime-benchmarks",
     "pallet-transporter/runtime-benchmarks",
     "pallet-utility/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",

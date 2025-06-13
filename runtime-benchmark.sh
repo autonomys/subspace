@@ -1,8 +1,11 @@
 #!/bin/bash -e
 
-cargo build -r --bin subspace-node --features runtime-benchmarks
+profile="production"
+features="runtime-benchmarks"
 
-cargo build -r -p subspace-runtime --features runtime-benchmarks
+cargo build --profile $profile --bin subspace-node --features $features
+
+cargo build --profile $profile --package subspace-runtime --features $features
 subspace_runtime_pallets=(
     "frame_system"
     "pallet_balances"
@@ -34,7 +37,7 @@ for pallet in "${subspace_runtime_pallets[@]}"; do
   $cmd
 done
 
-cargo build -r -p evm-domain-runtime --features runtime-benchmarks
+cargo build --profile $profile --package evm-domain-runtime --features $features
 evm_domain_runtime_pallets=(
     "frame_system"
     "domain_pallet_executive"
@@ -57,7 +60,7 @@ for pallet in "${evm_domain_runtime_pallets[@]}"; do
   $cmd
 done
 
-cargo build -r -p auto-id-domain-runtime --features runtime-benchmarks
+cargo build --profile $profile --package auto-id-domain-runtime --features $features
 auto_id_domain_runtime_pallets=(
     "frame_system"
     "domain_pallet_executive"
