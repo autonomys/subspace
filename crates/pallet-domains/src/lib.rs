@@ -29,7 +29,7 @@ use crate::staking::OperatorStatus;
 #[cfg(feature = "runtime-benchmarks")]
 pub use crate::staking::do_register_operator;
 use crate::staking_epoch::EpochTransitionResult;
-use crate::weights::WeightInfo;
+pub use crate::weights::WeightInfo;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
@@ -1528,12 +1528,19 @@ mod pallet {
         /// Even if the rest of the withdrawals are out of the unlocking period, the nominator
         /// should call this extrinsic to unlock each withdrawal
         #[pallet::call_index(10)]
-        #[pallet::weight(T::WeightInfo::unlock_funds())]
-        pub fn unlock_funds(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
+        #[pallet::weight(T::WeightInfo::unlock_funds(T::WithdrawalLimit::get()))]
+        pub fn unlock_funds(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+        ) -> DispatchResultWithPostInfo {
             let nominator_id = ensure_signed(origin)?;
-            do_unlock_funds::<T>(operator_id, nominator_id.clone())
+            let withdrawal_count = do_unlock_funds::<T>(operator_id, nominator_id.clone())
                 .map_err(crate::pallet::Error::<T>::from)?;
-            Ok(())
+
+            Ok(Some(T::WeightInfo::unlock_funds(
+                withdrawal_count.min(T::WithdrawalLimit::get()),
+            ))
+            .into())
         }
 
         /// Unlocks the nominator under given operator given the unlocking period is complete.

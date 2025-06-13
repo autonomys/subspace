@@ -4,6 +4,7 @@
 #![recursion_limit = "256"]
 
 mod precompiles;
+mod weights;
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
@@ -345,7 +346,7 @@ impl frame_system::Config for Runtime {
     /// The basic call filter to use in dispatchable.
     type BaseCallFilter = Everything;
     /// Weight information for the extrinsics of this pallet.
-    type SystemWeightInfo = frame_system::weights::SubstrateWeight<Runtime>;
+    type SystemWeightInfo = weights::frame_system::WeightInfo<Runtime>;
     /// Block & extrinsics weights: base values and limits.
     type BlockWeights = RuntimeBlockWeights;
     /// The maximum length of a block (in bytes).
@@ -368,7 +369,7 @@ impl pallet_timestamp::Config for Runtime {
     type Moment = Moment;
     type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
-    type WeightInfo = pallet_timestamp::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_timestamp::WeightInfo<Runtime>;
 }
 
 parameter_types! {
@@ -396,7 +397,7 @@ impl pallet_balances::Config for Runtime {
     type DustRemoval = DustRemovalHandler;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
-    type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_balances::WeightInfo<Runtime>;
     type MaxReserves = MaxReserves;
     type ReserveIdentifier = [u8; 8];
     type FreezeIdentifier = ();
@@ -433,7 +434,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type LengthToFee = ConstantMultiplier<Balance, FinalDomainTransactionByteFee>;
     type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime, TargetBlockFullness>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
-    type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_transaction_payment::WeightInfo<Runtime>;
 }
 
 pub struct ExtrinsicStorageFees;
@@ -467,7 +468,7 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
 
 impl domain_pallet_executive::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type WeightInfo = domain_pallet_executive::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::domain_pallet_executive::WeightInfo<Runtime>;
     type Currency = Balances;
     type LengthToFee = <Runtime as pallet_transaction_payment::Config>::LengthToFee;
     type ExtrinsicStorageFees = ExtrinsicStorageFees;
@@ -577,7 +578,7 @@ impl pallet_messenger::Config for Runtime {
     }
 
     type Currency = Balances;
-    type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_messenger::WeightInfo<Runtime>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type AdjustedWeightToFee = XdmAdjustedWeightToFee<Runtime>;
     type FeeMultiplier = XdmFeeMultipler;
@@ -596,7 +597,11 @@ impl pallet_messenger::Config for Runtime {
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
     type NoteChainTransfer = Transporter;
-    type ExtensionWeightInfo = pallet_messenger::extensions::weights::SubstrateWeight<Runtime>;
+    type ExtensionWeightInfo = pallet_messenger::extensions::weights::SubstrateWeight<
+        Runtime,
+        weights::pallet_messenger_from_consensus_extension::WeightInfo<Runtime>,
+        weights::pallet_messenger_between_domains_extension::WeightInfo<Runtime>,
+    >;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -619,7 +624,7 @@ impl pallet_transporter::Config for Runtime {
     type Currency = Balances;
     type Sender = Messenger;
     type AccountIdConverter = domain_runtime_primitives::AccountId20Converter;
-    type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_transporter::WeightInfo<Runtime>;
     type SkipBalanceTransferChecks = ();
     type MinimumTransfer = MinimumTransfer;
 }
@@ -717,7 +722,7 @@ impl pallet_evm::Config for Runtime {
     // TODO: re-check this value mostly from moonbeam
     type GasLimitStorageGrowthRatio = ();
     type Timestamp = Timestamp;
-    type WeightInfo = pallet_evm::weights::SubstrateWeight<Self>;
+    type WeightInfo = weights::pallet_evm::WeightInfo<Runtime>;
 }
 
 impl MaybeIntoEvmCall<Runtime> for RuntimeCall {
@@ -776,7 +781,7 @@ impl pallet_utility::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
     type PalletsOrigin = OriginCaller;
-    type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_utility::WeightInfo<Runtime>;
 }
 
 impl MaybeUtilityCall<Runtime> for RuntimeCall {
@@ -971,6 +976,13 @@ mod benches {
         [domain_pallet_executive, ExecutivePallet]
         [pallet_messenger, Messenger]
         [pallet_messenger_from_consensus_extension, MessengerFromConsensusExtensionBench::<Runtime>]
+        [pallet_messenger_between_domains_extension, MessengerBetweenDomainsExtensionBench::<Runtime>]
+        [pallet_timestamp, Timestamp]
+        [pallet_utility, Utility]
+        [pallet_balances, Balances]
+        [pallet_transporter, Transporter]
+        [pallet_evm, EVM]
+        [pallet_transaction_payment, TransactionPayment]
     );
 }
 
@@ -1831,6 +1843,7 @@ impl_runtime_apis! {
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
             use pallet_messenger::extensions::benchmarking_from_consensus::Pallet as MessengerFromConsensusExtensionBench;
+            use pallet_messenger::extensions::benchmarking_between_domains::Pallet as MessengerBetweenDomainsExtensionBench;
 
             let mut list = Vec::<BenchmarkList>::new();
 
@@ -1850,6 +1863,7 @@ impl_runtime_apis! {
             use frame_support::traits::WhitelistedStorageKeys;
             use baseline::Pallet as BaselineBench;
             use pallet_messenger::extensions::benchmarking_from_consensus::Pallet as MessengerFromConsensusExtensionBench;
+            use pallet_messenger::extensions::benchmarking_between_domains::Pallet as MessengerBetweenDomainsExtensionBench;
 
             let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
 

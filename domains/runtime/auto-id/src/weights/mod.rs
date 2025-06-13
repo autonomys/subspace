@@ -1,0 +1,11 @@
+pub mod domain_pallet_executive;
+pub mod frame_system;
+pub mod pallet_auto_id;
+pub mod pallet_balances;
+pub mod pallet_messenger;
+pub mod pallet_messenger_between_domains_extension;
+pub mod pallet_messenger_from_consensus_extension;
+pub mod pallet_timestamp;
+pub mod pallet_transaction_payment;
+pub mod pallet_transporter;
+pub mod pallet_utility;

@@ -23,6 +23,7 @@ use sp_core::U256;
 use sp_runtime::Saturating;
 use sp_runtime::traits::{CheckedSub, Zero};
 use subspace_runtime_primitives::{BlockNumber, FindBlockRewardAddress, FindVotingRewardAddresses};
+pub use weights::WeightInfo;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;

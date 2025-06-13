@@ -46,6 +46,8 @@ use domain_runtime_primitives::{
 use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::fungible::Inspect;
+#[cfg(feature = "runtime-benchmarks")]
+use frame_support::traits::fungible::Mutate;
 use frame_support::traits::tokens::WithdrawConsequence;
 use frame_support::traits::{
     ConstU8, ConstU16, ConstU32, ConstU64, ConstU128, Currency, Everything, ExistenceRequirement,
@@ -532,6 +534,16 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
             _ => Err(InvalidTransaction::Payment.into()),
         }
     }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn endow_account(who: &AccountId, amount: Self::Balance) {
+        Balances::set_balance(who, amount);
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn minimum_balance() -> Self::Balance {
+        <Balances as Currency<AccountId>>::minimum_balance()
+    }
 }
 
 impl pallet_transaction_payment::Config for Runtime {
@@ -741,7 +753,11 @@ impl pallet_messenger::Config for Runtime {
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
     type NoteChainTransfer = Transporter;
-    type ExtensionWeightInfo = pallet_messenger::extensions::weights::SubstrateWeight<Runtime>;
+    type ExtensionWeightInfo = pallet_messenger::extensions::weights::SubstrateWeight<
+        Runtime,
+        pallet_messenger::extensions::WeightsFromConsensus<Runtime>,
+        pallet_messenger::extensions::WeightsFromDomains<Runtime>,
+    >;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime

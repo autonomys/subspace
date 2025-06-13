@@ -4,7 +4,7 @@
 pub mod benchmarking;
 pub mod weights;
 
-use crate::extensions::weights::WeightInfo;
+pub use crate::extensions::weights::WeightInfo;
 use crate::pallet::Call as SubspaceCall;
 use crate::{Config, Origin, Pallet as Subspace};
 use frame_support::RuntimeDebugNoBound;

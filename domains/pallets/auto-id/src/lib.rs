@@ -25,7 +25,6 @@ pub mod weights;
 
 extern crate alloc;
 
-use crate::weights::WeightInfo;
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
 #[cfg(not(feature = "std"))]
@@ -43,6 +42,7 @@ use sp_core::{H256, U256, blake2_256};
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
 use subspace_runtime_primitives::Moment;
+pub use weights::WeightInfo;
 
 /// Unique AutoId identifier.
 pub type Identifier = H256;

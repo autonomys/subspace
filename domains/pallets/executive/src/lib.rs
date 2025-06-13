@@ -60,6 +60,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::{ApplyExtrinsicResult, DispatchError, ExtrinsicInclusionMode};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
+pub use weights::WeightInfo;
 
 pub type CheckedOf<E, C> = <E as Checkable<C>>::Checked;
 pub type CallOf<E, C> = <CheckedOf<E, C> as Applyable>::Call;
