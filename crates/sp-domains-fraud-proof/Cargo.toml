@@ -46,6 +46,7 @@ thiserror.workspace = true
 criterion.workspace = true
 domain-block-preprocessor.workspace = true
 domain-test-service.workspace = true
+domain-test-utils.workspace = true
 ethereum.workspace = true
 evm-domain-test-runtime.workspace = true
 fp-rpc.workspace = true
@@ -62,7 +63,7 @@ sp-core.workspace = true
 sp-externalities.workspace = true
 sp-weights.workspace = true
 sc-cli.workspace = true
-sp-domains = { workspace = true, features = ["test-ethereum"] }
+sp-domains = { workspace = true }
 sc-domains.workspace = true
 sc-service.workspace = true
 subspace-test-runtime.workspace = true

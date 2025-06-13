@@ -2878,6 +2878,7 @@ dependencies = [
  "domain-runtime-primitives",
  "domain-test-primitives",
  "domain-test-service",
+ "domain-test-utils",
  "ethereum",
  "evm-domain-test-runtime",
  "fp-rpc",
@@ -3146,6 +3147,24 @@ dependencies = [
  "substrate-test-client",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "domain-test-utils"
+version = "0.1.0"
+dependencies = [
+ "domain-runtime-primitives",
+ "ethereum",
+ "fp-self-contained",
+ "frame-support",
+ "frame-system",
+ "hex-literal",
+ "libsecp256k1",
+ "pallet-evm",
+ "pallet-utility",
+ "rlp",
+ "sp-core",
+ "sp-domains",
 ]
 
 [[package]]
@@ -12508,21 +12527,14 @@ version = "0.1.0"
 dependencies = [
  "blake2 0.10.6",
  "domain-runtime-primitives",
- "ethereum",
- "fp-self-contained",
  "frame-support",
- "frame-system",
  "hash-db",
  "hex-literal",
- "libsecp256k1",
  "memory-db",
  "num-traits",
- "pallet-evm",
- "pallet-utility",
  "parity-scale-codec",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
- "rlp",
  "rs_merkle",
  "scale-info",
  "serde",
@@ -12550,6 +12562,7 @@ dependencies = [
  "domain-block-preprocessor",
  "domain-runtime-primitives",
  "domain-test-service",
+ "domain-test-utils",
  "ethereum",
  "evm-domain-test-runtime",
  "fp-rpc",

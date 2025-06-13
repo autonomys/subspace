@@ -13,6 +13,7 @@ members = [
     "domains/test/runtime/*",
     "domains/test/pallets/*",
     "domains/test/service",
+    "domains/test/utils",
     "shared/*",
     "test/subspace-test-client",
     "test/subspace-test-runtime",
@@ -60,6 +61,7 @@ domain-runtime-primitives = { version = "0.1.0", path = "domains/primitives/runt
 domain-service = { version = "0.1.0", path = "domains/service" }
 domain-test-primitives = { version = "0.1.0", path = "domains/test/primitives", default-features = false }
 domain-test-service = { version = "0.1.0", path = "domains/test/service" }
+domain-test-utils = { version = "0.1.0", path = "domains/test/utils" }
 env_logger = "0.11.5"
 ethereum = { git = "https://github.com/rust-ethereum/ethereum", rev = "3be0d8fd4c2ad1ba216b69ef65b9382612efc8ba" }
 event-listener = "5.3.1"
