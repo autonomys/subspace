@@ -14,7 +14,6 @@ include = [
 [dependencies]
 domain-runtime-primitives.workspace = true
 ethereum.workspace = true
-fp-self-contained = { workspace = true, features = ["default"] }
 frame-support.workspace = true
 frame-system.workspace = true
 hex-literal.workspace = true
@@ -24,3 +23,18 @@ pallet-utility.workspace = true
 rlp.workspace = true
 sp-core.workspace = true
 sp-domains.workspace = true
+
+[features]
+default = ["std"]
+std = [
+    "domain-runtime-primitives/std",
+    "ethereum/std",
+    "frame-support/std",
+    "frame-system/std",
+    "libsecp256k1/std",
+    "pallet-evm/std",
+    "pallet-utility/std",
+    "rlp/std",
+    "sp-core/std",
+    "sp-domains/std",
+]

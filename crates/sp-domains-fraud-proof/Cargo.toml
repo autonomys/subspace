@@ -38,7 +38,6 @@ sp-trie.workspace = true
 sp-weights.workspace = true
 subspace-core-primitives.workspace = true
 subspace-runtime-primitives.workspace = true
-tracing.workspace = true
 trie-db.workspace = true
 thiserror.workspace = true
 
@@ -51,14 +50,11 @@ ethereum.workspace = true
 evm-domain-test-runtime.workspace = true
 fp-rpc.workspace = true
 fp-self-contained.workspace = true
-frame-system.workspace = true
 futures.workspace = true
-libsecp256k1 = { workspace = true, features = ["static-context", "hmac"] }
 pallet-balances.workspace = true
 pallet-domains.workspace = true
 pallet-ethereum.workspace = true
 rand = { workspace = true, features = ["min_const_gen"] }
-rlp.workspace = true
 sp-core.workspace = true
 sp-externalities.workspace = true
 sp-weights.workspace = true

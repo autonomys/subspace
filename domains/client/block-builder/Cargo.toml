@@ -24,7 +24,6 @@ sp-blockchain.workspace = true
 sp-block-builder = { workspace = true, features = ["std"] }
 sp-core.workspace = true
 sp-domains = { workspace = true, features = ["std"] }
-sp-externalities.workspace = true
 sp-inherents.workspace = true
 sp-runtime.workspace = true
 sp-state-machine.workspace = true

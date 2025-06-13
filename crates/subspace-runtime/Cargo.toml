@@ -73,7 +73,6 @@ subspace-runtime-primitives.workspace = true
 substrate-wasm-builder = { workspace = true, optional = true }
 
 [dev-dependencies]
-hex-literal.workspace = true
 sp-io.workspace = true
 subspace-runtime-primitives = { workspace = true, features = ["testing"] }
 
