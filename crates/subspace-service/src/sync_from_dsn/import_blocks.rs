@@ -15,7 +15,7 @@ use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::BlockNumber;
 use subspace_core_primitives::segments::SegmentIndex;
-use subspace_data_retrieval::segment_downloading::download_segment_pieces;
+use subspace_data_retrieval::segment_downloading::download_segment_pieces_once;
 use subspace_erasure_coding::ErasureCoding;
 use tokio::task;
 
@@ -153,7 +153,7 @@ where
             }
         }
 
-        let segment_pieces = download_segment_pieces(segment_index, piece_getter)
+        let segment_pieces = download_segment_pieces_once(segment_index, piece_getter)
             .await
             .map_err(|error| format!("Failed to download segment pieces: {error}"))?;
         // CPU-intensive piece and segment reconstruction code can block the async executor.
