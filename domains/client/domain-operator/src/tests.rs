@@ -16,6 +16,10 @@ use domain_test_service::evm_domain_test_runtime::{
     Header, Runtime as TestRuntime, RuntimeCall, UncheckedExtrinsic as EvmUncheckedExtrinsic,
 };
 use domain_test_service::{AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID, EvmDomainNode};
+use domain_test_utils::test_ethereum::{
+    EvmAccountList, generate_evm_account_list, generate_evm_domain_call, generate_legacy_tx,
+};
+use domain_test_utils::test_ethereum_tx::{AccountInfo, address_build, contract_address};
 use ethereum::TransactionV2 as EthereumTransaction;
 use fp_rpc::EthereumRuntimeRPCApi;
 use futures::StreamExt;
@@ -37,10 +41,6 @@ use sp_core::{H160, H256, Pair, U256};
 use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::test_ethereum::{
-    EvmAccountList, generate_evm_account_list, generate_evm_domain_call, generate_legacy_tx,
-};
-use sp_domains::test_ethereum_tx::{AccountInfo, address_build, contract_address};
 use sp_domains::{
     BlockFees, Bundle, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor,
     InboxedBundle, InvalidBundleType, PermissionedActionAllowedBy, Transfers,

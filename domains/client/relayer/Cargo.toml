@@ -18,7 +18,6 @@ futures.workspace = true
 parity-scale-codec = { workspace = true, features = ["derive"] }
 rand.workspace = true
 sc-client-api.workspace = true
-sc-state-db.workspace = true
 sc-utils.workspace = true
 sp-api.workspace = true
 sp-blockchain.workspace = true

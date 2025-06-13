@@ -38,27 +38,9 @@ subspace-core-primitives.workspace = true
 subspace-runtime-primitives.workspace = true
 trie-db.workspace = true
 
-# test-ethereum dependencies
-ethereum = { workspace = true, optional = true }
-fp-self-contained = { workspace = true, features = ["default"], optional = true }
-frame-system = { workspace = true, optional = true }
-libsecp256k1 = { workspace = true, features = ["static-context", "hmac"], optional = true }
-pallet-evm = { workspace = true, optional = true }
-pallet-utility = { workspace = true, optional = true }
-rlp = { workspace = true, optional = true }
-
 [dev-dependencies]
 num-traits.workspace = true
 rand = { workspace = true, features = ["min_const_gen"] }
-
-# test-ethereum dependencies
-ethereum.workspace = true
-fp-self-contained = { workspace = true, features = ["default"] }
-frame-system.workspace = true
-libsecp256k1 = { workspace = true, features = ["static-context", "hmac"] }
-pallet-evm.workspace = true
-pallet-utility.workspace = true
-rlp.workspace = true
 
 [features]
 default = ["std"]
@@ -86,21 +68,5 @@ std = [
     "subspace-core-primitives/std",
     "subspace-runtime-primitives/std",
     "trie-db/std",
-    # test-ethereum dependencies
-    "ethereum?/std",
-    "fp-self-contained?/std",
-    "frame-system?/std",
-    "libsecp256k1?/std",
-    "pallet-evm?/std",
-    "rlp?/std",
 ]
 runtime-benchmarks = []
-test-ethereum = [
-    "ethereum",
-    "fp-self-contained",
-    "frame-system",
-    "libsecp256k1",
-    "pallet-evm",
-    "pallet-utility",
-    "rlp",
-]

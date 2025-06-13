@@ -257,12 +257,12 @@ dependencies = [
 
 [[package]]
 name = "aes"
-version = "0.9.0-pre.2"
+version = "0.9.0-rc.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7856582c758ade85d71daf27ec6bcea6c1c73913692b07b8dffea2dc03531c9"
+checksum = "cd4838e4ad37bb032dea137f441d5f71c16c26c068af512e64c5bc13a88cdfc7"
 dependencies = [
  "cfg-if",
- "cipher 0.5.0-pre.7",
+ "cipher 0.5.0-rc.0",
  "cpufeatures",
 ]
 
@@ -1723,12 +1723,12 @@ dependencies = [
 
 [[package]]
 name = "cipher"
-version = "0.5.0-pre.7"
+version = "0.5.0-rc.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b1425e6ce000f05a73096556cabcfb6a10a3ffe3bb4d75416ca8f00819c0b6a"
+checksum = "bd4ef774202f1749465fc7cf88d70fc30620e8cacd5429268f4bff7d003bd976"
 dependencies = [
- "crypto-common 0.2.0-rc.1",
- "inout 0.2.0-rc.1",
+ "crypto-common 0.2.0-rc.3",
+ "inout 0.2.0-rc.5",
 ]
 
 [[package]]
@@ -2220,9 +2220,9 @@ dependencies = [
 
 [[package]]
 name = "crypto-common"
-version = "0.2.0-rc.1"
+version = "0.2.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0b8ce8218c97789f16356e7896b3714f26c2ee1079b79c0b7ae7064bb9089fa"
+checksum = "8a23fa214dea9efd4dacee5a5614646b30216ae0f05d4bb51bafb50e9da1c5be"
 dependencies = [
  "hybrid-array",
 ]
@@ -2778,7 +2778,6 @@ dependencies = [
  "sp-blockchain",
  "sp-core",
  "sp-domains",
- "sp-externalities",
  "sp-inherents",
  "sp-runtime",
  "sp-state-machine",
@@ -2795,7 +2794,6 @@ dependencies = [
  "parity-scale-codec",
  "sc-client-api",
  "sc-executor",
- "sc-executor-common",
  "sp-api",
  "sp-block-fees",
  "sp-blockchain",
@@ -2804,7 +2802,6 @@ dependencies = [
  "sp-domains",
  "sp-evm-tracker",
  "sp-executive",
- "sp-externalities",
  "sp-inherents",
  "sp-keyring",
  "sp-messenger",
@@ -2851,7 +2848,6 @@ dependencies = [
  "parity-scale-codec",
  "rand 0.8.5",
  "sc-client-api",
- "sc-state-db",
  "sc-utils",
  "sp-api",
  "sp-blockchain",
@@ -2878,6 +2874,7 @@ dependencies = [
  "domain-runtime-primitives",
  "domain-test-primitives",
  "domain-test-service",
+ "domain-test-utils",
  "ethereum",
  "evm-domain-test-runtime",
  "fp-rpc",
@@ -2887,16 +2884,13 @@ dependencies = [
  "futures-timer",
  "hex",
  "pallet-balances",
- "pallet-domain-sudo",
  "pallet-domains",
  "pallet-ethereum",
  "pallet-evm",
- "pallet-evm-tracker",
  "pallet-messenger",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transporter",
- "pallet-utility",
  "parity-scale-codec",
  "parking_lot 0.12.3",
  "rand 0.8.5",
@@ -2910,7 +2904,6 @@ dependencies = [
  "sc-network-sync",
  "sc-service",
  "sc-subspace-sync-common",
- "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
  "sp-api",
@@ -3023,8 +3016,6 @@ dependencies = [
 name = "domain-service"
 version = "0.1.0"
 dependencies = [
- "async-channel 1.9.0",
- "async-trait",
  "cross-domain-message-gossip",
  "domain-block-builder",
  "domain-block-preprocessor",
@@ -3035,16 +3026,12 @@ dependencies = [
  "frame-benchmarking",
  "futures",
  "jsonrpsee 0.24.8",
- "log",
  "pallet-transaction-payment-rpc",
  "parity-scale-codec",
  "sc-chain-spec",
  "sc-client-api",
- "sc-client-db",
  "sc-consensus",
  "sc-domains",
- "sc-executor",
- "sc-informant",
  "sc-network",
  "sc-network-common",
  "sc-network-sync",
@@ -3065,23 +3052,18 @@ dependencies = [
  "sp-core",
  "sp-domains",
  "sp-domains-fraud-proof",
- "sp-io",
  "sp-messenger",
- "sp-messenger-host-functions",
  "sp-mmr-primitives",
  "sp-offchain",
  "sp-runtime",
  "sp-session",
- "sp-subspace-mmr",
  "sp-transaction-pool",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
- "thiserror 2.0.12",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -3109,7 +3091,6 @@ dependencies = [
  "domain-test-primitives",
  "evm-domain-test-runtime",
  "fp-account",
- "fp-rpc",
  "frame-support",
  "frame-system",
  "pallet-transaction-payment",
@@ -3138,7 +3119,6 @@ dependencies = [
  "sp-session",
  "sp-transaction-pool",
  "subspace-runtime-primitives",
- "subspace-service",
  "subspace-test-client",
  "subspace-test-primitives",
  "subspace-test-service",
@@ -3146,6 +3126,23 @@ dependencies = [
  "substrate-test-client",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "domain-test-utils"
+version = "0.1.0"
+dependencies = [
+ "domain-runtime-primitives",
+ "ethereum",
+ "frame-support",
+ "frame-system",
+ "hex-literal",
+ "libsecp256k1",
+ "pallet-evm",
+ "pallet-utility",
+ "rlp",
+ "sp-core",
+ "sp-domains",
 ]
 
 [[package]]
@@ -5161,9 +5158,9 @@ dependencies = [
 
 [[package]]
 name = "hybrid-array"
-version = "0.2.0-rc.11"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5a41e5b0754cae5aaf7915f1df1147ba8d316fc6e019cfcc00fbaba96d5e030"
+checksum = "891d15931895091dea5c47afa5b3c9a01ba634b311919fd4d41388fa0e3d76af"
 dependencies = [
  "typenum",
 ]
@@ -5618,9 +5615,9 @@ dependencies = [
 
 [[package]]
 name = "inout"
-version = "0.2.0-rc.1"
+version = "0.2.0-rc.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "161ac07241f4d11c21b6d82f1fef1c05aec030c0bf568b35281efe453ea450a7"
+checksum = "c774c86bce20ea04abe1c37cf0051c5690079a3a28ef5fdac2a5a0412b3d7d74"
 dependencies = [
  "hybrid-array",
 ]
@@ -7920,7 +7917,6 @@ dependencies = [
  "frame-system",
  "parity-scale-codec",
  "scale-info",
- "sp-core",
  "sp-domains",
  "sp-io",
  "sp-runtime",
@@ -12508,21 +12504,14 @@ version = "0.1.0"
 dependencies = [
  "blake2 0.10.6",
  "domain-runtime-primitives",
- "ethereum",
- "fp-self-contained",
  "frame-support",
- "frame-system",
  "hash-db",
  "hex-literal",
- "libsecp256k1",
  "memory-db",
  "num-traits",
- "pallet-evm",
- "pallet-utility",
  "parity-scale-codec",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
- "rlp",
  "rs_merkle",
  "scale-info",
  "serde",
@@ -12550,22 +12539,20 @@ dependencies = [
  "domain-block-preprocessor",
  "domain-runtime-primitives",
  "domain-test-service",
+ "domain-test-utils",
  "ethereum",
  "evm-domain-test-runtime",
  "fp-rpc",
  "fp-self-contained",
  "frame-support",
- "frame-system",
  "futures",
  "hash-db",
- "libsecp256k1",
  "log",
  "pallet-balances",
  "pallet-domains",
  "pallet-ethereum",
  "parity-scale-codec",
  "rand 0.8.5",
- "rlp",
  "sc-cli",
  "sc-client-api",
  "sc-domains",
@@ -12594,7 +12581,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
  "trie-db",
 ]
 
@@ -13365,7 +13351,6 @@ dependencies = [
  "pallet-transaction-payment-rpc-runtime-api",
  "sp-api",
  "sp-block-builder",
- "sp-blockchain",
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
@@ -13494,7 +13479,6 @@ dependencies = [
  "jsonrpsee 0.24.8",
  "mimalloc",
  "reqwest",
- "serde",
  "subspace-core-primitives",
  "subspace-data-retrieval",
  "subspace-gateway-rpc",
@@ -13582,8 +13566,6 @@ dependencies = [
  "sc-network",
  "sc-network-sync",
  "sc-service",
- "sc-storage-monitor",
- "sc-subspace-chain-specs",
  "sc-tracing",
  "sc-transaction-pool-api",
  "sc-utils",
@@ -13770,7 +13752,7 @@ dependencies = [
 name = "subspace-proof-of-time"
 version = "0.1.0"
 dependencies = [
- "aes 0.9.0-pre.2",
+ "aes 0.9.0-rc.0",
  "core_affinity",
  "cpufeatures",
  "criterion",
@@ -13803,7 +13785,6 @@ dependencies = [
  "frame-system",
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
- "hex-literal",
  "pallet-balances",
  "pallet-collective",
  "pallet-democracy",

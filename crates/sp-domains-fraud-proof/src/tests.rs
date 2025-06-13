@@ -5,6 +5,10 @@ use domain_test_service::Sr25519Keyring::Ferdie;
 use domain_test_service::evm_domain_test_runtime::{
     Runtime as TestRuntime, RuntimeCall, Signature, UncheckedExtrinsic as EvmUncheckedExtrinsic,
 };
+use domain_test_utils::test_ethereum::{
+    generate_eip1559_tx, generate_eip2930_tx, generate_legacy_tx,
+};
+use domain_test_utils::test_ethereum_tx::{AccountInfo, address_build};
 use ethereum::TransactionV2 as EthereumTransaction;
 use evm_domain_test_runtime::construct_extrinsic_raw_payload;
 use fp_rpc::EthereumRuntimeRPCApi;
@@ -16,8 +20,6 @@ use sp_api::{ApiExt, ProvideRuntimeApi, TransactionOutcome};
 use sp_core::ecdsa::Pair;
 use sp_core::{Pair as _, U256, keccak_256};
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::test_ethereum::{generate_eip1559_tx, generate_eip2930_tx, generate_legacy_tx};
-use sp_domains::test_ethereum_tx::{AccountInfo, address_build};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime::traits::Zero;
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};

@@ -3,13 +3,14 @@
 use crate::test_ethereum_tx::{
     AccountInfo, EIP1559UnsignedTransaction, EIP2930UnsignedTransaction, LegacyUnsignedTransaction,
 };
-use crate::{EthereumAccountId, PermissionedActionAllowedBy};
+use domain_runtime_primitives::EthereumAccountId;
 use ethereum::TransactionV2 as Transaction;
 use frame_support::pallet_prelude::DispatchClass;
 use frame_system::pallet_prelude::RuntimeCallFor;
 use hex_literal::hex;
 use pallet_evm::GasWeightMapping;
 use sp_core::{Get, U256};
+use sp_domains::PermissionedActionAllowedBy;
 
 /// The kind of account list to generate.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

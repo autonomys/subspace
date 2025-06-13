@@ -21,7 +21,6 @@ domain-test-primitives.workspace = true
 domain-runtime-primitives.workspace = true
 evm-domain-test-runtime.workspace = true
 fp-account = { workspace = true, features = ["serde"] }
-fp-rpc = { workspace = true, features = ["default"] }
 frame-system.workspace = true
 frame-support.workspace = true
 rand.workspace = true
@@ -50,7 +49,6 @@ sp-runtime.workspace = true
 sp-session.workspace = true
 sp-transaction-pool.workspace = true
 subspace-runtime-primitives.workspace = true
-subspace-service.workspace = true
 subspace-test-client.workspace = true
 subspace-test-service.workspace = true
 subspace-test-primitives.workspace = true
