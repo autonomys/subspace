@@ -7,6 +7,7 @@ mod benchmarking;
 pub mod weights;
 
 pub use pallet::*;
+pub use weights::WeightInfo;
 
 #[frame_support::pallet]
 mod pallet {

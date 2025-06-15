@@ -144,13 +144,13 @@ mod benchmarks {
                     },
                     collected_fee: CollectedFee {
                         src_chain_fee: 1u32.into(),
-                        dst_chain_fee: 1u32.into(),
+                        dst_chain_fee: 0u32.into(),
                     },
                 },
             ))),
             last_delivered_message_response_nonce: None,
         };
-        Inbox::<T>::put(msg);
+        Messenger::<T>::pre_dispatch_relay_message(msg, false).expect("pre_dispatch must succeed");
 
         let xdm = CrossDomainMessage::<BlockNumberFor<T>, T::Hash, T::MmrHash> {
             src_chain_id: dst_chain_id,
@@ -226,7 +226,8 @@ mod benchmarks {
             )))),
             last_delivered_message_response_nonce: None,
         };
-        OutboxResponses::<T>::put(resp_msg);
+        Messenger::<T>::pre_dispatch_relay_message_response(resp_msg)
+            .expect("pre_dispatch must succeed");
 
         let xdm = CrossDomainMessage::<BlockNumberFor<T>, T::Hash, T::MmrHash> {
             src_chain_id: dst_chain_id,

@@ -1,5 +1,5 @@
 use crate::Pallet as BlockFees;
-use frame_support::traits::fungible::Inspect;
+use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::tokens::WithdrawConsequence;
 use frame_support::traits::{Currency, ExistenceRequirement, Imbalance, WithdrawReasons};
 use parity_scale_codec::Encode;
@@ -24,7 +24,9 @@ pub struct OnChargeDomainTransaction<C>(PhantomData<C>);
 impl<T, C> pallet_transaction_payment::OnChargeTransaction<T> for OnChargeDomainTransaction<C>
 where
     T: pallet_transaction_payment::Config + crate::Config<Balance = BalanceOf<C, T>>,
-    C: Currency<AccountIdOf<T>> + Inspect<AccountIdOf<T>, Balance = BalanceOf<C, T>>,
+    C: Currency<AccountIdOf<T>>
+        + Inspect<AccountIdOf<T>, Balance = BalanceOf<C, T>>
+        + Mutate<AccountIdOf<T>>,
     C::PositiveImbalance: Imbalance<BalanceOf<C, T>, Opposite = C::NegativeImbalance>,
 {
     type Balance = BalanceOf<C, T>;
@@ -112,5 +114,15 @@ where
             BlockFees::<T>::note_domain_execution_fee(paid_domain_fee.peek());
         }
         Ok(())
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn endow_account(who: &AccountIdOf<T>, amount: Self::Balance) {
+        C::set_balance(who, amount);
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn minimum_balance() -> Self::Balance {
+        <C as Currency<AccountIdOf<T>>>::minimum_balance()
     }
 }

@@ -1023,10 +1023,12 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 }
 
 /// Unlocks any withdraws that are ready to be unlocked.
+///
+/// Return the number of withdrawals being unlocked
 pub(crate) fn do_unlock_funds<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
-) -> Result<(), Error> {
+) -> Result<u32, Error> {
     let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
     ensure!(
         *operator.status::<T>(operator_id) == OperatorStatus::Registered,
@@ -1049,6 +1051,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
 
         let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
 
+        let mut withdrawal_count = 0;
         let mut total_unlocked_amount = BalanceOf::<T>::zero();
         let mut total_storage_fee_refund = BalanceOf::<T>::zero();
         loop {
@@ -1077,6 +1080,8 @@ pub(crate) fn do_unlock_funds<T: Config>(
             total_storage_fee_refund = total_storage_fee_refund
                 .checked_add(&storage_fee_refund)
                 .ok_or(Error::BalanceOverflow)?;
+
+            withdrawal_count += 1;
         }
 
         // There is withdrawal but none being processed meaning the first withdrawal's unlock period has
@@ -1174,7 +1179,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
             });
         }
 
-        Ok(())
+        Ok(withdrawal_count)
     })
 }
 

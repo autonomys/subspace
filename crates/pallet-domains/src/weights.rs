@@ -45,7 +45,7 @@ pub trait WeightInfo {
 	fn nominate_operator() -> Weight;
 	fn deregister_operator() -> Weight;
 	fn withdraw_stake() -> Weight;
-	fn unlock_funds() -> Weight;
+	fn unlock_funds(w: u32) -> Weight;
 	fn unlock_nominator() -> Weight;
 	fn update_domain_operator_allow_list() -> Weight;
 	fn transfer_treasury_funds() -> Weight;
@@ -426,26 +426,33 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Proof: `Domains::Operators` (`max_values`: None, `max_size`: None, mode: `Measured`)
 	/// Storage: `Domains::LatestSubmittedER` (r:1 w:0)
 	/// Proof: `Domains::LatestSubmittedER` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DomainStakingSummary` (r:1 w:0)
+	/// Proof: `Domains::DomainStakingSummary` (`max_values`: None, `max_size`: None, mode: `Measured`)
 	/// Storage: `Domains::Withdrawals` (r:1 w:1)
 	/// Proof: `Domains::Withdrawals` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	/// Storage: `Domains::OperatorEpochSharePrice` (r:1 w:0)
-	/// Proof: `Domains::OperatorEpochSharePrice` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	/// Storage: `Domains::LatestConfirmedDomainExecutionReceipt` (r:1 w:0)
-	/// Proof: `Domains::LatestConfirmedDomainExecutionReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	/// Storage: `Balances::Holds` (r:1 w:1)
-	/// Proof: `Balances::Holds` (`max_values`: None, `max_size`: Some(5550), added: 8025, mode: `MaxEncodedLen`)
+	/// Storage: `Domains::HeadDomainNumber` (r:1 w:0)
+	/// Proof: `Domains::HeadDomainNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DepositOnHold` (r:1 w:1)
+	/// Proof: `Domains::DepositOnHold` (`max_values`: None, `max_size`: None, mode: `Measured`)
 	/// Storage: `System::Account` (r:1 w:1)
 	/// Proof: `System::Account` (`max_values`: None, `max_size`: Some(128), added: 2603, mode: `MaxEncodedLen`)
+	/// Storage: `Balances::Holds` (r:1 w:1)
+	/// Proof: `Balances::Holds` (`max_values`: None, `max_size`: Some(134), added: 2609, mode: `MaxEncodedLen`)
 	/// Storage: `Domains::Deposits` (r:1 w:1)
 	/// Proof: `Domains::Deposits` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	fn unlock_funds() -> Weight {
+	/// The range of component `w` is `[1, 32]`.
+	fn unlock_funds(w: u32, ) -> Weight {
 		// Proof Size summary in bytes:
-		//  Measured:  `1290`
-		//  Estimated: `9015`
-		// Minimum execution time: 144_271_000 picoseconds.
-		Weight::from_parts(147_196_000, 9015)
-			.saturating_add(T::DbWeight::get().reads(8_u64))
-			.saturating_add(T::DbWeight::get().writes(4_u64))
+		//  Measured:  `1157 + w * (36 ±0)`
+		//  Estimated: `4622 + w * (36 ±0)`
+		// Minimum execution time: 94_000_000 picoseconds.
+		Weight::from_parts(86_675_591, 0)
+			.saturating_add(Weight::from_parts(0, 4622))
+			// Standard Error: 373_480
+			.saturating_add(Weight::from_parts(1_180_519, 0).saturating_mul(w.into()))
+			.saturating_add(T::DbWeight::get().reads(9))
+			.saturating_add(T::DbWeight::get().writes(5))
+			.saturating_add(Weight::from_parts(0, 36).saturating_mul(w.into()))
 	}
 	/// Storage: `Domains::Operators` (r:1 w:1)
 	/// Proof: `Domains::Operators` (`max_values`: None, `max_size`: None, mode: `Measured`)
@@ -1018,26 +1025,33 @@ impl WeightInfo for () {
 	/// Proof: `Domains::Operators` (`max_values`: None, `max_size`: None, mode: `Measured`)
 	/// Storage: `Domains::LatestSubmittedER` (r:1 w:0)
 	/// Proof: `Domains::LatestSubmittedER` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DomainStakingSummary` (r:1 w:0)
+	/// Proof: `Domains::DomainStakingSummary` (`max_values`: None, `max_size`: None, mode: `Measured`)
 	/// Storage: `Domains::Withdrawals` (r:1 w:1)
 	/// Proof: `Domains::Withdrawals` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	/// Storage: `Domains::OperatorEpochSharePrice` (r:1 w:0)
-	/// Proof: `Domains::OperatorEpochSharePrice` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	/// Storage: `Domains::LatestConfirmedDomainExecutionReceipt` (r:1 w:0)
-	/// Proof: `Domains::LatestConfirmedDomainExecutionReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	/// Storage: `Balances::Holds` (r:1 w:1)
-	/// Proof: `Balances::Holds` (`max_values`: None, `max_size`: Some(5550), added: 8025, mode: `MaxEncodedLen`)
+	/// Storage: `Domains::HeadDomainNumber` (r:1 w:0)
+	/// Proof: `Domains::HeadDomainNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::DepositOnHold` (r:1 w:1)
+	/// Proof: `Domains::DepositOnHold` (`max_values`: None, `max_size`: None, mode: `Measured`)
 	/// Storage: `System::Account` (r:1 w:1)
 	/// Proof: `System::Account` (`max_values`: None, `max_size`: Some(128), added: 2603, mode: `MaxEncodedLen`)
+	/// Storage: `Balances::Holds` (r:1 w:1)
+	/// Proof: `Balances::Holds` (`max_values`: None, `max_size`: Some(134), added: 2609, mode: `MaxEncodedLen`)
 	/// Storage: `Domains::Deposits` (r:1 w:1)
 	/// Proof: `Domains::Deposits` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	fn unlock_funds() -> Weight {
+	/// The range of component `w` is `[1, 32]`.
+	fn unlock_funds(w: u32, ) -> Weight {
 		// Proof Size summary in bytes:
-		//  Measured:  `1290`
-		//  Estimated: `9015`
-		// Minimum execution time: 144_271_000 picoseconds.
-		Weight::from_parts(147_196_000, 9015)
-			.saturating_add(ParityDbWeight::get().reads(8_u64))
-			.saturating_add(ParityDbWeight::get().writes(4_u64))
+		//  Measured:  `1157 + w * (36 ±0)`
+		//  Estimated: `4622 + w * (36 ±0)`
+		// Minimum execution time: 94_000_000 picoseconds.
+		Weight::from_parts(86_675_591, 0)
+			.saturating_add(Weight::from_parts(0, 4622))
+			// Standard Error: 373_480
+			.saturating_add(Weight::from_parts(1_180_519, 0).saturating_mul(w.into()))
+			.saturating_add(ParityDbWeight::get().reads(9))
+			.saturating_add(ParityDbWeight::get().writes(5))
+			.saturating_add(Weight::from_parts(0, 36).saturating_mul(w.into()))
 	}
 	/// Storage: `Domains::Operators` (r:1 w:1)
 	/// Proof: `Domains::Operators` (`max_values`: None, `max_size`: None, mode: `Measured`)
