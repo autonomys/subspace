@@ -344,11 +344,42 @@ where
             .header(parent_hash)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
-        let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot())?;
+        let parent_pre_digest = extract_pre_digest(&parent_header)?;
+        let parent_slot = parent_pre_digest.slot();
 
         // Make sure that slot number is strictly increasing
         if pre_digest.slot() <= parent_slot {
             return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
+        }
+
+        let runtime_api = self.client.runtime_api();
+        let parent_pot_parameters = runtime_api
+            .pot_parameters(parent_hash)
+            .map_err(|_| Error::ParentUnavailable(parent_hash, block_hash))?;
+
+        let pot_input = if block_number.is_one() {
+            PotNextSlotInput {
+                slot: parent_slot + Slot::from(1),
+                slot_iterations: parent_pot_parameters.slot_iterations(),
+                seed: self.pot_verifier.genesis_seed(),
+            }
+        } else {
+            PotNextSlotInput::derive(
+                parent_pot_parameters.slot_iterations(),
+                parent_slot,
+                parent_pre_digest.pot_info().proof_of_time(),
+                &parent_pot_parameters.next_parameters_change(),
+            )
+        };
+
+        // Ensure proof of time is valid according to parent block
+        if !self.pot_verifier.is_output_valid(
+            pot_input,
+            pre_digest.slot() - parent_slot,
+            pre_digest.pot_info().proof_of_time(),
+            parent_pot_parameters.next_parameters_change(),
+        ) {
+            return Err(Error::InvalidProofOfTime);
         }
 
         let parent_subspace_digest_items = if block_number.is_one() {
