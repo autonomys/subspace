@@ -18,14 +18,14 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{extract_pre_digest, extract_subspace_digest_items};
-use sp_consensus_subspace::{ChainConstants, PotNextSlotInput, SubspaceApi};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Zero};
+use sp_consensus_subspace::{ChainConstants, PotNextSlotInput, PotParameters, SubspaceApi};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, Zero};
 use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::thread;
 use subspace_core_primitives::PublicKey;
-use subspace_core_primitives::pot::PotCheckpoints;
+use subspace_core_primitives::pot::{PotCheckpoints, PotOutput, PotSeed};
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::broadcast;
 use tracing::{Span, debug, error, trace, warn};
@@ -110,20 +110,13 @@ where
         let pot_parameters = runtime_api.pot_parameters(best_hash)?;
         let maybe_next_parameters_change = pot_parameters.next_parameters_change();
 
-        let pot_input = if best_header.number().is_zero() {
-            PotNextSlotInput {
-                slot: parent_slot + Slot::from(1),
-                slot_iterations: pot_parameters.slot_iterations(),
-                seed: pot_verifier.genesis_seed(),
-            }
-        } else {
-            PotNextSlotInput::derive(
-                pot_parameters.slot_iterations(),
-                parent_slot,
-                best_pre_digest.pot_info().future_proof_of_time(),
-                &maybe_next_parameters_change,
-            )
-        };
+        let pot_input = pot_next_slot_input::<Block>(
+            best_header.number(),
+            parent_slot,
+            &pot_parameters,
+            pot_verifier.genesis_seed(),
+            best_pre_digest.pot_info().future_proof_of_time(),
+        );
 
         let state = Arc::new(PotState::new(
             pot_input,
@@ -419,5 +412,29 @@ where
     /// Subscribe to pot slot notifications.
     pub fn subscribe_pot_slot_info_stream(&self) -> broadcast::Receiver<PotSlotInfo> {
         self.slot_sender.subscribe()
+    }
+}
+
+/// Derives the next PoT slot input from the parent.
+pub fn pot_next_slot_input<Block: BlockT>(
+    parent_block_number: &NumberFor<Block>,
+    parent_slot: Slot,
+    parent_pot_parameters: &PotParameters,
+    genesis_pot_seed: PotSeed,
+    parent_pot_output: PotOutput,
+) -> PotNextSlotInput {
+    if parent_block_number.is_zero() {
+        PotNextSlotInput {
+            slot: parent_slot + Slot::from(1),
+            slot_iterations: parent_pot_parameters.slot_iterations(),
+            seed: genesis_pot_seed,
+        }
+    } else {
+        PotNextSlotInput::derive(
+            parent_pot_parameters.slot_iterations(),
+            parent_slot,
+            parent_pot_output,
+            &parent_pot_parameters.next_parameters_change(),
+        )
     }
 }

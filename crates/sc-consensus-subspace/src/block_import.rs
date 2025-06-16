@@ -22,6 +22,7 @@ use sc_consensus::StateAction;
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
+use sc_proof_of_time::source::pot_next_slot_input;
 use sc_proof_of_time::verifier::PotVerifier;
 use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
@@ -344,7 +345,8 @@ where
             .header(parent_hash)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
-        let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot())?;
+        let parent_pre_digest = extract_pre_digest(&parent_header)?;
+        let parent_slot = parent_pre_digest.slot();
 
         // Make sure that slot number is strictly increasing
         if pre_digest.slot() <= parent_slot {
@@ -381,6 +383,29 @@ where
         // For PoT justifications we only need to check the seed and number of checkpoints, the rest
         // was already checked during stateless block verification.
         {
+            let runtime_api = self.client.runtime_api();
+            let parent_pot_parameters = runtime_api
+                .pot_parameters(parent_hash)
+                .map_err(|_| Error::ParentUnavailable(parent_hash, block_hash))?;
+
+            let pot_input = pot_next_slot_input::<Block>(
+                parent_header.number(),
+                parent_slot,
+                &parent_pot_parameters,
+                self.pot_verifier.genesis_seed(),
+                parent_pre_digest.pot_info().proof_of_time(),
+            );
+
+            // Ensure proof of time is valid according to parent block
+            if !self.pot_verifier.is_output_valid(
+                pot_input,
+                pre_digest.slot() - parent_slot,
+                pre_digest.pot_info().proof_of_time(),
+                parent_pot_parameters.next_parameters_change(),
+            ) {
+                return Err(Error::InvalidProofOfTime);
+            }
+
             let Some(subspace_justification) = justifications
                 .as_ref()
                 .and_then(|justifications| {

@@ -26,6 +26,7 @@ use sc_consensus_slots::{
     BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotLenienceType, SlotProportion,
 };
 use sc_proof_of_time::PotSlotWorker;
+use sc_proof_of_time::source::pot_next_slot_input;
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_telemetry::TelemetryHandle;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
@@ -403,20 +404,13 @@ where
             // Future slot for which proof must be available before authoring block at this slot
             let future_slot = slot + chain_constants.block_authoring_delay();
 
-            let pot_input = if parent_header.number().is_zero() {
-                PotNextSlotInput {
-                    slot: parent_slot + Slot::from(1),
-                    slot_iterations: parent_pot_parameters.slot_iterations(),
-                    seed: self.pot_verifier.genesis_seed(),
-                }
-            } else {
-                PotNextSlotInput::derive(
-                    parent_pot_parameters.slot_iterations(),
-                    parent_slot,
-                    parent_pre_digest.pot_info().proof_of_time(),
-                    &parent_pot_parameters.next_parameters_change(),
-                )
-            };
+            let pot_input = pot_next_slot_input::<Block>(
+                parent_header.number(),
+                parent_slot,
+                &parent_pot_parameters,
+                self.pot_verifier.genesis_seed(),
+                parent_pre_digest.pot_info().proof_of_time(),
+            );
 
             // Ensure proof of time is valid according to parent block
             if !self.pot_verifier.is_output_valid(
