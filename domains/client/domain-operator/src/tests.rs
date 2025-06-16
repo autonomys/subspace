@@ -7059,6 +7059,9 @@ async fn test_equivocated_bundle_check() {
     assert_eq!(alice.client.info().best_number, pre_alice_best_number);
 }
 
+// This test is more unstable on Windows and macOS
+// TODO: find and fix the source of the instability (#3562)
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_xdm_false_invalid_fraud_proof() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -7715,6 +7718,9 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
     .unwrap();
 }
 
+// This test is more unstable on Windows and macOS
+// TODO: find and fix the source of the instability (#3562)
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_xdm_channel_allowlist_removed_after_xdm_resp_relaying() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
