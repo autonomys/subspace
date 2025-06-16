@@ -609,7 +609,7 @@ where
         };
 
         let added_weight = calculate_block_weight(subspace_digest_items.solution_range);
-        let total_weight = parent_weight + added_weight;
+        let total_weight = parent_weight.saturating_add(added_weight);
 
         aux_schema::write_block_weight(block_hash, total_weight, |values| {
             block

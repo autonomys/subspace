@@ -81,7 +81,9 @@ where
     Call: Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo>,
 {
     // Also Consider extrinsic length as proof weight.
-    let extrinsic_weight = (info.call_weight + info.extension_weight)
+    let extrinsic_weight = info
+        .call_weight
+        .saturating_add(info.extension_weight)
         .saturating_add(maximum_weight.get(info.class).base_extrinsic)
         .saturating_add(Weight::from_parts(0, len as u64));
 
