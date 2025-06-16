@@ -1023,10 +1023,12 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 }
 
 /// Unlocks any withdraws that are ready to be unlocked.
+///
+/// Return the number of withdrawals being unlocked
 pub(crate) fn do_unlock_funds<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
-) -> Result<(), Error> {
+) -> Result<u32, Error> {
     let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
     ensure!(
         *operator.status::<T>(operator_id) == OperatorStatus::Registered,
@@ -1049,6 +1051,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
 
         let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
 
+        let mut withdrawal_count = 0;
         let mut total_unlocked_amount = BalanceOf::<T>::zero();
         let mut total_storage_fee_refund = BalanceOf::<T>::zero();
         loop {
@@ -1077,6 +1080,8 @@ pub(crate) fn do_unlock_funds<T: Config>(
             total_storage_fee_refund = total_storage_fee_refund
                 .checked_add(&storage_fee_refund)
                 .ok_or(Error::BalanceOverflow)?;
+
+            withdrawal_count += 1;
         }
 
         // There is withdrawal but none being processed meaning the first withdrawal's unlock period has
@@ -1153,17 +1158,28 @@ pub(crate) fn do_unlock_funds<T: Config>(
         if withdrawal.withdrawals.is_empty() && withdrawal.withdrawal_in_shares.is_none() {
             *maybe_withdrawal = None;
             // if there is no deposit or pending deposits, then clean up the deposit state as well
-            Deposits::<T>::mutate_exists(operator_id, nominator_id, |maybe_deposit| {
+            Deposits::<T>::mutate_exists(operator_id, nominator_id.clone(), |maybe_deposit| {
                 if let Some(deposit) = maybe_deposit
                     && deposit.known.shares.is_zero()
                     && deposit.pending.is_none()
                 {
-                    *maybe_deposit = None
+                    *maybe_deposit = None;
+
+                    DepositOnHold::<T>::mutate_exists(
+                        (operator_id, nominator_id),
+                        |maybe_deposit_on_hold| {
+                            if let Some(deposit_on_hold) = maybe_deposit_on_hold
+                                && deposit_on_hold.is_zero()
+                            {
+                                *maybe_deposit_on_hold = None
+                            }
+                        },
+                    );
                 }
             });
         }
 
-        Ok(())
+        Ok(withdrawal_count)
     })
 }
 
@@ -1504,8 +1520,8 @@ pub(crate) fn do_mark_operators_as_slashed<T: Config>(
 pub(crate) mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        Config, Deposits, DomainRegistry, DomainStakingSummary, HeadDomainNumber, NextOperatorId,
-        NominatorCount, OperatorIdOwner, Operators, PendingSlashes, Withdrawals,
+        Config, DepositOnHold, Deposits, DomainRegistry, DomainStakingSummary, HeadDomainNumber,
+        NextOperatorId, NominatorCount, OperatorIdOwner, Operators, PendingSlashes, Withdrawals,
     };
     use crate::staking::{
         DomainEpoch, Error as StakingError, Operator, OperatorConfig, OperatorStatus,
@@ -2128,7 +2144,11 @@ pub(crate) mod tests {
 
             // if the nominator count reduced, then there should be no storage for deposits as well
             if new_nominator_count < nominator_count {
-                assert!(Deposits::<Test>::get(operator_id, nominator_id).is_none())
+                assert!(Deposits::<Test>::get(operator_id, nominator_id).is_none());
+                assert!(!DepositOnHold::<Test>::contains_key((
+                    operator_id,
+                    nominator_id
+                )))
             }
 
             // The total balance is distributed in different places but never changed

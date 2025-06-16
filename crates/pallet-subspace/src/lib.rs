@@ -60,6 +60,7 @@ use subspace_verification::{
     PieceCheckParams, VerifySolutionParams, check_reward_signature, derive_next_solution_range,
     derive_pot_entropy,
 };
+pub use weights::WeightInfo;
 
 /// Trigger an era change, if any should take place.
 pub trait EraChangeTrigger {

@@ -51,6 +51,7 @@ use sp_messenger::messages::{
 use sp_runtime::DispatchError;
 use sp_runtime::traits::Hash;
 use subspace_runtime_primitives::CreateUnsigned;
+pub use weights::WeightInfo;
 
 /// Transaction validity for a given validated XDM extrinsic.
 /// If the extrinsic is not included in the bundle, extrinsic is removed from the TxPool.

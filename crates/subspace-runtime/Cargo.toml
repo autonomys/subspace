@@ -73,7 +73,6 @@ subspace-runtime-primitives.workspace = true
 substrate-wasm-builder = { workspace = true, optional = true }
 
 [dev-dependencies]
-hex-literal.workspace = true
 sp-io.workspace = true
 subspace-runtime-primitives = { workspace = true, features = ["testing"] }
 
@@ -144,17 +143,24 @@ runtime-benchmarks = [
     "frame-system-benchmarking/runtime-benchmarks",
     "pallet-balances/runtime-benchmarks",
     "pallet-collective/runtime-benchmarks",
+    "pallet-democracy/runtime-benchmarks",
     "pallet-domains/runtime-benchmarks",
     "pallet-mmr/runtime-benchmarks",
     "pallet-multisig/runtime-benchmarks",
     "pallet-messenger/runtime-benchmarks",
+    "pallet-preimage/runtime-benchmarks",
     "pallet-rewards/runtime-benchmarks",
     "pallet-runtime-configs/runtime-benchmarks",
+    "pallet-scheduler/runtime-benchmarks",
     "pallet-subspace/runtime-benchmarks",
+    "pallet-sudo/runtime-benchmarks",
     "pallet-timestamp/runtime-benchmarks",
+    "pallet-transaction-payment/runtime-benchmarks",
     "pallet-transporter/runtime-benchmarks",
+    "pallet-utility/runtime-benchmarks",
     "pallet-utility/runtime-benchmarks",
     "sp-consensus-subspace/runtime-benchmarks",
     "sp-messenger/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",
+    "subspace-runtime-primitives/runtime-benchmarks",
 ]

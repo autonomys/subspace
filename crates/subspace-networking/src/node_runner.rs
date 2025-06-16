@@ -1,3 +1,5 @@
+//! DSN node behaviour implementation.
+
 use crate::behavior::persistent_parameters::{
     KnownPeersRegistry, PeerAddressRemovedEvent, append_p2p_suffix, remove_p2p_suffix,
 };
@@ -38,12 +40,24 @@ use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{fmt, slice};
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::task::yield_now;
 use tokio::time::Sleep;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
+
+/// The maximum time between random Kademlia peer DHT queries.
+const MAX_RANDOM_QUERY_INTERVAL: Duration = Duration::from_secs(60);
+
+/// The time between external address refreshes and peer stats debug logging.
+const PERIODICAL_TASKS_INTERVAL: Duration = Duration::from_secs(5);
+
+/// The time between each peer stats info log.
+const PEER_INFO_LOG_INTERVAL: Duration = Duration::from_secs(30);
+
+/// The maximum number of OS-reported listener addresses we will use.
+const MAX_LISTEN_ADDRESSES: usize = 30;
 
 enum QueryResultSender {
     Value {
@@ -102,6 +116,8 @@ pub struct NodeRunner {
     random_query_timeout: Pin<Box<Fuse<Sleep>>>,
     /// Defines an interval between periodical tasks.
     periodical_tasks_interval: Pin<Box<Fuse<Sleep>>>,
+    /// The last time we logged info-level peer stats.
+    last_peer_stats_info_log: Instant,
     /// Manages the networking parameters like known peers and addresses
     known_peers_registry: Box<dyn KnownPeersRegistry>,
     connected_servers: HashSet<PeerId>,
@@ -198,6 +214,8 @@ impl NodeRunner {
             random_query_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             // We'll make the first dial right away and continue at the interval.
             periodical_tasks_interval: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
+            // There's not much point logging immediately, we can wait until we've bootstrapped.
+            last_peer_stats_info_log: Instant::now(),
             known_peers_registry,
             connected_servers: HashSet::new(),
             reserved_peers,
@@ -238,11 +256,11 @@ impl NodeRunner {
             futures::select! {
                 _ = &mut self.random_query_timeout => {
                     self.handle_random_query_interval();
-                    // Increase interval 2x, but to at most 60 seconds.
+                    // Increase interval 2x, but limit it to MAX_RANDOM_QUERY_INTERVAL.
                     self.random_query_timeout =
                         Box::pin(tokio::time::sleep(self.next_random_query_interval).fuse());
                     self.next_random_query_interval =
-                        (self.next_random_query_interval * 2).min(Duration::from_secs(60));
+                        (self.next_random_query_interval * 2).min(MAX_RANDOM_QUERY_INTERVAL);
                 },
                 swarm_event = self.swarm.next() => {
                     if let Some(swarm_event) = swarm_event {
@@ -264,9 +282,8 @@ impl NodeRunner {
                 },
                 _ = &mut self.periodical_tasks_interval => {
                     self.handle_periodical_tasks().await;
-
                     self.periodical_tasks_interval =
-                        Box::pin(tokio::time::sleep(Duration::from_secs(5)).fuse());
+                        Box::pin(tokio::time::sleep(PERIODICAL_TASKS_INTERVAL).fuse());
                 },
                 event = self.removed_addresses_rx.select_next_some() => {
                     self.handle_removed_address_event(event);
@@ -384,13 +401,13 @@ impl NodeRunner {
         let network_info = self.swarm.network_info();
         let connections = network_info.connection_counters();
 
-        debug!(?connections, "Current connections and limits.");
+        debug!(?connections, "Current DSN connections and limits.");
 
         // Renew known external addresses.
         let mut external_addresses = self.swarm.external_addresses().cloned().collect::<Vec<_>>();
 
         if let Some(shared) = self.shared_weak.upgrade() {
-            debug!(?external_addresses, "Renew external addresses.");
+            debug!(?external_addresses, "Renew DSN external addresses.");
             let mut addresses = shared.external_addresses.lock();
             addresses.clear();
             addresses.append(&mut external_addresses);
@@ -759,14 +776,14 @@ impl NodeRunner {
             // Remove temporary ban if there was any
             self.temporary_bans.lock().remove(&peer_id);
 
-            if info.listen_addrs.len() > 30 {
+            if info.listen_addrs.len() > MAX_LISTEN_ADDRESSES {
                 debug!(
                     %local_peer_id,
                     %peer_id,
-                    "Node has reported more than 30 addresses; it is identified by {} and {}",
-                    info.protocol_version, info.agent_version
+                    "Node has reported more than {} addresses; it is identified by {} and {}",
+                    MAX_LISTEN_ADDRESSES, info.protocol_version, info.agent_version
                 );
-                info.listen_addrs.truncate(30);
+                info.listen_addrs.truncate(MAX_LISTEN_ADDRESSES);
             }
 
             let kademlia = &mut self.swarm.behaviour_mut().kademlia;
@@ -1561,21 +1578,43 @@ impl NodeRunner {
     }
 
     fn log_kademlia_stats(&mut self) {
-        let mut peer_counter = 0;
-        let mut peer_with_no_address_counter = 0;
+        let mut kad_peers = 0;
+        let mut kad_peers_with_no_address = 0;
+
         for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
             for entry in kbucket.iter() {
-                peer_counter += 1;
+                kad_peers += 1;
                 if entry.node.value.len() == 0 {
-                    peer_with_no_address_counter += 1;
+                    kad_peers_with_no_address += 1;
                 }
             }
         }
 
+        let (known_peers, known_peer_addresses) = self.known_peers_registry.count_known_peers();
+
+        let connected_peers = self.connected_servers.len();
+
+        let peers_with_ip_address = self.peer_ip_addresses.len();
+        let peer_ip_address_count = self
+            .peer_ip_addresses
+            .values()
+            .map(|addresses| addresses.len())
+            .sum::<usize>();
+
         debug!(
-            peers = %peer_counter,
-            peers_with_no_address = %peer_with_no_address_counter,
-            "Kademlia stats"
+            %connected_peers,
+            %kad_peers,
+            %kad_peers_with_no_address,
+            %known_peers,
+            %known_peer_addresses,
+            %peers_with_ip_address,
+            %peer_ip_address_count,
+            "dsn peers",
         );
+
+        if self.last_peer_stats_info_log.elapsed() >= PEER_INFO_LOG_INTERVAL {
+            self.last_peer_stats_info_log = Instant::now();
+            info!("dsn: actively using {connected_peers}/{kad_peers} known peers");
+        }
     }
 }

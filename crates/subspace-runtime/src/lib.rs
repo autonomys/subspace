@@ -16,7 +16,7 @@
 mod domains;
 mod fees;
 mod object_mapping;
-mod signed_extensions;
+mod weights;
 
 extern crate alloc;
 
@@ -26,7 +26,6 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
-pub use crate::signed_extensions::DisablePallets;
 use alloc::borrow::Cow;
 use core::mem;
 use core::num::NonZeroU64;
@@ -100,6 +99,8 @@ use subspace_core_primitives::solutions::{
     SolutionRange, pieces_to_solution_range, solution_range_to_pieces,
 };
 use subspace_core_primitives::{PublicKey, Randomness, SlotNumber, U256};
+pub use subspace_runtime_primitives::extension::BalanceTransferCheckExtension;
+use subspace_runtime_primitives::extension::{BalanceTransferChecks, MaybeBalancesCall};
 use subspace_runtime_primitives::utility::{
     DefaultNonceProvider, MaybeMultisigCall, MaybeNestedCall, MaybeUtilityCall,
 };
@@ -246,7 +247,7 @@ impl frame_system::Config for Runtime {
     /// The data to be stored in an account.
     type AccountData = pallet_balances::AccountData<Balance>;
     /// Weight information for the extrinsics of this pallet.
-    type SystemWeightInfo = frame_system::weights::SubstrateWeight<Runtime>;
+    type SystemWeightInfo = weights::frame_system::WeightInfo<Runtime>;
     /// This is used as an identifier of the chain.
     type SS58Prefix = SS58Prefix;
     /// The set code logic, just the default since we're not a parachain.
@@ -304,9 +305,9 @@ impl pallet_subspace::Config for Runtime {
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
-    type WeightInfo = pallet_subspace::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_subspace::WeightInfo<Runtime>;
     type BlockSlotCount = BlockSlotCount;
-    type ExtensionWeightInfo = pallet_subspace::extensions::weights::SubstrateWeight<Runtime>;
+    type ExtensionWeightInfo = weights::pallet_subspace_extension::WeightInfo<Runtime>;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -314,7 +315,7 @@ impl pallet_timestamp::Config for Runtime {
     type Moment = Moment;
     type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
-    type WeightInfo = ();
+    type WeightInfo = weights::pallet_timestamp::WeightInfo<Runtime>;
 }
 
 parameter_types! {
@@ -368,7 +369,7 @@ impl pallet_balances::Config for Runtime {
     type DustRemoval = ();
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
-    type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_balances::WeightInfo<Runtime>;
     type FreezeIdentifier = ();
     type MaxFreezes = ();
     type RuntimeHoldReason = HoldIdentifierWrapper;
@@ -405,14 +406,35 @@ impl pallet_transaction_payment::Config for Runtime {
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime, TargetBlockFullness>;
-    type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_transaction_payment::WeightInfo<Runtime>;
 }
 
 impl pallet_utility::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
     type PalletsOrigin = OriginCaller;
-    type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_utility::WeightInfo<Runtime>;
+}
+
+impl MaybeBalancesCall<Runtime> for RuntimeCall {
+    fn maybe_balance_call(&self) -> Option<&pallet_balances::Call<Runtime>> {
+        match self {
+            RuntimeCall::Balances(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
+impl BalanceTransferChecks for Runtime {
+    fn is_balance_transferable() -> bool {
+        let enabled = RuntimeConfigs::enable_balance_transfers();
+        // for benchmarks, always return enabled.
+        if cfg!(feature = "runtime-benchmarks") {
+            true
+        } else {
+            enabled
+        }
+    }
 }
 
 impl MaybeMultisigCall<Runtime> for RuntimeCall {
@@ -463,7 +485,7 @@ impl MaybeNestedCall<Runtime> for RuntimeCall {
 impl pallet_sudo::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
-    type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_sudo::WeightInfo<Runtime>;
 }
 
 pub type CouncilCollective = pallet_collective::Instance1;
@@ -506,7 +528,7 @@ impl pallet_collective::Config<CouncilCollective> for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeOrigin = RuntimeOrigin;
     type SetMembersOrigin = EnsureRootOr<AllCouncil>;
-    type WeightInfo = pallet_collective::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_collective::WeightInfo<Runtime>;
     type DisapproveOrigin = TwoThirdsCouncil;
     type KillOrigin = TwoThirdsCouncil;
     /// Kind of consideration(amount to hold/freeze) on Collective account who initiated the proposal.
@@ -531,7 +553,7 @@ impl pallet_preimage::Config for Runtime {
     type Currency = Balances;
     type ManagerOrigin = EnsureRoot<AccountId>;
     type RuntimeEvent = RuntimeEvent;
-    type WeightInfo = pallet_preimage::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_preimage::WeightInfo<Runtime>;
 }
 
 parameter_types! {
@@ -560,7 +582,7 @@ impl pallet_scheduler::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeOrigin = RuntimeOrigin;
     type ScheduleOrigin = EnsureRoot<AccountId>;
-    type WeightInfo = pallet_scheduler::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_scheduler::WeightInfo<Runtime>;
 }
 
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
@@ -747,7 +769,7 @@ impl pallet_messenger::Config for Runtime {
     }
 
     type Currency = Balances;
-    type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_messenger::WeightInfo<Runtime>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type AdjustedWeightToFee = XdmAdjustedWeightToFee<Runtime>;
     type FeeMultiplier = XdmFeeMultipler;
@@ -766,7 +788,13 @@ impl pallet_messenger::Config for Runtime {
     type MaxOutgoingMessages = MaxOutgoingMessages;
     type MessengerOrigin = pallet_messenger::EnsureMessengerOrigin;
     type NoteChainTransfer = Transporter;
-    type ExtensionWeightInfo = pallet_messenger::extensions::weights::SubstrateWeight<Runtime>;
+    type ExtensionWeightInfo = pallet_messenger::extensions::weights::SubstrateWeight<
+        Runtime,
+        // NOTE: use `()` as `FromConsensusWeightInfo` since the consensus chain should
+        // never process XDM that come from the consensus chain itself.
+        (),
+        weights::pallet_messenger_from_domains_extension::WeightInfo<Runtime>,
+    >;
 }
 
 impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
@@ -807,7 +835,7 @@ impl pallet_transporter::Config for Runtime {
     type Currency = Balances;
     type Sender = Messenger;
     type AccountIdConverter = AccountIdConverter;
-    type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_transporter::WeightInfo<Runtime>;
     type SkipBalanceTransferChecks = pallet_domains::DomainsSkipBalanceChecks<Runtime>;
     type MinimumTransfer = MinimumTransfer;
 }
@@ -908,7 +936,7 @@ impl pallet_domains::Config for Runtime {
     type MaxDomainBlockWeight = MaxDomainBlockWeight;
     type MaxDomainNameLength = MaxDomainNameLength;
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
-    type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_domains::WeightInfo<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type MinOperatorStake = MinOperatorStake;
@@ -950,12 +978,18 @@ impl pallet_rewards::Config for Runtime {
     type RewardsEnabled = Subspace;
     type FindBlockRewardAddress = Subspace;
     type FindVotingRewardAddresses = Subspace;
-    type WeightInfo = pallet_rewards::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_rewards::WeightInfo<Runtime>;
     type OnReward = ();
 }
 
 impl pallet_runtime_configs::Config for Runtime {
-    type WeightInfo = pallet_runtime_configs::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_runtime_configs::WeightInfo<Runtime>;
+}
+
+impl pallet_domains::extensions::DomainsCheck for Runtime {
+    fn is_domains_enabled() -> bool {
+        RuntimeConfigs::enable_domains()
+    }
 }
 
 mod mmr {
@@ -1027,7 +1061,7 @@ impl pallet_multisig::Config for Runtime {
     type DepositBase = DepositBaseFee;
     type DepositFactor = DepositFactor;
     type MaxSignatories = MaxSignatories;
-    type WeightInfo = pallet_multisig::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = weights::pallet_multisig::WeightInfo<Runtime>;
 }
 
 construct_runtime!(
@@ -1085,7 +1119,7 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
-    DisablePallets,
+    BalanceTransferCheckExtension<Runtime>,
     pallet_subspace::extensions::SubspaceExtension<Runtime>,
     pallet_domains::extensions::DomainsExtension<Runtime>,
     pallet_messenger::extensions::MessengerExtension<Runtime>,
@@ -1187,7 +1221,7 @@ fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
         // for unsigned extrinsic, transaction fee check will be skipped
         // so set a default value
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
-        DisablePallets,
+        BalanceTransferCheckExtension::<Runtime>::default(),
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
         pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
@@ -1262,6 +1296,16 @@ mod benches {
         [pallet_transporter, Transporter]
         [pallet_subspace_extension, SubspaceExtensionBench::<Runtime>]
         [pallet_messenger_from_domains_extension, MessengerFromDomainsExtensionBench::<Runtime>]
+        [pallet_transaction_payment, TransactionPayment]
+        [pallet_utility, Utility]
+        [pallet_sudo, Sudo]
+        [pallet_collective, Council]
+        [pallet_preimage, Preimage]
+        [pallet_scheduler, Scheduler]
+        [pallet_democracy, Democracy]
+        [pallet_multisig, Multisig]
+        // TODO: benchmark this extension
+        [balance_transfer_check_extension, BalanceTransferCheckBench::<Runtime>]
     );
 }
 
@@ -1801,6 +1845,7 @@ impl_runtime_apis! {
             use baseline::Pallet as BaselineBench;
             use pallet_subspace::extensions::benchmarking::Pallet as SubspaceExtensionBench;
             use pallet_messenger::extensions::benchmarking_from_domains::Pallet as MessengerFromDomainsExtensionBench;
+            use subspace_runtime_primitives::extension::benchmarking::Pallet as BalanceTransferCheckBench;
 
             let mut list = Vec::<BenchmarkList>::new();
             list_benchmarks!(list, extra);
@@ -1820,6 +1865,7 @@ impl_runtime_apis! {
             use baseline::Pallet as BaselineBench;
             use pallet_subspace::extensions::benchmarking::Pallet as SubspaceExtensionBench;
             use pallet_messenger::extensions::benchmarking_from_domains::Pallet as MessengerFromDomainsExtensionBench;
+            use subspace_runtime_primitives::extension::benchmarking::Pallet as BalanceTransferCheckBench;
 
             use frame_support::traits::WhitelistedStorageKeys;
             let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();

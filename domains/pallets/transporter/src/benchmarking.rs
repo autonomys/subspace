@@ -25,7 +25,7 @@ mod benchmarks {
         let sender: T::AccountId = account("sender", 1, SEED);
         let receiver: T::AccountId = account("receiver", 2, SEED);
 
-        let amount: BalanceOf<T> = 100u32.into();
+        let amount = T::MinimumTransfer::get();
         let dst_chain_id: ChainId = u32::MAX.into();
         let free_balance = BalanceOf::<T>::max_value();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);

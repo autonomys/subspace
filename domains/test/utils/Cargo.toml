@@ -1,0 +1,40 @@
+[package]
+name = "domain-test-utils"
+version = "0.1.0"
+authors = ["Subspace Labs <https://subspace.network>"]
+edition.workspace = true
+license = "GPL-3.0-or-later"
+homepage = "https://subspace.network"
+repository = "https://github.com/autonomys/subspace"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+domain-runtime-primitives.workspace = true
+ethereum.workspace = true
+frame-support.workspace = true
+frame-system.workspace = true
+hex-literal.workspace = true
+libsecp256k1 = { workspace = true, features = ["static-context", "hmac"] }
+pallet-evm.workspace = true
+pallet-utility.workspace = true
+rlp.workspace = true
+sp-core.workspace = true
+sp-domains.workspace = true
+
+[features]
+default = ["std"]
+std = [
+    "domain-runtime-primitives/std",
+    "ethereum/std",
+    "frame-support/std",
+    "frame-system/std",
+    "libsecp256k1/std",
+    "pallet-evm/std",
+    "pallet-utility/std",
+    "rlp/std",
+    "sp-core/std",
+    "sp-domains/std",
+]

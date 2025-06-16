@@ -1,7 +1,5 @@
 //! Weights for pallet-messenger extensions
 
-use crate::extensions::weights_from_consensus::WeightInfo as WeightsFromConsensus;
-use crate::extensions::weights_from_domains::WeightInfo as WeightsFromDomains;
 use core::marker::PhantomData;
 use frame_support::pallet_prelude::Weight;
 
@@ -17,44 +15,74 @@ pub trait FromConsensusWeightInfo {
     fn from_consensus_relay_message_response() -> Weight;
 }
 
+impl FromConsensusWeightInfo for () {
+    fn from_consensus_relay_message_channel_open() -> Weight {
+        Weight::zero()
+    }
+    fn from_consensus_relay_message() -> Weight {
+        Weight::zero()
+    }
+    fn from_consensus_relay_message_response() -> Weight {
+        Weight::zero()
+    }
+}
+
 pub trait FromDomainWeightInfo {
     fn from_domains_relay_message_channel_open() -> Weight;
     fn from_domains_relay_message() -> Weight;
     fn from_domains_relay_message_response() -> Weight;
 }
 
-/// Weight functions for `pallet_messenger_extension`.
-pub struct SubstrateWeight<T>(PhantomData<T>);
+impl FromDomainWeightInfo for () {
+    fn from_domains_relay_message_channel_open() -> Weight {
+        Weight::zero()
+    }
+    fn from_domains_relay_message() -> Weight {
+        Weight::zero()
+    }
+    fn from_domains_relay_message_response() -> Weight {
+        Weight::zero()
+    }
+}
 
-impl<T: frame_system::Config> FromConsensusWeightInfo for SubstrateWeight<T> {
+/// Weight functions for `pallet_messenger_extension`.
+pub struct SubstrateWeight<T, C, D>(PhantomData<(T, C, D)>);
+
+impl<T: frame_system::Config, C: FromConsensusWeightInfo, D> FromConsensusWeightInfo
+    for SubstrateWeight<T, C, D>
+{
     fn from_consensus_relay_message_channel_open() -> Weight {
-        WeightsFromConsensus::<T>::from_consensus_relay_message_channel_open()
+        C::from_consensus_relay_message_channel_open()
     }
 
     fn from_consensus_relay_message() -> Weight {
-        WeightsFromConsensus::<T>::from_consensus_relay_message()
+        C::from_consensus_relay_message()
     }
 
     fn from_consensus_relay_message_response() -> Weight {
-        WeightsFromConsensus::<T>::from_consensus_relay_message_response()
+        C::from_consensus_relay_message_response()
     }
 }
 
-impl<T: frame_system::Config> FromDomainWeightInfo for SubstrateWeight<T> {
+impl<T: frame_system::Config, C, D: FromDomainWeightInfo> FromDomainWeightInfo
+    for SubstrateWeight<T, C, D>
+{
     fn from_domains_relay_message_channel_open() -> Weight {
-        WeightsFromDomains::<T>::from_domains_relay_message_channel_open()
+        D::from_domains_relay_message_channel_open()
     }
 
     fn from_domains_relay_message() -> Weight {
-        WeightsFromDomains::<T>::from_domains_relay_message()
+        D::from_domains_relay_message()
     }
 
     fn from_domains_relay_message_response() -> Weight {
-        WeightsFromDomains::<T>::from_domains_relay_message_response()
+        D::from_domains_relay_message_response()
     }
 }
 
-impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
+impl<T: frame_system::Config, C: FromConsensusWeightInfo, D: FromDomainWeightInfo> WeightInfo
+    for SubstrateWeight<T, C, D>
+{
     fn mmr_proof_verification_on_consensus() -> Weight {
         // Execution time to verify a given MMR proof on consensus chain
         // is around 153_000_000 pico seconds
