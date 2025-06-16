@@ -143,6 +143,7 @@ runtime-benchmarks = [
     "pallet-domain-id/runtime-benchmarks",
     "pallet-ethereum/runtime-benchmarks",
     "pallet-evm/runtime-benchmarks",
+    "pallet-evm-tracker/runtime-benchmarks",
     "pallet-messenger/runtime-benchmarks",
     "pallet-timestamp/runtime-benchmarks",
     "pallet-transaction-payment/runtime-benchmarks",

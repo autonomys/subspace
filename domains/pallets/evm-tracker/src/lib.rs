@@ -20,16 +20,30 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 pub mod check_nonce;
 pub mod create_contract;
 pub mod fees;
 pub mod traits;
+pub mod weights;
 
 pub use check_nonce::CheckNonce;
 use domain_runtime_primitives::EthereumAccountId;
 pub use pallet::*;
 use sp_core::U256;
 use sp_domains::PermissionedActionAllowedBy;
+use sp_weights::Weight;
+
+/// Maximum number of calls we benchmarked for.
+const MAXIMUM_NUMBER_OF_CALLS: u32 = 5_000;
+
+/// Weight functions needed for pallet_evm_tracker.
+pub trait WeightInfo {
+    fn evm_contract_check_multiple(c: u32) -> Weight;
+    fn evm_contract_check_nested(c: u32) -> Weight;
+}
 
 #[frame_support::pallet]
 mod pallet {

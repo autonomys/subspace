@@ -15,36 +15,58 @@ include = [
 [dependencies]
 parity-scale-codec = { workspace = true, features = ["derive"] }
 domain-runtime-primitives.workspace = true
+frame-benchmarking = { workspace = true, optional = true }
 frame-support.workspace = true
 frame-system.workspace = true
+pallet-block-fees.workspace = true
 pallet-ethereum.workspace = true
 pallet-evm.workspace = true
-pallet-block-fees.workspace = true
 pallet-transaction-payment.workspace = true
+pallet-utility = { workspace = true, optional = true }
 scale-info = { workspace = true, features = ["derive"] }
 sp-core.workspace = true
 sp-domains.workspace = true
 sp-evm-tracker.workspace = true
 sp-runtime.workspace = true
 sp-weights.workspace = true
+static_assertions = { workspace = true, optional = true }
 subspace-runtime-primitives.workspace = true
+
+[dev-dependencies]
+frame-benchmarking.workspace = true
+pallet-balances.workspace = true
+pallet-timestamp.workspace = true
+pallet-utility.workspace = true
+sp-io.workspace = true
 
 [features]
 default = ["std"]
 std = [
-    "parity-scale-codec/std",
     "domain-runtime-primitives/std",
+    "frame-benchmarking?/std",
     "frame-support/std",
     "frame-system/std",
+    "pallet-balances/std",
     "pallet-ethereum/std",
     "pallet-evm/std",
     "pallet-block-fees/std",
+    "pallet-timestamp/std",
     "pallet-transaction-payment/std",
+    "pallet-utility?/std",
+    "parity-scale-codec/std",
     "scale-info/std",
     "sp-core/std",
     "sp-domains/std",
     "sp-evm-tracker/std",
+    "sp-io/std",
     "sp-runtime/std",
     "sp-weights/std",
     "subspace-runtime-primitives/std",
+]
+runtime-benchmarks = [
+    "frame-benchmarking/runtime-benchmarks",
+    "frame-support/runtime-benchmarks",
+    "frame-system/runtime-benchmarks",
+    "pallet-utility/runtime-benchmarks",
+    "static_assertions",
 ]

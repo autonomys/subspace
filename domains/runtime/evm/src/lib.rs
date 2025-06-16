@@ -203,7 +203,9 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         dispatch_info: &DispatchInfoOf<RuntimeCall>,
         len: usize,
     ) -> Option<TransactionValidity> {
-        if !is_create_contract_allowed::<Runtime>(self, &(*info).into()) {
+        let (is_allowed, _call_count) =
+            is_create_contract_allowed::<Runtime>(self, &(*info).into());
+        if !is_allowed {
             return Some(Err(InvalidTransaction::Custom(
                 ERR_CONTRACT_CREATION_NOT_ALLOWED,
             )
@@ -222,7 +224,9 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         dispatch_info: &DispatchInfoOf<RuntimeCall>,
         len: usize,
     ) -> Option<Result<(), TransactionValidityError>> {
-        if !is_create_contract_allowed::<Runtime>(self, &(*info).into()) {
+        let (is_allowed, _call_count) =
+            is_create_contract_allowed::<Runtime>(self, &(*info).into());
+        if !is_allowed {
             return Some(Err(InvalidTransaction::Custom(
                 ERR_CONTRACT_CREATION_NOT_ALLOWED,
             )
@@ -267,9 +271,38 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
     ) -> Option<sp_runtime::DispatchResultWithInfo<PostDispatchInfoOf<Self>>> {
         match self {
             call @ RuntimeCall::Ethereum(pallet_ethereum::Call::transact { .. }) => {
-                Some(call.dispatch(RuntimeOrigin::from(
+                let post_info = call.dispatch(RuntimeOrigin::from(
                     pallet_ethereum::RawOrigin::EthereumTransaction(info),
-                )))
+                ));
+
+                // is_self_contained() checks for an Ethereum call, which is always a single call.
+                // This call has the same number of contract checks as an EVM call, and similar
+                // fields, so we can use the EVM benchmark weight here.
+                let create_contract_ext_weight = CheckContractCreation::<Runtime>::get_weights(1);
+
+                // Add the weight of the contract creation extension check to the post info
+                Some(
+                    post_info
+                        .map(|mut post_info| {
+                            post_info.actual_weight = Some(
+                                post_info
+                                    .actual_weight
+                                    .unwrap_or_default()
+                                    .saturating_add(create_contract_ext_weight),
+                            );
+                            post_info
+                        })
+                        .map_err(|mut err_with_post_info| {
+                            err_with_post_info.post_info.actual_weight = Some(
+                                err_with_post_info
+                                    .post_info
+                                    .actual_weight
+                                    .unwrap_or_default()
+                                    .saturating_add(create_contract_ext_weight),
+                            );
+                            err_with_post_info
+                        }),
+                )
             }
             _ => None,
         }
@@ -976,6 +1009,7 @@ mod benches {
         [domain_pallet_executive, ExecutivePallet]
         [pallet_messenger, Messenger]
         [pallet_messenger_from_consensus_extension, MessengerFromConsensusExtensionBench::<Runtime>]
+        [pallet_evm_tracker, EVMNoncetracker]
         [pallet_messenger_between_domains_extension, MessengerBetweenDomainsExtensionBench::<Runtime>]
         [pallet_timestamp, Timestamp]
         [pallet_utility, Utility]
