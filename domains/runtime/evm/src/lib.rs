@@ -925,7 +925,7 @@ fn is_xdm_mmr_proof_valid(ext: &ExtrinsicFor<Block>) -> Option<bool> {
 
 /// Returns `true` if this is a validly encoded Sudo call.
 fn is_valid_sudo_call(encoded_ext: Vec<u8>) -> bool {
-    UncheckedExtrinsic::decode_with_depth_limit(
+    UncheckedExtrinsic::decode_all_with_depth_limit(
         MAX_CALL_RECURSION_DEPTH,
         &mut encoded_ext.as_slice(),
     )
@@ -1436,7 +1436,7 @@ impl_runtime_apis! {
         ) -> Result<ExtrinsicFor<Block>, DecodeExtrinsicError> {
             let encoded = opaque_extrinsic.encode();
 
-            UncheckedExtrinsic::decode_with_depth_limit(
+            UncheckedExtrinsic::decode_all_with_depth_limit(
                 MAX_CALL_RECURSION_DEPTH,
                 &mut encoded.as_slice(),
             ).map_err(|err| DecodeExtrinsicError(format!("{err}")))
@@ -1447,7 +1447,7 @@ impl_runtime_apis! {
         ) -> Vec<ExtrinsicFor<Block>> {
             let mut extrinsics = Vec::with_capacity(opaque_extrinsics.len());
             for opaque_ext in opaque_extrinsics {
-                match UncheckedExtrinsic::decode_with_depth_limit(
+                match UncheckedExtrinsic::decode_all_with_depth_limit(
                     MAX_CALL_RECURSION_DEPTH,
                     &mut opaque_ext.encode().as_slice(),
                 ) {
