@@ -1006,17 +1006,23 @@ mod benches {
     frame_benchmarking::define_benchmarks!(
         [frame_benchmarking, BaselineBench::<Runtime>]
         [frame_system, SystemBench::<Runtime>]
-        [domain_pallet_executive, ExecutivePallet]
-        [pallet_messenger, Messenger]
-        [pallet_messenger_from_consensus_extension, MessengerFromConsensusExtensionBench::<Runtime>]
-        [pallet_evm_tracker, EVMNoncetracker]
-        [pallet_messenger_between_domains_extension, MessengerBetweenDomainsExtensionBench::<Runtime>]
         [pallet_timestamp, Timestamp]
+        [domain_pallet_executive, ExecutivePallet]
         [pallet_utility, Utility]
         [pallet_balances, Balances]
-        [pallet_transporter, Transporter]
-        [pallet_evm, EVM]
         [pallet_transaction_payment, TransactionPayment]
+        [pallet_messenger, Messenger]
+        [pallet_messenger_from_consensus_extension, MessengerFromConsensusExtensionBench::<Runtime>]
+        [pallet_messenger_between_domains_extension, MessengerBetweenDomainsExtensionBench::<Runtime>]
+        [pallet_transporter, Transporter]
+        // pallet_ethereum uses `pallet_evm::Config::GasWeightMapping::gas_to_weight` to weight its calls
+        [pallet_evm, EVM]
+        // pallet_evm_chain_id has no calls to benchmark
+        [pallet_evm_tracker, EVMNoncetracker]
+        // TODO: pallet_evm_tracker CheckNonce extension benchmarks
+        // pallet_domain_id has no calls to benchmark
+        // pallet_block_fees only has inherent calls
+        // pallet_domain_sudo only has inherent calls
     );
 }
 

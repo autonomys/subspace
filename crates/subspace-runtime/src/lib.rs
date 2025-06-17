@@ -1285,27 +1285,27 @@ mod benches {
     frame_benchmarking::define_benchmarks!(
         [frame_benchmarking, BaselineBench::<Runtime>]
         [frame_system, SystemBench::<Runtime>]
-        [pallet_balances, Balances]
-        [pallet_domains, Domains]
-        [pallet_mmr, Mmr]
-        [pallet_rewards, Rewards]
-        [pallet_runtime_configs, RuntimeConfigs]
-        [pallet_subspace, Subspace]
         [pallet_timestamp, Timestamp]
-        [pallet_messenger, Messenger]
-        [pallet_transporter, Transporter]
+        [pallet_subspace, Subspace]
         [pallet_subspace_extension, SubspaceExtensionBench::<Runtime>]
-        [pallet_messenger_from_domains_extension, MessengerFromDomainsExtensionBench::<Runtime>]
+        [pallet_rewards, Rewards]
+        [pallet_balances, Balances]
+        [balance_transfer_check_extension, BalanceTransferCheckBench::<Runtime>]
+        // pallet_transaction_fees has no calls to benchmark
         [pallet_transaction_payment, TransactionPayment]
         [pallet_utility, Utility]
-        [pallet_sudo, Sudo]
-        [pallet_collective, Council]
-        [pallet_preimage, Preimage]
+        [pallet_domains, Domains]
+        [pallet_runtime_configs, RuntimeConfigs]
+        // pallet_mmr and pallet_subspace_mmr have no calls to benchmark
+        [pallet_messenger, Messenger]
+        [pallet_messenger_from_domains_extension, MessengerFromDomainsExtensionBench::<Runtime>]
+        [pallet_transporter, Transporter]
         [pallet_scheduler, Scheduler]
+        [pallet_collective, Council]
         [pallet_democracy, Democracy]
+        [pallet_preimage, Preimage]
         [pallet_multisig, Multisig]
-        // TODO: benchmark this extension
-        [balance_transfer_check_extension, BalanceTransferCheckBench::<Runtime>]
+        [pallet_sudo, Sudo]
     );
 }
 

@@ -33,26 +33,29 @@ fi
 
 echo "Generating weights for Subspace runtime..."
 SUBSPACE_RUNTIME_PALLETS=(
+    # Unused, contains benchmarks for hashing and sr25519_verification
+    # "frame_benchmarking"
     "frame_system"
-    "pallet_balances"
-    "pallet_domains"
-    "pallet_rewards"
-    "pallet_runtime_configs"
-    "pallet_subspace"
     "pallet_timestamp"
-    "pallet_messenger"
-    "pallet_transporter"
+    "pallet_subspace"
     "pallet_subspace_extension"
-    "pallet_messenger_from_domains_extension"
+    "pallet_rewards"
+    "pallet_balances"
+    "balance_transfer_check_extension"
     "pallet_transaction_payment"
     "pallet_utility"
-    "pallet_sudo"
-    "pallet_collective"
-    "pallet_preimage"
+    "pallet_domains"
+    "pallet_runtime_configs"
+    "pallet_messenger"
+    "pallet_messenger_from_domains_extension"
+    "pallet_transporter"
     "pallet_scheduler"
-    "pallet_multisig"
+    "pallet_collective"
     # TODO: `pallet_democracy` benchmark are broken, need investigation
     # "pallet_democracy"
+    "pallet_preimage"
+    "pallet_multisig"
+    "pallet_sudo"
 )
 for PALLET in "${SUBSPACE_RUNTIME_PALLETS[@]}"; do
   CMD="./target/$PROFILE/subspace-node benchmark pallet \
@@ -73,17 +76,21 @@ set +x
 
 echo "Generating weights for EVM domain runtime..."
 EVM_DOMAIN_RUNTIME_PALLETS=(
+    # Unused, contains benchmarks for hashing and sr25519_verification
+    # "frame_benchmarking"
     "frame_system"
+    "pallet_timestamp"
     "domain_pallet_executive"
+    "pallet_utility"
+    "pallet_balances"
+    "pallet_transaction_payment"
     "pallet_messenger"
     "pallet_messenger_from_consensus_extension"
     "pallet_messenger_between_domains_extension"
-    "pallet_timestamp"
-    "pallet_utility"
-    "pallet_balances"
     "pallet_transporter"
     "pallet_evm"
-    "pallet_transaction_payment"
+    "pallet_evm_tracker"
+    # TODO: pallet_evm_tracker CheckNonce extension benchmarks
 )
 for PALLET in "${EVM_DOMAIN_RUNTIME_PALLETS[@]}"; do
   CMD="./target/$PROFILE/subspace-node domain benchmark pallet \
@@ -96,17 +103,19 @@ done
 
 echo "Generating weights for Auto ID domain runtime..."
 AUTO_ID_DOMAIN_RUNTIME_PALLETS=(
+    # Unused, contains benchmarks for hashing and sr25519_verification
+    # "frame_benchmarking"
     "frame_system"
+    "pallet_timestamp"
     "domain_pallet_executive"
+    "pallet_utility"
+    "pallet_balances"
+    "pallet_transaction_payment"
+    "pallet_auto_id"
     "pallet_messenger"
     "pallet_messenger_from_consensus_extension"
     "pallet_messenger_between_domains_extension"
-    "pallet_auto_id"
-    "pallet_timestamp"
-    "pallet_utility"
-    "pallet_balances"
     "pallet_transporter"
-    "pallet_transaction_payment"
 )
 for PALLET in "${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"; do
   CMD="./target/$PROFILE/subspace-node domain benchmark pallet \
