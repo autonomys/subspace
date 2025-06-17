@@ -12,7 +12,7 @@ use crate::pallet::{
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
     BalanceOf, Config, DepositOnHold, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId,
-    OperatorEpochSharePrice, Pallet, ReceiptHashFor, SlashedReason,
+    OperatorEpochSharePrice, OperatorHighestSlot, Pallet, ReceiptHashFor, SlashedReason,
 };
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
@@ -1365,6 +1365,9 @@ pub(crate) fn do_cleanup_operator<T: Config>(
 
     // remove OperatorOwner Details
     OperatorIdOwner::<T>::remove(operator_id);
+
+    // remove `OperatorHighestSlot`
+    OperatorHighestSlot::<T>::remove(operator_id);
 
     // remove operator epoch share prices
     let _ = OperatorEpochSharePrice::<T>::clear_prefix(operator_id, u32::MAX, None);
