@@ -1,12 +1,16 @@
-#!/bin/bash -e
+#!/usr/bin/env bash
 
-profile="production"
-features="runtime-benchmarks"
+# http://redsymbol.net/articles/unofficial-bash-strict-mode/
+set -euo pipefail
 
-cargo build --profile $profile --bin subspace-node --features $features
+PROFILE="production"
+FEATURES="runtime-benchmarks"
+BENCH_SETTINGS="--extrinsic=* --wasm-execution=compiled --genesis-builder=none --steps=50 --repeat=20 --heap-pages=4096"
 
-cargo build --profile $profile --package subspace-runtime --features $features
-subspace_runtime_pallets=(
+cargo build --profile "$PROFILE" --bin subspace-node --features "$FEATURES"
+
+cargo build --profile "$PROFILE" --package subspace-runtime --features "$FEATURES"
+SUBSPACE_RUNTIME_PALLETS=(
     "frame_system"
     "pallet_balances"
     "pallet_domains"
@@ -28,17 +32,17 @@ subspace_runtime_pallets=(
     # TODO: `pallet_democracy` benchmark are broken, need investigation
     # "pallet_democracy"
 )
-for pallet in "${subspace_runtime_pallets[@]}"; do
-  cmd="./target/release/subspace-node benchmark pallet \
+for PALLET in "${SUBSPACE_RUNTIME_PALLETS[@]}"; do
+  CMD="./target/release/subspace-node benchmark pallet \
     --runtime=./target/release/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm \
-    --genesis-builder=none --steps=50 --repeat=20 --pallet=$pallet --extrinsic=* --wasm-execution=compiled \
-    --heap-pages=4096 --output=./crates/subspace-runtime/src/weights/$pallet.rs"
-  echo $cmd
-  $cmd
+    $BENCH_SETTINGS \
+    --pallet=$PALLET --output=./crates/subspace-runtime/src/weights/$PALLET.rs"
+  echo "$CMD"
+  $CMD
 done
 
-cargo build --profile $profile --package evm-domain-runtime --features $features
-evm_domain_runtime_pallets=(
+cargo build --profile "$PROFILE" --package evm-domain-runtime --features "$FEATURES"
+EVM_DOMAIN_RUNTIME_PALLETS=(
     "frame_system"
     "domain_pallet_executive"
     "pallet_messenger"
@@ -51,17 +55,17 @@ evm_domain_runtime_pallets=(
     "pallet_evm"
     "pallet_transaction_payment"
 )
-for pallet in "${evm_domain_runtime_pallets[@]}"; do
-  cmd="./target/release/subspace-node domain benchmark pallet \
+for PALLET in "${EVM_DOMAIN_RUNTIME_PALLETS[@]}"; do
+  CMD="./target/release/subspace-node domain benchmark pallet \
     --runtime=./target/release/wbuild/evm-domain-runtime/evm_domain_runtime.compact.compressed.wasm \
-    --genesis-builder=none --steps=50 --repeat=20 --pallet=$pallet --extrinsic=* --wasm-execution=compiled \
-    --heap-pages=4096 --output=./domains/runtime/evm/src/weights/$pallet.rs"
-  echo $cmd
-  $cmd
+    $BENCH_SETTINGS \
+    --pallet=$PALLET --output=./domains/runtime/evm/src/weights/$PALLET.rs"
+  echo "$CMD"
+  $CMD
 done
 
-cargo build --profile $profile --package auto-id-domain-runtime --features $features
-auto_id_domain_runtime_pallets=(
+cargo build --profile "$PROFILE" --package auto-id-domain-runtime --features "$FEATURES"
+AUTO_ID_DOMAIN_RUNTIME_PALLETS=(
     "frame_system"
     "domain_pallet_executive"
     "pallet_messenger"
@@ -74,11 +78,11 @@ auto_id_domain_runtime_pallets=(
     "pallet_transporter"
     "pallet_transaction_payment"
 )
-for pallet in "${auto_id_domain_runtime_pallets[@]}"; do
-  cmd="./target/release/subspace-node domain benchmark pallet \
+for PALLET in "${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"; do
+  CMD="./target/release/subspace-node domain benchmark pallet \
     --runtime=./target/release/wbuild/auto-id-domain-runtime/auto_id_domain_runtime.compact.compressed.wasm \
-    --genesis-builder=none --steps=50 --repeat=20 --pallet=$pallet --extrinsic=* --wasm-execution=compiled \
-    --heap-pages=4096 --output=./domains/runtime/auto-id/src/weights/$pallet.rs"
-  echo $cmd
-  $cmd
+    $BENCH_SETTINGS \
+    --pallet=$PALLET --output=./domains/runtime/auto-id/src/weights/$PALLET.rs"
+  echo "$CMD"
+  $CMD
 done
