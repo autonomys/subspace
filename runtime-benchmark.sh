@@ -6,10 +6,32 @@ set -euo pipefail
 PROFILE="production"
 FEATURES="runtime-benchmarks"
 BENCH_SETTINGS="--extrinsic=* --wasm-execution=compiled --genesis-builder=none --steps=50 --repeat=20 --heap-pages=4096"
+# If you're sure the node and runtime binaries are up to date, set this to true to save rebuild and
+# linking time
+SKIP_BUILDS="false"
 
-cargo build --profile "$PROFILE" --bin subspace-node --features "$FEATURES"
+if [[ ! -d "./crates/subspace-runtime/src/weights" ]] || [[ ! -d "./domains/runtime/evm/src/weights" ]] || [[ ! -d "./domains/runtime/auto-id/src/weights" ]]; then
+  echo "Missing ./crates/subspace-runtime/src/weights, ./domains/runtime/evm/src/weights or ./domains/runtime/auto-id/src/weights directories"
+  echo "This script must be run from the base of an autonomys/subspace repository checkout"
+  exit 1
+fi
 
-cargo build --profile "$PROFILE" --package subspace-runtime --features "$FEATURES"
+if [[ "$SKIP_BUILDS" != 'true' ]]; then
+    # The node builds all the runtimes, and generating weights will rebuild some runtimes, even though
+    # those weights are not used in the benchmarks. So it is faster to build everything upfront.
+    echo "Building subspace-node and runtimes with profile: '$PROFILE' and features: '$FEATURES'..."
+    # Show commands before executing them
+    set -x
+    cargo build --profile "$PROFILE" --bin subspace-node --features "$FEATURES"
+    cargo build --profile "$PROFILE" --package subspace-runtime --features "$FEATURES"
+    cargo build --profile "$PROFILE" --package evm-domain-runtime --features "$FEATURES"
+    cargo build --profile "$PROFILE" --package auto-id-domain-runtime --features "$FEATURES"
+    set +x
+else
+    echo "Skipping builds of subspace-node and runtimes"
+fi
+
+echo "Generating weights for Subspace runtime..."
 SUBSPACE_RUNTIME_PALLETS=(
     "frame_system"
     "pallet_balances"
@@ -41,7 +63,7 @@ for PALLET in "${SUBSPACE_RUNTIME_PALLETS[@]}"; do
   $CMD
 done
 
-cargo build --profile "$PROFILE" --package evm-domain-runtime --features "$FEATURES"
+echo "Generating weights for EVM domain runtime..."
 EVM_DOMAIN_RUNTIME_PALLETS=(
     "frame_system"
     "domain_pallet_executive"
@@ -64,7 +86,7 @@ for PALLET in "${EVM_DOMAIN_RUNTIME_PALLETS[@]}"; do
   $CMD
 done
 
-cargo build --profile "$PROFILE" --package auto-id-domain-runtime --features "$FEATURES"
+echo "Generating weights for Auto ID domain runtime..."
 AUTO_ID_DOMAIN_RUNTIME_PALLETS=(
     "frame_system"
     "domain_pallet_executive"
