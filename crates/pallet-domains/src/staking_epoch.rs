@@ -157,6 +157,7 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                         nominator_id,
                         current_domain_epoch,
                         operator_tax_deposit,
+                        None,
                     )?;
 
                     Pallet::<T>::deposit_event(Event::OperatorTaxCollected {
