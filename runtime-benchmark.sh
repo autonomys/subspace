@@ -11,6 +11,11 @@ BENCH_SETTINGS="--extrinsic=* --wasm-execution=compiled --genesis-builder=none -
 # linking time
 SKIP_BUILDS="false"
 
+# This function searches through a runtime lib.rs file for benchmark definitions
+function find_benchmarks () {
+  grep '\[[a-z0-9_]*, [A-Za-z0-9:<>]*\]' | cut -d, -f1 | cut -d[ -f2
+}
+
 if [[ ! -d "./crates/subspace-runtime/src/weights" ]] || [[ ! -d "./domains/runtime/evm/src/weights" ]] || [[ ! -d "./domains/runtime/auto-id/src/weights" ]]; then
   echo "Missing ./crates/subspace-runtime/src/weights, ./domains/runtime/evm/src/weights or ./domains/runtime/auto-id/src/weights directories"
   echo "This script must be run from the base of an autonomys/subspace repository checkout"
@@ -33,32 +38,14 @@ else
 fi
 
 echo "Generating weights for Subspace runtime..."
-SUBSPACE_RUNTIME_PALLETS=(
-    # Unused, contains benchmarks for hashing and sr25519_verification
-    # "frame_benchmarking"
-    "frame_system"
-    "pallet_timestamp"
-    "pallet_subspace"
-    "pallet_subspace_extension"
-    "pallet_rewards"
-    "pallet_balances"
-    "pallet_transaction_payment"
-    "pallet_utility"
-    "pallet_domains"
-    "pallet_runtime_configs"
-    "pallet_messenger"
-    "pallet_messenger_from_domains_extension"
-    "pallet_transporter"
-    "pallet_scheduler"
-    "pallet_collective"
-    # TODO: `pallet_democracy` benchmark are broken, need investigation
-    # "pallet_democracy"
-    "pallet_preimage"
-    "pallet_multisig"
-    "pallet_sudo"
+# frame_benchmarking is unused, it contains benchmarks for hashing and sr25519_verification
+# TODO: `pallet_democracy` benchmark are broken, need investigation
+SUBSPACE_RUNTIME_PALLETS=$(cat ./crates/subspace-runtime/src/lib.rs | \
+    find_benchmarks | \
+    grep -v -e "frame_benchmarking" -e "balance_transfer_check_extension" -e "pallet_democracy"
 )
-echo "Pallet list: ${SUBSPACE_RUNTIME_PALLETS[@]}"
-for PALLET in "${SUBSPACE_RUNTIME_PALLETS[@]}"; do
+echo "Pallet list: $SUBSPACE_RUNTIME_PALLETS"
+for PALLET in $SUBSPACE_RUNTIME_PALLETS; do
   CMD="./target/$PROFILE/subspace-node benchmark pallet \
     --runtime=./target/$PROFILE/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm \
     $BENCH_SETTINGS \
@@ -97,23 +84,12 @@ sed -i "" -e "s/balance_transfer_check_extension::WeightInfo/crate::extension::W
 set +x
 
 echo "Generating weights for EVM domain runtime..."
-EVM_DOMAIN_RUNTIME_PALLETS=(
-    # Unused, contains benchmarks for hashing and sr25519_verification
-    # "frame_benchmarking"
-    "frame_system"
-    "pallet_timestamp"
-    "domain_pallet_executive"
-    "pallet_utility"
-    "pallet_balances"
-    "pallet_transaction_payment"
-    "pallet_messenger"
-    "pallet_messenger_from_consensus_extension"
-    "pallet_messenger_between_domains_extension"
-    "pallet_transporter"
-    "pallet_evm"
+EVM_DOMAIN_RUNTIME_PALLETS=$(cat domains/runtime/evm/src/lib.rs | \
+    find_benchmarks | \
+    grep -v -e "frame_benchmarking" -e "pallet_evm_tracker"
 )
-echo "Pallet list: ${EVM_DOMAIN_RUNTIME_PALLETS[@]}"
-for PALLET in "${EVM_DOMAIN_RUNTIME_PALLETS[@]}"; do
+echo "Pallet list: $EVM_DOMAIN_RUNTIME_PALLETS"
+for PALLET in $EVM_DOMAIN_RUNTIME_PALLETS; do
   CMD="./target/$PROFILE/subspace-node domain benchmark pallet \
     --runtime=./target/$PROFILE/wbuild/evm-domain-runtime/evm_domain_runtime.compact.compressed.wasm \
     $BENCH_SETTINGS \
@@ -141,23 +117,12 @@ sed -i "" -e "s/pallet_evm_tracker::WeightInfo/crate::WeightInfo/g" \
 set +x
 
 echo "Generating weights for Auto ID domain runtime..."
-AUTO_ID_DOMAIN_RUNTIME_PALLETS=(
-    # Unused, contains benchmarks for hashing and sr25519_verification
-    # "frame_benchmarking"
-    "frame_system"
-    "pallet_timestamp"
-    "domain_pallet_executive"
-    "pallet_utility"
-    "pallet_balances"
-    "pallet_transaction_payment"
-    "pallet_auto_id"
-    "pallet_messenger"
-    "pallet_messenger_from_consensus_extension"
-    "pallet_messenger_between_domains_extension"
-    "pallet_transporter"
+AUTO_ID_DOMAIN_RUNTIME_PALLETS=$(cat domains/runtime/auto-id/src/lib.rs | \
+    find_benchmarks | \
+    grep -v -e "frame_benchmarking"
 )
-echo "Pallet list: ${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"
-for PALLET in "${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"; do
+echo "Pallet list: $AUTO_ID_DOMAIN_RUNTIME_PALLETS"
+for PALLET in $AUTO_ID_DOMAIN_RUNTIME_PALLETS; do
   CMD="./target/$PROFILE/subspace-node domain benchmark pallet \
     --runtime=./target/$PROFILE/wbuild/auto-id-domain-runtime/auto_id_domain_runtime.compact.compressed.wasm \
     $BENCH_SETTINGS \
