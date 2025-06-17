@@ -8,19 +8,19 @@
 //! WASM-EXECUTION: `Compiled`, CHAIN: `None`, DB CACHE: 1024
 
 // Executed Command:
-// ./target/release/subspace-node
+// ./target/production/subspace-node
 // domain
 // benchmark
 // pallet
-// --runtime=./target/release/wbuild/evm-domain-runtime/evm_domain_runtime.compact.compressed.wasm
+// --runtime=./target/production/wbuild/evm-domain-runtime/evm_domain_runtime.compact.compressed.wasm
+// --extrinsic=*
+// --wasm-execution=compiled
 // --genesis-builder=none
 // --steps=50
 // --repeat=20
-// --pallet=pallet_transporter
-// --extrinsic=*
-// --wasm-execution=compiled
 // --heap-pages=4096
-// --output=./domains/runtime/evm/src/weights-tmp/pallet_transporter.rs
+// --pallet=pallet_transporter
+// --output=./domains/runtime/evm/src/weights/pallet_transporter.rs
 
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(unused_parens)]
