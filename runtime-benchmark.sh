@@ -55,8 +55,8 @@ SUBSPACE_RUNTIME_PALLETS=(
     # "pallet_democracy"
 )
 for PALLET in "${SUBSPACE_RUNTIME_PALLETS[@]}"; do
-  CMD="./target/release/subspace-node benchmark pallet \
-    --runtime=./target/release/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm \
+  CMD="./target/$PROFILE/subspace-node benchmark pallet \
+    --runtime=./target/$PROFILE/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm \
     $BENCH_SETTINGS \
     --pallet=$PALLET --output=./crates/subspace-runtime/src/weights/$PALLET.rs"
   echo "$CMD"
@@ -78,8 +78,8 @@ EVM_DOMAIN_RUNTIME_PALLETS=(
     "pallet_transaction_payment"
 )
 for PALLET in "${EVM_DOMAIN_RUNTIME_PALLETS[@]}"; do
-  CMD="./target/release/subspace-node domain benchmark pallet \
-    --runtime=./target/release/wbuild/evm-domain-runtime/evm_domain_runtime.compact.compressed.wasm \
+  CMD="./target/$PROFILE/subspace-node domain benchmark pallet \
+    --runtime=./target/$PROFILE/wbuild/evm-domain-runtime/evm_domain_runtime.compact.compressed.wasm \
     $BENCH_SETTINGS \
     --pallet=$PALLET --output=./domains/runtime/evm/src/weights/$PALLET.rs"
   echo "$CMD"
@@ -101,8 +101,8 @@ AUTO_ID_DOMAIN_RUNTIME_PALLETS=(
     "pallet_transaction_payment"
 )
 for PALLET in "${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"; do
-  CMD="./target/release/subspace-node domain benchmark pallet \
-    --runtime=./target/release/wbuild/auto-id-domain-runtime/auto_id_domain_runtime.compact.compressed.wasm \
+  CMD="./target/$PROFILE/subspace-node domain benchmark pallet \
+    --runtime=./target/$PROFILE/wbuild/auto-id-domain-runtime/auto_id_domain_runtime.compact.compressed.wasm \
     $BENCH_SETTINGS \
     --pallet=$PALLET --output=./domains/runtime/auto-id/src/weights/$PALLET.rs"
   echo "$CMD"
