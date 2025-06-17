@@ -63,6 +63,14 @@ for PALLET in "${SUBSPACE_RUNTIME_PALLETS[@]}"; do
   $CMD
 done
 
+echo "Fixing pallet names in weights for Subspace runtime..."
+set -x
+sed -i "" -e "s/pallet_subspace_extension::WeightInfo/pallet_subspace::extensions::WeightInfo/g" \
+    ./crates/subspace-runtime/src/weights/pallet_subspace_extension.rs
+sed -i "" -e "s/pallet_messenger_from_domains_extension::WeightInfo/pallet_messenger::extensions::FromDomainWeightInfo/g" \
+    ./crates/subspace-runtime/src/weights/pallet_messenger_from_domains_extension.rs
+set +x
+
 echo "Generating weights for EVM domain runtime..."
 EVM_DOMAIN_RUNTIME_PALLETS=(
     "frame_system"
@@ -108,3 +116,12 @@ for PALLET in "${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"; do
   echo "$CMD"
   $CMD
 done
+
+echo "Fixing pallet names in weights for domain runtimes..."
+# These replacements work for both EVM and Auto ID domain runtimes
+set -x
+sed -i "" -e "s/pallet_messenger_from_consensus_extension::WeightInfo/pallet_messenger::extensions::FromConsensusWeightInfo/g" \
+    ./domains/runtime/*/src/weights/pallet_messenger_from_consensus_extension.rs
+sed -i "" -e "s/pallet_messenger_between_domains_extension::WeightInfo/pallet_messenger::extensions::FromDomainWeightInfo/g" \
+    ./domains/runtime/*/src/weights/pallet_messenger_between_domains_extension.rs
+set +x
