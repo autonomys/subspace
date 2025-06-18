@@ -327,3 +327,53 @@ jobs:
               pwd;
               popd;
           done
+
+  # This job checks for incorrectly added dependencies, or dependencies that were made unused by code changes.
+  cargo-unused-deps:
+    # We need to use Linux to check GPU dependencies (or Windows, but it's slow)
+    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
+      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64"' || '"ubuntu-22.04"') }}
+
+    # This feature list is `--all-features` except `rocm`, which is incompatible with `cuda`
+    # When cargo supports excluding features (or mutually exclusive features), we can use
+    # `--all-features --exclude-feature rocm`
+    # <https://github.com/rust-lang/cargo/issues/11467>
+    # <https://internals.rust-lang.org/t/pre-rfc-mutually-excusive-global-features/19618>
+    env:
+      MOST_FEATURES: _gpu,async-trait,binary,cluster,cuda,default-library,domain-block-builder,domain-block-preprocessor,frame-benchmarking-cli,frame-system-benchmarking,hex-literal,kzg,numa,pallet-subspace,pallet-timestamp,pallet-utility,parallel,parking_lot,rand,runtime-benchmarks,sc-client-api,sc-executor,schnorrkel,serde,sp-blockchain,sp-core,sp-io,sp-state-machine,sp-std,sp-storage,sppark,static_assertions,std,subspace-proof-of-space-gpu,substrate-wasm-builder,testing,wasm-builder,with-tracing,x509-parser
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: CUDA toolchain
+        uses: Jimver/cuda-toolkit@4bd727d5619dc6fa323b1e76c3aa5dca94f5ec6d # v0.2.19
+        with:
+          cuda: '12.4.1'
+          method: network
+          sub-packages: '["nvcc", "cudart"]'
+        if: runner.os == 'Linux' || runner.os == 'Windows'
+
+      - name: Configure cache
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # If this check fails, check the new dependency is actually needed. If it is, try adding any
+      # new features to MOST_FEATURES. If that doesn't work, add an exception to the crate:
+      # <https://github.com/est31/cargo-udeps?tab=readme-ov-file#ignoring-some-of-the-dependencies>
+      - name: check for unused dependencies
+        uses: aig787/cargo-udeps-action@v1
+        with:
+          version: latest
+          args: --workspace --all-targets --locked --features ${{ env.MOST_FEATURES }}
