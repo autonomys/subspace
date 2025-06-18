@@ -663,16 +663,19 @@ mod benches {
     frame_benchmarking::define_benchmarks!(
         [frame_benchmarking, BaselineBench::<Runtime>]
         [frame_system, SystemBench::<Runtime>]
+        [pallet_timestamp, Timestamp]
         [domain_pallet_executive, ExecutivePallet]
+        [pallet_utility, Utility]
+        [pallet_balances, Balances]
+        [pallet_transaction_payment, TransactionPayment]
+        [pallet_auto_id, AutoId]
         [pallet_messenger, Messenger]
         [pallet_messenger_from_consensus_extension, MessengerFromConsensusExtensionBench::<Runtime>]
         [pallet_messenger_between_domains_extension, MessengerBetweenDomainsExtensionBench::<Runtime>]
-        [pallet_auto_id, AutoId]
-        [pallet_timestamp, Timestamp]
-        [pallet_utility, Utility]
-        [pallet_balances, Balances]
         [pallet_transporter, Transporter]
-        [pallet_transaction_payment, TransactionPayment]
+        // pallet_domain_id has no calls to benchmark
+        // pallet_block_fees only has inherent calls
+        // pallet_domain_sudo only has inherent calls
     );
 }
 

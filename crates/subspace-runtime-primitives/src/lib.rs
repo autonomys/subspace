@@ -4,6 +4,7 @@
 
 pub mod extension;
 pub mod utility;
+pub mod weights;
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;

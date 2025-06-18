@@ -1,9 +1,8 @@
 #[cfg(feature = "runtime-benchmarks")]
 pub mod benchmarking;
-pub mod weights;
 
-use crate::extension::weights::WeightInfo as SubstrateWeightInfo;
 use crate::utility::{MaybeNestedCall, nested_call_iter};
+use crate::weights::balance_transfer_check_extension::WeightInfo as SubstrateWeightInfo;
 use core::marker::PhantomData;
 use frame_support::RuntimeDebugNoBound;
 use frame_support::pallet_prelude::Weight;

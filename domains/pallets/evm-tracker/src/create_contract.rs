@@ -1,7 +1,7 @@
 //! Contract creation allow list implementations
 
 use crate::traits::{AccountIdFor, MaybeIntoEthCall, MaybeIntoEvmCall};
-use crate::weights::SubstrateWeightInfo;
+use crate::weights::pallet_evm_tracker::WeightInfo as SubstrateWeightInfo;
 use crate::{MAXIMUM_NUMBER_OF_CALLS, WeightInfo};
 use domain_runtime_primitives::{ERR_CONTRACT_CREATION_NOT_ALLOWED, EthereumAccountId};
 use frame_support::RuntimeDebugNoBound;
