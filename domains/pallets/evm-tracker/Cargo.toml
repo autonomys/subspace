@@ -35,7 +35,6 @@ subspace-runtime-primitives.workspace = true
 [dev-dependencies]
 frame-benchmarking.workspace = true
 pallet-balances.workspace = true
-pallet-timestamp.workspace = true
 pallet-utility.workspace = true
 sp-io.workspace = true
 
@@ -50,7 +49,6 @@ std = [
     "pallet-ethereum/std",
     "pallet-evm/std",
     "pallet-block-fees/std",
-    "pallet-timestamp/std",
     "pallet-transaction-payment/std",
     "pallet-utility?/std",
     "parity-scale-codec/std",

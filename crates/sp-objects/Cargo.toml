@@ -15,12 +15,10 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 sp-api.workspace = true
 subspace-core-primitives.workspace = true
-subspace-runtime-primitives.workspace = true
 
 [features]
 default = ["std"]
 std = [
     "sp-api/std",
     "subspace-core-primitives/std",
-    "subspace-runtime-primitives/std",
 ]

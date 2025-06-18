@@ -8066,7 +8066,6 @@ dependencies = [
  "pallet-block-fees",
  "pallet-ethereum",
  "pallet-evm",
- "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-utility",
  "parity-scale-codec",
@@ -12787,7 +12786,6 @@ version = "0.1.0"
 dependencies = [
  "sp-api",
  "subspace-core-primitives",
- "subspace-runtime-primitives",
 ]
 
 [[package]]
