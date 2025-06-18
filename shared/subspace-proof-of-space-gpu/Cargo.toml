@@ -13,6 +13,7 @@ include = [
 ]
 
 [dependencies]
+# Only used from C code
 blst = { workspace = true, optional = true }
 rust-kzg-blst = { workspace = true, optional = true }
 # TODO: Fork with ROCm support, switch to upstream once `rocm` branch from `https://github.com/dot-asm/sppark` + https://github.com/dot-asm/sppark/pull/2 are upstreamed
@@ -41,3 +42,7 @@ _gpu = [
     "dep:subspace-core-primitives",
     "dep:subspace-kzg",
 ]
+
+# `cargo-udeps` can't detect C code-only usage
+[package.metadata.cargo-udeps.ignore]
+normal = ["blst"]
