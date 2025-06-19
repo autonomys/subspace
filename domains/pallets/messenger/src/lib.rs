@@ -57,12 +57,14 @@ pub use weights::WeightInfo;
 /// If the extrinsic is not included in the bundle, extrinsic is removed from the TxPool.
 const XDM_TRANSACTION_LONGEVITY: u64 = 10;
 
+/// XDM verification errors.
 pub(crate) mod verification_errors {
     // When updating these error codes, check for clashes between:
     // <https://github.com/autonomys/subspace/blob/main/domains/primitives/runtime/src/lib.rs#L85-L88>
     // <https://github.com/autonomys/subspace/blob/main/crates/sp-domains-fraud-proof/src/lib.rs#L49-L64>
     pub(crate) const INVALID_NONCE: u8 = 201;
-    pub(crate) const NONCE_OVERFLOW: u8 = 202;
+    // Custom error code when a messenger nonce overflows.
+    pub(crate) const XDM_NONCE_OVERFLOW: u8 = 202;
     // This error code was previously 200, but that clashed with ERR_BALANCE_OVERFLOW.
     pub(crate) const INVALID_CHANNEL: u8 = 203;
     pub(crate) const IN_FUTURE_NONCE: u8 = 204;
@@ -1241,7 +1243,9 @@ mod pallet {
                     Some(channel) => match channel.latest_response_received_message_nonce {
                         None => Nonce::zero(),
                         Some(last_nonce) => last_nonce.checked_add(Nonce::one()).ok_or(
-                            InvalidTransaction::Custom(crate::verification_errors::NONCE_OVERFLOW),
+                            InvalidTransaction::Custom(
+                                crate::verification_errors::XDM_NONCE_OVERFLOW,
+                            ),
                         )?,
                     },
                 };

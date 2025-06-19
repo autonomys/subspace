@@ -1,24 +1,24 @@
+//! EVM nonce checker extension for the EVM domain runtime.
+
 use crate::Config;
-#[cfg(not(feature = "std"))]
-use alloc::vec;
 use core::cmp::max;
 use core::fmt;
 use core::result::Result;
+use domain_runtime_primitives::ERR_EVM_NONCE_OVERFLOW;
 use frame_support::RuntimeDebugNoBound;
 use frame_support::dispatch::DispatchInfo;
 use frame_support::pallet_prelude::{
-    InvalidTransaction, TransactionLongevity, TransactionValidityError, TypeInfo, ValidTransaction,
-    Weight,
+    CheckedAdd, InvalidTransaction, TransactionLongevity, TransactionValidityError, TypeInfo,
+    ValidTransaction, Weight,
 };
 use frame_support::sp_runtime::traits::{DispatchInfoOf, One, TransactionExtension};
 use parity_scale_codec::{Decode, Encode};
-use sp_runtime::DispatchResult;
+use scale_info::prelude::vec;
 use sp_runtime::traits::{
     AsSystemOriginSigner, Dispatchable, PostDispatchInfoOf, ValidateResult, Zero,
 };
 use sp_runtime::transaction_validity::TransactionSource;
-#[cfg(feature = "std")]
-use std::vec;
+use sp_runtime::{DispatchResult, Saturating};
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 #[scale_info(skip_type_params(T))]
@@ -73,6 +73,9 @@ where
     type Pre = Pre;
 
     fn weight(&self, _: &T::RuntimeCall) -> sp_weights::Weight {
+        // Currently we use the benchmarked weight from `frame_system::CheckNonce`, which does
+        // slightly less work. This extension does one more `max()` and two extra comparisons.
+        // TODO: benchmark evm_tracker::check_nonce() directly and use that weight here.
         <T::ExtensionsWeightInfo as frame_system::ExtensionsWeightInfo>::check_nonce()
     }
 
@@ -101,7 +104,7 @@ where
 
         let provides = vec![Encode::encode(&(who, self.0))];
         let requires = if account.nonce < self.0 {
-            vec![Encode::encode(&(who, self.0 - One::one()))]
+            vec![Encode::encode(&(who, self.0.saturating_sub(One::one())))]
         } else {
             vec![]
         };
@@ -153,7 +156,9 @@ where
             }
             .into());
         }
-        nonce += T::Nonce::one();
+        nonce = nonce
+            .checked_add(&T::Nonce::one())
+            .ok_or(InvalidTransaction::Custom(ERR_EVM_NONCE_OVERFLOW))?;
         frame_system::Account::<T>::mutate(who, |account| account.nonce = nonce);
         Ok(Pre::NonceChecked)
     }

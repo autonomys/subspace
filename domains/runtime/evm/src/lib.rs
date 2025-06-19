@@ -19,8 +19,8 @@ use core::mem;
 use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
     AccountId20, CheckExtrinsicsValidityError, DEFAULT_EXTENSION_VERSION, DecodeExtrinsicError,
-    ERR_BALANCE_OVERFLOW, ERR_CONTRACT_CREATION_NOT_ALLOWED, ERR_NONCE_OVERFLOW, HoldIdentifier,
-    MAX_OUTGOING_MESSAGES, SLOT_DURATION, TargetBlockFullness,
+    ERR_BALANCE_OVERFLOW, ERR_CONTRACT_CREATION_NOT_ALLOWED, ERR_EVM_NONCE_OVERFLOW,
+    HoldIdentifier, MAX_OUTGOING_MESSAGES, SLOT_DURATION, TargetBlockFullness,
 };
 pub use domain_runtime_primitives::{
     Balance, BlockNumber, EXISTENTIAL_DEPOSIT, EthereumAccountId as AccountId,
@@ -1074,7 +1074,7 @@ fn pre_dispatch_evm_transaction(
 
                 let next_nonce = account_nonce
                     .checked_add(U256::one())
-                    .ok_or(InvalidTransaction::Custom(ERR_NONCE_OVERFLOW))?;
+                    .ok_or(InvalidTransaction::Custom(ERR_EVM_NONCE_OVERFLOW))?;
 
                 EVMNoncetracker::set_account_nonce(AccountId::from(account_id), next_nonce);
             }
