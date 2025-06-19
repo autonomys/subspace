@@ -104,8 +104,8 @@ pub fn maximum_domain_block_weight() -> Weight {
 // <https://github.com/autonomys/subspace/blob/main/crates/sp-domains-fraud-proof/src/lib.rs#L49-L64>
 // <https://github.com/autonomys/subspace/blob/main/domains/pallets/messenger/src/lib.rs#L49-L53>
 
-/// Custom error when nonce overflow occurs.
-pub const ERR_NONCE_OVERFLOW: u8 = 100;
+/// Custom error when an EVM nonce overflow occurs.
+pub const ERR_EVM_NONCE_OVERFLOW: u8 = 100;
 /// Custom error when balance overflow occurs.
 pub const ERR_BALANCE_OVERFLOW: u8 = 200;
 /// Custom error when a user tries to create a contract, but their account is not on the allow
