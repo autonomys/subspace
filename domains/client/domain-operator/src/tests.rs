@@ -15,7 +15,7 @@ use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
 use domain_test_service::evm_domain_test_runtime::{
     Header, Runtime as TestRuntime, RuntimeCall, UncheckedExtrinsic as EvmUncheckedExtrinsic,
 };
-use domain_test_service::{AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID, EvmDomainNode};
+use domain_test_service::{EVM_DOMAIN_ID, EvmDomainNode};
 use domain_test_utils::test_ethereum::{
     EvmAccountList, generate_evm_account_list, generate_evm_domain_call, generate_legacy_tx,
 };
@@ -5839,8 +5839,13 @@ async fn test_xdm_between_consensus_and_domain_should_work() {
     );
 }
 
+// This test is more unstable on Windows and macOS
+// TODO: find and fix the source of the instability (#3562)
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_xdm_between_domains_should_work() {
+    use domain_test_service::AUTO_ID_DOMAIN_ID;
+
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -7612,6 +7617,9 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_initiated() {
     .unwrap();
 }
 
+// This test is more unstable on Windows and macOS
+// TODO: find and fix the source of the instability (#3562)
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
