@@ -22,7 +22,7 @@ subspace-core-primitives = { workspace = true, features = ["std"] }
 subspace-erasure-coding.workspace = true
 # This crate can't depend on any runtime code, because it needs to be independent of Substrate.
 thiserror.workspace = true
-tokio = { workspace = true, features = ["sync", "rt"] }
+tokio = { workspace = true, features = ["sync", "rt", "time"] }
 tracing = { workspace = true, features = ["std"] }
 
 [dev-dependencies]

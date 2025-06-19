@@ -38,7 +38,7 @@ where
     let segment_index = missing_piece_index.segment_index();
     let position = missing_piece_index.position();
 
-    let segment_pieces = download_segment_pieces(segment_index, piece_getter).await?;
+    let segment_pieces = download_segment_pieces(segment_index, piece_getter, 0, None).await?;
 
     let result = tokio::task::spawn_blocking(move || {
         let reconstructor = PiecesReconstructor::new(kzg, erasure_coding);
