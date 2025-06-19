@@ -14,11 +14,6 @@ use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 use tracing::debug;
 
-/// An array representing no available pieces for a segment.
-/// Pass this to low-level methods that require existing pieces.
-pub const NO_EXISTING_PIECES: [Option<Piece>; ArchivedHistorySegment::NUM_PIECES] =
-    [const { None }; ArchivedHistorySegment::NUM_PIECES];
-
 /// Segment getter errors.
 #[derive(Debug, thiserror::Error)]
 pub enum SegmentDownloadingError {
@@ -92,7 +87,7 @@ pub async fn download_segment_pieces<PG>(
 where
     PG: PieceGetter,
 {
-    let mut existing_pieces = NO_EXISTING_PIECES;
+    let mut existing_pieces = [const { None }; ArchivedHistorySegment::NUM_PIECES];
 
     for retry in 0..=retries {
         match download_missing_segment_pieces(segment_index, piece_getter, existing_pieces).await {
@@ -133,12 +128,12 @@ where
 }
 
 /// Tries to download pieces of a segment once, so that segment can be reconstructed afterward.
-/// Pass existing pieces in `existing_pieces`, or use `NO_EXISTING_PIECES` if no pieces are
-/// available.
+/// Pass existing pieces in `existing_pieces`, or use
+/// `[const { None }; ArchivedHistorySegment::NUM_PIECES]` if no pieces are available.
 ///
 /// Prefers source pieces if available, on error returns the incomplete piece download (including
 /// existing pieces).
-pub async fn download_missing_segment_pieces<PG>(
+async fn download_missing_segment_pieces<PG>(
     segment_index: SegmentIndex,
     piece_getter: &PG,
     existing_pieces: [Option<Piece>; ArchivedHistorySegment::NUM_PIECES],
