@@ -2,8 +2,7 @@
 use crate::bundle_storage_fund::deposit_reserve_for_storage_fund;
 use crate::pallet::{
     AccumulatedTreasuryFunds, Deposits, DomainStakingSummary, LastEpochStakingDistribution,
-    NominatorCount, OperatorIdOwner, Operators, PendingSlashes, PendingStakingOperationCount,
-    Withdrawals,
+    OperatorIdOwner, Operators, PendingSlashes, PendingStakingOperationCount, Withdrawals,
 };
 use crate::staking::{
     DomainEpoch, Error as TransitionError, OperatorStatus, SharePrice, WithdrawalInShares,
@@ -13,11 +12,11 @@ use crate::{
     BalanceOf, Config, DepositOnHold, DomainChainRewards, ElectionVerificationParams, Event,
     HoldIdentifier, OperatorEpochSharePrice, Pallet, bundle_storage_fund,
 };
-use frame_support::PalletError;
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
 use frame_support::traits::tokens::{
     DepositConsequence, Fortitude, Precision, Provenance, Restriction,
 };
+use frame_support::{PalletError, StorageDoubleMap};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
@@ -158,6 +157,7 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                         nominator_id,
                         current_domain_epoch,
                         operator_tax_deposit,
+                        None,
                     )?;
 
                     Pallet::<T>::deposit_event(Event::OperatorTaxCollected {
@@ -386,9 +386,6 @@ pub(crate) fn do_slash_operator<T: Config>(
             .take()
             .ok_or(TransitionError::UnknownOperator)?;
 
-        let operator_owner =
-            OperatorIdOwner::<T>::get(operator_id).ok_or(TransitionError::UnknownOperator)?;
-
         let staked_hold_id = T::HoldIdentifier::staking_staked();
 
         let mut total_stake = operator.current_total_stake;
@@ -524,21 +521,16 @@ pub(crate) fn do_slash_operator<T: Config>(
             )
             .map_err(|_| TransitionError::RemoveLock)?;
 
-            // update nominator count.
-            let nominator_count = NominatorCount::<T>::get(operator_id);
-            if operator_owner != nominator_id && nominator_count > 0 {
-                NominatorCount::<T>::set(operator_id, nominator_count - 1);
-            }
-
             slashed_nominator_count += 1;
             if slashed_nominator_count >= max_nominator_count {
                 break;
             }
         }
 
-        let nominator_count = NominatorCount::<T>::get(operator_id);
-        let cleanup_operator =
-            nominator_count == 0 && !Deposits::<T>::contains_key(operator_id, operator_owner);
+        // The operator state is safe to cleanup if there is no entry in `Deposits` and `Withdrawals`
+        // which means all nominator (inlcuding the operator owner) have been slashed.
+        let cleanup_operator = !Deposits::<T>::contains_prefix(operator_id)
+            && !Withdrawals::<T>::contains_prefix(operator_id);
 
         if cleanup_operator {
             do_cleanup_operator::<T>(operator_id, total_stake)?;
@@ -564,7 +556,7 @@ mod tests {
     use crate::bundle_storage_fund::STORAGE_FEE_RESERVE;
     use crate::pallet::{
         DepositOnHold, Deposits, DomainStakingSummary, HeadDomainNumber,
-        LastEpochStakingDistribution, NominatorCount, OperatorIdOwner, Operators, Withdrawals,
+        LastEpochStakingDistribution, OperatorIdOwner, Operators, Withdrawals,
     };
     use crate::staking::tests::{Share, register_operator};
     use crate::staking::{
@@ -579,7 +571,7 @@ mod tests {
     #[cfg(not(feature = "std"))]
     use alloc::vec;
     use frame_support::traits::fungible::InspectHold;
-    use frame_support::{assert_err, assert_ok};
+    use frame_support::{StorageDoubleMap, assert_err, assert_ok};
     use sp_core::Pair;
     use sp_domains::{DomainId, OperatorPair, OperatorRewardSource};
     use sp_runtime::traits::Zero;
@@ -703,7 +695,8 @@ mod tests {
 
             assert_eq!(Operators::<Test>::get(operator_id), None);
             assert_eq!(OperatorIdOwner::<Test>::get(operator_id), None);
-            assert_eq!(NominatorCount::<Test>::get(operator_id), 0);
+            assert!(!Deposits::<Test>::contains_prefix(operator_id));
+            assert!(!Withdrawals::<Test>::contains_prefix(operator_id));
         });
     }
 
