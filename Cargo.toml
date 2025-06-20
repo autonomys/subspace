@@ -171,7 +171,6 @@ sc-consensus-subspace = { version = "0.1.0", path = "crates/sc-consensus-subspac
 sc-consensus-subspace-rpc = { version = "0.1.0", path = "crates/sc-consensus-subspace-rpc" }
 sc-domains = { version = "0.1.0", path = "crates/sc-domains" }
 sc-executor = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba", default-features = false }
-sc-executor-common = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba" }
 sc-informant = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba" }
 sc-keystore = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba" }
 sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba" }

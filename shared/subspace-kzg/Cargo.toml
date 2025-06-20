@@ -51,3 +51,8 @@ std = [
     "subspace-core-primitives/std",
     "tracing/std",
 ]
+
+# The std and no_std features are mutually exclusive, so when checking for unused dependencies,
+# ignore the `spin` dependency, which is only used in no_std.
+[package.metadata.cargo-udeps.ignore]
+normal = ["spin"]
