@@ -167,6 +167,7 @@ jobs:
     env:
       PRODUCTION_TARGET: target/${{ matrix.build.target }}/production
       RUSTFLAGS: ${{ matrix.build.rustflags }}
+      SUBSTRATE_CLI_GIT_COMMIT_HASH: ${{ github.sha }}
 
     steps:
       - name: Checkout
