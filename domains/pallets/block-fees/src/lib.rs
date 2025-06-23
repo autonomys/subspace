@@ -107,8 +107,14 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         #[pallet::call_index(0)]
         #[pallet::weight((
-        // TODO: proper weight
-        Weight::from_all(10_000),
+        // For now, it is safe to treat this call as lightweight, because ensure_none() only
+        // performs a few enum variant checks (which may optimise to a single instruction).
+        // Each instruction typically weighs under 300 picoseconds. Similarly, a Balance is at most
+        // 16 bytes.
+        // TODO: eventually we should benchmark this weight
+        Weight::from_all(10_000).saturating_add(
+            T::DbWeight::get().writes(1)
+        ),
         DispatchClass::Mandatory
         ))]
         pub fn set_next_consensus_chain_byte_fee(
