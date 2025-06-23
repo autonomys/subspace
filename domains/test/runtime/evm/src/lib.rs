@@ -1520,7 +1520,7 @@ impl_runtime_apis! {
 
         fn construct_consensus_chain_byte_fee_extrinsic(transaction_byte_fee: Balance) -> ExtrinsicFor<Block> {
             UncheckedExtrinsic::new_bare(
-                pallet_block_fees::Call::set_next_consensus_chain_byte_fee{ transaction_byte_fee }.into()
+                pallet_block_fees::Call::set_next_consensus_chain_byte_fee { transaction_byte_fee }.into()
             )
         }
 
