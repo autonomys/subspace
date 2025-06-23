@@ -51,8 +51,8 @@ where
 
     /// Check the block length and the max extrinsic weight and notes the new weight and length value.
     ///
-    /// It is same as the [`frame_system::CheckWeight::do_prepare`] except the `max_total/max_block`
-    /// weight limit check is removed.
+    /// It is same as the [`frame_system::CheckWeight::do_prepare`] except the `limit_per_class` and
+    /// `max_total/max_block` weight limit checks are removed.
     pub fn do_prepare(
         info: &DispatchInfoOf<T::RuntimeCall>,
         len: usize,
@@ -82,8 +82,7 @@ where
 {
     // Also Consider extrinsic length as proof weight.
     let extrinsic_weight = info
-        .call_weight
-        .saturating_add(info.extension_weight)
+        .total_weight()
         .saturating_add(maximum_weight.get(info.class).base_extrinsic)
         .saturating_add(Weight::from_parts(0, len as u64));
 
@@ -103,6 +102,8 @@ where
     const IDENTIFIER: &'static str = "CheckWeight";
 
     fn weight(&self, _: &T::RuntimeCall) -> Weight {
+        // It is ok to use the upstream weight here, because this extension does fewer checks
+        // than the upstream `CheckWeight`. See the comment on `struct CheckWeight` for details.
         <T::ExtensionsWeightInfo as frame_system::ExtensionsWeightInfo>::check_weight()
     }
 
