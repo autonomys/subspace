@@ -90,6 +90,12 @@ jobs:
             latest=false
             suffix=
 
+      # This length should be kept in sync with our fork of the substrate build script:
+      # https://github.com/autonomys/polkadot-sdk/blob/e831132867930ca90a7088c7246301ab29f015ba/substrate/utils/build-script-utils/src/version.rs#L28
+      - name: Get short SHA
+        run: |
+          echo SUBSTRATE_CLI_GIT_COMMIT_HASH=$(echo ${{github.sha}} | cut -c 1-11) >> "$GITHUB_ENV"
+
       - name: Build and push ${{ matrix.build.image }} image
         uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
         with:
@@ -103,7 +109,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            SUBSTRATE_CLI_GIT_COMMIT_HASH=${{ github.sha }}
+            SUBSTRATE_CLI_GIT_COMMIT_HASH=${{ env.SUBSTRATE_CLI_GIT_COMMIT_HASH }}
 
       - name: Trigger snyk-container-scan Workflow
         uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # @v3.0.0
@@ -171,6 +177,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      # The substrate build script automatically sets SUBSTRATE_CLI_GIT_COMMIT_HASH from the git repository:
+      # https://github.com/autonomys/polkadot-sdk/blob/e831132867930ca90a7088c7246301ab29f015ba/substrate/utils/build-script-utils/src/version.rs#L28
 
       # On macOS, we need a proper Clang version, not Apple's custom version without wasm32 support
       - name: Install LLVM and Clang for macOS
