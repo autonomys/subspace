@@ -72,6 +72,25 @@ pub fn taurus_config(
     .build())
 }
 
+pub fn mainnet_config(
+    runtime_genesis_config: RuntimeGenesisConfig,
+) -> Result<GenericChainSpec, String> {
+    Ok(GenericChainSpec::builder(
+        WASM_BINARY.ok_or_else(|| "WASM binary was not build, please build it!".to_string())?,
+        None,
+    )
+    .with_name("Autonomys EVM Domain")
+    .with_id("autonomys_evm_domain")
+    .with_chain_type(ChainType::Live)
+    .with_genesis_config(
+        serde_json::to_value(runtime_genesis_config)
+            .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
+    )
+    .with_protocol_id("autonomys-evm-domain")
+    .with_properties(chain_spec_properties())
+    .build())
+}
+
 pub fn devnet_config(
     runtime_genesis_config: RuntimeGenesisConfig,
 ) -> Result<GenericChainSpec, String> {
@@ -96,17 +115,14 @@ pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, Stri
         "taurus" => taurus_config(get_testnet_genesis_by_spec_id(SpecId::Taurus))?,
         "devnet" => devnet_config(get_testnet_genesis_by_spec_id(SpecId::DevNet))?,
         "dev" => development_config(get_testnet_genesis_by_spec_id(SpecId::Dev))?,
+        "mainnet" => mainnet_config(get_testnet_genesis_by_spec_id(SpecId::Mainnet))?,
         path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
     Ok(Box::new(chain_spec))
 }
 
-pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
-    match spec_id {
-        SpecId::Dev => testnet_genesis(),
-        SpecId::Taurus => testnet_genesis(),
-        SpecId::DevNet => testnet_genesis(),
-    }
+pub fn get_testnet_genesis_by_spec_id(_: SpecId) -> RuntimeGenesisConfig {
+    empty_genesis()
 }
 
 pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAccountId, Balance)> {
@@ -115,11 +131,11 @@ pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAcc
             .into_iter()
             .map(|acc| (AccountId20Converter::convert(acc), 1_000_000 * AI3))
             .collect(),
-        SpecId::DevNet | SpecId::Taurus => vec![],
+        SpecId::DevNet | SpecId::Taurus | SpecId::Mainnet => vec![],
     }
 }
 
-fn testnet_genesis() -> RuntimeGenesisConfig {
+fn empty_genesis() -> RuntimeGenesisConfig {
     // This is the simplest bytecode to revert without returning any data.
     // We will pre-deploy it under all of our precompiles to ensure they can be called from
     // within contracts.
@@ -178,6 +194,11 @@ fn get_operator_params(
                 "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
             )),
         },
+        // mainnet should never be called for genesis domain instantiation since
+        // actual consensus mainnet has no genesis domains.
+        SpecId::Mainnet => {
+            panic!("mainnet domains does not have any operator parameters")
+        }
     }
 }
 
@@ -190,6 +211,7 @@ pub fn get_genesis_domain(
         SpecId::Dev => development_config(get_testnet_genesis_by_spec_id(spec_id))?,
         SpecId::Taurus => taurus_config(get_testnet_genesis_by_spec_id(spec_id))?,
         SpecId::DevNet => devnet_config(get_testnet_genesis_by_spec_id(spec_id))?,
+        SpecId::Mainnet => return Err("No genesis domain available for mainnet spec.".to_string()),
     };
 
     let GenesisOperatorParams {
