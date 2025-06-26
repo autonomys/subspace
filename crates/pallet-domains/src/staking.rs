@@ -1527,6 +1527,54 @@ fn mark_invalid_bundle_author<T: Config>(
     })
 }
 
+pub(crate) fn do_unmark_invalid_bundle_authors<T: Config>(
+    domain_id: DomainId,
+    er: &ExecutionReceiptOf<T>,
+) -> Result<(), Error> {
+    let invalid_bundle_authors = invalid_bundle_authors_for_receipt::<T>(domain_id, er);
+    let er_hash = er.hash::<DomainHashingFor<T>>();
+    let pending_slashes = PendingSlashes::<T>::get(domain_id).unwrap_or_default();
+    let mut stake_summary =
+        DomainStakingSummary::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
+
+    for operator_id in invalid_bundle_authors {
+        if pending_slashes.contains(&operator_id) {
+            continue;
+        }
+
+        unmark_invalid_bundle_author::<T>(operator_id, er_hash, &mut stake_summary)?;
+    }
+
+    DomainStakingSummary::<T>::insert(domain_id, stake_summary);
+    Ok(())
+}
+
+fn unmark_invalid_bundle_author<T: Config>(
+    operator_id: OperatorId,
+    er_hash: ReceiptHashFor<T>,
+    stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,
+) -> Result<(), Error> {
+    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+        let operator = match maybe_operator.as_mut() {
+            // If the operator is already slashed and removed due to fraud proof, when the operator
+            // is slash again due to invalid bundle, which happen after the ER is confirmed, we can
+            // not find the operator here thus just return.
+            None => return Ok(()),
+            Some(operator) => operator,
+        };
+
+        // operator must be in invalid bundle state with the exact er
+        if operator.status::<T>(operator_id) != &OperatorStatus::InvalidBundle(er_hash) {
+            return Ok(());
+        }
+
+        // add operator to next set
+        operator.update_status(OperatorStatus::Registered);
+        stake_summary.next_operators.insert(operator_id);
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};

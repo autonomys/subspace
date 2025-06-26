@@ -204,8 +204,8 @@ mod pallet {
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::MAX_NOMINATORS_TO_SLASH;
     use crate::block_tree::{
-        AcceptedReceiptType, Error as BlockTreeError, ReceiptType, execution_receipt_type,
-        process_execution_receipt, prune_receipt,
+        AcceptedReceiptType, BlockTreeNode, Error as BlockTreeError, ReceiptType,
+        execution_receipt_type, process_execution_receipt, prune_receipt,
     };
     use crate::bundle_storage_fund::Error as BundleStorageFundError;
     #[cfg(not(feature = "runtime-benchmarks"))]
@@ -225,7 +225,8 @@ mod pallet {
         Deposit, DomainEpoch, Error as StakingError, Operator, OperatorConfig, SharePrice,
         StakingSummary, WithdrawStake, Withdrawal, do_deregister_operator,
         do_mark_invalid_bundle_authors, do_mark_operators_as_slashed, do_nominate_operator,
-        do_register_operator, do_unlock_funds, do_unlock_nominator, do_withdraw_stake,
+        do_register_operator, do_unlock_funds, do_unlock_nominator,
+        do_unmark_invalid_bundle_authors, do_withdraw_stake,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_slash_operator;
@@ -1338,19 +1339,26 @@ mod pallet {
             // `submit_fraud_proof` call, these operations will be benchmarked separately.
             #[cfg(not(feature = "runtime-benchmarks"))]
             {
-                let block_tree_node = prune_receipt::<T>(domain_id, bad_receipt_number)
+                let BlockTreeNode {
+                    execution_receipt,
+                    operator_ids,
+                } = prune_receipt::<T>(domain_id, bad_receipt_number)
                     .map_err(Error::<T>::from)?
                     .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
 
                 actual_weight = actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
-                    (block_tree_node.operator_ids.len() as u32).min(MAX_BUNDLE_PER_BLOCK),
+                    (operator_ids.len() as u32).min(MAX_BUNDLE_PER_BLOCK),
                 ));
 
                 do_mark_operators_as_slashed::<T>(
-                    block_tree_node.operator_ids.into_iter(),
+                    operator_ids.into_iter(),
                     SlashedReason::BadExecutionReceipt(bad_receipt_hash),
                 )
                 .map_err(Error::<T>::from)?;
+
+                // unmark any operators who are incorrectly marked as invalid bundle authors.
+                do_unmark_invalid_bundle_authors::<T>(domain_id, &execution_receipt)
+                    .map_err(Error::<T>::Staking)?;
             }
 
             // Update the head receipt number to `bad_receipt_number - 1`
@@ -1700,19 +1708,26 @@ mod pallet {
             let mut actual_weight = T::DbWeight::get().reads(3);
 
             // prune the bad ER
-            let block_tree_node = prune_receipt::<T>(domain_id, bad_receipt_number)
+            let BlockTreeNode {
+                execution_receipt,
+                operator_ids,
+            } = prune_receipt::<T>(domain_id, bad_receipt_number)
                 .map_err(Error::<T>::from)?
                 .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
 
             actual_weight = actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
-                (block_tree_node.operator_ids.len() as u32).min(MAX_BUNDLE_PER_BLOCK),
+                (operator_ids.len() as u32).min(MAX_BUNDLE_PER_BLOCK),
             ));
 
             do_mark_operators_as_slashed::<T>(
-                block_tree_node.operator_ids.into_iter(),
+                operator_ids.into_iter(),
                 SlashedReason::BadExecutionReceipt(bad_receipt_hash),
             )
             .map_err(Error::<T>::from)?;
+
+            // unmark any operators who are incorrectly marked as invalid bundle authors.
+            do_unmark_invalid_bundle_authors::<T>(domain_id, &execution_receipt)
+                .map_err(Error::<T>::Staking)?;
 
             // Update the head receipt number to `bad_receipt_number - 1`
             let new_head_receipt_number = bad_receipt_number.saturating_sub(One::one());
