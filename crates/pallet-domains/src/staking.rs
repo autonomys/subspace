@@ -5,9 +5,8 @@ extern crate alloc;
 
 use crate::bundle_storage_fund::{self, deposit_reserve_for_storage_fund};
 use crate::pallet::{
-    AllowedDefaultSharePriceEpoch, Deposits, DomainRegistry, DomainStakingSummary,
-    HeadDomainNumber, NextOperatorId, OperatorIdOwner, Operators, PendingSlashes,
-    PendingStakingOperationCount, Withdrawals,
+    Deposits, DomainRegistry, DomainStakingSummary, HeadDomainNumber, NextOperatorId,
+    OperatorIdOwner, Operators, PendingSlashes, PendingStakingOperationCount, Withdrawals,
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
@@ -454,14 +453,6 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
     let epoch_share_price = match deposit.pending {
         None => return Ok(()),
         Some(pending_deposit) => {
-            // TODO: remove after all zero-amount deposit are processed on Taurus
-            // Due to https://github.com/autonomys/subspace/issues/3459 there may be zero-amount
-            // deposit being accepted, in this case, we simply remove it from the state.
-            if pending_deposit.amount.is_zero() && pending_deposit.storage_fee_deposit.is_zero() {
-                deposit.pending.take();
-                return Ok(());
-            }
-
             match OperatorEpochSharePrice::<T>::get(
                 operator_id,
                 pending_deposit.effective_domain_epoch,
@@ -500,38 +491,11 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
     Ok(())
 }
 
-/// TODO: remove after migration are done on Taurus
-pub(crate) fn allowed_default_share_price<T: Config>(
-    operator_id: OperatorId,
-    domain_epoch_index: EpochIndex,
-) -> Option<SharePrice> {
-    let DomainEpoch(allowed_domain_id, allowed_epoch_index) =
-        AllowedDefaultSharePriceEpoch::<T>::get()?;
-    let operator = Operators::<T>::get(operator_id)?;
-
-    // The default share price is only allowed if the requested `domain_epoch_index` is happen
-    // before (or is the same as) the `AllowedDefaultSharePriceEpoch`
-    if allowed_domain_id == operator.current_domain_id && allowed_epoch_index >= domain_epoch_index
-    {
-        let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)?;
-        return Some(current_share_price::<T>(
-            operator_id,
-            &operator,
-            &domain_stake_summary,
-        ));
-    }
-    None
-}
-
 /// Converts any epoch withdrawals into balance using the operator epoch share price.
 ///
 /// If there is withdrawal happened in the current epoch (thus share price is unavailable),
 /// this will be no-op. If there is withdrawal happened in the previous epoch and the share
 /// price is unavailable, `MissingOperatorEpochSharePrice` error will be return.
-///
-/// NOTE: On Taurus, there may be share price missing unexpectly due to https://github.com/autonomys/subspace/issues/3459
-/// in order to convert these withdrawals and unlock them, we will use the current share price
-/// as default value.
 pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
     operator_id: OperatorId,
     withdrawal: &mut Withdrawal<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
@@ -540,14 +504,6 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
     let epoch_share_price = match withdrawal.withdrawal_in_shares.as_ref() {
         None => return Ok(()),
         Some(withdraw) => {
-            // TODO: remove after all zero-amount withdrawal are processed on Taurus
-            // Due to https://github.com/autonomys/subspace/issues/3459 there may be zero-amount
-            // withdrawal being accepted, in this case, we simply remove it from the state.
-            if withdraw.shares.is_zero() && withdraw.storage_fee_refund.is_zero() {
-                withdrawal.withdrawal_in_shares.take();
-                return Ok(());
-            }
-
             // `withdraw.domain_epoch` is not end yet so the share price won't be available
             if withdraw.domain_epoch.1 >= current_domain_epoch_index {
                 return Ok(());
@@ -555,12 +511,7 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
 
             match OperatorEpochSharePrice::<T>::get(operator_id, withdraw.domain_epoch) {
                 Some(p) => p,
-                None => {
-                    match allowed_default_share_price::<T>(operator_id, withdraw.domain_epoch.1) {
-                        Some(p) => p,
-                        None => return Err(Error::MissingOperatorEpochSharePrice),
-                    }
-                }
+                None => return Err(Error::MissingOperatorEpochSharePrice),
             }
         }
     };
@@ -1472,8 +1423,8 @@ pub(crate) mod tests {
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{ExistentialDeposit, RuntimeOrigin, Test, new_test_ext};
     use crate::{
-        AllowedDefaultSharePriceEpoch, BalanceOf, Error, MAX_NOMINATORS_TO_SLASH, NominatorId,
-        OperatorEpochSharePrice, SlashedReason, bundle_storage_fund,
+        BalanceOf, Error, MAX_NOMINATORS_TO_SLASH, NominatorId, OperatorEpochSharePrice,
+        SlashedReason, bundle_storage_fund,
     };
     use frame_support::traits::Currency;
     use frame_support::traits::fungible::Mutate;
@@ -3396,99 +3347,6 @@ pub(crate) mod tests {
                 do_nominate_operator::<Test>(operator_id, nominator_account, AI3),
                 StakingError::MissingOperatorEpochSharePrice
             );
-            assert_err!(
-                do_withdraw_stake::<Test>(
-                    operator_id,
-                    nominator_account,
-                    WithdrawStake::Percent(Percent::from_percent(10))
-                ),
-                StakingError::MissingOperatorEpochSharePrice
-            );
-        });
-    }
-
-    #[test]
-    fn allowed_use_default_share_price_if_missing() {
-        let domain_id = DomainId::new(0);
-        let operator_account = 1;
-        let operator_free_balance = 250 * AI3;
-        let operator_stake = 200 * AI3;
-        let pair = OperatorPair::from_seed(&[0; 32]);
-        let nominator_account = 2;
-        let nominator_free_balance = 150 * AI3;
-        let nominator_stake = 100 * AI3;
-
-        let nominators = vec![
-            (operator_account, (operator_free_balance, operator_stake)),
-            (nominator_account, (nominator_free_balance, nominator_stake)),
-        ];
-
-        let total_deposit = 300 * AI3;
-        let init_total_stake = STORAGE_FEE_RESERVE.left_from_one() * total_deposit;
-
-        let mut ext = new_test_ext();
-        ext.execute_with(|| {
-            let (operator_id, _) = register_operator(
-                domain_id,
-                operator_account,
-                operator_free_balance,
-                operator_stake,
-                10 * AI3,
-                pair.public(),
-                BTreeMap::from_iter(nominators),
-            );
-
-            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
-            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
-            assert_eq!(domain_stake_summary.current_total_stake, init_total_stake);
-            let head_domain_number = HeadDomainNumber::<Test>::get(domain_id);
-
-            do_withdraw_stake::<Test>(
-                operator_id,
-                nominator_account,
-                WithdrawStake::Stake(3 * AI3),
-            )
-            .unwrap();
-
-            // Increase the head domain number by 1
-            HeadDomainNumber::<Test>::set(domain_id, head_domain_number + 1);
-
-            // Completed current epoch and remove the epoch share price intentionally
-            let allowed_epoch = do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
-            OperatorEpochSharePrice::<Test>::remove(
-                operator_id,
-                DomainEpoch::from((domain_id, allowed_epoch.completed_epoch_index)),
-            );
-            // Allow using the current share price as default for epoch <= `allowed_epoch`
-            AllowedDefaultSharePriceEpoch::<Test>::set(Some(DomainEpoch::from((
-                domain_id,
-                allowed_epoch.completed_epoch_index,
-            ))));
-
-            // Start another withdraw which should convert the previous withdrawal successfully
-            do_withdraw_stake::<Test>(
-                operator_id,
-                nominator_account,
-                WithdrawStake::Percent(Percent::from_percent(10)),
-            )
-            .unwrap();
-            // Unlock this withdrawal should be success
-            HeadDomainNumber::<Test>::set(
-                domain_id,
-                head_domain_number
-                    + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get()
-                    + 1,
-            );
-            assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));
-
-            // Completed one more epoch and remove the epoch share price intentionally
-            let previous_epoch = do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
-            OperatorEpochSharePrice::<Test>::remove(
-                operator_id,
-                DomainEpoch::from((domain_id, previous_epoch.completed_epoch_index)),
-            );
-            // This withdraw should fail due to the share price is missing unexpectly and it
-            // is started after `allowed_epoch`
             assert_err!(
                 do_withdraw_stake::<Test>(
                     operator_id,
