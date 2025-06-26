@@ -3,6 +3,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use crate::block_tree::invalid_bundle_authors_for_receipt;
 use crate::bundle_storage_fund::{self, deposit_reserve_for_storage_fund};
 use crate::pallet::{
     AllowedDefaultSharePriceEpoch, Deposits, DomainRegistry, DomainStakingSummary,
@@ -11,8 +12,9 @@ use crate::pallet::{
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
-    BalanceOf, Config, DepositOnHold, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId,
-    OperatorEpochSharePrice, OperatorHighestSlot, Pallet, ReceiptHashFor, SlashedReason,
+    BalanceOf, Config, DepositOnHold, DomainBlockNumberFor, DomainHashingFor, Event,
+    ExecutionReceiptOf, HoldIdentifier, NominatorId, OperatorEpochSharePrice, OperatorHighestSlot,
+    Pallet, ReceiptHashFor, SlashedReason,
 };
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
@@ -163,17 +165,23 @@ impl<DomainBlockNumber> From<(DomainId, EpochIndex, DomainBlockNumber)>
 
 /// Type that represents an operator status.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub enum OperatorStatus<DomainBlockNumber> {
+pub enum OperatorStatus<DomainBlockNumber, ReceiptHash> {
+    #[codec(index = 0)]
     Registered,
     /// De-registered at given domain epoch.
+    #[codec(index = 1)]
     Deregistered(OperatorDeregisteredInfo<DomainBlockNumber>),
+    #[codec(index = 2)]
     Slashed,
+    #[codec(index = 3)]
     PendingSlash,
+    #[codec(index = 4)]
+    InvalidBundle(ReceiptHash),
 }
 
 /// Type that represents an operator details.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct Operator<Balance, Share, DomainBlockNumber> {
+pub struct Operator<Balance, Share, DomainBlockNumber, ReceiptHash> {
     pub signing_key: OperatorPublicKey,
     pub current_domain_id: DomainId,
     pub next_domain_id: DomainId,
@@ -186,7 +194,7 @@ pub struct Operator<Balance, Share, DomainBlockNumber> {
     /// The status of the operator, it may be stale due to the `OperatorStatus::PendingSlash` is
     /// not assigned to this field directly, thus MUST use the `status()` method to query the status
     /// instead.
-    partial_status: OperatorStatus<DomainBlockNumber>,
+    partial_status: OperatorStatus<DomainBlockNumber, ReceiptHash>,
     /// Total deposits during the previous epoch
     pub deposits_in_epoch: Balance,
     /// Total withdrew shares during the previous epoch
@@ -195,24 +203,33 @@ pub struct Operator<Balance, Share, DomainBlockNumber> {
     pub total_storage_fee_deposit: Balance,
 }
 
-impl<Balance, Share, DomainBlockNumber> Operator<Balance, Share, DomainBlockNumber> {
-    pub fn status<T: Config>(&self, operator_id: OperatorId) -> &OperatorStatus<DomainBlockNumber> {
+impl<Balance, Share, DomainBlockNumber, ReceiptHash>
+    Operator<Balance, Share, DomainBlockNumber, ReceiptHash>
+{
+    pub fn status<T: Config>(
+        &self,
+        operator_id: OperatorId,
+    ) -> &OperatorStatus<DomainBlockNumber, ReceiptHash> {
         if matches!(self.partial_status, OperatorStatus::Slashed) {
             &OperatorStatus::Slashed
-        } else if Pallet::<T>::is_operator_pending_to_slash(self.current_domain_id, operator_id) {
+        } else if Pallet::<T>::is_operator_pending_to_slash(self.current_domain_id, operator_id)
+            || matches!(self.partial_status, OperatorStatus::InvalidBundle(_))
+        {
             &OperatorStatus::PendingSlash
         } else {
             &self.partial_status
         }
     }
 
-    pub fn update_status(&mut self, new_status: OperatorStatus<DomainBlockNumber>) {
+    pub fn update_status(&mut self, new_status: OperatorStatus<DomainBlockNumber, ReceiptHash>) {
         self.partial_status = new_status;
     }
 }
 
 #[cfg(test)]
-impl<Balance: Zero, Share: Zero, DomainBlockNumber> Operator<Balance, Share, DomainBlockNumber> {
+impl<Balance: Zero, Share: Zero, DomainBlockNumber, ReceiptHash>
+    Operator<Balance, Share, DomainBlockNumber, ReceiptHash>
+{
     pub(crate) fn dummy(
         domain_id: DomainId,
         signing_key: OperatorPublicKey,
@@ -753,7 +770,7 @@ impl<Balance: Zero, Share: Zero> WithdrawStake<Balance, Share> {
 // A helper function used to calculate the share price at this instant
 fn current_share_price<T: Config>(
     operator_id: OperatorId,
-    operator: &Operator<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
+    operator: &Operator<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
     domain_stake_summary: &StakingSummary<OperatorId, BalanceOf<T>>,
 ) -> SharePrice {
     // Total stake including any reward within this epoch.
@@ -1454,6 +1471,60 @@ pub(crate) fn do_mark_operators_as_slashed<T: Config>(
     }
 
     Ok(())
+}
+
+pub(crate) fn do_mark_invalid_bundle_authors<T: Config>(
+    domain_id: DomainId,
+    er: &ExecutionReceiptOf<T>,
+) -> Result<(), Error> {
+    let invalid_bundle_authors = invalid_bundle_authors_for_receipt::<T>(domain_id, er);
+    let er_hash = er.hash::<DomainHashingFor<T>>();
+    let pending_slashes = PendingSlashes::<T>::get(domain_id).unwrap_or_default();
+    let mut stake_summary =
+        DomainStakingSummary::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
+
+    for operator_id in invalid_bundle_authors {
+        if pending_slashes.contains(&operator_id) {
+            continue;
+        }
+
+        mark_invalid_bundle_author::<T>(operator_id, er_hash, &mut stake_summary)?;
+    }
+
+    DomainStakingSummary::<T>::insert(domain_id, stake_summary);
+    Ok(())
+}
+
+fn mark_invalid_bundle_author<T: Config>(
+    operator_id: OperatorId,
+    er_hash: ReceiptHashFor<T>,
+    stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,
+) -> Result<(), Error> {
+    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+        let operator = match maybe_operator.as_mut() {
+            // If the operator is already slashed and removed due to fraud proof, when the operator
+            // is slash again due to invalid bundle, which happen after the ER is confirmed, we can
+            // not find the operator here thus just return.
+            None => return Ok(()),
+            Some(operator) => operator,
+        };
+
+        // operator must be in registered status.
+        // for other states, we anyway do not allow bundle submission.
+        if operator.status::<T>(operator_id) != &OperatorStatus::Registered {
+            return Ok(());
+        }
+
+        // slash and remove operator from next and current epoch set
+        operator.update_status(OperatorStatus::InvalidBundle(er_hash));
+        stake_summary.current_operators.remove(&operator_id);
+        stake_summary.next_operators.remove(&operator_id);
+        stake_summary.current_total_stake = stake_summary
+            .current_total_stake
+            .checked_sub(&operator.current_total_stake)
+            .ok_or(Error::BalanceUnderflow)?;
+        Ok(())
+    })
 }
 
 #[cfg(test)]

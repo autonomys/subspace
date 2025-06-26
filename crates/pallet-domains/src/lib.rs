@@ -203,11 +203,9 @@ mod pallet {
     use crate::DomainHashingFor;
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::MAX_NOMINATORS_TO_SLASH;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    use crate::block_tree::AcceptedReceiptType;
     use crate::block_tree::{
-        Error as BlockTreeError, ReceiptType, execution_receipt_type, process_execution_receipt,
-        prune_receipt,
+        AcceptedReceiptType, Error as BlockTreeError, ReceiptType, execution_receipt_type,
+        process_execution_receipt, prune_receipt,
     };
     use crate::bundle_storage_fund::Error as BundleStorageFundError;
     #[cfg(not(feature = "runtime-benchmarks"))]
@@ -226,8 +224,8 @@ mod pallet {
     use crate::staking::{
         Deposit, DomainEpoch, Error as StakingError, Operator, OperatorConfig, SharePrice,
         StakingSummary, WithdrawStake, Withdrawal, do_deregister_operator,
-        do_mark_operators_as_slashed, do_nominate_operator, do_register_operator, do_unlock_funds,
-        do_unlock_nominator, do_withdraw_stake,
+        do_mark_invalid_bundle_authors, do_mark_operators_as_slashed, do_nominate_operator,
+        do_register_operator, do_unlock_funds, do_unlock_nominator, do_withdraw_stake,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_slash_operator;
@@ -522,7 +520,7 @@ mod pallet {
         _,
         Identity,
         OperatorId,
-        Operator<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
+        Operator<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
         OptionQuery,
     >;
 
@@ -1168,6 +1166,13 @@ mod pallet {
                         .map_err(Error::<T>::from)?;
                     }
 
+                    if accepted_receipt_type == AcceptedReceiptType::NewHead {
+                        // when a new receipt is accepted and extending the chain,
+                        // also mark the invalid bundle authors from this er
+                        do_mark_invalid_bundle_authors::<T>(domain_id, &receipt)
+                            .map_err(Error::<T>::Staking)?;
+                    }
+
                     #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
                     let maybe_confirmed_domain_block_info = process_execution_receipt::<T>(
                         domain_id,
@@ -1787,6 +1792,13 @@ mod pallet {
                             SlashedReason::BadExecutionReceipt(bad_receipt_hash),
                         )
                         .map_err(Error::<T>::from)?;
+                    }
+
+                    if accepted_receipt_type == AcceptedReceiptType::NewHead {
+                        // when a new receipt is accepted and extending the chain,
+                        // also mark the invalid bundle authors from this er
+                        do_mark_invalid_bundle_authors::<T>(domain_id, &receipt)
+                            .map_err(Error::<T>::Staking)?;
                     }
 
                     #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
