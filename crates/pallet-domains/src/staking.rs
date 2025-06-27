@@ -2160,7 +2160,13 @@ pub(crate) mod tests {
 
         // TODO: fix a test stack overflow with large deposits
         // This is very large and unlikely to happen in practice.
+        #[cfg(not(windows))]
         if maybe_deposit >= 2u128.pow(114) {
+            return TestResult::discard();
+        }
+        // Windows seems to have a much smaller stack limit.
+        #[cfg(windows)]
+        if maybe_deposit >= 2u128.pow(80) {
             return TestResult::discard();
         }
 
@@ -2235,7 +2241,13 @@ pub(crate) mod tests {
 
         // TODO: fix a test stack overflow with large deposits
         // This is very large and unlikely to happen in practice.
+        #[cfg(not(windows))]
         if maybe_deposit >= 2u128.pow(114) {
+            return TestResult::discard();
+        }
+        // Windows seems to have a much smaller stack limit.
+        #[cfg(windows)]
+        if maybe_deposit >= 2u128.pow(80) {
             return TestResult::discard();
         }
 
