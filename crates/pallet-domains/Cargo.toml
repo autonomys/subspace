@@ -42,6 +42,8 @@ hex-literal.workspace = true
 pallet-subspace.workspace = true
 pallet-timestamp.workspace = true
 pallet-block-fees.workspace = true
+quickcheck.workspace = true
+quickcheck_macros.workspace = true
 sp-externalities.workspace = true
 
 [features]
