@@ -1451,13 +1451,20 @@ pub(crate) fn do_mark_operators_as_slashed<T: Config>(
 
                     // slash and remove operator from next and current epoch set
                     operator.update_status(OperatorStatus::Slashed);
-                    stake_summary.current_operators.remove(operator_id);
-                    stake_summary.next_operators.remove(operator_id);
-                    stake_summary.current_total_stake = stake_summary
-                        .current_total_stake
-                        .checked_sub(&operator.current_total_stake)
-                        .ok_or(Error::BalanceUnderflow)?;
 
+                    // ensure to reduce the total stake if operator is actually present in the
+                    // current_operator set
+                    if stake_summary
+                        .current_operators
+                        .remove(operator_id)
+                        .is_some()
+                    {
+                        stake_summary.current_total_stake = stake_summary
+                            .current_total_stake
+                            .checked_sub(&operator.current_total_stake)
+                            .ok_or(Error::BalanceUnderflow)?;
+                    }
+                    stake_summary.next_operators.remove(operator_id);
                     pending_slashes.insert(*operator_id);
                     PendingSlashes::<T>::insert(operator.current_domain_id, pending_slashes);
                     Pallet::<T>::deposit_event(Event::OperatorSlashed {
@@ -1517,12 +1524,17 @@ fn mark_invalid_bundle_author<T: Config>(
 
         // slash and remove operator from next and current epoch set
         operator.update_status(OperatorStatus::InvalidBundle(er_hash));
-        stake_summary.current_operators.remove(&operator_id);
+        if stake_summary
+            .current_operators
+            .remove(&operator_id)
+            .is_some()
+        {
+            stake_summary.current_total_stake = stake_summary
+                .current_total_stake
+                .checked_sub(&operator.current_total_stake)
+                .ok_or(Error::BalanceUnderflow)?;
+        }
         stake_summary.next_operators.remove(&operator_id);
-        stake_summary.current_total_stake = stake_summary
-            .current_total_stake
-            .checked_sub(&operator.current_total_stake)
-            .ok_or(Error::BalanceUnderflow)?;
         Ok(())
     })
 }
@@ -1564,7 +1576,7 @@ fn unmark_invalid_bundle_author<T: Config>(
         };
 
         // operator must be in invalid bundle state with the exact er
-        if operator.status::<T>(operator_id) != &OperatorStatus::InvalidBundle(er_hash) {
+        if operator.partial_status != OperatorStatus::InvalidBundle(er_hash) {
             return Ok(());
         }
 

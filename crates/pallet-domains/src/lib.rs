@@ -15,7 +15,7 @@ pub mod domain_registry;
 pub mod extensions;
 pub mod migrations;
 pub mod runtime_registry;
-mod staking;
+pub mod staking;
 mod staking_epoch;
 pub mod weights;
 
