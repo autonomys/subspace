@@ -1430,6 +1430,8 @@ pub(crate) mod tests {
     use frame_support::traits::fungible::Mutate;
     use frame_support::weights::Weight;
     use frame_support::{assert_err, assert_ok};
+    use quickcheck::TestResult;
+    use quickcheck_macros::quickcheck;
     use sp_core::{Pair, sr25519};
     use sp_domains::{
         DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
@@ -1876,14 +1878,25 @@ pub(crate) mod tests {
     pub(crate) type Share = <Test as Config>::Share;
 
     struct WithdrawParams {
+        /// The minimum valid nominator stake.
         minimum_nominator_stake: BalanceOf<Test>,
+        /// The nominator IDs and their stakes.
+        /// Account 0 is the operator and its stake.
         nominators: Vec<(NominatorId<Test>, BalanceOf<Test>)>,
+        /// The operator reward.
         operator_reward: BalanceOf<Test>,
+        /// The nominator ID to withdraw from.
         nominator_id: NominatorId<Test>,
+        /// The withdraw attempts to be made, in order, with their expected results.
         withdraws: WithdrawWithResult,
+        /// The deposit to be made when nominating the operator, if any.
         maybe_deposit: Option<BalanceOf<Test>>,
+        /// The expected withdraw amount for `nominator_id`.
+        /// Includes the existential deposit if `true`.
         expected_withdraw: ExpectedWithdrawAmount,
+        /// The expected reduction in the number of nominators.
         expected_nominator_count_reduced_by: u32,
+        /// The storage fund change, increase if `true`.
         storage_fund_change: StorageFundChange,
     }
 
@@ -2017,6 +2030,7 @@ pub(crate) mod tests {
             }
 
             // if the nominator count reduced, then there should be no storage for deposits as well
+            // TODO: assert this matches the change in the number of nominators
             if expected_nominator_count_reduced_by > 0 {
                 assert!(Deposits::<Test>::get(operator_id, nominator_id).is_none());
                 assert!(!DepositOnHold::<Test>::contains_key((
@@ -2034,6 +2048,217 @@ pub(crate) mod tests {
                     + bundle_storage_fund::total_balance::<Test>(operator_id)
             );
         });
+    }
+
+    // TODO: add a property test for operator_reward
+
+    /// Property test for withdrawing all a nominator's excess stake.
+    /// Their balance should be the same before and after.
+    ///
+    /// Using too many random parameters and discard()s can cause stack overflow.
+    /// Try to limit the number of parameters to 3.
+    #[quickcheck]
+    fn prop_withdraw_all_stake_simple(operator_stake: u128, nominator_stake: u128) -> TestResult {
+        // MinimumNominatorStake error
+        if nominator_stake < <Test as Config>::MinNominatorStake::get() {
+            return TestResult::discard();
+        }
+
+        // MinimumOperatorStake error
+        if operator_stake < <Test as Config>::MinOperatorStake::get() {
+            return TestResult::discard();
+        }
+
+        // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
+        if [operator_stake, nominator_stake]
+            .into_iter()
+            .try_fold(0_u128, |acc, value| acc.checked_add(value))
+            .is_none()
+        {
+            return TestResult::discard();
+        }
+
+        let expected_withdraw = (nominator_stake, true);
+
+        let excess_stake =
+            nominator_stake.saturating_sub(<Test as Config>::MinNominatorStake::get());
+
+        // ZeroWithdraw error
+        if excess_stake == 0 {
+            return TestResult::discard();
+        }
+
+        // TODO: fix this RemoveLock error or replace it with BalanceOverflow.
+        // This is `1.11111... * 2^127`, so it's not possible in practice.
+        if nominator_stake >= 189045759400521368590763670795426784142 {
+            return TestResult::discard();
+        }
+
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+            nominators: vec![(0, operator_stake), (1, nominator_stake)],
+            operator_reward: 0,
+            nominator_id: 1,
+            withdraws: vec![(excess_stake, Ok(()))],
+            maybe_deposit: None,
+            expected_withdraw: Some(expected_withdraw),
+            expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
+        });
+
+        TestResult::passed()
+    }
+
+    /// Property test for withdrawing all a nominator's excess stake with a deposit.
+    /// Their balance should be the same before and after.
+    #[quickcheck]
+    fn prop_withdraw_all_stake_with_deposit(
+        operator_stake: u128,
+        nominator_stake: u128,
+        maybe_deposit: u128,
+    ) -> TestResult {
+        // MinimumNominatorStake error
+        if nominator_stake.saturating_sub(maybe_deposit)
+            < <Test as Config>::MinNominatorStake::get()
+        {
+            return TestResult::discard();
+        }
+        if maybe_deposit < <Test as Config>::MinNominatorStake::get() {
+            return TestResult::discard();
+        }
+
+        // MinimumOperatorStake error
+        if operator_stake < <Test as Config>::MinOperatorStake::get() {
+            return TestResult::discard();
+        }
+
+        // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
+        if [operator_stake, nominator_stake, maybe_deposit]
+            .into_iter()
+            .try_fold(0_u128, |acc, value| acc.checked_add(value))
+            .is_none()
+        {
+            return TestResult::discard();
+        }
+
+        let expected_withdraw = (nominator_stake.saturating_sub(maybe_deposit), true);
+
+        let excess_stake = nominator_stake
+            .saturating_sub(<Test as Config>::MinNominatorStake::get())
+            .saturating_sub(maybe_deposit);
+
+        // ZeroWithdraw error
+        if excess_stake == 0 {
+            return TestResult::discard();
+        }
+
+        // TODO: fix this RemoveLock error or replace it with BalanceOverflow.
+        // This is `1.11111... * 2^127`, so it's not possible in practice.
+        if nominator_stake >= 189045759400521368590763670795426784142 {
+            return TestResult::discard();
+        }
+
+        // TODO: fix a test stack overflow with large deposits
+        // This is very large and unlikely to happen in practice.
+        if maybe_deposit >= 2u128.pow(114) {
+            return TestResult::discard();
+        }
+
+        // Avoid ZeroDeposit errors
+        let maybe_deposit = if maybe_deposit == 0 {
+            None
+        } else {
+            Some(maybe_deposit)
+        };
+
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+            nominators: vec![(0, operator_stake), (1, nominator_stake)],
+            operator_reward: 0,
+            nominator_id: 1,
+            withdraws: vec![(excess_stake, Ok(()))],
+            maybe_deposit,
+            expected_withdraw: Some(expected_withdraw),
+            expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
+        });
+
+        TestResult::passed()
+    }
+
+    /// Property test for withdrawing all a nominator's excess stake with a deposit and fixed
+    /// operator stake.
+    /// Their balance should be the same before and after.
+    #[quickcheck]
+    fn prop_withdraw_all_stake_with_deposit_min_operator_stake(
+        nominator_stake: u128,
+        maybe_deposit: u128,
+    ) -> TestResult {
+        // MinimumNominatorStake error
+        if nominator_stake.saturating_sub(maybe_deposit)
+            < <Test as Config>::MinNominatorStake::get()
+        {
+            return TestResult::discard();
+        }
+        if maybe_deposit < <Test as Config>::MinNominatorStake::get() {
+            return TestResult::discard();
+        }
+
+        // MinimumOperatorStake error
+        let operator_stake = <Test as Config>::MinOperatorStake::get();
+
+        // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
+        if [operator_stake, nominator_stake, maybe_deposit]
+            .into_iter()
+            .try_fold(0_u128, |acc, value| acc.checked_add(value))
+            .is_none()
+        {
+            return TestResult::discard();
+        }
+
+        let expected_withdraw = (nominator_stake.saturating_sub(maybe_deposit), true);
+
+        let excess_stake = nominator_stake
+            .saturating_sub(<Test as Config>::MinNominatorStake::get())
+            .saturating_sub(maybe_deposit);
+
+        // ZeroWithdraw error
+        if excess_stake == 0 {
+            return TestResult::discard();
+        }
+
+        // TODO: fix this RemoveLock error or replace it with BalanceOverflow.
+        // This is `1.11111... * 2^127`, so it's not possible in practice.
+        if nominator_stake >= 189045759400521368590763670795426784142 {
+            return TestResult::discard();
+        }
+
+        // TODO: fix a test stack overflow with large deposits
+        // This is very large and unlikely to happen in practice.
+        if maybe_deposit >= 2u128.pow(114) {
+            return TestResult::discard();
+        }
+
+        // Avoid ZeroDeposit errors
+        let maybe_deposit = if maybe_deposit == 0 {
+            None
+        } else {
+            Some(maybe_deposit)
+        };
+
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+            nominators: vec![(0, operator_stake), (1, nominator_stake)],
+            operator_reward: 0,
+            nominator_id: 1,
+            withdraws: vec![(excess_stake, Ok(()))],
+            maybe_deposit,
+            expected_withdraw: Some(expected_withdraw),
+            expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
+        });
+
+        TestResult::passed()
     }
 
     #[test]
