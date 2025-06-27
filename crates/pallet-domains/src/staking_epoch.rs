@@ -278,7 +278,7 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
 
     let mut total_stake = operator.current_total_stake;
     let mut total_shares = operator.current_total_shares;
-    let share_price = SharePrice::new::<T>(total_shares, total_stake);
+    let share_price = SharePrice::new::<T>(total_shares, total_stake)?;
 
     // calculate and subtract total withdrew shares from previous epoch
     if !operator.withdrawals_in_epoch.is_zero() {
@@ -390,7 +390,7 @@ pub(crate) fn do_slash_operator<T: Config>(
 
         let mut total_stake = operator.current_total_stake;
         let mut total_shares = operator.current_total_shares;
-        let share_price = SharePrice::new::<T>(total_shares, total_stake);
+        let share_price = SharePrice::new::<T>(total_shares, total_stake)?;
 
         let mut total_storage_fee_deposit = operator.total_storage_fee_deposit;
 

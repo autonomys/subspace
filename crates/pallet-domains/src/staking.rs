@@ -38,33 +38,48 @@ pub(crate) struct Deposit<Share: Copy, Balance: Copy> {
 /// A share price is parts per billion of shares/ai3.
 /// Note: Shares must always be equal to or lower than ai3.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Default)]
-pub struct SharePrice(Perbill);
+pub struct SharePrice(Option<Perbill>);
 
 impl SharePrice {
     /// Creates a new instance of share price from shares and stake.
-    pub(crate) fn new<T: Config>(shares: T::Share, stake: BalanceOf<T>) -> Self {
-        SharePrice(if shares.is_zero() || stake.is_zero() {
-            Perbill::one()
+    /// Returns an error if there are more shares than stake. If either value is zero, the share
+    /// price is marked as missing internally.
+    pub(crate) fn new<T: Config>(shares: T::Share, stake: BalanceOf<T>) -> Result<Self, Error> {
+        if shares > stake.into() {
+            // Invalid share price, can't be greater than one.
+            Err(Error::ShareOverflow)
+        } else if stake.is_zero() || shares.is_zero() {
+            // If there are no shares or no stake, it is valid, but there is no share price.
+            Ok(SharePrice(None))
         } else {
-            Perbill::from_rational(shares, stake.into())
-        })
-    }
-
-    /// Converts stake to shares based on the share price
-    pub(crate) fn stake_to_shares<T: Config>(&self, stake: BalanceOf<T>) -> T::Share {
-        if self.0.is_one() {
-            stake.into()
-        } else {
-            self.0.mul_floor(stake).into()
+            Ok(SharePrice(Some(Perbill::from_rational(
+                shares,
+                stake.into(),
+            ))))
         }
     }
 
-    /// Converts shares to stake based on the share price
-    pub(crate) fn shares_to_stake<T: Config>(&self, shares: T::Share) -> BalanceOf<T> {
-        if self.0.is_one() {
-            shares.into()
+    /// Converts stake to shares based on the share price.
+    /// Returns the full stake if there were no shares or stake when calculating the price.
+    pub(crate) fn stake_to_shares<T: Config>(&self, stake: BalanceOf<T>) -> T::Share {
+        if let Some(share_price) = self.0 {
+            share_price.mul_floor(stake).into()
         } else {
-            self.0.saturating_reciprocal_mul_floor(shares.into())
+            // If the share price is missing, there are no shares, so the only valid stake is the
+            // full stake.
+            stake.into()
+        }
+    }
+
+    /// Converts shares to stake based on the share price.
+    /// Returns the full shares if there were no shares or stake when calculating the price.
+    pub(crate) fn shares_to_stake<T: Config>(&self, shares: T::Share) -> BalanceOf<T> {
+        if let Some(share_price) = self.0 {
+            share_price.saturating_reciprocal_mul_floor(shares.into())
+        } else {
+            // If the share price is missing, there are no shares, so the only valid result is the
+            // full set of shares.
+            shares.into()
         }
     }
 }
@@ -701,12 +716,13 @@ impl<Balance: Zero, Share: Zero> WithdrawStake<Balance, Share> {
     }
 }
 
-// A helper function used to calculate the share price at this instant
+/// A helper function used to calculate the share price at this instant
+/// Returns `None` if there are more shares than stake, or if either value is zero.
 fn current_share_price<T: Config>(
     operator_id: OperatorId,
     operator: &Operator<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
     domain_stake_summary: &StakingSummary<OperatorId, BalanceOf<T>>,
-) -> SharePrice {
+) -> Result<SharePrice, Error> {
     // Total stake including any reward within this epoch.
     let total_stake = domain_stake_summary
         .current_epoch_rewards
@@ -785,7 +801,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
             WithdrawStake::Percent(p) => p.mul_floor(known_share),
             WithdrawStake::Stake(s) => {
                 let share_price =
-                    current_share_price::<T>(operator_id, operator, &domain_stake_summary);
+                    current_share_price::<T>(operator_id, operator, &domain_stake_summary)?;
                 share_price.stake_to_shares::<T>(s)
             }
             WithdrawStake::Share(s) => s,
@@ -811,7 +827,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                     (remaining_shares, shares_withdrew)
                 } else {
                     let share_price =
-                        current_share_price::<T>(operator_id, operator, &domain_stake_summary);
+                        current_share_price::<T>(operator_id, operator, &domain_stake_summary)?;
 
                     let remaining_storage_fee =
                         Perbill::from_rational(remaining_shares, known_shares)
@@ -1118,7 +1134,7 @@ pub(crate) fn do_unlock_nominator<T: Config>(
 
         let mut total_shares = operator.current_total_shares;
         let mut total_stake = operator.current_total_stake;
-        let share_price = SharePrice::new::<T>(total_shares, total_stake);
+        let share_price = SharePrice::new::<T>(total_shares, total_stake)?;
 
         let mut total_storage_fee_deposit = operator.total_storage_fee_deposit;
         let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
