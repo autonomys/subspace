@@ -625,6 +625,26 @@ pub(crate) fn prune_receipt<T: Config>(
     Ok(Some(block_tree_node))
 }
 
+pub(crate) fn invalid_bundle_authors_for_receipt<T: Config>(
+    domain_id: DomainId,
+    er: &ExecutionReceiptOf<T>,
+) -> Vec<OperatorId> {
+    let bundle_digests =
+        ExecutionInbox::<T>::get((domain_id, er.domain_block_number, er.consensus_block_number));
+    bundle_digests
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, digest)| {
+            let bundle_author = InboxedBundleAuthor::<T>::get(digest.header_hash)?;
+            if er.inboxed_bundles[index].is_invalid() {
+                Some(bundle_author)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

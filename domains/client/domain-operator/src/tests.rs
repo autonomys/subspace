@@ -6245,6 +6245,8 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     // Fork B
     let bundle = {
         opaque_bundle.extrinsics = vec![];
+        // zero bundle weight since there are not extrinsics
+        opaque_bundle.sealed_header.header.estimated_bundle_weight = Weight::zero();
         opaque_bundle.sealed_header.header.bundle_extrinsics_root =
             sp_domains::EMPTY_EXTRINSIC_ROOT;
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
