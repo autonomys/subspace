@@ -40,7 +40,7 @@ pub(crate) struct Deposit<Share: Copy, Balance: Copy> {
 /// A share price is parts per billion of shares/ai3.
 /// Note: Shares must always be equal to or lower than ai3.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Default)]
-pub struct SharePrice(Option<Perbill>);
+pub struct SharePrice(Option<Perquintill>);
 
 impl SharePrice {
     /// Creates a new instance of share price from shares and stake.
@@ -54,9 +54,9 @@ impl SharePrice {
             // If there are no shares or no stake, it is valid, but there is no share price.
             Ok(SharePrice(None))
         } else {
-            Ok(SharePrice(Some(Perbill::from_rational(
-                shares,
-                stake.into(),
+            Ok(SharePrice(Some(Perquintill::from_rational(
+                shares.into(),
+                stake,
             ))))
         }
     }
@@ -2229,7 +2229,7 @@ pub(crate) mod tests {
             // given the reward, operator will get 164.28 AI3
             // taking 58 shares will give this following approximate amount.
             maybe_deposit: None,
-            expected_withdraw: Some((63523809519881179143, false)),
+            expected_withdraw: Some((63523809503809523849, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2247,7 +2247,7 @@ pub(crate) mod tests {
                 (5 * AI3, Err(StakingError::MinimumOperatorStake)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((63523809519881179143, false)),
+            expected_withdraw: Some((63523809503809523849, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2262,7 +2262,7 @@ pub(crate) mod tests {
             nominator_id: 0,
             withdraws: vec![(53 * AI3, Ok(())), (5 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((63523809515796643053, false)),
+            expected_withdraw: Some((63523809499724987759, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2329,7 +2329,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: None,
-            expected_withdraw: Some((54761904775759637192, true)),
+            expected_withdraw: Some((54761904761904761938, true)),
             expected_nominator_count_reduced_by: 1,
             storage_fund_change: (true, 0),
         })
@@ -2347,7 +2347,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: None,
-            expected_withdraw: Some((54761904775759637192, true)),
+            expected_withdraw: Some((54761904761904761938, true)),
             expected_nominator_count_reduced_by: 1,
             storage_fund_change: (true, 0),
         })
@@ -2369,7 +2369,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: None,
-            expected_withdraw: Some((54761904775759637192, true)),
+            expected_withdraw: Some((54761904761904761938, true)),
             expected_nominator_count_reduced_by: 1,
             storage_fund_change: (true, 0),
         })
@@ -2433,7 +2433,7 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![(40 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523820607709753, false)),
+            expected_withdraw: Some((43809523809523809551, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2448,7 +2448,7 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![(35 * AI3, Ok(())), (5 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523819607709753, false)),
+            expected_withdraw: Some((43809523808523809551, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2467,7 +2467,7 @@ pub(crate) mod tests {
                 (15 * AI3, Err(StakingError::InsufficientShares)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523819607709753, false)),
+            expected_withdraw: Some((43809523808523809551, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2557,7 +2557,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: Some(2 * AI3),
-            expected_withdraw: Some((43809523819607709753, false)),
+            expected_withdraw: Some((43809523808523809551, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2879,8 +2879,8 @@ pub(crate) mod tests {
             let total_storage_fee_withdrawal = operator_withdrawal.withdrawals[0]
                 .storage_fee_refund
                 + nominator_withdrawal.withdrawals[0].storage_fee_refund;
-            assert_eq!(293333333331527777778, total_deposit,);
-            assert_eq!(21666666668472222222, total_stake_withdrawal);
+            assert_eq!(293333333333333333312, total_deposit,);
+            assert_eq!(21666666666666666688, total_stake_withdrawal);
             assert_eq!(5000000000000000000, total_storage_fee_withdrawal);
             assert_eq!(
                 320 * AI3,
@@ -3045,11 +3045,11 @@ pub(crate) mod tests {
             let total_storage_fee_withdrawal = operator_withdrawal.withdrawals[0]
                 .storage_fee_refund
                 + nominator_withdrawal.withdrawals[0].storage_fee_refund;
-            assert_eq!(2194772727253419421470, total_deposit,);
-            assert_eq!(20227272746580578530, total_stake_withdrawal);
+            assert_eq!(2194772727272727272713, total_deposit,);
+            assert_eq!(20227272727272727286, total_stake_withdrawal);
             assert_eq!(5000000000000000000, total_storage_fee_withdrawal);
             assert_eq!(
-                2220 * AI3,
+                2220 * AI3 - 1,
                 total_deposit + total_stake_withdrawal + total_storage_fee_withdrawal
             );
 
