@@ -443,10 +443,17 @@ pub(crate) fn do_slash_operator<T: Config>(
                 .known
                 .shares
                 .checked_add(&shares_withdrew_in_current_epoch)
-                .ok_or(TransitionError::ShareOverflow)?;
+                .ok_or(TransitionError::ShareOverflow)?
+                // Ensure the `nominator_shares` never exceed the `total_shares`, which may happen to
+                // the last slash nominator due to arithmetic accuracy.
+                .min(total_shares);
 
             // current staked amount
-            let nominator_staked_amount = share_price.shares_to_stake::<T>(nominator_shares);
+            let nominator_staked_amount = share_price
+                .shares_to_stake::<T>(nominator_shares)
+                // Ensure the `nominator_staked_amount` never exceed the `total_stake`, which may happen
+                // to the last slash nominator due to arithmetic accuracy.
+                .min(total_stake);
 
             let pending_deposit = deposit
                 .pending
@@ -718,7 +725,7 @@ mod tests {
             vec![(2, 10 * AI3), (4, 10 * AI3)],
             vec![(1, 20 * AI3), (2, 10 * AI3)],
             vec![
-                (1, 164285714285714285816),
+                (1, 164285714285714285675),
                 (2, 64761904761904761938),
                 (3, 10952380952380952387),
                 (4, 10 * AI3),

@@ -1190,10 +1190,17 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             .known
             .shares
             .checked_add(&shares_withdrew_in_current_epoch)
-            .ok_or(Error::ShareOverflow)?;
+            .ok_or(Error::ShareOverflow)?
+            // Ensure the `nominator_shares` never exceed the `total_shares`, which may happen to
+            // the last unlock nominator (i.e. the operator owner) due to arithmetic accuracy.
+            .min(total_shares);
 
         // current staked amount
-        let nominator_staked_amount = share_price.shares_to_stake::<T>(nominator_shares);
+        let nominator_staked_amount = share_price
+            .shares_to_stake::<T>(nominator_shares)
+            // Ensure the `nominator_staked_amount` never exceed the `total_stake`, which may happen
+            // to the last unlock nominator (i.e. the operator owner) due to arithmetic accuracy.
+            .min(total_stake);
 
         // amount deposited by this nominator before operator de-registered.
         let amount_deposited_in_epoch = deposit
@@ -3008,7 +3015,9 @@ pub(crate) mod tests {
                 );
             }
 
-            assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 2220 * AI3);
+            assert!(
+                Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 2220 * AI3 - 1
+            );
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
         });
     }
