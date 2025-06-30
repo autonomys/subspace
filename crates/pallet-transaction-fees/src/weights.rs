@@ -14,8 +14,9 @@ where
     T: frame_system::Config,
 {
     fn on_initialize() -> Weight {
-        Weight::from_parts(0, 0)
-            .saturating_add(T::DbWeight::get().reads(1_u64))
+        // TODO: benchmark this properly on reference hardware
+        Weight::from_parts(10_000, 10_000)
+            .saturating_add(T::DbWeight::get().reads(4_u64))
             .saturating_add(T::DbWeight::get().writes(4_u64))
     }
 }
