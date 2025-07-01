@@ -631,7 +631,7 @@ mod tests {
             }
 
             for (nominator_id, shares) in withdrawals {
-                do_withdraw_stake::<Test>(operator_id, nominator_id, WithdrawStake::Share(shares))
+                do_withdraw_stake::<Test>(operator_id, nominator_id, WithdrawStake(shares))
                     .unwrap();
             }
 
@@ -655,11 +655,7 @@ mod tests {
                 TransitionError::OperatorNotRegistered
             );
             assert_err!(
-                do_withdraw_stake::<Test>(
-                    operator_id,
-                    operator_account,
-                    WithdrawStake::Percent(Percent::from_percent(10))
-                ),
+                do_withdraw_stake::<Test>(operator_id, operator_account, WithdrawStake(1)),
                 TransitionError::OperatorNotRegistered
             );
 

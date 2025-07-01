@@ -1492,7 +1492,7 @@ mod pallet {
         pub fn withdraw_stake(
             origin: OriginFor<T>,
             operator_id: OperatorId,
-            to_withdraw: WithdrawStake<BalanceOf<T>, T::Share>,
+            to_withdraw: WithdrawStake<T::Share>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 

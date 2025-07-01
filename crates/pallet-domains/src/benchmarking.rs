@@ -716,7 +716,7 @@ mod benchmarks {
         assert_ok!(Domains::<T>::withdraw_stake(
             RawOrigin::Signed(nominator.clone()).into(),
             operator_id,
-            WithdrawStake::Share(withdraw_amount.into()),
+            WithdrawStake(withdraw_amount.into()),
         ));
         assert_ok!(Domains::<T>::nominate_operator(
             RawOrigin::Signed(nominator.clone()).into(),
@@ -730,7 +730,7 @@ mod benchmarks {
         _(
             RawOrigin::Signed(nominator.clone()),
             operator_id,
-            WithdrawStake::Share(withdraw_amount.into()),
+            WithdrawStake(withdraw_amount.into()),
         );
 
         let operator = Operators::<T>::get(operator_id).expect("operator must exist");
@@ -738,11 +738,12 @@ mod benchmarks {
     }
 
     /// Benchmark `unlock_funds` extrinsic with the worst possible conditions:
-    /// - Unlock a full withdrawal which also remove the deposit storage for the nominator
+    /// - Unlock a full withdrawal which also removes the deposit storage for the nominator
     #[benchmark]
     fn unlock_funds(w: Linear<1, { T::WithdrawalLimit::get() }>) {
         let nominator = account("nominator", 1, SEED);
         let minimum_nominator_stake = T::MinNominatorStake::get();
+        // We start with `3 * MinOperatorStake`
         let staking_amount = T::MinOperatorStake::get() * 3u32.into();
         T::Currency::set_balance(&nominator, staking_amount + T::MinNominatorStake::get());
 
@@ -756,20 +757,26 @@ mod benchmarks {
         do_finalize_domain_epoch_staking::<T>(domain_id)
             .expect("finalize domain staking should success");
 
-        // Request `w` number of withdrawal in different epoch and withdraw all the stake in the last one
-        for _ in 1..w {
+        // Request `w` withdrawals in different epochs, this removes slightly under (or exactly)
+        // `MinOperatorStake` from the nominator's stake.
+        for _ in 1..=w {
             assert_ok!(Domains::<T>::withdraw_stake(
                 RawOrigin::Signed(nominator.clone()).into(),
                 operator_id,
-                WithdrawStake::Stake(T::MinOperatorStake::get() / w.into()),
+                WithdrawStake((T::MinOperatorStake::get() / w.into()).into()),
             ));
             do_finalize_domain_epoch_staking::<T>(domain_id)
                 .expect("finalize domain staking should success");
         }
+        // Withdraw all the remaining stake. Since we just took out ~`MinOperatorStake`
+        // from the nominator's stake, the remaining stake is greater than or equal to
+        // `2 * MinOperatorStake`.
         assert_ok!(Domains::<T>::withdraw_stake(
             RawOrigin::Signed(nominator.clone()).into(),
             operator_id,
-            WithdrawStake::All,
+            // Withdraw all the remaining stake, except for the `MinOperatorStake`. Since this is
+            // the operator, we can't withdraw the entire stake.
+            WithdrawStake(T::MinOperatorStake::get().into()),
         ));
         do_finalize_domain_epoch_staking::<T>(domain_id)
             .expect("finalize domain staking should success");
@@ -784,7 +791,7 @@ mod benchmarks {
                 withdrawal,
                 current_domain_epoch_index,
             )?;
-            assert_eq!(withdrawal.withdrawals.len() as u32, w);
+            assert_eq!(withdrawal.withdrawals.len() as u32, w + 1);
             Ok::<(), StakingError>(())
         })
         .unwrap();
