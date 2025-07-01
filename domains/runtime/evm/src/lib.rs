@@ -1021,7 +1021,7 @@ mod benches {
         [pallet_evm_tracker, EVMNoncetracker]
         // TODO: pallet_evm_tracker CheckNonce extension benchmarks
         // pallet_domain_id has no calls to benchmark
-        // pallet_block_fees only has inherent calls
+        // pallet_block_fees uses a default over-estimated weight
         // pallet_domain_sudo only has inherent calls
     );
 }
