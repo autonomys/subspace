@@ -109,4 +109,5 @@ static_assertions.workspace = true
 runtime-benchmarks = [
     "dep:frame-benchmarking",
     "sc-domains/runtime-benchmarks",
+    "sp-subspace-mmr/runtime-benchmarks",
 ]

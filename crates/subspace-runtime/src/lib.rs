@@ -1015,7 +1015,7 @@ impl pallet_mmr::Config for Runtime {
     type LeafData = SubspaceMmr;
     type OnNewRoot = SubspaceMmr;
     type BlockHashProvider = BlockHashProvider;
-    type WeightInfo = ();
+    type WeightInfo = weights::pallet_mmr::WeightInfo<Runtime>;
     #[cfg(feature = "runtime-benchmarks")]
     type BenchmarkHelper = ();
 }
@@ -1291,12 +1291,13 @@ mod benches {
         [pallet_rewards, Rewards]
         [pallet_balances, Balances]
         [balance_transfer_check_extension, BalanceTransferCheckBench::<Runtime>]
-        // pallet_transaction_fees has no calls to benchmark
+        // pallet_transaction_fees uses a default over-estimated weight
         [pallet_transaction_payment, TransactionPayment]
         [pallet_utility, Utility]
         [pallet_domains, Domains]
         [pallet_runtime_configs, RuntimeConfigs]
-        // pallet_mmr and pallet_subspace_mmr have no calls to benchmark
+        [pallet_mmr, Mmr]
+        // pallet_subspace_mmr has no calls to benchmark
         [pallet_messenger, Messenger]
         [pallet_messenger_from_domains_extension, MessengerFromDomainsExtensionBench::<Runtime>]
         [pallet_transporter, Transporter]

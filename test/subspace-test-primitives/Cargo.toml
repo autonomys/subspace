@@ -26,8 +26,8 @@ default = ["std"]
 std = [
     "parity-scale-codec/std",
     "sp-api/std",
-    "sp-domains/std",
     "sp-core/std",
+    "sp-domains/std",
     "sp-messenger/std",
     "sp-runtime/std",
     "sp-subspace-mmr/std",

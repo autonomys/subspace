@@ -1,10 +1,14 @@
 //! Primitives for Subspace MMR.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(result_flattening)]
 
+#[cfg(all(feature = "std", feature = "runtime-benchmarks"))]
+pub mod benchmarking;
 #[cfg(feature = "std")]
 pub mod host_functions;
 mod runtime_interface;
+
 #[cfg(feature = "std")]
 pub use runtime_interface::domain_mmr_runtime_interface::HostFunctions as DomainHostFunctions;
 #[cfg(feature = "std")]
