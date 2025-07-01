@@ -1148,7 +1148,7 @@ mod pallet {
                 ReceiptType::Rejected(rejected_receipt_type) => {
                     return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
                 }
-                // Add the exeuctione receipt to the block tree
+                // Add the exeuction receipt to the block tree
                 ReceiptType::Accepted(accepted_receipt_type) => {
                     // Before adding the new head receipt to the block tree, try to prune any previous
                     // bad ER at the same domain block and slash the submitter.
@@ -1157,23 +1157,25 @@ mod pallet {
                     // `submit_bundle` call, these operations will be benchmarked separately.
                     #[cfg(not(feature = "runtime-benchmarks"))]
                     if accepted_receipt_type == AcceptedReceiptType::NewHead
-                        && let Some(block_tree_node) =
-                            prune_receipt::<T>(domain_id, receipt_block_number)
-                                .map_err(Error::<T>::from)?
+                        && let Some(BlockTreeNode {
+                            execution_receipt,
+                            operator_ids,
+                        }) = prune_receipt::<T>(domain_id, receipt_block_number)
+                            .map_err(Error::<T>::from)?
                     {
-                        actual_weight =
-                            actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
-                                block_tree_node.operator_ids.len() as u32,
-                            ));
+                        actual_weight = actual_weight.saturating_add(
+                            T::WeightInfo::handle_bad_receipt(operator_ids.len() as u32),
+                        );
 
-                        let bad_receipt_hash = block_tree_node
-                            .execution_receipt
-                            .hash::<DomainHashingFor<T>>();
+                        let bad_receipt_hash = execution_receipt.hash::<DomainHashingFor<T>>();
                         do_mark_operators_as_slashed::<T>(
-                            block_tree_node.operator_ids.into_iter(),
+                            operator_ids.into_iter(),
                             SlashedReason::BadExecutionReceipt(bad_receipt_hash),
                         )
                         .map_err(Error::<T>::from)?;
+
+                        do_unmark_invalid_bundle_authors::<T>(domain_id, &execution_receipt)
+                            .map_err(Error::<T>::from)?;
                     }
 
                     if accepted_receipt_type == AcceptedReceiptType::NewHead {
@@ -1799,23 +1801,25 @@ mod pallet {
                     // `submit_receipt` call, these operations will be benchmarked separately.
                     #[cfg(not(feature = "runtime-benchmarks"))]
                     if accepted_receipt_type == AcceptedReceiptType::NewHead
-                        && let Some(block_tree_node) =
-                            prune_receipt::<T>(domain_id, receipt.domain_block_number)
-                                .map_err(Error::<T>::from)?
+                        && let Some(BlockTreeNode {
+                            execution_receipt,
+                            operator_ids,
+                        }) = prune_receipt::<T>(domain_id, receipt.domain_block_number)
+                            .map_err(Error::<T>::from)?
                     {
-                        actual_weight =
-                            actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
-                                block_tree_node.operator_ids.len() as u32,
-                            ));
+                        actual_weight = actual_weight.saturating_add(
+                            T::WeightInfo::handle_bad_receipt(operator_ids.len() as u32),
+                        );
 
-                        let bad_receipt_hash = block_tree_node
-                            .execution_receipt
-                            .hash::<DomainHashingFor<T>>();
+                        let bad_receipt_hash = execution_receipt.hash::<DomainHashingFor<T>>();
                         do_mark_operators_as_slashed::<T>(
-                            block_tree_node.operator_ids.into_iter(),
+                            operator_ids.into_iter(),
                             SlashedReason::BadExecutionReceipt(bad_receipt_hash),
                         )
                         .map_err(Error::<T>::from)?;
+
+                        do_unmark_invalid_bundle_authors::<T>(domain_id, &execution_receipt)
+                            .map_err(Error::<T>::from)?;
                     }
 
                     if accepted_receipt_type == AcceptedReceiptType::NewHead {
