@@ -845,10 +845,10 @@ parameter_types! {
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
     /// Minimum operator stake to become an operator.
-    // TODO: this value should be properly updated before mainnet
+    // TODO: this value should be properly updated before permissionless operators are allowed
     pub const MinOperatorStake: Balance = 100 * AI3;
     /// Minimum nominator stake to nominate and operator.
-    // TODO: this value should be properly updated before mainnet
+    // TODO: this value should be properly updated before permissionless operators are allowed
     pub const MinNominatorStake: Balance = AI3;
     /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
     pub MaxDomainBlockSize: u32 = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH;
