@@ -1,9 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 //! Test primitive crates that expose necessary extensions that are used in tests.
 
+use pallet_domains::staking::StakingSummary;
 use parity_scale_codec::{Decode, Encode};
 use sp_core::H256;
-use sp_domains::DomainId;
+use sp_domains::{DomainId, OperatorId};
 use sp_messenger::messages::{ChainId, ChannelId};
 use sp_runtime::traits::NumberFor;
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
@@ -29,5 +30,8 @@ sp_api::decl_runtime_apis! {
 
         /// Return the domain balance in the consensus chain bookkeeping
         fn domain_balance(domain_id: DomainId) -> Balance;
+
+        /// Returns the domain stake summary
+        fn domain_stake_summary(domain_id: DomainId) -> Option<StakingSummary<OperatorId, Balance>>;
     }
 }

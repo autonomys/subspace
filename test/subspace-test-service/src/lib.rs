@@ -24,6 +24,7 @@ use frame_system::pallet_prelude::BlockNumberFor;
 use futures::channel::mpsc;
 use futures::{Future, StreamExt};
 use jsonrpsee::RpcModule;
+use pallet_domains::staking::StakingSummary;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderBuilder;
@@ -63,7 +64,9 @@ use sp_core::H256;
 use sp_core::offchain::OffchainDbExt;
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_domains::{BundleProducerElectionApi, ChainId, DomainsApi, OpaqueBundle};
+use sp_domains::{
+    BundleProducerElectionApi, ChainId, DomainId, DomainsApi, OpaqueBundle, OperatorId,
+};
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
@@ -703,6 +706,24 @@ impl MockConsensusNode {
         );
     }
 
+    /// Produce a slot and wait for bundle submission from specific operator.
+    pub async fn produce_slot_and_wait_for_bundle_submission_from_operator(
+        &mut self,
+        operator_id: OperatorId,
+    ) -> (
+        NewSlot,
+        OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>,
+    ) {
+        loop {
+            let slot = self.produce_slot();
+            if let Some(bundle) = self.notify_new_slot_and_wait_for_bundle(slot).await
+                && bundle.sealed_header.header.proof_of_election.operator_id == operator_id
+            {
+                return (slot, bundle);
+            }
+        }
+    }
+
     /// Subscribe the new slot notification
     pub fn new_slot_notification_stream(&mut self) -> mpsc::UnboundedReceiver<(Slot, PotOutput)> {
         let (tx, rx) = mpsc::unbounded();
@@ -854,6 +875,17 @@ impl MockConsensusNode {
             .runtime_api()
             .execution_receipt(self.client.info().best_hash, er_hash)?
             .is_some())
+    }
+
+    /// Returns the stake summary of the Domain.
+    pub fn get_domain_staking_summary(
+        &self,
+        domain_id: DomainId,
+    ) -> Result<Option<StakingSummary<OperatorId, Balance>>, Box<dyn Error>> {
+        Ok(self
+            .client
+            .runtime_api()
+            .domain_stake_summary(self.client.info().best_hash, domain_id)?)
     }
 
     /// Return a future that only resolve if a fraud proof that the given `fraud_proof_predicate`
