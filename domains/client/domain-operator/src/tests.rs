@@ -8667,6 +8667,35 @@ async fn test_false_bundle_author() {
             .contains_key(&bob_operator_id)
     );
     assert!(staking_summary.next_operators.contains(&bob_operator_id));
+
+    let tx = subspace_test_service::construct_extrinsic_generic::<_>(
+        &ferdie.client,
+        pallet_sudo::Call::sudo {
+            call: Box::new(
+                pallet_domains::Call::force_staking_epoch_transition {
+                    domain_id: EVM_DOMAIN_ID,
+                }
+                .into(),
+            ),
+        },
+        Sr25519Keyring::Alice,
+        false,
+        1,
+        0u128,
+    );
+    ferdie.send_extrinsic(tx).await.unwrap();
+
+    ferdie.produce_blocks(1).await.unwrap();
+    let staking_summary = ferdie
+        .get_domain_staking_summary(EVM_DOMAIN_ID)
+        .unwrap()
+        .unwrap();
+    assert!(
+        staking_summary
+            .current_operators
+            .contains_key(&bob_operator_id)
+    );
+    assert!(staking_summary.next_operators.contains(&bob_operator_id));
 }
 
 fn bundle_to_tx(

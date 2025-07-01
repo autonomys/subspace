@@ -89,11 +89,13 @@ where
                 &vrf_sign_data,
             ) {
                 if let Some(vrf_signature) = maybe_vrf_signature {
-                    let threshold = calculate_threshold(
+                    let Some(threshold) = calculate_threshold(
                         operator_stake,
                         total_domain_stake,
                         bundle_slot_probability,
-                    );
+                    ) else {
+                        return Ok(None);
+                    };
 
                     if is_below_threshold(&vrf_signature.pre_output, threshold) {
                         let proof_of_election = ProofOfElection {

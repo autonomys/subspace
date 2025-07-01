@@ -772,6 +772,12 @@ mod pallet {
     pub type DomainChainRewards<T: Config> =
         StorageMap<_, Identity, DomainId, BalanceOf<T>, ValueQuery>;
 
+    /// Storage for operators who are marked as invalid bundle authors in the current epoch.
+    /// Will be cleared once epoch is transitioned.
+    #[pallet::storage]
+    pub type InvalidBundleAuthors<T: Config> =
+        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, ValueQuery>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.
@@ -786,6 +792,8 @@ mod pallet {
         BadOperator,
         /// Failed to pass the threshold check.
         ThresholdUnsatisfied,
+        /// Invalid Threshold.
+        InvalidThreshold,
         /// An invalid execution receipt found in the bundle.
         Receipt(BlockTreeError),
         /// Bundle size exceed the max bundle size limit in the domain config
@@ -923,6 +931,7 @@ mod pallet {
             match err {
                 ProofOfElectionError::BadVrfProof => Self::BadVrfSignature,
                 ProofOfElectionError::ThresholdUnsatisfied => Self::ThresholdUnsatisfied,
+                ProofOfElectionError::InvalidThreshold => Self::InvalidThreshold,
             }
         }
     }
@@ -2322,7 +2331,8 @@ impl<T: Config> Pallet<T> {
         let operator_status = operator.status::<T>(operator_id);
         ensure!(
             *operator_status != OperatorStatus::Slashed
-                && *operator_status != OperatorStatus::PendingSlash,
+                && *operator_status != OperatorStatus::PendingSlash
+                && !matches!(operator_status, OperatorStatus::InvalidBundle(_)),
             BundleError::BadOperator
         );
 

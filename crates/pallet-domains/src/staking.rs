@@ -13,8 +13,8 @@ use crate::pallet::{
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
     BalanceOf, Config, DepositOnHold, DomainBlockNumberFor, DomainHashingFor, Event,
-    ExecutionReceiptOf, HoldIdentifier, NominatorId, OperatorEpochSharePrice, OperatorHighestSlot,
-    Pallet, ReceiptHashFor, SlashedReason,
+    ExecutionReceiptOf, HoldIdentifier, InvalidBundleAuthors, NominatorId, OperatorEpochSharePrice,
+    OperatorHighestSlot, Pallet, ReceiptHashFor, SlashedReason,
 };
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
@@ -212,9 +212,7 @@ impl<Balance, Share, DomainBlockNumber, ReceiptHash>
     ) -> &OperatorStatus<DomainBlockNumber, ReceiptHash> {
         if matches!(self.partial_status, OperatorStatus::Slashed) {
             &OperatorStatus::Slashed
-        } else if Pallet::<T>::is_operator_pending_to_slash(self.current_domain_id, operator_id)
-            || matches!(self.partial_status, OperatorStatus::InvalidBundle(_))
-        {
+        } else if Pallet::<T>::is_operator_pending_to_slash(self.current_domain_id, operator_id) {
             &OperatorStatus::PendingSlash
         } else {
             &self.partial_status
@@ -1480,6 +1478,7 @@ pub(crate) fn do_mark_operators_as_slashed<T: Config>(
     Ok(())
 }
 
+/// Mark all the invalid bundle authors from this ER and remove them from operator set.
 pub(crate) fn do_mark_invalid_bundle_authors<T: Config>(
     domain_id: DomainId,
     er: &ExecutionReceiptOf<T>,
@@ -1487,6 +1486,7 @@ pub(crate) fn do_mark_invalid_bundle_authors<T: Config>(
     let invalid_bundle_authors = invalid_bundle_authors_for_receipt::<T>(domain_id, er);
     let er_hash = er.hash::<DomainHashingFor<T>>();
     let pending_slashes = PendingSlashes::<T>::get(domain_id).unwrap_or_default();
+    let mut invalid_bundle_authors_in_epoch = InvalidBundleAuthors::<T>::get(domain_id);
     let mut stake_summary =
         DomainStakingSummary::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
 
@@ -1495,10 +1495,16 @@ pub(crate) fn do_mark_invalid_bundle_authors<T: Config>(
             continue;
         }
 
-        mark_invalid_bundle_author::<T>(operator_id, er_hash, &mut stake_summary)?;
+        mark_invalid_bundle_author::<T>(
+            operator_id,
+            er_hash,
+            &mut stake_summary,
+            &mut invalid_bundle_authors_in_epoch,
+        )?;
     }
 
     DomainStakingSummary::<T>::insert(domain_id, stake_summary);
+    InvalidBundleAuthors::<T>::insert(domain_id, invalid_bundle_authors_in_epoch);
     Ok(())
 }
 
@@ -1506,6 +1512,7 @@ fn mark_invalid_bundle_author<T: Config>(
     operator_id: OperatorId,
     er_hash: ReceiptHashFor<T>,
     stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,
+    invalid_bundle_authors: &mut BTreeSet<OperatorId>,
 ) -> Result<(), Error> {
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = match maybe_operator.as_mut() {
@@ -1524,6 +1531,7 @@ fn mark_invalid_bundle_author<T: Config>(
 
         // slash and remove operator from next and current epoch set
         operator.update_status(OperatorStatus::InvalidBundle(er_hash));
+        invalid_bundle_authors.insert(operator_id);
         if stake_summary
             .current_operators
             .remove(&operator_id)
@@ -1539,6 +1547,9 @@ fn mark_invalid_bundle_author<T: Config>(
     })
 }
 
+/// Unmark all the invalid bundle authors from this ER that were marked invalid.
+/// Assumed the ER is invalid and add the marked operators as registered and add them
+/// back to next operator set.
 pub(crate) fn do_unmark_invalid_bundle_authors<T: Config>(
     domain_id: DomainId,
     er: &ExecutionReceiptOf<T>,
@@ -1546,18 +1557,27 @@ pub(crate) fn do_unmark_invalid_bundle_authors<T: Config>(
     let invalid_bundle_authors = invalid_bundle_authors_for_receipt::<T>(domain_id, er);
     let er_hash = er.hash::<DomainHashingFor<T>>();
     let pending_slashes = PendingSlashes::<T>::get(domain_id).unwrap_or_default();
+    let mut invalid_bundle_authors_in_epoch = InvalidBundleAuthors::<T>::get(domain_id);
     let mut stake_summary =
         DomainStakingSummary::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
 
     for operator_id in invalid_bundle_authors {
-        if pending_slashes.contains(&operator_id) {
+        if pending_slashes.contains(&operator_id)
+            || Pallet::<T>::is_operator_pending_to_slash(domain_id, operator_id)
+        {
             continue;
         }
 
-        unmark_invalid_bundle_author::<T>(operator_id, er_hash, &mut stake_summary)?;
+        unmark_invalid_bundle_author::<T>(
+            operator_id,
+            er_hash,
+            &mut stake_summary,
+            &mut invalid_bundle_authors_in_epoch,
+        )?;
     }
 
     DomainStakingSummary::<T>::insert(domain_id, stake_summary);
+    InvalidBundleAuthors::<T>::insert(domain_id, invalid_bundle_authors_in_epoch);
     Ok(())
 }
 
@@ -1565,6 +1585,7 @@ fn unmark_invalid_bundle_author<T: Config>(
     operator_id: OperatorId,
     er_hash: ReceiptHashFor<T>,
     stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,
+    invalid_bundle_authors: &mut BTreeSet<OperatorId>,
 ) -> Result<(), Error> {
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = match maybe_operator.as_mut() {
@@ -1582,6 +1603,7 @@ fn unmark_invalid_bundle_author<T: Config>(
 
         // add operator to next set
         operator.update_status(OperatorStatus::Registered);
+        invalid_bundle_authors.remove(&operator_id);
         stake_summary.next_operators.insert(operator_id);
         Ok(())
     })
