@@ -8,8 +8,8 @@ use crate::bundle_storage_fund::refund_storage_fee;
 use crate::domain_registry::{DomainConfigParams, into_domain_config};
 use crate::runtime_registry::DomainRuntimeUpgradeEntry;
 use crate::staking::{
-    Error as StakingError, OperatorConfig, OperatorStatus, WithdrawStake,
-    do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_reward_operators,
+    Error as StakingError, OperatorConfig, OperatorStatus, do_convert_previous_epoch_withdrawal,
+    do_mark_operators_as_slashed, do_reward_operators,
 };
 use crate::staking_epoch::{
     do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking, do_slash_operator,
@@ -716,7 +716,7 @@ mod benchmarks {
         assert_ok!(Domains::<T>::withdraw_stake(
             RawOrigin::Signed(nominator.clone()).into(),
             operator_id,
-            WithdrawStake(withdraw_amount.into()),
+            withdraw_amount.into(),
         ));
         assert_ok!(Domains::<T>::nominate_operator(
             RawOrigin::Signed(nominator.clone()).into(),
@@ -730,7 +730,7 @@ mod benchmarks {
         _(
             RawOrigin::Signed(nominator.clone()),
             operator_id,
-            WithdrawStake(withdraw_amount.into()),
+            withdraw_amount.into(),
         );
 
         let operator = Operators::<T>::get(operator_id).expect("operator must exist");
@@ -763,7 +763,7 @@ mod benchmarks {
             assert_ok!(Domains::<T>::withdraw_stake(
                 RawOrigin::Signed(nominator.clone()).into(),
                 operator_id,
-                WithdrawStake((T::MinOperatorStake::get() / w.into()).into()),
+                (T::MinOperatorStake::get() / w.into()).into(),
             ));
             do_finalize_domain_epoch_staking::<T>(domain_id)
                 .expect("finalize domain staking should success");
@@ -776,7 +776,7 @@ mod benchmarks {
             operator_id,
             // Withdraw all the remaining stake, except for the `MinOperatorStake`. Since this is
             // the operator, we can't withdraw the entire stake.
-            WithdrawStake(T::MinOperatorStake::get().into()),
+            T::MinOperatorStake::get().into(),
         ));
         do_finalize_domain_epoch_staking::<T>(domain_id)
             .expect("finalize domain staking should success");

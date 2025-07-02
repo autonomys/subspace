@@ -560,7 +560,7 @@ mod tests {
     };
     use crate::staking::tests::{Share, register_operator};
     use crate::staking::{
-        Error as TransitionError, WithdrawStake, do_deregister_operator, do_nominate_operator,
+        Error as TransitionError, do_deregister_operator, do_nominate_operator,
         do_reward_operators, do_unlock_nominator, do_withdraw_stake,
     };
     use crate::staking_epoch::{
@@ -631,8 +631,7 @@ mod tests {
             }
 
             for (nominator_id, shares) in withdrawals {
-                do_withdraw_stake::<Test>(operator_id, nominator_id, WithdrawStake(shares))
-                    .unwrap();
+                do_withdraw_stake::<Test>(operator_id, nominator_id, shares).unwrap();
             }
 
             if !rewards.is_zero() {
@@ -655,7 +654,7 @@ mod tests {
                 TransitionError::OperatorNotRegistered
             );
             assert_err!(
-                do_withdraw_stake::<Test>(operator_id, operator_account, WithdrawStake(1)),
+                do_withdraw_stake::<Test>(operator_id, operator_account, 1),
                 TransitionError::OperatorNotRegistered
             );
 

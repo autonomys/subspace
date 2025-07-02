@@ -687,24 +687,6 @@ pub(crate) fn do_deregister_operator<T: Config>(
     })
 }
 
-/// A stake withdrawal request, counted in shares.
-///
-/// Absolute stake amount and percentage withdrawals are handled in the frontend.
-/// Full stake withdrawals are handled by withdrawing everything, if the remaining number of shares
-/// is less than the minimum nominator stake, and the nominator is not the operator.
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct WithdrawStake<Share>(pub Share);
-
-impl<Share: Zero> WithdrawStake<Share> {
-    /// Returns true if the withdraw amount is zero.
-    ///
-    /// Validity depends on the current share price and number of shares, so requests can pass the
-    /// initial checks, and still fail because the calculation result is zero.
-    pub fn is_zero(&self) -> bool {
-        self.0.is_zero()
-    }
-}
-
 /// A helper function used to calculate the share price at this instant
 /// Returns `None` if there are more shares than stake, or if either value is zero.
 fn current_share_price<T: Config>(
@@ -729,10 +711,18 @@ fn current_share_price<T: Config>(
     SharePrice::new::<T>(operator.current_total_shares, total_stake)
 }
 
+/// Withdraw some or all of the stake, using an amount of shares.
+///
+/// Withdrawal validity depends on the current share price and number of shares, so requests can
+/// pass the initial checks, but fail because the most recent share amount is lower than expected.
+///
+/// Absolute stake amount and percentage withdrawals can be handled in the frontend.
+/// Full stake withdrawals are handled by withdrawing everything, if the remaining number of shares
+/// is less than the minimum nominator stake, and the nominator is not the operator.
 pub(crate) fn do_withdraw_stake<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
-    to_withdraw: WithdrawStake<T::Share>,
+    to_withdraw: T::Share,
 ) -> Result<(), Error> {
     // Some withdraws are always zero, others require calculations to check if they are zero.
     // So this check is redundant, but saves us some work if the request will always be rejected.
@@ -794,7 +784,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 
             let (remaining_shares, shares_withdrew) = {
                 let remaining_shares = known_shares
-                    .checked_sub(&to_withdraw.0)
+                    .checked_sub(&to_withdraw)
                     .ok_or(Error::InsufficientShares)?;
 
                 // short circuit to check if remaining shares can be zero
@@ -803,7 +793,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                         return Err(Error::MinimumOperatorStake);
                     }
 
-                    (remaining_shares, to_withdraw.0)
+                    (remaining_shares, to_withdraw)
                 } else {
                     let share_price =
                         current_share_price::<T>(operator_id, operator, &domain_stake_summary)?;
@@ -827,7 +817,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                     if !is_operator_owner && remaining_stake.lt(&operator.minimum_nominator_stake) {
                         (T::Share::zero(), known_shares)
                     } else {
-                        (remaining_shares, to_withdraw.0)
+                        (remaining_shares, to_withdraw)
                     }
                 }
             };
@@ -1411,9 +1401,8 @@ pub(crate) mod tests {
     };
     use crate::staking::{
         DomainEpoch, Error as StakingError, Operator, OperatorConfig, OperatorStatus,
-        StakingSummary, WithdrawStake, do_convert_previous_epoch_withdrawal,
-        do_mark_operators_as_slashed, do_nominate_operator, do_reward_operators, do_unlock_funds,
-        do_withdraw_stake,
+        StakingSummary, do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed,
+        do_nominate_operator, do_reward_operators, do_unlock_funds, do_withdraw_stake,
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{ExistentialDeposit, MinOperatorStake, RuntimeOrigin, Test, new_test_ext};
@@ -1977,7 +1966,7 @@ pub(crate) mod tests {
                 let res = Domains::withdraw_stake(
                     RuntimeOrigin::signed(nominator_id),
                     operator_id,
-                    WithdrawStake(withdraw_share_amount),
+                    withdraw_share_amount,
                 );
                 assert_eq!(
                     res,
@@ -2573,12 +2562,8 @@ pub(crate) mod tests {
 
             // Request `WithdrawalLimit - 1` number of withdrawal
             for _ in 1..<Test as crate::Config>::WithdrawalLimit::get() {
-                do_withdraw_stake::<Test>(
-                    operator_id,
-                    nominator_account,
-                    WithdrawStake(shares_per_withdraw),
-                )
-                .unwrap();
+                do_withdraw_stake::<Test>(operator_id, nominator_account, shares_per_withdraw)
+                    .unwrap();
                 do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
             }
             // Increase the head domain number by 1
@@ -2587,22 +2572,14 @@ pub(crate) mod tests {
             // All withdrawals of a given nominator submitted in the same epoch will merge into one,
             // so we can submit as many as we want, even though the withdrawal limit is met.
             for _ in 0..5 {
-                do_withdraw_stake::<Test>(
-                    operator_id,
-                    nominator_account,
-                    WithdrawStake(shares_per_withdraw),
-                )
-                .unwrap();
+                do_withdraw_stake::<Test>(operator_id, nominator_account, shares_per_withdraw)
+                    .unwrap();
             }
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
             // After the withdrawal limit is met, any new withdraw will be rejected in the next epoch
             assert_err!(
-                do_withdraw_stake::<Test>(
-                    operator_id,
-                    nominator_account,
-                    WithdrawStake(shares_per_withdraw),
-                ),
+                do_withdraw_stake::<Test>(operator_id, nominator_account, shares_per_withdraw,),
                 StakingError::TooManyWithdrawals
             );
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
@@ -2708,7 +2685,7 @@ pub(crate) mod tests {
             );
 
             for unlock in &unlocking {
-                do_withdraw_stake::<Test>(operator_id, unlock.0, WithdrawStake(unlock.1)).unwrap();
+                do_withdraw_stake::<Test>(operator_id, unlock.0, unlock.1).unwrap();
             }
 
             do_reward_operators::<Test>(
@@ -2874,7 +2851,7 @@ pub(crate) mod tests {
             );
 
             for unlock in &unlocking {
-                do_withdraw_stake::<Test>(operator_id, unlock.0, WithdrawStake(unlock.1)).unwrap();
+                do_withdraw_stake::<Test>(operator_id, unlock.0, unlock.1).unwrap();
             }
 
             do_reward_operators::<Test>(
@@ -2937,7 +2914,7 @@ pub(crate) mod tests {
                     withdrawal.0,
                     // Guess that the number of shares will be approximately the same as the stake
                     // amount.
-                    WithdrawStake(withdrawal.1),
+                    withdrawal.1,
                 )
                 .unwrap();
             }
@@ -3251,7 +3228,7 @@ pub(crate) mod tests {
 
             // Zero withdraws should be rejected
             assert_err!(
-                do_withdraw_stake::<Test>(operator_id, nominator_account, WithdrawStake(0)),
+                do_withdraw_stake::<Test>(operator_id, nominator_account, 0),
                 StakingError::ZeroWithdraw
             );
 
@@ -3260,9 +3237,7 @@ pub(crate) mod tests {
                 operator_id,
                 nominator_account,
                 // Assume shares are similar to the stake amount
-                WithdrawStake(
-                    STORAGE_FEE_RESERVE.left_from_one() * operator_stake - MinOperatorStake::get(),
-                ),
+                STORAGE_FEE_RESERVE.left_from_one() * operator_stake - MinOperatorStake::get(),
             )
             .unwrap();
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
@@ -3306,8 +3281,7 @@ pub(crate) mod tests {
 
             do_nominate_operator::<Test>(operator_id, nominator_account, 5 * AI3).unwrap();
             // Assume shares will be approximately the same as the stake amount.
-            do_withdraw_stake::<Test>(operator_id, nominator_account, WithdrawStake(3 * AI3))
-                .unwrap();
+            do_withdraw_stake::<Test>(operator_id, nominator_account, 3 * AI3).unwrap();
 
             // Completed current epoch
             let previous_epoch = do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
@@ -3323,7 +3297,7 @@ pub(crate) mod tests {
                 StakingError::MissingOperatorEpochSharePrice
             );
             assert_err!(
-                do_withdraw_stake::<Test>(operator_id, nominator_account, WithdrawStake(1)),
+                do_withdraw_stake::<Test>(operator_id, nominator_account, 1),
                 StakingError::MissingOperatorEpochSharePrice
             );
         });

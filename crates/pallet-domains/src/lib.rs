@@ -225,9 +225,9 @@ mod pallet {
     use crate::staking::do_reward_operators;
     use crate::staking::{
         Deposit, DomainEpoch, Error as StakingError, Operator, OperatorConfig, SharePrice,
-        StakingSummary, WithdrawStake, Withdrawal, do_deregister_operator,
-        do_mark_operators_as_slashed, do_nominate_operator, do_register_operator, do_unlock_funds,
-        do_unlock_nominator, do_withdraw_stake,
+        StakingSummary, Withdrawal, do_deregister_operator, do_mark_operators_as_slashed,
+        do_nominate_operator, do_register_operator, do_unlock_funds, do_unlock_nominator,
+        do_withdraw_stake,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_slash_operator;
@@ -1492,7 +1492,7 @@ mod pallet {
         pub fn withdraw_stake(
             origin: OriginFor<T>,
             operator_id: OperatorId,
-            to_withdraw: WithdrawStake<T::Share>,
+            to_withdraw: T::Share,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
