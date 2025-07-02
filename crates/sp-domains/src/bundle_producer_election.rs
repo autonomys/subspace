@@ -3,6 +3,7 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::crypto::{VrfPublic, Wraps};
 use sp_core::sr25519::vrf::{VrfPreOutput, VrfSignature, VrfTranscript};
+use sp_runtime::traits::Zero;
 use subspace_core_primitives::hashes::Blake3Hash;
 
 const VRF_TRANSCRIPT_LABEL: &[u8] = b"bundle_producer_election";
@@ -23,18 +24,25 @@ pub fn calculate_threshold(
     operator_stake: StakeWeight,
     total_domain_stake: StakeWeight,
     bundle_slot_probability: (u64, u64),
-) -> u128 {
+) -> Option<u128> {
+    // check ensures we do not panic if the either divisors are zero.
+    if total_domain_stake.is_zero() || bundle_slot_probability.1.is_zero() {
+        return None;
+    }
+
     // The calculation is written for not causing the overflow, which might be harder to
-    // understand, the formula in a readable form is as followes:
+    // understand, the formula in a readable form is as follows:
     //
     //              bundle_slot_probability.0      operator_stake
     // threshold =  ------------------------- * --------------------- * u128::MAX
     //              bundle_slot_probability.1    total_domain_stake
     //
     // TODO: better to have more audits on this calculation.
-    u128::MAX / u128::from(bundle_slot_probability.1) * u128::from(bundle_slot_probability.0)
-        / total_domain_stake
-        * operator_stake
+    Some(
+        u128::MAX / u128::from(bundle_slot_probability.1) * u128::from(bundle_slot_probability.0)
+            / total_domain_stake
+            * operator_stake,
+    )
 }
 
 pub fn is_below_threshold(vrf_output: &VrfPreOutput, threshold: u128) -> bool {
@@ -63,6 +71,8 @@ pub enum ProofOfElectionError {
     BadVrfProof,
     /// Threshold unsatisfied error.
     ThresholdUnsatisfied,
+    /// Invalid Threshold.
+    InvalidThreshold,
 }
 
 /// Verify the vrf proof generated in the bundle election.
@@ -91,8 +101,11 @@ pub fn check_proof_of_election(
 ) -> Result<(), ProofOfElectionError> {
     proof_of_election.verify_vrf_signature(operator_signing_key)?;
 
-    let threshold =
-        calculate_threshold(operator_stake, total_domain_stake, bundle_slot_probability);
+    let Some(threshold) =
+        calculate_threshold(operator_stake, total_domain_stake, bundle_slot_probability)
+    else {
+        return Err(ProofOfElectionError::InvalidThreshold);
+    };
 
     if !is_below_threshold(&proof_of_election.vrf_signature.pre_output, threshold) {
         return Err(ProofOfElectionError::ThresholdUnsatisfied);

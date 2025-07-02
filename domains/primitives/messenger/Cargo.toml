@@ -49,4 +49,6 @@ std = [
     "sp-subspace-mmr/std"
 ]
 
-runtime-benchmarks = []
+runtime-benchmarks = [
+    "sp-subspace-mmr/runtime-benchmarks",
+]

@@ -4,6 +4,7 @@ pub mod pallet_collective;
 pub mod pallet_domains;
 pub mod pallet_messenger;
 pub mod pallet_messenger_from_domains_extension;
+pub mod pallet_mmr;
 pub mod pallet_multisig;
 pub mod pallet_preimage;
 pub mod pallet_rewards;

@@ -59,6 +59,7 @@ use frame_support::{PalletId, construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::pallet_prelude::RuntimeCallFor;
 use pallet_balances::NegativeImbalance;
+use pallet_domains::staking::StakingSummary;
 pub use pallet_rewards::RewardPoint;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
 use pallet_transporter::EndpointHandler;
@@ -1873,6 +1874,10 @@ impl_runtime_apis! {
 
         fn domain_balance(domain_id: DomainId) -> Balance {
             Transporter::domain_balances(domain_id)
+        }
+
+        fn domain_stake_summary(domain_id: DomainId) -> Option<StakingSummary<OperatorId, Balance>>{
+            Domains::domain_staking_summary(domain_id)
         }
     }
 

@@ -2927,6 +2927,7 @@ dependencies = [
  "sp-weights",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-test-client",
  "subspace-test-primitives",
  "subspace-test-runtime",
  "subspace-test-service",
@@ -12970,6 +12971,7 @@ dependencies = [
 name = "sp-subspace-mmr"
 version = "0.1.0"
 dependencies = [
+ "pallet-mmr",
  "parity-scale-codec",
  "scale-info",
  "sp-api",
@@ -12980,6 +12982,7 @@ dependencies = [
  "sp-runtime",
  "sp-runtime-interface",
  "subspace-core-primitives",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -13986,6 +13989,7 @@ dependencies = [
 name = "subspace-test-primitives"
 version = "0.1.0"
 dependencies = [
+ "pallet-domains",
  "parity-scale-codec",
  "sp-api",
  "sp-core",

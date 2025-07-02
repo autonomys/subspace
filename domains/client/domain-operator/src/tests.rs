@@ -43,7 +43,7 @@ use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     BlockFees, Bundle, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor,
-    InboxedBundle, InvalidBundleType, PermissionedActionAllowedBy, Transfers,
+    InboxedBundle, InvalidBundleType, OperatorPublicKey, PermissionedActionAllowedBy, Transfers,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_domains_fraud_proof::fraud_proof::{
@@ -59,7 +59,7 @@ use sp_runtime::traits::{BlakeTwo256, Convert, Hash as HashT, Header as HeaderT,
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidityError,
 };
-use sp_runtime::{Digest, MultiAddress, OpaqueExtrinsic, TransactionOutcome};
+use sp_runtime::{Digest, MultiAddress, OpaqueExtrinsic, Percent, TransactionOutcome};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -72,6 +72,7 @@ use std::time::Duration;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::{AI3, Balance, BlockHashFor, HeaderFor};
+use subspace_test_client::chain_spec::get_from_seed;
 use subspace_test_primitives::{DOMAINS_BLOCK_PRUNING_DEPTH, OnchainStateApi as _};
 use subspace_test_runtime::Runtime;
 use subspace_test_service::{
@@ -6245,6 +6246,8 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     // Fork B
     let bundle = {
         opaque_bundle.extrinsics = vec![];
+        // zero bundle weight since there are not extrinsics
+        opaque_bundle.sealed_header.header.estimated_bundle_weight = Weight::zero();
         opaque_bundle.sealed_header.header.bundle_extrinsics_root =
             sp_domains::EMPTY_EXTRINSIC_ROOT;
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
@@ -8462,6 +8465,237 @@ async fn test_domain_total_issuance_match_consensus_chain_bookkeeping_with_xdm()
         alice.clear_tx_pool().await;
         produce_blocks!(ferdie, alice, 5).await.unwrap();
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_false_bundle_author() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    // Run Bob as another authority node
+    let bob_operator_id = 2;
+    let bob = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("bob")),
+    )
+    .operator_id(bob_operator_id)
+    .build_evm_node(Role::Authority, Bob, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
+
+    let tx = subspace_test_service::construct_extrinsic_generic::<_>(
+        &ferdie.client,
+        pallet_domains::Call::register_operator {
+            domain_id: EVM_DOMAIN_ID,
+            amount: 100 * AI3,
+            config: OperatorConfig {
+                signing_key: get_from_seed::<OperatorPublicKey>("Bob"),
+                minimum_nominator_stake: 100 * AI3,
+                nomination_tax: Percent::from_percent(5),
+            },
+        },
+        Sr25519Keyring::Bob,
+        false,
+        0,
+        0u128,
+    );
+    ferdie.send_extrinsic(tx).await.unwrap();
+    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
+
+    let staking_summary = ferdie
+        .get_domain_staking_summary(EVM_DOMAIN_ID)
+        .unwrap()
+        .unwrap();
+    assert!(staking_summary.next_operators.contains(&bob_operator_id));
+
+    let tx = subspace_test_service::construct_extrinsic_generic::<_>(
+        &ferdie.client,
+        pallet_sudo::Call::sudo {
+            call: Box::new(
+                pallet_domains::Call::force_staking_epoch_transition {
+                    domain_id: EVM_DOMAIN_ID,
+                }
+                .into(),
+            ),
+        },
+        Sr25519Keyring::Alice,
+        false,
+        0,
+        0u128,
+    );
+    ferdie.send_extrinsic(tx).await.unwrap();
+
+    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
+
+    let staking_summary = ferdie
+        .get_domain_staking_summary(EVM_DOMAIN_ID)
+        .unwrap()
+        .unwrap();
+    assert!(
+        staking_summary
+            .current_operators
+            .contains_key(&bob_operator_id)
+    );
+    assert!(staking_summary.next_operators.contains(&bob_operator_id));
+
+    // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
+    let (slot, target_bundle) = ferdie
+        .produce_slot_and_wait_for_bundle_submission_from_operator(bob_operator_id)
+        .await;
+    let extrinsics: Vec<Vec<u8>> = target_bundle
+        .extrinsics
+        .clone()
+        .into_iter()
+        .map(|ext| ext.encode())
+        .collect();
+    let bundle_extrinsic_root = BlakeTwo256::ordered_trie_root(extrinsics, StateVersion::V1);
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bundle_to_tx(&ferdie, target_bundle)])
+        ),
+        alice,
+        bob
+    )
+    .await
+    .unwrap();
+
+    // produce bundle from alice who marks the bob's previous invalid
+    let alice_operator_id = 0;
+    let (slot, mut opaque_bundle) = ferdie
+        .produce_slot_and_wait_for_bundle_submission_from_operator(alice_operator_id)
+        .await;
+
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
+        let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        // bad receipt marks this particular bundle as `InvalidBundleWeight`
+        bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
+            InvalidBundleType::InvalidBundleWeight,
+            bundle_extrinsic_root,
+        )];
+
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(&ferdie, opaque_bundle),
+        )
+    };
+
+    // Wait for the fraud proof that targets the bad ER
+    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
+            && InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type
+        {
+            assert!(!proof.is_good_invalid_fraud_proof);
+            return true;
+        }
+        false
+    });
+
+    // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice,
+        bob
+    )
+    .await
+    .unwrap();
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+
+    // bob should not be in the current and next operator set
+    let staking_summary = ferdie
+        .get_domain_staking_summary(EVM_DOMAIN_ID)
+        .unwrap()
+        .unwrap();
+    assert!(
+        !staking_summary
+            .current_operators
+            .contains_key(&bob_operator_id)
+    );
+    assert!(!staking_summary.next_operators.contains(&bob_operator_id));
+
+    let timed_out = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"))
+        .is_err();
+
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, and prune the bad receipt from the block tree
+    ferdie.produce_blocks(1).await.unwrap();
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+    // We check for timeouts last, because they are the least useful test failure message.
+    assert!(!timed_out);
+
+    // since er is pruned through fraud proof, bob should be back in next operator set.
+    let staking_summary = ferdie
+        .get_domain_staking_summary(EVM_DOMAIN_ID)
+        .unwrap()
+        .unwrap();
+    assert!(
+        !staking_summary
+            .current_operators
+            .contains_key(&bob_operator_id)
+    );
+    assert!(staking_summary.next_operators.contains(&bob_operator_id));
+
+    let tx = subspace_test_service::construct_extrinsic_generic::<_>(
+        &ferdie.client,
+        pallet_sudo::Call::sudo {
+            call: Box::new(
+                pallet_domains::Call::force_staking_epoch_transition {
+                    domain_id: EVM_DOMAIN_ID,
+                }
+                .into(),
+            ),
+        },
+        Sr25519Keyring::Alice,
+        false,
+        1,
+        0u128,
+    );
+    ferdie.send_extrinsic(tx).await.unwrap();
+
+    ferdie.produce_blocks(1).await.unwrap();
+    let staking_summary = ferdie
+        .get_domain_staking_summary(EVM_DOMAIN_ID)
+        .unwrap()
+        .unwrap();
+    assert!(
+        staking_summary
+            .current_operators
+            .contains_key(&bob_operator_id)
+    );
+    assert!(staking_summary.next_operators.contains(&bob_operator_id));
 }
 
 fn bundle_to_tx(

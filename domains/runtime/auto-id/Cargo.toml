@@ -115,8 +115,6 @@ std = [
 ]
 runtime-benchmarks = [
     "domain-pallet-executive/runtime-benchmarks",
-    "sp-runtime/runtime-benchmarks",
-    "sp-storage",
     "frame-benchmarking",
     "frame-system-benchmarking",
     "frame-system-benchmarking/runtime-benchmarks",
@@ -130,4 +128,7 @@ runtime-benchmarks = [
     "pallet-transaction-payment/runtime-benchmarks",
     "pallet-transporter/runtime-benchmarks",
     "pallet-utility/runtime-benchmarks",
+    "sp-runtime/runtime-benchmarks",
+    "sp-storage",
+    "sp-subspace-mmr/runtime-benchmarks",
 ]

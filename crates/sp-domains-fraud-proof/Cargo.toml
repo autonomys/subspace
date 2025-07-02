@@ -101,7 +101,9 @@ std = [
     "trie-db/std",
     "thiserror/std",
 ]
-runtime-benchmarks = []
+runtime-benchmarks = [
+    "sp-subspace-mmr/runtime-benchmarks",
+]
 
 [[bench]]
 name = "fraud_proof_verification"

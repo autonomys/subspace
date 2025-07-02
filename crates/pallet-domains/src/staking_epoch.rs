@@ -10,7 +10,7 @@ use crate::staking::{
 };
 use crate::{
     BalanceOf, Config, DepositOnHold, DomainChainRewards, ElectionVerificationParams, Event,
-    HoldIdentifier, OperatorEpochSharePrice, Pallet, bundle_storage_fund,
+    HoldIdentifier, InvalidBundleAuthors, OperatorEpochSharePrice, Pallet, bundle_storage_fund,
 };
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
 use frame_support::traits::tokens::{
@@ -74,7 +74,10 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
         let mut maybe_reward_per_operator = None;
 
         let domain_rewards = DomainChainRewards::<T>::take(domain_id);
-        let active_operator_count = stake_summary.current_epoch_rewards.len() as u64;
+        // active operator count is current operators in the epoch and any operators who are marked
+        // as invalid bundle authors in this epoch.
+        let invalid_bundle_author_count_in_epoch = InvalidBundleAuthors::<T>::get(domain_id).len();
+        let active_operator_count = (stake_summary.current_epoch_rewards.len() + invalid_bundle_author_count_in_epoch) as u64;
         match (active_operator_count > 0, !domain_rewards.is_zero()) {
             // active operators exist and rewards are non-zero
             (true, true) => {
@@ -104,7 +107,9 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                         to_treasury += reward;
                         return Ok(());
                     }
-                    // Move the reward of slashed and pening slash operator to the treasury
+                    // Move the reward of slashed and pending slash operator to the treasury
+                    // but do not include operators who are marked invalid bundle authors yet
+                    // as they are not proven until er that marked them as invalid is confirmed.
                     Some(operator) if matches!(*operator.status::<T>(operator_id), OperatorStatus::Slashed | OperatorStatus::PendingSlash) => {
                         to_treasury += reward;
                         return Ok(());
@@ -221,6 +226,7 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
                 domain_id,
                 *next_operator_id,
                 previous_epoch,
+                true,
             )?;
 
             total_domain_stake = total_domain_stake
@@ -228,6 +234,26 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
                 .ok_or(TransitionError::BalanceOverflow)?;
             current_operators.insert(*next_operator_id, operator_stake);
             next_operators.insert(*next_operator_id);
+
+            if stake_changed {
+                finalized_operator_count += 1;
+            }
+        }
+
+        for operator_id in InvalidBundleAuthors::<T>::take(domain_id) {
+            // If an operator is pending to slash then similar to the slashed operator it should not be added
+            // into the `next_operators/current_operators` and we should not `do_finalize_operator_epoch_staking`
+            // for it.
+            if Pallet::<T>::is_operator_pending_to_slash(domain_id, operator_id) {
+                continue;
+            }
+
+            let (_, stake_changed) = do_finalize_operator_epoch_staking::<T>(
+                domain_id,
+                operator_id,
+                previous_epoch,
+                false,
+            )?;
 
             if stake_changed {
                 finalized_operator_count += 1;
@@ -260,17 +286,18 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
     domain_id: DomainId,
     operator_id: OperatorId,
     previous_epoch: EpochIndex,
+    check_status: bool,
 ) -> Result<(BalanceOf<T>, bool), TransitionError> {
     let mut operator = match Operators::<T>::get(operator_id) {
         Some(op) => op,
         None => return Err(TransitionError::UnknownOperator),
     };
 
-    if *operator.status::<T>(operator_id) != OperatorStatus::Registered {
+    if check_status && *operator.status::<T>(operator_id) != OperatorStatus::Registered {
         return Err(TransitionError::OperatorNotRegistered);
     }
 
-    // if there are no deposits, withdrawls, and epoch rewards for this operator
+    // if there are no deposits, withdrawals, and epoch rewards for this operator
     // then short-circuit and return early.
     if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
         return Ok((operator.current_total_stake, false));

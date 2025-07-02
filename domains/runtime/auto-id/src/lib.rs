@@ -674,7 +674,7 @@ mod benches {
         [pallet_messenger_between_domains_extension, MessengerBetweenDomainsExtensionBench::<Runtime>]
         [pallet_transporter, Transporter]
         // pallet_domain_id has no calls to benchmark
-        // pallet_block_fees only has inherent calls
+        // pallet_block_fees uses a default over-estimated weight
         // pallet_domain_sudo only has inherent calls
     );
 }
