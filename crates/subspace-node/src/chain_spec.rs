@@ -122,7 +122,6 @@ pub fn mainnet_compiled() -> Result<GenericChainSpec, String> {
                 enable_domains: false,
                 enable_dynamic_cost_of_storage: false,
                 enable_balance_transfers: false,
-                // TODO: Proper value here
                 confirmation_depth_k: 100,
                 rewards_config: RewardsConfig {
                     remaining_issuance: 350_000_000 * AI3,

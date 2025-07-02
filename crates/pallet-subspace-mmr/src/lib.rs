@@ -52,9 +52,16 @@ impl<T: Config> LeafDataProvider for Pallet<T> {
     type LeafData = MmrLeaf<BlockNumberFor<T>, T::Hash>;
 
     fn leaf_data() -> Self::LeafData {
+        #[cfg(not(feature = "runtime-benchmarks"))]
         let block_number = frame_system::Pallet::<T>::block_number()
             .checked_sub(&One::one())
             .expect("`block_number` will always be >= 1; qed");
+        #[cfg(feature = "runtime-benchmarks")]
+        let block_number = sp_runtime::Saturating::saturating_sub(
+            frame_system::Pallet::<T>::block_number(),
+            One::one(),
+        );
+
         let block_hash = frame_system::Pallet::<T>::parent_hash();
         let leaf_data = get_mmr_leaf_data(block_hash.into())
             .expect("leaf data for parent hash must always be derived; qed");

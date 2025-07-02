@@ -845,10 +845,10 @@ parameter_types! {
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
     /// Minimum operator stake to become an operator.
-    // TODO: this value should be properly updated before mainnet
+    // TODO: this value should be properly updated before permissionless operators are allowed
     pub const MinOperatorStake: Balance = 100 * AI3;
     /// Minimum nominator stake to nominate and operator.
-    // TODO: this value should be properly updated before mainnet
+    // TODO: this value should be properly updated before permissionless operators are allowed
     pub const MinNominatorStake: Balance = AI3;
     /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
     pub MaxDomainBlockSize: u32 = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH;
@@ -1015,7 +1015,7 @@ impl pallet_mmr::Config for Runtime {
     type LeafData = SubspaceMmr;
     type OnNewRoot = SubspaceMmr;
     type BlockHashProvider = BlockHashProvider;
-    type WeightInfo = ();
+    type WeightInfo = weights::pallet_mmr::WeightInfo<Runtime>;
     #[cfg(feature = "runtime-benchmarks")]
     type BenchmarkHelper = ();
 }
@@ -1291,12 +1291,13 @@ mod benches {
         [pallet_rewards, Rewards]
         [pallet_balances, Balances]
         [balance_transfer_check_extension, BalanceTransferCheckBench::<Runtime>]
-        // pallet_transaction_fees has no calls to benchmark
+        // pallet_transaction_fees uses a default over-estimated weight
         [pallet_transaction_payment, TransactionPayment]
         [pallet_utility, Utility]
         [pallet_domains, Domains]
         [pallet_runtime_configs, RuntimeConfigs]
-        // pallet_mmr and pallet_subspace_mmr have no calls to benchmark
+        [pallet_mmr, Mmr]
+        // pallet_subspace_mmr has no calls to benchmark
         [pallet_messenger, Messenger]
         [pallet_messenger_from_domains_extension, MessengerFromDomainsExtensionBench::<Runtime>]
         [pallet_transporter, Transporter]

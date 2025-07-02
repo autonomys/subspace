@@ -12971,6 +12971,7 @@ dependencies = [
 name = "sp-subspace-mmr"
 version = "0.1.0"
 dependencies = [
+ "pallet-mmr",
  "parity-scale-codec",
  "scale-info",
  "sp-api",
@@ -12981,6 +12982,7 @@ dependencies = [
  "sp-runtime",
  "sp-runtime-interface",
  "subspace-core-primitives",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
