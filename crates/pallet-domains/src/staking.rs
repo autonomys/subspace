@@ -1169,9 +1169,15 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             .shares
             .checked_add(&shares_withdrew_in_current_epoch)
             .ok_or(Error::ShareOverflow)?;
+        total_shares = total_shares
+            .checked_sub(&nominator_shares)
+            .ok_or(Error::ShareOverflow)?;
 
         // current staked amount
         let nominator_staked_amount = share_price.shares_to_stake::<T>(nominator_shares);
+        total_stake = total_stake
+            .checked_sub(&nominator_staked_amount)
+            .ok_or(Error::BalanceOverflow)?;
 
         // amount deposited by this nominator before operator de-registered.
         let amount_deposited_in_epoch = deposit
@@ -1205,9 +1211,6 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             nominator_id: nominator_id.clone(),
             unlocked_amount: total_amount_to_unlock,
         });
-
-        total_stake = total_stake.saturating_sub(nominator_staked_amount);
-        total_shares = total_shares.saturating_sub(nominator_shares);
 
         // Withdraw all storage fee for the nominator
         let nominator_total_storage_fee_deposit = deposit

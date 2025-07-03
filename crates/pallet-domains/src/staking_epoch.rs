@@ -471,9 +471,15 @@ pub(crate) fn do_slash_operator<T: Config>(
                 .shares
                 .checked_add(&shares_withdrew_in_current_epoch)
                 .ok_or(TransitionError::ShareOverflow)?;
+            total_shares = total_shares
+                .checked_sub(&nominator_shares)
+                .ok_or(TransitionError::ShareOverflow)?;
 
             // current staked amount
             let nominator_staked_amount = share_price.shares_to_stake::<T>(nominator_shares);
+            total_stake = total_stake
+                .checked_sub(&nominator_staked_amount)
+                .ok_or(TransitionError::BalanceOverflow)?;
 
             let pending_deposit = deposit
                 .pending
@@ -514,9 +520,6 @@ pub(crate) fn do_slash_operator<T: Config>(
                 .ok_or(TransitionError::BalanceUnderflow)?;
 
             mint_into_treasury::<T>(nominator_reward)?;
-
-            total_stake = total_stake.saturating_sub(nominator_staked_amount);
-            total_shares = total_shares.saturating_sub(nominator_shares);
 
             // Transfer the deposited non-staked storage fee back to nominator
             if let Some(pending_deposit) = deposit.pending {
