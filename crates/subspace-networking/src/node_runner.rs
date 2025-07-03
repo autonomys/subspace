@@ -54,7 +54,7 @@ const MAX_RANDOM_QUERY_INTERVAL: Duration = Duration::from_secs(60);
 const PERIODICAL_TASKS_INTERVAL: Duration = Duration::from_secs(5);
 
 /// The time between each peer stats info log.
-const PEER_INFO_LOG_INTERVAL: Duration = Duration::from_secs(30);
+const PEER_INFO_LOG_INTERVAL: Duration = Duration::from_secs(300);
 
 /// The maximum number of OS-reported listener addresses we will use.
 const MAX_LISTEN_ADDRESSES: usize = 30;
