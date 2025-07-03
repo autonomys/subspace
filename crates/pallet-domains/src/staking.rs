@@ -38,51 +38,38 @@ pub(crate) struct Deposit<Share: Copy, Balance: Copy> {
 }
 
 /// A share price is parts per billion of shares/ai3.
-/// Note: Shares must always be equal to or lower than ai3.
+/// Note: Shares must always be equal to or lower than ai3, and both shares and ai3 can't be zero.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Default)]
-pub struct SharePrice(Option<Perquintill>);
+pub struct SharePrice(Perquintill);
 
 impl SharePrice {
     /// Creates a new instance of share price from shares and stake.
-    /// Returns an error if there are more shares than stake. If either value is zero, the share
-    /// price is marked as missing internally.
+    /// Returns an error if there are more shares than stake or either value is zero.
     pub(crate) fn new<T: Config>(shares: T::Share, stake: BalanceOf<T>) -> Result<Self, Error> {
         if shares > stake.into() {
             // Invalid share price, can't be greater than one.
             Err(Error::ShareOverflow)
         } else if stake.is_zero() || shares.is_zero() {
-            // If there are no shares or no stake, it is valid, but there is no share price.
-            Ok(SharePrice(None))
+            // If there are no shares or no stake, we can't construct a zero share price.
+            Err(Error::ZeroSharePrice)
         } else {
-            Ok(SharePrice(Some(Perquintill::from_rational(
-                shares.into(),
-                stake,
-            ))))
+            Ok(SharePrice(Perquintill::from_rational(shares.into(), stake)))
         }
     }
 
     /// Converts stake to shares based on the share price.
-    /// Returns the full stake if there were no shares or stake when calculating the price.
     pub(crate) fn stake_to_shares<T: Config>(&self, stake: BalanceOf<T>) -> T::Share {
-        if let Some(share_price) = self.0 {
-            share_price.mul_floor(stake).into()
-        } else {
-            // If the share price is missing, there are no shares, so the only valid stake is the
-            // full stake.
-            stake.into()
-        }
+        self.0.mul_floor(stake).into()
     }
 
     /// Converts shares to stake based on the share price.
-    /// Returns the full shares if there were no shares or stake when calculating the price.
     pub(crate) fn shares_to_stake<T: Config>(&self, shares: T::Share) -> BalanceOf<T> {
-        if let Some(share_price) = self.0 {
-            share_price.saturating_reciprocal_mul_floor(shares.into())
-        } else {
-            // If the share price is missing, there are no shares, so the only valid result is the
-            // full set of shares.
-            shares.into()
-        }
+        self.0.saturating_reciprocal_mul_floor(shares.into())
+    }
+
+    /// Return a 1:1 share price
+    pub(crate) fn one() -> Self {
+        Self(Perquintill::one())
     }
 }
 
@@ -238,31 +225,6 @@ impl<Balance, Share, DomainBlockNumber, ReceiptHash>
     }
 }
 
-#[cfg(test)]
-impl<Balance: Zero, Share: Zero, DomainBlockNumber, ReceiptHash>
-    Operator<Balance, Share, DomainBlockNumber, ReceiptHash>
-{
-    pub(crate) fn dummy(
-        domain_id: DomainId,
-        signing_key: OperatorPublicKey,
-        minimum_nominator_stake: Balance,
-    ) -> Self {
-        Operator {
-            signing_key,
-            current_domain_id: domain_id,
-            next_domain_id: domain_id,
-            minimum_nominator_stake,
-            nomination_tax: Default::default(),
-            current_total_stake: Zero::zero(),
-            current_total_shares: Zero::zero(),
-            partial_status: OperatorStatus::Registered,
-            deposits_in_epoch: Zero::zero(),
-            withdrawals_in_epoch: Zero::zero(),
-            total_storage_fee_deposit: Zero::zero(),
-        }
-    }
-}
-
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct StakingSummary<OperatorId, Balance> {
     /// Current epoch index for the domain.
@@ -320,6 +282,7 @@ pub enum Error {
     UnconfirmedER,
     TooManyWithdrawals,
     ZeroDeposit,
+    ZeroSharePrice,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -393,21 +356,36 @@ pub fn do_register_operator<T: Config>(
             nomination_tax,
         } = config;
 
+        // When the operator just registered, the operator owner is the first and only nominator
+        // thus it is safe to finalize the operator owner's deposit here by:
+        // - Adding the first share price, which is 1:1 since there is no reward
+        // - Adding this deposit to the operator's `current_total_shares` and `current_total_shares`
+        //
+        // NOTE: this is needed so we can ensure the operator's `current_total_shares` and `current_total_shares`
+        // will never be zero after it is registered and before all nominators is unlocked, thus we
+        // will never construct a zero share price.
+        let first_share_price = SharePrice::one();
         let operator = Operator {
             signing_key: signing_key.clone(),
             current_domain_id: domain_id,
             next_domain_id: domain_id,
             minimum_nominator_stake,
             nomination_tax,
-            current_total_stake: Zero::zero(),
-            current_total_shares: Zero::zero(),
+            current_total_stake: new_deposit.staking,
+            current_total_shares: first_share_price.stake_to_shares::<T>(new_deposit.staking),
             partial_status: OperatorStatus::Registered,
             // sum total deposits added during this epoch.
-            deposits_in_epoch: new_deposit.staking,
+            deposits_in_epoch: Zero::zero(),
             withdrawals_in_epoch: Zero::zero(),
             total_storage_fee_deposit: new_deposit.storage_fee_deposit,
         };
         Operators::<T>::insert(operator_id, operator);
+        OperatorEpochSharePrice::<T>::insert(
+            operator_id,
+            DomainEpoch::from((domain_id, domain_stake_summary.current_epoch_index)),
+            first_share_price,
+        );
+
         // update stake summary to include new operator for next epoch
         domain_stake_summary.next_operators.insert(operator_id);
         // update pending transfers
