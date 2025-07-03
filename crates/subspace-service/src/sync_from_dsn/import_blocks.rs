@@ -15,7 +15,9 @@ use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::BlockNumber;
 use subspace_core_primitives::segments::SegmentIndex;
-use subspace_data_retrieval::segment_downloading::download_segment_pieces;
+use subspace_data_retrieval::segment_downloading::{
+    SEGMENT_DOWNLOAD_RETRIES, SEGMENT_DOWNLOAD_RETRY_DELAY, download_segment_pieces,
+};
 use subspace_erasure_coding::ErasureCoding;
 use tokio::task;
 
@@ -153,11 +155,16 @@ where
             }
         }
 
-        let segment_pieces = download_segment_pieces(segment_index, piece_getter, 0, None)
-            .await
-            .map_err(|error| {
-                format!("Failed to download segment pieces during block import: {error}")
-            })?;
+        let segment_pieces = download_segment_pieces(
+            segment_index,
+            piece_getter,
+            SEGMENT_DOWNLOAD_RETRIES,
+            Some(SEGMENT_DOWNLOAD_RETRY_DELAY),
+        )
+        .await
+        .map_err(|error| {
+            format!("Failed to download segment pieces during block import: {error}")
+        })?;
         // CPU-intensive piece and segment reconstruction code can block the async executor.
         let segment_contents_fut = task::spawn_blocking({
             let reconstructor = reconstructor.clone();
