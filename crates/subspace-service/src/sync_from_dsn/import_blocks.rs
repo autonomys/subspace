@@ -155,7 +155,9 @@ where
 
         let segment_pieces = download_segment_pieces(segment_index, piece_getter, 0, None)
             .await
-            .map_err(|error| format!("Failed to download segment pieces: {error}"))?;
+            .map_err(|error| {
+                format!("Failed to download segment pieces during block import: {error}")
+            })?;
         // CPU-intensive piece and segment reconstruction code can block the async executor.
         let segment_contents_fut = task::spawn_blocking({
             let reconstructor = reconstructor.clone();

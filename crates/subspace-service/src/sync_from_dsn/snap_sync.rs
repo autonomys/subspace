@@ -304,7 +304,9 @@ where
                 Some(SEGMENT_DOWNLOAD_RETRY_DELAY),
             )
             .await
-            .map_err(|error| format!("Failed to download segment pieces: {error}"))?;
+            .map_err(|error| {
+                format!("Failed to download segment pieces during snap sync: {error}")
+            })?;
 
             // CPU-intensive piece and segment reconstruction code can block the async executor.
             let segment_contents_fut = task::spawn_blocking({
