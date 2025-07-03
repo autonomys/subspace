@@ -42,7 +42,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    BlockFees, Bundle, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor,
+    BlockFees, BundleV1, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor,
     InboxedBundle, InvalidBundleType, OperatorPublicKey, PermissionedActionAllowedBy, Transfers,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -1892,7 +1892,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     let consensus_block_info =
         |best_header: Header| -> (u32, Hash) { (*best_header.number(), best_header.hash()) };
     let receipts_consensus_info =
-        |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, Header, Balance>| {
+        |bundle: BundleV1<OpaqueExtrinsic, u32, sp_core::H256, Header, Balance>| {
             (
                 bundle.receipt().consensus_block_number,
                 bundle.receipt().consensus_block_hash,

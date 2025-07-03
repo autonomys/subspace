@@ -394,9 +394,23 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
     }
 }
 
+/// Bundle Versions.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum BundleVersion {
+    /// V1 bundle version
+    V1,
+}
+
+/// Versioned Domain Bundle.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum VersionedBundle<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
+    /// V1 version of the domain bundle.
+    V1(BundleV1<Extrinsic, Number, Hash, DomainHeader, Balance>),
+}
+
 /// Domain bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct Bundle<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
+pub struct BundleV1<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Sealed bundle header.
     pub sealed_header: SealedBundleHeader<Number, Hash, DomainHeader, Balance>,
     /// The accompanying extrinsics.
@@ -404,7 +418,7 @@ pub struct Bundle<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
 }
 
 impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
-    Bundle<Extrinsic, Number, Hash, DomainHeader, Balance>
+    BundleV1<Extrinsic, Number, Hash, DomainHeader, Balance>
 {
     /// Returns the hash of this bundle.
     pub fn hash(&self) -> H256 {
@@ -476,18 +490,18 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Bal
 
 /// Bundle with opaque extrinsics.
 pub type OpaqueBundle<Number, Hash, DomainHeader, Balance> =
-    Bundle<OpaqueExtrinsic, Number, Hash, DomainHeader, Balance>;
+    BundleV1<OpaqueExtrinsic, Number, Hash, DomainHeader, Balance>;
 
 /// List of [`OpaqueBundle`].
 pub type OpaqueBundles<Block, DomainHeader, Balance> =
     Vec<OpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>>;
 
 impl<Extrinsic: Encode, Number, Hash, DomainHeader: HeaderT, Balance>
-    Bundle<Extrinsic, Number, Hash, DomainHeader, Balance>
+    BundleV1<Extrinsic, Number, Hash, DomainHeader, Balance>
 {
     /// Convert a bundle with generic extrinsic to a bundle with opaque extrinsic.
     pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, DomainHeader, Balance> {
-        let Bundle {
+        let BundleV1 {
             sealed_header,
             extrinsics,
         } = self;
@@ -1633,7 +1647,7 @@ sp_api::decl_runtime_apis! {
     // When updating this version, document new APIs with "Only present in API versions" comments.
     // TODO: when removing this version, also remove "Only present in API versions" comments and
     // deprecated attributes.
-    #[api_version(4)]
+    #[api_version(5)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
@@ -1732,6 +1746,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the last confirmed domain block execution receipt.
         fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
+
+        /// Returns the current bundle version that is accepted by runtime.
+        fn current_bundle_version() -> BundleVersion;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

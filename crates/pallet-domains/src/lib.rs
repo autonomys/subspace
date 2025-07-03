@@ -256,7 +256,7 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        BundleDigest, DomainBundleSubmitted, DomainId, DomainOwner, DomainSudoCall,
+        BundleDigest, BundleVersion, DomainBundleSubmitted, DomainId, DomainOwner, DomainSudoCall,
         DomainsTransfersTracker, EpochIndex, EvmDomainContractCreationAllowedByCall, GenesisDomain,
         OnChainRewards, OnDomainInstantiated, OperatorAllowList, OperatorId, OperatorRewardSource,
         RuntimeId, RuntimeObject, RuntimeType,
@@ -458,6 +458,10 @@ mod pallet {
         /// before requesting new withdrawal.
         #[pallet::constant]
         type WithdrawalLimit: Get<u32>;
+
+        /// Current bundle version accepted by the runtime.
+        #[pallet::constant]
+        type CurrentBundleVersion: Get<BundleVersion>;
     }
 
     #[pallet::pallet]

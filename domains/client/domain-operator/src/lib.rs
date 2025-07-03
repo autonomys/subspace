@@ -101,7 +101,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_domain_digests::AsPredigest;
-use sp_domains::{Bundle, DomainId, ExecutionReceiptFor as ExecutionReceipt, OperatorId};
+use sp_domains::{BundleV1, DomainId, ExecutionReceiptFor as ExecutionReceipt, OperatorId};
 use sp_keystore::KeystorePtr;
 use sp_runtime::DigestItem;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
@@ -158,7 +158,13 @@ where
 pub type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<HeaderFor<Block>, CBlock, Balance>;
 
 type BundleSender<Block, CBlock> = TracingUnboundedSender<
-    Bundle<ExtrinsicFor<Block>, NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>,
+    BundleV1<
+        ExtrinsicFor<Block>,
+        NumberFor<CBlock>,
+        BlockHashFor<CBlock>,
+        HeaderFor<Block>,
+        Balance,
+    >,
 >;
 
 /// Notification streams from the consensus chain driving the executor.

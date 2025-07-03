@@ -10,8 +10,8 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::{H256, OpaqueMetadata};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor, OperatorId,
-    OperatorPublicKey, PermissionedActionAllowedBy,
+    BundleVersion, DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor,
+    OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
@@ -288,6 +288,10 @@ sp_api::impl_runtime_apis! {
         }
 
         fn last_confirmed_domain_block_receipt(_domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
+            unreachable!()
+        }
+
+        fn current_bundle_version() -> BundleVersion {
             unreachable!()
         }
     }

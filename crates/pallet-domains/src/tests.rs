@@ -28,7 +28,7 @@ use sp_core::{Get, H256};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, ChainId, DomainId, ExecutionReceipt, InboxedBundle, OpaqueBundle,
+    BundleHeader, BundleVersion, ChainId, DomainId, ExecutionReceipt, InboxedBundle, OpaqueBundle,
     OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeId, RuntimeType,
     SealedBundleHeader,
 };
@@ -168,6 +168,7 @@ parameter_types! {
     pub const MinInitialDomainAccountBalance: Balance = AI3;
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 10;
+    pub const CurrentBundleVersion: BundleVersion = BundleVersion::V1;
 }
 
 pub struct MockRandomness;
@@ -299,6 +300,7 @@ impl pallet_domains::Config for Test {
     type OnChainRewards = ();
     type WithdrawalLimit = WithdrawalLimit;
     type DomainOrigin = crate::EnsureDomainOrigin;
+    type CurrentBundleVersion = CurrentBundleVersion;
 }
 
 pub struct ExtrinsicStorageFees;

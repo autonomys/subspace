@@ -11,7 +11,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
-    Bundle, BundleHeader, BundleProducerElectionApi, DomainId, DomainsApi, OperatorId,
+    BundleHeader, BundleProducerElectionApi, BundleV1, DomainId, DomainsApi, OperatorId,
     OperatorPublicKey, OperatorSignature, ProofOfElection, SealedBundleHeader,
     SealedSingletonReceipt, SingletonReceipt,
 };
@@ -340,7 +340,7 @@ where
             self.sign(operator_signing_key, to_sign.as_ref())?
         };
 
-        let bundle = Bundle {
+        let bundle = BundleV1 {
             sealed_header: SealedBundleHeader::new(bundle_header, signature),
             extrinsics,
         };

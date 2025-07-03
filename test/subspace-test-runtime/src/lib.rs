@@ -72,9 +72,9 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::{H256, OpaqueMetadata};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates, DomainId, DomainInstanceData,
-    ExecutionReceiptFor, INITIAL_DOMAIN_TX_RANGE, OpaqueBundle, OpaqueBundles, OperatorId,
-    OperatorPublicKey, PermissionedActionAllowedBy,
+    BundleVersion, DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates, DomainId,
+    DomainInstanceData, ExecutionReceiptFor, INITIAL_DOMAIN_TX_RANGE, OpaqueBundle, OpaqueBundles,
+    OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -817,6 +817,7 @@ parameter_types! {
     pub const MinInitialDomainAccountBalance: Balance = AI3;
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 32;
+    pub const CurrentBundleVersion: BundleVersion = BundleVersion::V1;
 }
 
 // `BlockSlotCount` must at least keep the slot for the current and the parent block, it also need to
@@ -907,6 +908,7 @@ impl pallet_domains::Config for Runtime {
     type FraudProofStorageKeyProvider = StorageKeyProvider;
     type OnChainRewards = OnChainRewards;
     type WithdrawalLimit = WithdrawalLimit;
+    type CurrentBundleVersion = CurrentBundleVersion;
 }
 
 parameter_types! {
@@ -1637,6 +1639,10 @@ impl_runtime_apis! {
 
         fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>{
             Domains::latest_confirmed_domain_execution_receipt(domain_id)
+        }
+
+        fn current_bundle_version() -> BundleVersion {
+            BundleVersion::V1
         }
     }
 
