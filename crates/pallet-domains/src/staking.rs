@@ -24,7 +24,7 @@ use scale_info::TypeInfo;
 use sp_core::{Get, sr25519};
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey, OperatorRewardSource};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
-use sp_runtime::{Perbill, Percent, Perquintill, Saturating};
+use sp_runtime::{PerThing, Perbill, Percent, Perquintill, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::collections::vec_deque::VecDeque;
@@ -45,26 +45,42 @@ pub struct SharePrice(Perquintill);
 impl SharePrice {
     /// Creates a new instance of share price from shares and stake.
     /// Returns an error if there are more shares than stake or either value is zero.
-    pub(crate) fn new<T: Config>(shares: T::Share, stake: BalanceOf<T>) -> Result<Self, Error> {
-        if shares > stake.into() {
+    pub(crate) fn new<T: Config>(
+        total_shares: T::Share,
+        total_stake: BalanceOf<T>,
+    ) -> Result<Self, Error> {
+        if total_shares > total_stake.into() {
             // Invalid share price, can't be greater than one.
             Err(Error::ShareOverflow)
-        } else if stake.is_zero() || shares.is_zero() {
+        } else if total_stake.is_zero() || total_shares.is_zero() {
             // If there are no shares or no stake, we can't construct a zero share price.
             Err(Error::ZeroSharePrice)
         } else {
-            Ok(SharePrice(Perquintill::from_rational(shares.into(), stake)))
+            Ok(SharePrice(Perquintill::from_rational(
+                total_shares.into(),
+                total_stake,
+            )))
         }
     }
 
     /// Converts stake to shares based on the share price.
+    /// Always rounding down i.e. may return less share due to arithmetic dust.
     pub(crate) fn stake_to_shares<T: Config>(&self, stake: BalanceOf<T>) -> T::Share {
         self.0.mul_floor(stake).into()
     }
 
     /// Converts shares to stake based on the share price.
+    /// Always rounding down i.e. may return less stake due to arithmetic dust.
     pub(crate) fn shares_to_stake<T: Config>(&self, shares: T::Share) -> BalanceOf<T> {
-        self.0.saturating_reciprocal_mul_floor(shares.into())
+        // NOTE: `stakes = shares / share_price = shares / (total_shares / total_stake)`
+        // every `div` operation come with an arithmetic dust, to return a rounding down stakes,
+        // we want the first `div` rounding down (i.e. `saturating_reciprocal_mul_floor`) and
+        // the second `div` rounding up (i.e. `plus_epsilon`).
+        self.0
+            // Within the `SharePrice::new`, `Perquintill::from_rational` is internally rouding down,
+            // `plus_epsilon` essentially return a rounding up share price.
+            .plus_epsilon()
+            .saturating_reciprocal_mul_floor(shares.into())
     }
 
     /// Return a 1:1 share price
@@ -1531,7 +1547,7 @@ pub(crate) mod tests {
         NextOperatorId, OperatorIdOwner, Operators, PendingSlashes, Withdrawals,
     };
     use crate::staking::{
-        DomainEpoch, Error as StakingError, Operator, OperatorConfig, OperatorStatus,
+        DomainEpoch, Error as StakingError, Operator, OperatorConfig, OperatorStatus, SharePrice,
         StakingSummary, do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed,
         do_nominate_operator, do_reward_operators, do_unlock_funds, do_withdraw_stake,
     };
@@ -2207,7 +2223,7 @@ pub(crate) mod tests {
             // given the reward, operator will get 164.28 AI3
             // taking 58 shares will give this following approximate amount.
             maybe_deposit: None,
-            expected_withdraw: Some((63523809503809523849, false)),
+            expected_withdraw: Some((63523809503809523790, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2225,7 +2241,7 @@ pub(crate) mod tests {
                 (5 * AI3, Err(StakingError::MinimumOperatorStake)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((63523809503809523849, false)),
+            expected_withdraw: Some((63523809503809523790, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2240,7 +2256,7 @@ pub(crate) mod tests {
             nominator_id: 0,
             withdraws: vec![(53 * AI3, Ok(())), (5 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((63523809499724987759, false)),
+            expected_withdraw: Some((63523809499724987700, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2307,7 +2323,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: None,
-            expected_withdraw: Some((54761904761904761938, true)),
+            expected_withdraw: Some((54761904761904761888, true)),
             expected_nominator_count_reduced_by: 1,
             storage_fund_change: (true, 0),
         })
@@ -2325,7 +2341,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: None,
-            expected_withdraw: Some((54761904761904761938, true)),
+            expected_withdraw: Some((54761904761904761888, true)),
             expected_nominator_count_reduced_by: 1,
             storage_fund_change: (true, 0),
         })
@@ -2347,7 +2363,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: None,
-            expected_withdraw: Some((54761904761904761938, true)),
+            expected_withdraw: Some((54761904761904761888, true)),
             expected_nominator_count_reduced_by: 1,
             storage_fund_change: (true, 0),
         })
@@ -2411,7 +2427,7 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![(40 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523809523809551, false)),
+            expected_withdraw: Some((43809523809523809511, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2426,7 +2442,7 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![(35 * AI3, Ok(())), (5 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523808523809551, false)),
+            expected_withdraw: Some((43809523808523809511, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2445,7 +2461,7 @@ pub(crate) mod tests {
                 (15 * AI3, Err(StakingError::InsufficientShares)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523808523809551, false)),
+            expected_withdraw: Some((43809523808523809511, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2535,7 +2551,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: Some(2 * AI3),
-            expected_withdraw: Some((43809523808523809551, false)),
+            expected_withdraw: Some((43809523808523809511, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2857,8 +2873,8 @@ pub(crate) mod tests {
             let total_storage_fee_withdrawal = operator_withdrawal.withdrawals[0]
                 .storage_fee_refund
                 + nominator_withdrawal.withdrawals[0].storage_fee_refund;
-            assert_eq!(293333333333333333312, total_deposit,);
-            assert_eq!(21666666666666666688, total_stake_withdrawal);
+            assert_eq!(293333333333333333336, total_deposit,);
+            assert_eq!(21666666666666666664, total_stake_withdrawal);
             assert_eq!(5000000000000000000, total_storage_fee_withdrawal);
             assert_eq!(
                 320 * AI3,
@@ -3023,11 +3039,11 @@ pub(crate) mod tests {
             let total_storage_fee_withdrawal = operator_withdrawal.withdrawals[0]
                 .storage_fee_refund
                 + nominator_withdrawal.withdrawals[0].storage_fee_refund;
-            assert_eq!(2194772727272727272713, total_deposit,);
-            assert_eq!(20227272727272727286, total_stake_withdrawal);
+            assert_eq!(2194772727272727272734, total_deposit,);
+            assert_eq!(20227272727272727266, total_stake_withdrawal);
             assert_eq!(5000000000000000000, total_storage_fee_withdrawal);
             assert_eq!(
-                2220 * AI3 - 1,
+                2220 * AI3,
                 total_deposit + total_stake_withdrawal + total_storage_fee_withdrawal
             );
 
@@ -3096,7 +3112,10 @@ pub(crate) mod tests {
                 );
             }
 
-            assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 2220 * AI3);
+            assert_eq!(
+                Balances::total_balance(&crate::tests::TreasuryAccount::get()),
+                2220 * AI3
+            );
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
         });
     }
@@ -3432,5 +3451,138 @@ pub(crate) mod tests {
                 StakingError::MissingOperatorEpochSharePrice
             );
         });
+    }
+
+    #[test]
+    fn test_share_price_deposit() {
+        let total_shares = 45 * AI3;
+        let total_stake = 45 * AI3 + 37;
+        let sp = SharePrice::new::<Test>(total_shares, total_stake).unwrap();
+
+        // Each item in this list represents an individual deposit requested by a nominator
+        let to_deposit_stakes = [
+            5,
+            7,
+            9,
+            11,
+            17,
+            23,
+            934,
+            24931,
+            349083467,
+            2 * AI3 + 32,
+            52 * AI3 - 4729034,
+            2732 * AI3 - 1720,
+            1117 * AI3 + 1839832,
+            31232 * AI3 - 987654321,
+        ];
+
+        let mut deposited_share = 0;
+        let mut deposited_stake = 0;
+        for to_deposit_stake in to_deposit_stakes {
+            let to_deposit_share = sp.stake_to_shares::<Test>(to_deposit_stake);
+
+            // `deposited_stake` is sum of the stake deposited so far.
+            deposited_stake += to_deposit_stake;
+            // `deposited_share` is sum of the share that converted from `deposited_stake` so far,
+            // this is also the share the nominator entitled to withdraw.
+            deposited_share += to_deposit_share;
+
+            // Assuming an epoch transition happened
+            //
+            // `total_deposited_share` is the share converted from `operator.deposits_in_epoch`
+            // and will be added to the `operator.current_total_shares`.
+            let total_deposited_share = sp.stake_to_shares::<Test>(deposited_stake);
+
+            // `total_deposited_share` must larger or equal to `deposited_share`, meaning the
+            // arithmetic dust generated during stake-to-share convertion are leave to the pool
+            // and can't withdraw/unlock, otherwise, `ShareOverflow` error will happen on `current_total_shares`
+            // during withdraw/unlock.
+            assert!(total_deposited_share >= deposited_share);
+
+            // `total_stake` must remains large than `total_shares`, otherwise, it means the reward are
+            // lost during stake-to-share convertion.
+            assert!(total_stake + deposited_stake > total_shares + total_deposited_share);
+        }
+    }
+
+    #[test]
+    fn test_share_price_withdraw() {
+        let total_shares = 123 * AI3;
+        let total_stake = 123 * AI3 + 13;
+        let sp = SharePrice::new::<Test>(total_shares, total_stake).unwrap();
+
+        // Each item in this list represents an individual withdrawal requested by a nominator
+        let to_withdraw_shares = [
+            1,
+            3,
+            7,
+            13,
+            17,
+            123,
+            43553,
+            546393039,
+            15 * AI3 + 1342,
+            2 * AI3 - 423,
+            31 * AI3 - 1321,
+            42 * AI3 + 4564234,
+            7 * AI3 - 987654321,
+            3 * AI3 + 987654321123879,
+        ];
+
+        let mut withdrawn_share = 0;
+        let mut withdrawn_stake = 0;
+        for to_withdraw_share in to_withdraw_shares {
+            let to_withdraw_stake = sp.shares_to_stake::<Test>(to_withdraw_share);
+
+            // `withdrawn_share` is sum of the share withdrawn so far.
+            withdrawn_share += to_withdraw_share;
+            // `withdrawn_stake` is sum of the stake that converted from `withdrawn_share` so far,
+            // this is also the stake the nominator entitled to release/mint during unlock.
+            withdrawn_stake += to_withdraw_stake;
+
+            // Assuming an epoch transition happened
+            //
+            // `total_withdrawn_stake` is the stake converted from `operator.withdrawals_in_epoch`
+            // and will be removed to the `operator.current_total_stake`.
+            let total_withdrawn_stake = sp.shares_to_stake::<Test>(withdrawn_share);
+
+            // `total_withdrawn_stake` must larger or equal to `withdrawn_stake`, meaning the
+            // arithmetic dust generated during share-to-stake convertion are leave to the pool,
+            // otherwise, the nominator will be able to mint reward out of thin air during unlock.
+            assert!(total_withdrawn_stake >= withdrawn_stake);
+
+            // `total_stake` must remains large than `total_shares`, otherwise, it means the reward are
+            // lost during share-to-stake convertion.
+            assert!(total_stake - withdrawn_stake >= total_shares - withdrawn_share);
+        }
+    }
+
+    #[test]
+    fn test_share_price_unlock() {
+        let mut total_shares = 20 * AI3;
+        let mut total_stake = 20 * AI3 + 12;
+
+        // Each item in this list represents a nominator unlock after the operator de-registered.
+        //
+        // The following is simulating how `do_unlock_nominator` work, `shares-to-stake` must return a
+        // rouding down result, otherwise, `BalanceOverflow` error will happen on `current_total_stake`
+        // during `do_unlock_nominator`.
+        for to_unlock_share in [
+            AI3 + 123,
+            2 * AI3 - 456,
+            3 * AI3 - 789,
+            4 * AI3 - 123 + 456,
+            7 * AI3 + 789 - 987654321,
+            3 * AI3 + 987654321,
+        ] {
+            let sp = SharePrice::new::<Test>(total_shares, total_stake).unwrap();
+
+            let to_unlock_stake = sp.shares_to_stake::<Test>(to_unlock_share);
+
+            total_shares = total_shares.checked_sub(to_unlock_share).unwrap();
+            total_stake = total_stake.checked_sub(to_unlock_stake).unwrap();
+        }
+        assert_eq!(total_shares, 0);
     }
 }
