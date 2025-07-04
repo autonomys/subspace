@@ -2,9 +2,9 @@
 extern crate alloc;
 
 use crate::fraud_proof::{
-    InvalidBundlesV0Proof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof, MmrRootProof,
-    ValidBundleV0Proof, VerificationError,
+    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, MmrRootProof, VerificationError,
 };
+use crate::fraud_proof_v0::{InvalidBundlesV0Proof, ValidBundleV0Proof};
 use crate::fraud_proof_v1::{
     InvalidBundlesProof, InvalidBundlesProofData, InvalidVersionedBundlesProof, ValidBundleProof,
     ValidVersionedBundleProof,

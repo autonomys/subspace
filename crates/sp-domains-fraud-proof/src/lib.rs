@@ -9,6 +9,7 @@
 #[cfg(feature = "std")]
 pub mod execution_prover;
 pub mod fraud_proof;
+pub mod fraud_proof_v0;
 pub mod fraud_proof_v1;
 #[cfg(feature = "std")]
 mod host_functions;
@@ -22,7 +23,7 @@ pub mod weights;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::fraud_proof::FraudProofV0;
+use crate::fraud_proof_v0::FraudProofV0;
 use crate::fraud_proof_v1::FraudProofV1;
 use crate::storage_proof::FraudProofStorageKeyRequest;
 #[cfg(not(feature = "std"))]

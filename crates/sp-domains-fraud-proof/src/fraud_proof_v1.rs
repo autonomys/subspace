@@ -2,10 +2,10 @@
 extern crate alloc;
 
 use crate::fraud_proof::{
-    DomainRuntimeCodeAt, InvalidBlockFeesProof, InvalidBundlesV0Proof, InvalidBundlesV0ProofData,
-    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
-    InvalidTransfersProof, MmrRootProof, ValidBundleV0Proof,
+    DomainRuntimeCodeAt, InvalidBlockFeesProof, InvalidDomainBlockHashProof,
+    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTransfersProof, MmrRootProof,
 };
+use crate::fraud_proof_v0::{InvalidBundlesV0Proof, InvalidBundlesV0ProofData, ValidBundleV0Proof};
 use crate::storage_proof::*;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;

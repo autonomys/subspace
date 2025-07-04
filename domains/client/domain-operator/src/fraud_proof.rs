@@ -21,9 +21,11 @@ use sp_domains_fraud_proof::FraudProofApi;
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, DomainRuntimeCodeAt, ExecutionPhase, FinalizeBlockMismatch,
-    FraudProofV0, FraudProofVariantV0, InvalidBlockFeesProof, InvalidBundlesV0Proof,
-    InvalidBundlesV0ProofData, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
+    InvalidBlockFeesProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
     InvalidStateTransitionProof, InvalidTransfersProof, MmrRootProof, ValidBundleDigest,
+};
+use sp_domains_fraud_proof::fraud_proof_v0::{
+    FraudProofV0, FraudProofVariantV0, InvalidBundlesV0Proof, InvalidBundlesV0ProofData,
     ValidBundleV0Proof,
 };
 use sp_domains_fraud_proof::fraud_proof_v1::{
