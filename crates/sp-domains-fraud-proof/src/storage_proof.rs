@@ -3,12 +3,14 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_core::storage::StorageKey;
+use sp_domains::bundle::VersionedOpaqueBundle;
+use sp_domains::bundle_v0::OpaqueBundleV0;
 use sp_domains::proof_provider_and_verifier::{
     StorageProofVerifier, VerificationError as StorageProofVerificationError,
 };
 use sp_domains::{
     DomainAllowlistUpdates, DomainId, DomainSudoCall, EvmDomainContractCreationAllowedByCall,
-    OpaqueBundleV0, RuntimeId, RuntimeObject, VersionedOpaqueBundle,
+    RuntimeId, RuntimeObject,
 };
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime_interface::pass_by;

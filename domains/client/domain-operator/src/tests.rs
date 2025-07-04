@@ -39,11 +39,12 @@ use sp_core::storage::StateVersion;
 use sp_core::traits::{FetchRuntimeCode, SpawnEssentialNamed};
 use sp_core::{H160, H256, Pair, U256};
 use sp_domain_digests::AsPredigest;
+use sp_domains::bundle::{BundleValidity, InboxedBundle, InvalidBundleType, VersionedBundle};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    BlockFees, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor, InboxedBundle,
-    InvalidBundleType, OperatorPublicKey, PermissionedActionAllowedBy, Transfers, VersionedBundle,
+    BlockFees, ChainId, ChannelId, DomainsApi, HeaderHashingFor, OperatorPublicKey,
+    PermissionedActionAllowedBy, Transfers,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_domains_fraud_proof::fraud_proof::{

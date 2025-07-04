@@ -11,12 +11,11 @@ use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
+use sp_domains::bundle::{InvalidBundleType, VersionedOpaqueBundle, VersionedOpaqueBundles};
+use sp_domains::bundle_v0::{OpaqueBundleV0, OpaqueBundlesV0};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
-use sp_domains::{
-    DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, InvalidBundleType, OpaqueBundleV0,
-    OpaqueBundlesV0, RuntimeId, VersionedOpaqueBundle, VersionedOpaqueBundles,
-};
+use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, RuntimeId};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{

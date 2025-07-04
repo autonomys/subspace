@@ -64,9 +64,8 @@ use sp_core::H256;
 use sp_core::offchain::OffchainDbExt;
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_domains::{
-    BundleProducerElectionApi, ChainId, DomainId, DomainsApi, OperatorId, VersionedOpaqueBundle,
-};
+use sp_domains::bundle::VersionedOpaqueBundle;
+use sp_domains::{BundleProducerElectionApi, ChainId, DomainId, DomainsApi, OperatorId};
 use sp_domains_fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;

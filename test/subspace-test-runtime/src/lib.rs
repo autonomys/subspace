@@ -70,11 +70,12 @@ use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionRanges, Vote};
 use sp_core::crypto::KeyTypeId;
 use sp_core::{H256, OpaqueMetadata};
+use sp_domains::bundle::{BundleVersion, VersionedOpaqueBundle, VersionedOpaqueBundles};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    BundleVersion, DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates, DomainId,
-    DomainInstanceData, ExecutionReceiptFor, INITIAL_DOMAIN_TX_RANGE, OperatorId,
-    OperatorPublicKey, PermissionedActionAllowedBy, VersionedOpaqueBundle, VersionedOpaqueBundles,
+    DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates, DomainId, DomainInstanceData,
+    ExecutionReceiptFor, INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey,
+    PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_domains_fraud_proof::storage_proof::{

@@ -12,9 +12,8 @@ use alloc::vec::Vec;
 use core::fmt;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_domains::{
-    DomainId, HeaderHashFor, HeaderHashingFor, InvalidBundleType, VersionedOpaqueBundle,
-};
+use sp_domains::bundle::{InvalidBundleType, VersionedOpaqueBundle};
+use sp_domains::{DomainId, HeaderHashFor, HeaderHashingFor};
 use sp_runtime::traits::{Hash as HashT, Header as HeaderT};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
@@ -262,7 +261,7 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT>
             }
             InvalidBundlesV0ProofData::Bundle(bundle_with_proof) => {
                 InvalidBundlesProofData::Bundle(VersionedOpaqueBundleWithProof {
-                    bundle: VersionedOpaqueBundle::V1(bundle_with_proof.bundle),
+                    bundle: VersionedOpaqueBundle::V1(bundle_with_proof.bundle.into()),
                     bundle_index: bundle_with_proof.bundle_index,
                     bundle_storage_proof: bundle_with_proof.bundle_storage_proof,
                 })
@@ -272,7 +271,7 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT>
                 execution_proof,
             } => InvalidBundlesProofData::BundleAndExecution {
                 bundle_with_proof: VersionedOpaqueBundleWithProof {
-                    bundle: VersionedOpaqueBundle::V1(bundle_with_proof.bundle),
+                    bundle: VersionedOpaqueBundle::V1(bundle_with_proof.bundle.into()),
                     bundle_index: bundle_with_proof.bundle_index,
                     bundle_storage_proof: bundle_with_proof.bundle_storage_proof,
                 },

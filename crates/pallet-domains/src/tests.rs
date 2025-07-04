@@ -25,12 +25,15 @@ use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256};
+use sp_domains::bundle::{
+    BundleHeader, BundleVersion, InboxedBundle, SealedBundleHeader, VersionedOpaqueBundle,
+};
+use sp_domains::bundle_v1::BundleV1;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, BundleV1, BundleVersion, ChainId, DomainId, ExecutionReceipt, InboxedBundle,
-    OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeId, RuntimeType,
-    SealedBundleHeader, VersionedOpaqueBundle,
+    ChainId, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId, OperatorPair,
+    ProofOfElection, RuntimeId, RuntimeType,
 };
 use sp_domains_fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_runtime::generic::{EXTRINSIC_FORMAT_VERSION, Preamble};

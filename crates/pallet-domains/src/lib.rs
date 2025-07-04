@@ -51,11 +51,12 @@ use scale_info::TypeInfo;
 use sp_consensus_subspace::WrappedPotOutput;
 use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_core::H256;
+use sp_domains::bundle::VersionedOpaqueBundle;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     ChainId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, DomainBundleLimit, DomainId,
     DomainInstanceData, EMPTY_EXTRINSIC_ROOT, ExecutionReceipt, OperatorId, OperatorPublicKey,
-    OperatorSignature, ProofOfElection, RuntimeId, SealedSingletonReceipt, VersionedOpaqueBundle,
+    OperatorSignature, ProofOfElection, RuntimeId, SealedSingletonReceipt,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     DomainRuntimeCodeAt, InvalidBlockFeesProof, InvalidDomainBlockHashProof, InvalidTransfersProof,
@@ -254,12 +255,13 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use parity_scale_codec::FullCodec;
     use sp_core::H256;
+    use sp_domains::bundle::{BundleDigest, BundleVersion};
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        BundleDigest, BundleVersion, DomainBundleSubmitted, DomainId, DomainOwner, DomainSudoCall,
-        DomainsTransfersTracker, EpochIndex, EvmDomainContractCreationAllowedByCall, GenesisDomain,
-        OnChainRewards, OnDomainInstantiated, OperatorAllowList, OperatorId, OperatorRewardSource,
-        RuntimeId, RuntimeObject, RuntimeType,
+        DomainBundleSubmitted, DomainId, DomainOwner, DomainSudoCall, DomainsTransfersTracker,
+        EpochIndex, EvmDomainContractCreationAllowedByCall, GenesisDomain, OnChainRewards,
+        OnDomainInstantiated, OperatorAllowList, OperatorId, OperatorRewardSource, RuntimeId,
+        RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof_runtime_interface::domain_runtime_call;
     use sp_domains_fraud_proof::storage_proof::{self, FraudProofStorageKeyProvider};
