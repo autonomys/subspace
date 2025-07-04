@@ -18,9 +18,10 @@ use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::H256;
 use sp_core::traits::CodeExecutor;
+use sp_domains::bundle::BundleValidity;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
+use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
@@ -980,7 +981,7 @@ where
 mod tests {
     use super::*;
     use domain_test_service::evm_domain_test_runtime::Block;
-    use sp_domains::{InboxedBundle, InvalidBundleType};
+    use sp_domains::bundle::{InboxedBundle, InvalidBundleType};
     use subspace_runtime_primitives::BlockHashFor;
     use subspace_test_runtime::Block as CBlock;
 

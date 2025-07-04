@@ -1,5 +1,5 @@
-use crate::fraud_proof_v1::{FraudProofV1, FraudProofVariantV1};
-use sp_domains::InvalidBundleType;
+use crate::fraud_proof::fraud_proof_v1::{FraudProofV1, FraudProofVariantV1};
+use sp_domains::bundle::InvalidBundleType;
 use sp_runtime::traits::Header as HeaderT;
 use sp_weights::Weight;
 

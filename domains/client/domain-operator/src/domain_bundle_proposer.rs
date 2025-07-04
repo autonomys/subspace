@@ -7,10 +7,10 @@ use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
+use sp_domains::bundle::BundleHeader;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
-    BundleHeader, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, OperatorId,
-    ProofOfElection,
+    DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, OperatorId, ProofOfElection,
 };
 use sp_messenger::MessengerApi;
 use sp_runtime::Percent;

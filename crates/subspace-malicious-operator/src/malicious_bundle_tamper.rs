@@ -3,12 +3,10 @@ use parity_scale_codec::{Decode, Encode};
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_domain_digests::AsPredigest;
+use sp_domains::bundle::{BundleValidity, InvalidBundleType};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{
-    BlockFees, BundleValidity, ChainId, HeaderHashingFor, InvalidBundleType, OperatorPublicKey,
-    OperatorSignature,
-};
+use sp_domains::{BlockFees, ChainId, HeaderHashingFor, OperatorPublicKey, OperatorSignature};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::{DigestItem, OpaqueExtrinsic, RuntimeAppPublic};

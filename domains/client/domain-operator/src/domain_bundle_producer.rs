@@ -9,11 +9,12 @@ use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
+use sp_domains::bundle::bundle_v1::BundleV1;
+use sp_domains::bundle::{BundleHeader, SealedBundleHeader};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
-    BundleHeader, BundleProducerElectionApi, BundleV1, DomainId, DomainsApi, OperatorId,
-    OperatorPublicKey, OperatorSignature, ProofOfElection, SealedBundleHeader,
-    SealedSingletonReceipt, SingletonReceipt,
+    BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
+    OperatorSignature, ProofOfElection, SealedSingletonReceipt, SingletonReceipt,
 };
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
@@ -28,7 +29,7 @@ use tracing::info;
 pub type BundleHeaderFor<Block, CBlock> =
     BundleHeader<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
-type VersionedOpaqueBundle<Block, CBlock> = sp_domains::VersionedOpaqueBundle<
+type VersionedOpaqueBundle<Block, CBlock> = sp_domains::bundle::OpaqueBundle<
     NumberFor<CBlock>,
     BlockHashFor<CBlock>,
     HeaderFor<Block>,

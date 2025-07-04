@@ -11,12 +11,11 @@ use sc_domains::{ExtensionsFactory as DomainsExtensionFactory, FPStorageKeyProvi
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
 use sp_core::{H256, Pair as _};
+use sp_domains::bundle::{BundleValidity, InvalidBundleType};
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{
-    BundleValidity, ChainId, DomainsApi, ExecutionReceiptFor, InvalidBundleType, Transfers,
-};
+use sp_domains::{ChainId, DomainsApi, ExecutionReceiptFor, Transfers};
 use sp_domains_fraud_proof::fraud_proof::DomainRuntimeCodeAt;
-use sp_domains_fraud_proof::fraud_proof_v1::{FraudProofV1, FraudProofVariantV1};
+use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::{FraudProofV1, FraudProofVariantV1};
 use sp_domains_fraud_proof::storage_proof::{BasicStorageProof, DomainRuntimeCodeProof};
 use sp_domains_fraud_proof::verification::*;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};

@@ -24,11 +24,11 @@ use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode};
+use sp_domains::bundle::{InboxedBundle, InvalidBundleType, OpaqueBundle, VersionedOpaqueBundles};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
-    DomainId, DomainsApi, ExecutionReceipt, ExtrinsicDigest, HeaderHashingFor, InboxedBundle,
-    InvalidBundleType, ReceiptValidity, VersionedOpaqueBundle, VersionedOpaqueBundles,
+    DomainId, DomainsApi, ExecutionReceipt, ExtrinsicDigest, HeaderHashingFor, ReceiptValidity,
 };
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
@@ -199,7 +199,7 @@ where
                     primary_extrinsics,
                 )?
                 .into_iter()
-                .map(VersionedOpaqueBundle::V1)
+                .map(|bundle| OpaqueBundle::V1(bundle.into()))
                 .collect::<Vec<_>>()
         };
 
@@ -391,7 +391,7 @@ where
 
     fn check_bundle_validity(
         &self,
-        bundle: VersionedOpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
+        bundle: OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
         tx_range: &U256,
         (parent_domain_hash, parent_domain_number): (Block::Hash, NumberFor<Block>),
         at_consensus_hash: CBlock::Hash,
@@ -509,7 +509,7 @@ where
 
     fn batch_check_bundle_validity(
         &self,
-        bundle: VersionedOpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
+        bundle: OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
         tx_range: &U256,
         (parent_domain_hash, parent_domain_number): (Block::Hash, NumberFor<Block>),
         at_consensus_hash: CBlock::Hash,

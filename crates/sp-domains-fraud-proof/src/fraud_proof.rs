@@ -8,12 +8,16 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
+use sp_domains::bundle::{BundleValidity, InvalidBundleType};
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
-use sp_domains::{BundleValidity, ExecutionReceiptFor, ExtrinsicDigest, InvalidBundleType};
+use sp_domains::{ExecutionReceiptFor, ExtrinsicDigest};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::{Digest, DigestItem};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
+
+pub mod fraud_proof_v0;
+pub mod fraud_proof_v1;
 
 /// Mismatch type possible for ApplyExtrinsic execution phase
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]

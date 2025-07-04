@@ -25,14 +25,17 @@ use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256};
+use sp_domains::bundle::bundle_v1::BundleV1;
+use sp_domains::bundle::{
+    BundleHeader, BundleVersion, InboxedBundle, OpaqueBundle, SealedBundleHeader,
+};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, BundleV1, BundleVersion, ChainId, DomainId, ExecutionReceipt, InboxedBundle,
-    OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeId, RuntimeType,
-    SealedBundleHeader, VersionedOpaqueBundle,
+    ChainId, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId, OperatorPair,
+    ProofOfElection, RuntimeId, RuntimeType,
 };
-use sp_domains_fraud_proof::fraud_proof_v1::FraudProofV1;
+use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_runtime::generic::{EXTRINSIC_FORMAT_VERSION, Preamble};
 use sp_runtime::traits::{
     AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, ConstU16, Hash as HashT,
@@ -450,7 +453,7 @@ fn create_dummy_bundle(
     domain_id: DomainId,
     block_number: BlockNumber,
     consensus_block_hash: Hash,
-) -> VersionedOpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
+) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
     let execution_receipt = create_dummy_receipt(
         block_number,
         consensus_block_hash,
@@ -470,7 +473,7 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     operator_id: OperatorId,
     bundle_extrinsics_root: H256,
     receipt: ExecutionReceipt<BlockNumber, Hash, DomainBlockNumber, H256, u128>,
-) -> VersionedOpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
+) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
     let pair = OperatorPair::from_seed(&[0; 32]);
 
     let header = BundleHeader::<_, _, DomainHeader, _> {
@@ -482,7 +485,7 @@ pub(crate) fn create_dummy_bundle_with_receipts(
 
     let signature = pair.sign(header.hash().as_ref());
 
-    VersionedOpaqueBundle::V1(BundleV1 {
+    OpaqueBundle::V1(BundleV1 {
         sealed_header: SealedBundleHeader::new(header, signature),
         extrinsics: Vec::new(),
     })

@@ -1,20 +1,21 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use crate::fraud_proof::fraud_proof_v0::{
+    InvalidBundlesV0Proof, InvalidBundlesV0ProofData, ValidBundleV0Proof,
+};
 use crate::fraud_proof::{
     DomainRuntimeCodeAt, InvalidBlockFeesProof, InvalidDomainBlockHashProof,
     InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTransfersProof, MmrRootProof,
 };
-use crate::fraud_proof_v0::{InvalidBundlesV0Proof, InvalidBundlesV0ProofData, ValidBundleV0Proof};
 use crate::storage_proof::*;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::fmt;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_domains::{
-    DomainId, HeaderHashFor, HeaderHashingFor, InvalidBundleType, VersionedOpaqueBundle,
-};
+use sp_domains::bundle::{InvalidBundleType, OpaqueBundle};
+use sp_domains::{DomainId, HeaderHashFor, HeaderHashingFor};
 use sp_runtime::traits::{Hash as HashT, Header as HeaderT};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
@@ -262,7 +263,7 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT>
             }
             InvalidBundlesV0ProofData::Bundle(bundle_with_proof) => {
                 InvalidBundlesProofData::Bundle(VersionedOpaqueBundleWithProof {
-                    bundle: VersionedOpaqueBundle::V1(bundle_with_proof.bundle),
+                    bundle: OpaqueBundle::V1(bundle_with_proof.bundle.into()),
                     bundle_index: bundle_with_proof.bundle_index,
                     bundle_storage_proof: bundle_with_proof.bundle_storage_proof,
                 })
@@ -272,7 +273,7 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT>
                 execution_proof,
             } => InvalidBundlesProofData::BundleAndExecution {
                 bundle_with_proof: VersionedOpaqueBundleWithProof {
-                    bundle: VersionedOpaqueBundle::V1(bundle_with_proof.bundle),
+                    bundle: OpaqueBundle::V1(bundle_with_proof.bundle.into()),
                     bundle_index: bundle_with_proof.bundle_index,
                     bundle_storage_proof: bundle_with_proof.bundle_storage_proof,
                 },

@@ -64,10 +64,9 @@ use sp_core::H256;
 use sp_core::offchain::OffchainDbExt;
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_domains::{
-    BundleProducerElectionApi, ChainId, DomainId, DomainsApi, OperatorId, VersionedOpaqueBundle,
-};
-use sp_domains_fraud_proof::fraud_proof_v1::FraudProofV1;
+use sp_domains::bundle::OpaqueBundle;
+use sp_domains::{BundleProducerElectionApi, ChainId, DomainId, DomainsApi, OperatorId};
+use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
@@ -680,7 +679,7 @@ impl MockConsensusNode {
     pub async fn notify_new_slot_and_wait_for_bundle(
         &mut self,
         new_slot: NewSlot,
-    ) -> Option<VersionedOpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>> {
+    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>> {
         self.new_slot_notification_subscribers
             .retain(|subscriber| subscriber.unbounded_send(new_slot).is_ok());
 
@@ -693,7 +692,7 @@ impl MockConsensusNode {
         &mut self,
     ) -> (
         NewSlot,
-        VersionedOpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>,
+        OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>,
     ) {
         let slot = self.produce_slot();
         for _ in 0..MAX_PRODUCE_BUNDLE_TRY {
@@ -712,7 +711,7 @@ impl MockConsensusNode {
         operator_id: OperatorId,
     ) -> (
         NewSlot,
-        VersionedOpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>,
+        OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>,
     ) {
         loop {
             let slot = self.produce_slot();
@@ -799,7 +798,7 @@ impl MockConsensusNode {
     pub fn get_bundle_from_tx_pool(
         &self,
         new_slot: NewSlot,
-    ) -> Option<VersionedOpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>> {
+    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>> {
         for ready_tx in self.transaction_pool.ready() {
             let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
                 .expect("should be able to decode");

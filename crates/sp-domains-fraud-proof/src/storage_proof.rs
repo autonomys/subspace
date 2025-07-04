@@ -3,12 +3,14 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_core::storage::StorageKey;
+use sp_domains::bundle::OpaqueBundle;
+use sp_domains::bundle::bundle_v0::OpaqueBundleV0;
 use sp_domains::proof_provider_and_verifier::{
     StorageProofVerifier, VerificationError as StorageProofVerificationError,
 };
 use sp_domains::{
     DomainAllowlistUpdates, DomainId, DomainSudoCall, EvmDomainContractCreationAllowedByCall,
-    OpaqueBundleV0, RuntimeId, RuntimeObject, VersionedOpaqueBundle,
+    RuntimeId, RuntimeObject,
 };
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime_interface::pass_by;
@@ -311,7 +313,7 @@ where
 /// Bundle with proof data for fraud proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct VersionedOpaqueBundleWithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
-    pub bundle: VersionedOpaqueBundle<Number, Hash, DomainHeader, Balance>,
+    pub bundle: OpaqueBundle<Number, Hash, DomainHeader, Balance>,
     pub bundle_index: u32,
     pub bundle_storage_proof: SuccessfulBundlesProof,
 }
@@ -335,7 +337,7 @@ where
         proof_provider: &PP,
         domain_id: DomainId,
         block_hash: Block::Hash,
-        bundle: VersionedOpaqueBundle<Number, Hash, DomainHeader, Balance>,
+        bundle: OpaqueBundle<Number, Hash, DomainHeader, Balance>,
         bundle_index: u32,
     ) -> Result<Self, GenerationError> {
         let bundle_storage_proof = SuccessfulBundlesProof::generate(

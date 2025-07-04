@@ -659,7 +659,7 @@ mod tests {
     use frame_support::{assert_err, assert_ok};
     use frame_system::Origin;
     use sp_core::H256;
-    use sp_domains::{BundleDigest, InboxedBundle, InvalidBundleType};
+    use sp_domains::bundle::{BundleDigest, InboxedBundle, InvalidBundleType};
 
     #[test]
     fn test_genesis_receipt() {

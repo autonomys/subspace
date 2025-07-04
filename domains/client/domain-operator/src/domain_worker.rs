@@ -31,8 +31,9 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::H256;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
+use sp_domains::bundle::OpaqueBundle;
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::{BundleProducerElectionApi, DomainsApi, OperatorId, VersionedOpaqueBundle};
+use sp_domains::{BundleProducerElectionApi, DomainsApi, OperatorId};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
@@ -45,7 +46,7 @@ use subspace_runtime_primitives::{Balance, BlockHashFor, HeaderFor};
 use tracing::{Instrument, info};
 
 pub type VersionedOpaqueBundleFor<Block, CBlock> =
-    VersionedOpaqueBundle<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
+    OpaqueBundle<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) async fn start_worker<

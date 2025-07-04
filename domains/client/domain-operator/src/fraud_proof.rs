@@ -11,26 +11,25 @@ use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
+use sp_domains::bundle::bundle_v0::{OpaqueBundleV0, OpaqueBundlesV0};
+use sp_domains::bundle::{InvalidBundleType, OpaqueBundle, VersionedOpaqueBundles};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
-use sp_domains::{
-    DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, InvalidBundleType, OpaqueBundleV0,
-    OpaqueBundlesV0, RuntimeId, VersionedOpaqueBundle, VersionedOpaqueBundles,
-};
+use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, RuntimeId};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
+use sp_domains_fraud_proof::fraud_proof::fraud_proof_v0::{
+    FraudProofV0, FraudProofVariantV0, InvalidBundlesV0Proof, InvalidBundlesV0ProofData,
+    ValidBundleV0Proof,
+};
+use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::{
+    FraudProofV1, FraudProofVariantV1, InvalidBundlesProof, InvalidBundlesProofData,
+    InvalidVersionedBundlesProof, ValidBundleProof, ValidVersionedBundleProof,
+};
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, DomainRuntimeCodeAt, ExecutionPhase, FinalizeBlockMismatch,
     InvalidBlockFeesProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
     InvalidStateTransitionProof, InvalidTransfersProof, MmrRootProof, ValidBundleDigest,
-};
-use sp_domains_fraud_proof::fraud_proof_v0::{
-    FraudProofV0, FraudProofVariantV0, InvalidBundlesV0Proof, InvalidBundlesV0ProofData,
-    ValidBundleV0Proof,
-};
-use sp_domains_fraud_proof::fraud_proof_v1::{
-    FraudProofV1, FraudProofVariantV1, InvalidBundlesProof, InvalidBundlesProofData,
-    InvalidVersionedBundlesProof, ValidBundleProof, ValidVersionedBundleProof,
 };
 use sp_domains_fraud_proof::storage_proof::{self, *};
 use sp_messenger::MessengerApi;
@@ -120,7 +119,7 @@ enum InvalidBundlesProofDataFor<Number, Hash, MmrHash, DomainHeader: HeaderT> {
 
 enum BundleFor<Block: BlockT, DomainHeader: HeaderT, Balance> {
     V0(OpaqueBundleV0<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>),
-    Versioned(VersionedOpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>),
+    Versioned(OpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>),
 }
 
 impl<Block: BlockT, DomainHeader: HeaderT, Balance: Encode>
