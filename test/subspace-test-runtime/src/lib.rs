@@ -73,10 +73,10 @@ use sp_core::{H256, OpaqueMetadata};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     BundleVersion, DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates, DomainId,
-    DomainInstanceData, ExecutionReceiptFor, INITIAL_DOMAIN_TX_RANGE, OpaqueBundle, OpaqueBundles,
-    OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
+    DomainInstanceData, ExecutionReceiptFor, INITIAL_DOMAIN_TX_RANGE, OperatorId,
+    OperatorPublicKey, PermissionedActionAllowedBy, VersionedOpaqueBundle, VersionedOpaqueBundles,
 };
-use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_domains_fraud_proof::storage_proof::{
     FraudProofStorageKeyProvider, FraudProofStorageKeyRequest,
 };
@@ -1269,7 +1269,7 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
 fn extract_successful_bundles(
     domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> OpaqueBundles<Block, DomainHeader, Balance> {
+) -> VersionedOpaqueBundles<Block, DomainHeader, Balance> {
     let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
@@ -1513,7 +1513,7 @@ impl_runtime_apis! {
 
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: OpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
+            opaque_bundle: VersionedOpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
@@ -1527,7 +1527,7 @@ impl_runtime_apis! {
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<ExtrinsicFor<Block>>,
-        ) -> OpaqueBundles<Block, DomainHeader, Balance> {
+        ) -> VersionedOpaqueBundles<Block, DomainHeader, Balance> {
             extract_successful_bundles(domain_id, extrinsics)
         }
 
@@ -1810,7 +1810,7 @@ impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, H256>) {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProofV1<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, H256>) {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 

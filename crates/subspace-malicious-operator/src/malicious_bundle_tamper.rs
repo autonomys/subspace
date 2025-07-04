@@ -1,4 +1,4 @@
-use domain_client_operator::{ExecutionReceiptFor, OpaqueBundleFor};
+use domain_client_operator::{ExecutionReceiptFor, VersionedOpaqueBundleFor};
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
@@ -78,13 +78,14 @@ where
 
     pub fn maybe_tamper_bundle(
         &mut self,
-        opaque_bundle: &mut OpaqueBundleFor<Block, CBlock>,
+        opaque_bundle: &mut VersionedOpaqueBundleFor<Block, CBlock>,
         operator_signing_key: &OperatorPublicKey,
     ) -> Result<(), Box<dyn Error>> {
         if Random::probability(0.2) {
-            self.make_receipt_fraudulent(&mut opaque_bundle.sealed_header.header.receipt)?;
+            self.make_receipt_fraudulent(opaque_bundle.execution_receipt_as_mut())?;
             self.reseal_bundle(opaque_bundle, operator_signing_key)?;
         }
+
         if Random::probability(0.1) {
             self.make_bundle_invalid(opaque_bundle)?;
             self.reseal_bundle(opaque_bundle, operator_signing_key)?;
@@ -256,7 +257,7 @@ where
     #[allow(clippy::modulo_one)]
     fn make_bundle_invalid(
         &self,
-        opaque_bundle: &mut OpaqueBundleFor<Block, CBlock>,
+        opaque_bundle: &mut VersionedOpaqueBundleFor<Block, CBlock>,
     ) -> Result<(), Box<dyn Error>> {
         let random_seed = Random::seed();
         let invalid_bundle_type = match random_seed % 4 {
@@ -279,8 +280,8 @@ where
         let invalid_tx = match invalid_bundle_type {
             InvalidBundleType::UndecodableTx(_) => OpaqueExtrinsic::default(),
             // The duplicated extrinsic will be illegal due to `Nonce` if it is a signed extrinsic
-            InvalidBundleType::IllegalTx(_) if !opaque_bundle.extrinsics.is_empty() => {
-                opaque_bundle.extrinsics[0].clone()
+            InvalidBundleType::IllegalTx(_) if !opaque_bundle.extrinsics().is_empty() => {
+                opaque_bundle.extrinsics()[0].clone()
             }
             InvalidBundleType::InherentExtrinsic(_) => {
                 let inherent_tx = self
@@ -294,35 +295,35 @@ where
                     .expect("We have just encoded a valid extrinsic; qed")
             }
             InvalidBundleType::InvalidBundleWeight => {
-                opaque_bundle.sealed_header.header.estimated_bundle_weight =
-                    Weight::from_all(123456);
+                opaque_bundle.set_estimated_bundle_weight(Weight::from_all(123456));
                 return Ok(());
             }
             _ => return Ok(()),
         };
 
-        opaque_bundle.extrinsics.push(invalid_tx);
+        opaque_bundle.push_extrinsic(invalid_tx);
 
         Ok(())
     }
 
     fn reseal_bundle(
         &self,
-        opaque_bundle: &mut OpaqueBundleFor<Block, CBlock>,
+        opaque_bundle: &mut VersionedOpaqueBundleFor<Block, CBlock>,
         operator_signing_key: &OperatorPublicKey,
     ) -> Result<(), Box<dyn Error>> {
-        opaque_bundle.sealed_header.header.bundle_extrinsics_root =
+        opaque_bundle.set_bundle_extrinsics_root(
             HeaderHashingFor::<Block::Header>::ordered_trie_root(
                 opaque_bundle
-                    .extrinsics
+                    .extrinsics()
                     .iter()
                     .map(|xt| xt.encode())
                     .collect(),
                 sp_core::storage::StateVersion::V1,
-            );
+            ),
+        );
 
-        let pre_hash = opaque_bundle.sealed_header.pre_hash();
-        opaque_bundle.sealed_header.signature = {
+        let pre_hash = opaque_bundle.sealed_header().pre_hash();
+        opaque_bundle.set_signature({
             let s = self
                 .keystore
                 .sr25519_sign(
@@ -333,7 +334,7 @@ where
                 .expect("The malicious operator's key pair must exist");
             OperatorSignature::decode(&mut s.as_ref())
                 .expect("Deconde as OperatorSignature must succeed")
-        };
+        });
         Ok(())
     }
 }

@@ -408,6 +408,197 @@ pub enum VersionedBundle<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance
     V1(BundleV1<Extrinsic, Number, Hash, DomainHeader, Balance>),
 }
 
+impl<
+    Extrinsic: Encode + Clone,
+    Number: Encode,
+    Hash: Encode,
+    DomainHeader: HeaderT,
+    Balance: Encode,
+> VersionedBundle<Extrinsic, Number, Hash, DomainHeader, Balance>
+{
+    /// Returns the hash of this bundle.
+    pub fn hash(&self) -> H256 {
+        BlakeTwo256::hash_of(self)
+    }
+
+    /// Returns the domain_id of this bundle.
+    pub fn domain_id(&self) -> DomainId {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.sealed_header.header.proof_of_election.domain_id
+    }
+
+    /// Return the `bundle_extrinsics_root`
+    pub fn extrinsics_root(&self) -> HeaderHashFor<DomainHeader> {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.sealed_header.header.bundle_extrinsics_root
+    }
+
+    /// Return the `operator_id`
+    pub fn operator_id(&self) -> OperatorId {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.sealed_header.header.proof_of_election.operator_id
+    }
+
+    /// Return a reference of the execution receipt.
+    pub fn receipt(
+        &self,
+    ) -> &ExecutionReceipt<
+        Number,
+        Hash,
+        HeaderNumberFor<DomainHeader>,
+        HeaderHashFor<DomainHeader>,
+        Balance,
+    > {
+        let VersionedBundle::V1(bundle) = self;
+        &bundle.sealed_header.header.receipt
+    }
+
+    /// Consumes [`Bundle`] to extract the execution receipt.
+    pub fn into_receipt(
+        self,
+    ) -> ExecutionReceipt<
+        Number,
+        Hash,
+        HeaderNumberFor<DomainHeader>,
+        HeaderHashFor<DomainHeader>,
+        Balance,
+    > {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.sealed_header.header.receipt
+    }
+
+    /// Return the bundle size (include header and body) in bytes
+    pub fn size(&self) -> u32 {
+        self.encoded_size() as u32
+    }
+
+    /// Return the bundle body size in bytes
+    pub fn body_size(&self) -> u32 {
+        let VersionedBundle::V1(bundle) = self;
+        bundle
+            .extrinsics
+            .iter()
+            .map(|tx| tx.encoded_size() as u32)
+            .sum::<u32>()
+    }
+
+    /// Return the bundle body length. i.e number of extrinsics in the bundle.
+    pub fn body_length(&self) -> usize {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.extrinsics.len()
+    }
+
+    /// Returns the estimated weight of the Bundle.
+    pub fn estimated_weight(&self) -> Weight {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.sealed_header.header.estimated_bundle_weight
+    }
+
+    /// Returns the slot number at this bundle was constructed.
+    pub fn slot_number(&self) -> u64 {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.sealed_header.header.proof_of_election.slot_number
+    }
+
+    /// Returns the reference to proof of election.
+    pub fn proof_of_election(&self) -> &ProofOfElection {
+        let VersionedBundle::V1(bundle) = self;
+        &bundle.sealed_header.header.proof_of_election
+    }
+
+    /// Returns the sealed header in the Bundle.
+    pub fn sealed_header(&self) -> &SealedBundleHeader<Number, Hash, DomainHeader, Balance> {
+        let VersionedBundle::V1(bundle) = self;
+        &bundle.sealed_header
+    }
+
+    /// Returns the bundle body consuming the bundle. ie extrinsics.
+    pub fn into_extrinsics(self) -> Vec<Extrinsic> {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.extrinsics
+    }
+
+    /// Returns the reference to bundle body. ie extrinsics.
+    pub fn extrinsics(&self) -> &[Extrinsic] {
+        let VersionedBundle::V1(bundle) = self;
+        &bundle.extrinsics
+    }
+
+    /// Returns BundleV0 consuming the Versioned Bundle.
+    pub fn into_bundle_v0(self) -> BundleV1<Extrinsic, Number, Hash, DomainHeader, Balance> {
+        let VersionedBundle::V1(bundle) = self;
+        bundle
+    }
+
+    /// Add new extrinsic to the bundle.
+    pub fn push_extrinsic(&mut self, ext: Extrinsic) {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.extrinsics.push(ext);
+    }
+
+    /// Add new extrinsisc to the bundle.
+    pub fn push_extrinsics(&mut self, exts: &[Extrinsic]) {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.extrinsics.extend_from_slice(exts);
+    }
+
+    /// Add new extrinsic to the bundle at specified index.
+    pub fn set_extrinsic(&mut self, idx: usize, ext: Extrinsic) {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.extrinsics[idx] = ext;
+    }
+
+    /// Sets extrinsics to the bundle.
+    pub fn set_extrinsics(&mut self, exts: Vec<Extrinsic>) {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.extrinsics = exts;
+    }
+
+    /// Return the first extrinsic from the bundle.
+    pub fn pop_extrinsic(&mut self) -> Option<Extrinsic> {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.extrinsics.pop()
+    }
+
+    /// Sets bundle extrinsic root.
+    pub fn set_bundle_extrinsics_root(&mut self, root: HeaderHashFor<DomainHeader>) {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.sealed_header.header.bundle_extrinsics_root = root;
+    }
+
+    /// Returns a mutable reference to Execution receipt.
+    pub fn execution_receipt_as_mut(
+        &mut self,
+    ) -> &mut ExecutionReceipt<
+        Number,
+        Hash,
+        HeaderNumberFor<DomainHeader>,
+        HeaderHashFor<DomainHeader>,
+        Balance,
+    > {
+        let VersionedBundle::V1(bundle) = self;
+        &mut bundle.sealed_header.header.receipt
+    }
+
+    /// Set estimated bundle weight.
+    pub fn set_estimated_bundle_weight(&mut self, weight: Weight) {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.sealed_header.header.estimated_bundle_weight = weight;
+    }
+
+    /// Sets signature of the bundle.
+    pub fn set_signature(&mut self, signature: OperatorSignature) {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.sealed_header.signature = signature;
+    }
+
+    /// Sets proof of election for bundle.
+    pub fn set_proof_of_election(&mut self, poe: ProofOfElection) {
+        let VersionedBundle::V1(bundle) = self;
+        bundle.sealed_header.header.proof_of_election = poe;
+    }
+}
+
 /// Domain bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleV1<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
@@ -424,83 +615,29 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Bal
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
     }
-
-    /// Returns the domain_id of this bundle.
-    pub fn domain_id(&self) -> DomainId {
-        self.sealed_header.header.proof_of_election.domain_id
-    }
-
-    /// Return the `bundle_extrinsics_root`
-    pub fn extrinsics_root(&self) -> HeaderHashFor<DomainHeader> {
-        self.sealed_header.header.bundle_extrinsics_root
-    }
-
-    /// Return the `operator_id`
-    pub fn operator_id(&self) -> OperatorId {
-        self.sealed_header.header.proof_of_election.operator_id
-    }
-
-    /// Return a reference of the execution receipt.
-    pub fn receipt(
-        &self,
-    ) -> &ExecutionReceipt<
-        Number,
-        Hash,
-        HeaderNumberFor<DomainHeader>,
-        HeaderHashFor<DomainHeader>,
-        Balance,
-    > {
-        &self.sealed_header.header.receipt
-    }
-
-    /// Consumes [`Bundle`] to extract the execution receipt.
-    pub fn into_receipt(
-        self,
-    ) -> ExecutionReceipt<
-        Number,
-        Hash,
-        HeaderNumberFor<DomainHeader>,
-        HeaderHashFor<DomainHeader>,
-        Balance,
-    > {
-        self.sealed_header.header.receipt
-    }
-
-    /// Return the bundle size (include header and body) in bytes
-    pub fn size(&self) -> u32 {
-        self.encoded_size() as u32
-    }
-
-    /// Return the bundle body size in bytes
-    pub fn body_size(&self) -> u32 {
-        self.extrinsics
-            .iter()
-            .map(|tx| tx.encoded_size() as u32)
-            .sum::<u32>()
-    }
-
-    pub fn estimated_weight(&self) -> Weight {
-        self.sealed_header.header.estimated_bundle_weight
-    }
-
-    pub fn slot_number(&self) -> u64 {
-        self.sealed_header.header.proof_of_election.slot_number
-    }
 }
 
-/// Bundle with opaque extrinsics.
-pub type OpaqueBundle<Number, Hash, DomainHeader, Balance> =
+/// Deprecated Bundle with opaque extrinsics.
+pub type OpaqueBundleV0<Number, Hash, DomainHeader, Balance> =
     BundleV1<OpaqueExtrinsic, Number, Hash, DomainHeader, Balance>;
 
-/// List of [`OpaqueBundle`].
-pub type OpaqueBundles<Block, DomainHeader, Balance> =
-    Vec<OpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>>;
+/// List of [`OpaqueBundleV0`].
+pub type OpaqueBundlesV0<Block, DomainHeader, Balance> =
+    Vec<OpaqueBundleV0<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>>;
+
+/// Bundle with opaque extrinsics.
+pub type VersionedOpaqueBundle<Number, Hash, DomainHeader, Balance> =
+    VersionedBundle<OpaqueExtrinsic, Number, Hash, DomainHeader, Balance>;
+
+/// List of [`VersionedOpaqueBundle`].
+pub type VersionedOpaqueBundles<Block, DomainHeader, Balance> =
+    Vec<VersionedOpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>>;
 
 impl<Extrinsic: Encode, Number, Hash, DomainHeader: HeaderT, Balance>
     BundleV1<Extrinsic, Number, Hash, DomainHeader, Balance>
 {
     /// Convert a bundle with generic extrinsic to a bundle with opaque extrinsic.
-    pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, DomainHeader, Balance> {
+    pub fn into_opaque_bundle(self) -> VersionedOpaqueBundle<Number, Hash, DomainHeader, Balance> {
         let BundleV1 {
             sealed_header,
             extrinsics,
@@ -512,10 +649,10 @@ impl<Extrinsic: Encode, Number, Hash, DomainHeader: HeaderT, Balance>
                     .expect("We have just encoded a valid extrinsic; qed")
             })
             .collect();
-        OpaqueBundle {
+        VersionedOpaqueBundle::V1(BundleV1 {
             sealed_header,
             extrinsics: opaque_extrinsics,
-        }
+        })
     }
 }
 
@@ -535,7 +672,7 @@ pub fn dummy_opaque_bundle<
         HeaderHashFor<DomainHeader>,
         Balance,
     >,
-) -> OpaqueBundle<Number, Hash, DomainHeader, Balance> {
+) -> VersionedOpaqueBundle<Number, Hash, DomainHeader, Balance> {
     use sp_core::crypto::UncheckedFrom;
 
     let header = BundleHeader {
@@ -546,10 +683,10 @@ pub fn dummy_opaque_bundle<
     };
     let signature = OperatorSignature::unchecked_from([0u8; 64]);
 
-    OpaqueBundle {
+    VersionedOpaqueBundle::V1(BundleV1 {
         sealed_header: SealedBundleHeader::new(header, signature),
         extrinsics: Vec::new(),
-    }
+    })
 }
 
 /// A digest of the bundle
@@ -1650,16 +1787,27 @@ sp_api::decl_runtime_apis! {
     #[api_version(5)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
-        fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
+        #[changed_in(5)]
+        fn submit_bundle_unsigned(opaque_bundle: OpaqueBundleV0<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
+
+        /// Submits the transaction bundle via an unsigned extrinsic.
+        fn submit_bundle_unsigned(opaque_bundle: VersionedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
 
         // Submits a singleton receipt via an unsigned extrinsic.
         fn submit_receipt_unsigned(singleton_receipt: SealedSingletonReceipt<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
 
         /// Extracts the bundles successfully stored from the given extrinsics.
+        #[changed_in(5)]
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
-        ) -> OpaqueBundles<Block, DomainHeader, Balance>;
+        ) -> OpaqueBundlesV0<Block, DomainHeader, Balance>;
+
+        /// Extracts the bundles successfully stored from the given extrinsics.
+        fn extract_successful_bundles(
+            domain_id: DomainId,
+            extrinsics: Vec<Block::Extrinsic>,
+        ) -> VersionedOpaqueBundles<Block, DomainHeader, Balance>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed() -> Randomness;

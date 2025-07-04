@@ -9,6 +9,7 @@
 #[cfg(feature = "std")]
 pub mod execution_prover;
 pub mod fraud_proof;
+pub mod fraud_proof_v1;
 #[cfg(feature = "std")]
 mod host_functions;
 mod runtime_interface;
@@ -21,7 +22,8 @@ pub mod weights;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::fraud_proof::FraudProof;
+use crate::fraud_proof::FraudProofV0;
+use crate::fraud_proof_v1::FraudProofV1;
 use crate::storage_proof::FraudProofStorageKeyRequest;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -150,9 +152,14 @@ impl PassBy for StatelessDomainRuntimeCall {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for fraud proof.
+    #[api_version(2)]
     pub trait FraudProofApi<DomainHeader: HeaderT> {
         /// Submit the fraud proof via an unsigned extrinsic.
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash, DomainHeader, H256>);
+        #[changed_in(2)]
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProofV0<NumberFor<Block>, Block::Hash, DomainHeader, H256>);
+
+        /// Submit the fraud proof via an unsigned extrinsic.
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProofV1<NumberFor<Block>, Block::Hash, DomainHeader, H256>);
 
         /// Return the storage key used in fraud proof
         fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8>;

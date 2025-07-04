@@ -13,7 +13,7 @@ use sp_domains::{
     BundleVersion, DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor,
     OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
 };
-use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
 use sp_messenger::messages::{
     BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelId, ChannelStateWithNonce,
@@ -169,7 +169,7 @@ sp_api::impl_runtime_apis! {
 
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
-            _opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
+            _opaque_bundle: sp_domains::VersionedOpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
         ) {
             unreachable!()
         }
@@ -183,7 +183,7 @@ sp_api::impl_runtime_apis! {
         fn extract_successful_bundles(
             _domain_id: DomainId,
             _extrinsics: Vec<ExtrinsicFor<Block>>,
-        ) -> sp_domains::OpaqueBundles<Block, DomainHeader, Balance> {
+        ) -> sp_domains::VersionedOpaqueBundles<Block, DomainHeader, Balance> {
             unreachable!()
         }
 
@@ -436,7 +436,7 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(_fraud_proof: FraudProof<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, H256>) {
+        fn submit_fraud_proof_unsigned(_fraud_proof: FraudProofV1<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, H256>) {
             unreachable!()
         }
 

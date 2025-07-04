@@ -28,11 +28,11 @@ use sp_core::{Get, H256};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, BundleVersion, ChainId, DomainId, ExecutionReceipt, InboxedBundle, OpaqueBundle,
+    BundleHeader, BundleV1, BundleVersion, ChainId, DomainId, ExecutionReceipt, InboxedBundle,
     OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeId, RuntimeType,
-    SealedBundleHeader,
+    SealedBundleHeader, VersionedOpaqueBundle,
 };
-use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_runtime::generic::{EXTRINSIC_FORMAT_VERSION, Preamble};
 use sp_runtime::traits::{
     AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, ConstU16, Hash as HashT,
@@ -450,7 +450,7 @@ fn create_dummy_bundle(
     domain_id: DomainId,
     block_number: BlockNumber,
     consensus_block_hash: Hash,
-) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
+) -> VersionedOpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
     let execution_receipt = create_dummy_receipt(
         block_number,
         consensus_block_hash,
@@ -470,7 +470,7 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     operator_id: OperatorId,
     bundle_extrinsics_root: H256,
     receipt: ExecutionReceipt<BlockNumber, Hash, DomainBlockNumber, H256, u128>,
-) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
+) -> VersionedOpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
     let pair = OperatorPair::from_seed(&[0; 32]);
 
     let header = BundleHeader::<_, _, DomainHeader, _> {
@@ -482,10 +482,10 @@ pub(crate) fn create_dummy_bundle_with_receipts(
 
     let signature = pair.sign(header.hash().as_ref());
 
-    OpaqueBundle {
+    VersionedOpaqueBundle::V1(BundleV1 {
         sealed_header: SealedBundleHeader::new(header, signature),
         extrinsics: Vec::new(),
-    }
+    })
 }
 
 pub(crate) struct ReadRuntimeVersion(pub Vec<u8>);
@@ -717,16 +717,16 @@ fn test_bundle_format_verification() {
         DomainRegistry::<Test>::insert(domain_id, domain_obj);
 
         let mut valid_bundle = create_dummy_bundle(DOMAIN_ID, 0, System::parent_hash());
-        valid_bundle.extrinsics.push(opaque_extrinsic(1, 1));
-        valid_bundle.extrinsics.push(opaque_extrinsic(2, 2));
-        valid_bundle.sealed_header.header.bundle_extrinsics_root = BlakeTwo256::ordered_trie_root(
+        valid_bundle.push_extrinsic(opaque_extrinsic(1, 1));
+        valid_bundle.push_extrinsic(opaque_extrinsic(2, 2));
+        valid_bundle.set_bundle_extrinsics_root(BlakeTwo256::ordered_trie_root(
             valid_bundle
-                .extrinsics
+                .extrinsics()
                 .iter()
                 .map(|xt| xt.encode())
                 .collect(),
             sp_core::storage::StateVersion::V1,
-        );
+        ));
         assert_ok!(pallet_domains::Pallet::<Test>::check_extrinsics_root(
             &valid_bundle
         ));
@@ -734,18 +734,13 @@ fn test_bundle_format_verification() {
         // Bundle exceed max size
         let mut too_large_bundle = valid_bundle.clone();
         for i in 0..max_extrinsics_count {
-            too_large_bundle
-                .extrinsics
-                .push(opaque_extrinsic(i as u128, i as u128));
+            too_large_bundle.push_extrinsic(opaque_extrinsic(i as u128, i as u128));
         }
         assert!(too_large_bundle.size() > max_bundle_size);
 
         // Bundle with wrong value of `bundle_extrinsics_root`
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
-        invalid_extrinsic_root_bundle
-            .sealed_header
-            .header
-            .bundle_extrinsics_root = H256::random();
+        invalid_extrinsic_root_bundle.set_bundle_extrinsics_root(H256::random());
         assert_err!(
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
@@ -753,7 +748,7 @@ fn test_bundle_format_verification() {
 
         // Bundle with wrong value of `extrinsics`
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
-        invalid_extrinsic_root_bundle.extrinsics[0] = opaque_extrinsic(3, 3);
+        invalid_extrinsic_root_bundle.set_extrinsic(0, opaque_extrinsic(3, 3));
         assert_err!(
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
@@ -761,9 +756,7 @@ fn test_bundle_format_verification() {
 
         // Bundle with addtional extrinsic
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
-        invalid_extrinsic_root_bundle
-            .extrinsics
-            .push(opaque_extrinsic(4, 4));
+        invalid_extrinsic_root_bundle.push_extrinsic(opaque_extrinsic(4, 4));
         assert_err!(
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
@@ -771,7 +764,7 @@ fn test_bundle_format_verification() {
 
         // Bundle with missing extrinsic
         let mut invalid_extrinsic_root_bundle = valid_bundle;
-        invalid_extrinsic_root_bundle.extrinsics.pop();
+        invalid_extrinsic_root_bundle.pop_extrinsic().unwrap();
         assert_err!(
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
@@ -799,7 +792,7 @@ fn test_invalid_fraud_proof() {
             .unwrap()
             .execution_receipt
             .hash::<DomainHashingFor<Test>>();
-        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+        let fraud_proof = FraudProofV1::dummy_fraud_proof(domain_id, bad_receipt_hash);
         assert_eq!(
             Domains::validate_fraud_proof(&fraud_proof),
             Err(FraudProofError::ChallengingGenesisReceipt)
@@ -807,7 +800,7 @@ fn test_invalid_fraud_proof() {
 
         // Fraud proof target unknown ER is invalid
         let bad_receipt_hash = H256::random();
-        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+        let fraud_proof = FraudProofV1::dummy_fraud_proof(domain_id, bad_receipt_hash);
         assert_eq!(
             Domains::validate_fraud_proof(&fraud_proof),
             Err(FraudProofError::BadReceiptNotFound)
@@ -844,7 +837,7 @@ fn test_basic_fraud_proof_processing() {
                 .unwrap()
                 .execution_receipt;
             let bad_receipt_hash = bad_receipt.hash::<DomainHashingFor<Test>>();
-            let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+            let fraud_proof = FraudProofV1::dummy_fraud_proof(domain_id, bad_receipt_hash);
             assert_ok!(Domains::submit_fraud_proof(
                 DomainOrigin::ValidatedUnsigned.into(),
                 Box::new(fraud_proof)

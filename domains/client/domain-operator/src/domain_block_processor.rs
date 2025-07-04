@@ -1,6 +1,6 @@
 use crate::ExecutionReceiptFor;
 use crate::aux_schema::BundleMismatchType;
-use crate::fraud_proof::FraudProofGenerator;
+use crate::fraud_proof::{FraudProofFor, FraudProofGenerator};
 use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
 use domain_block_builder::{BlockBuilder, BuiltBlock, CollectedStorageChanges};
 use domain_block_preprocessor::PreprocessResult;
@@ -22,7 +22,6 @@ use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
 use sp_domains_fraud_proof::FraudProofApi;
-use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One, Zero};
@@ -746,7 +745,19 @@ where
                 self.consensus_offchain_tx_pool_factory
                     .offchain_transaction_pool(consensus_best_hash),
             );
-            consensus_runtime_api.submit_fraud_proof_unsigned(consensus_best_hash, fraud_proof)?;
+            match fraud_proof {
+                FraudProofFor::V0(fraud_proof) => {
+                    #[allow(deprecated)]
+                    consensus_runtime_api.submit_fraud_proof_unsigned_before_version_2(
+                        consensus_best_hash,
+                        fraud_proof,
+                    )?;
+                }
+                FraudProofFor::V1(fraud_proof) => {
+                    consensus_runtime_api
+                        .submit_fraud_proof_unsigned(consensus_best_hash, fraud_proof)?;
+                }
+            }
         }
 
         Ok(())
@@ -831,8 +842,7 @@ where
     pub fn generate_fraud_proof(
         &self,
         mismatched_receipts: MismatchedReceipts<Block, CBlock>,
-    ) -> sp_blockchain::Result<FraudProof<NumberFor<CBlock>, CBlock::Hash, Block::Header, H256>>
-    {
+    ) -> sp_blockchain::Result<FraudProofFor<CBlock, Block::Header>> {
         let MismatchedReceipts {
             local_receipt,
             bad_receipt,

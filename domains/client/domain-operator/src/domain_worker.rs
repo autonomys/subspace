@@ -32,7 +32,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::H256;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::{BundleProducerElectionApi, DomainsApi, OpaqueBundle, OperatorId};
+use sp_domains::{BundleProducerElectionApi, DomainsApi, OperatorId, VersionedOpaqueBundle};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
@@ -44,8 +44,8 @@ use std::task::{Context, Poll};
 use subspace_runtime_primitives::{Balance, BlockHashFor, HeaderFor};
 use tracing::{Instrument, info};
 
-pub type OpaqueBundleFor<Block, CBlock> =
-    OpaqueBundle<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
+pub type VersionedOpaqueBundleFor<Block, CBlock> =
+    VersionedOpaqueBundle<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) async fn start_worker<
@@ -158,8 +158,22 @@ pub(super) async fn start_worker<
 
                             match domain_proposal {
                                 DomainProposal::Bundle(opaque_bundle) => {
-                                    if let Err(err) = runtime_api.submit_bundle_unsigned(best_hash, opaque_bundle) {
-                                        tracing::error!(?slot, ?err, "Error at submitting bundle.");
+                                    let domains_api_version = runtime_api
+                                        .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(best_hash)
+                                        .ok()
+                                        .flatten()
+                                        // It is safe to return a default version of 1, since there will always be version 1.
+                                        .unwrap_or(1);
+                                    if domains_api_version >= 5 {
+                                        if let Err(err) = runtime_api.submit_bundle_unsigned(best_hash, opaque_bundle) {
+                                            tracing::error!(?slot, ?err, "Error at submitting bundle.");
+                                        }
+                                    } else {
+                                        let opaque_bundle = opaque_bundle.into_bundle_v0();
+                                        #[allow(deprecated)]
+                                        if let Err(err) = runtime_api.submit_bundle_unsigned_before_version_5(best_hash, opaque_bundle) {
+                                            tracing::error!(?slot, ?err, "Error at submitting bundle.");
+                                        }
                                     }
                                 },
                                 DomainProposal::Receipt(singleton_receipt) => {

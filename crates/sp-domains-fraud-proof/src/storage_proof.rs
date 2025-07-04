@@ -8,7 +8,7 @@ use sp_domains::proof_provider_and_verifier::{
 };
 use sp_domains::{
     DomainAllowlistUpdates, DomainId, DomainSudoCall, EvmDomainContractCreationAllowedByCall,
-    OpaqueBundle, RuntimeId, RuntimeObject,
+    OpaqueBundleV0, RuntimeId, RuntimeObject, VersionedOpaqueBundle,
 };
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime_interface::pass_by;
@@ -242,14 +242,16 @@ impl<Block: BlockT> BasicStorageProof<Block> for DomainRuntimeCodeProof {
     }
 }
 
+/// V0 Bundle with proof data for Fraud proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct OpaqueBundleWithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
-    pub bundle: OpaqueBundle<Number, Hash, DomainHeader, Balance>,
+pub struct OpaqueBundleV0WithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
+    pub bundle: OpaqueBundleV0<Number, Hash, DomainHeader, Balance>,
     pub bundle_index: u32,
     pub bundle_storage_proof: SuccessfulBundlesProof,
 }
 
-impl<Number, Hash, DomainHeader, Balance> OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>
+impl<Number, Hash, DomainHeader, Balance>
+    OpaqueBundleV0WithProof<Number, Hash, DomainHeader, Balance>
 where
     Number: Encode,
     Hash: Encode,
@@ -267,7 +269,7 @@ where
         proof_provider: &PP,
         domain_id: DomainId,
         block_hash: Block::Hash,
-        bundle: OpaqueBundle<Number, Hash, DomainHeader, Balance>,
+        bundle: OpaqueBundleV0<Number, Hash, DomainHeader, Balance>,
         bundle_index: u32,
     ) -> Result<Self, GenerationError> {
         let bundle_storage_proof = SuccessfulBundlesProof::generate(
@@ -277,7 +279,73 @@ where
             storage_key_provider,
         )?;
 
-        Ok(OpaqueBundleWithProof {
+        Ok(OpaqueBundleV0WithProof {
+            bundle,
+            bundle_index,
+            bundle_storage_proof,
+        })
+    }
+
+    /// Verify if the `bundle` does commit to the given `state_root`
+    pub fn verify<Block: BlockT, SKP: FraudProofStorageKeyProvider<NumberFor<Block>>>(
+        &self,
+        domain_id: DomainId,
+        state_root: &Block::Hash,
+    ) -> Result<(), VerificationError> {
+        let successful_bundles_at: Vec<H256> =
+            <SuccessfulBundlesProof as BasicStorageProof<Block>>::verify::<SKP>(
+                self.bundle_storage_proof.clone(),
+                domain_id,
+                state_root,
+            )?;
+
+        successful_bundles_at
+            .get(self.bundle_index as usize)
+            .filter(|b| **b == self.bundle.hash())
+            .ok_or(VerificationError::InvalidBundleStorageProof)?;
+
+        Ok(())
+    }
+}
+
+/// Bundle with proof data for fraud proof.
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct VersionedOpaqueBundleWithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
+    pub bundle: VersionedOpaqueBundle<Number, Hash, DomainHeader, Balance>,
+    pub bundle_index: u32,
+    pub bundle_storage_proof: SuccessfulBundlesProof,
+}
+
+impl<Number, Hash, DomainHeader, Balance>
+    VersionedOpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>
+where
+    Number: Encode,
+    Hash: Encode,
+    DomainHeader: HeaderT,
+    Balance: Encode,
+{
+    #[cfg(feature = "std")]
+    #[allow(clippy::let_and_return)]
+    pub fn generate<
+        Block: BlockT,
+        PP: ProofProvider<Block>,
+        SKP: FraudProofStorageKeyProviderInstance<NumberFor<Block>>,
+    >(
+        storage_key_provider: &SKP,
+        proof_provider: &PP,
+        domain_id: DomainId,
+        block_hash: Block::Hash,
+        bundle: VersionedOpaqueBundle<Number, Hash, DomainHeader, Balance>,
+        bundle_index: u32,
+    ) -> Result<Self, GenerationError> {
+        let bundle_storage_proof = SuccessfulBundlesProof::generate(
+            proof_provider,
+            block_hash,
+            domain_id,
+            storage_key_provider,
+        )?;
+
+        Ok(VersionedOpaqueBundleWithProof {
             bundle,
             bundle_index,
             bundle_storage_proof,

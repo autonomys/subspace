@@ -2,8 +2,12 @@
 extern crate alloc;
 
 use crate::fraud_proof::{
-    InvalidBundlesProof, InvalidBundlesProofData, InvalidExtrinsicsRootProof,
-    InvalidStateTransitionProof, MmrRootProof, ValidBundleProof, VerificationError,
+    InvalidBundlesV0Proof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof, MmrRootProof,
+    ValidBundleV0Proof, VerificationError,
+};
+use crate::fraud_proof_v1::{
+    InvalidBundlesProof, InvalidBundlesProofData, InvalidVersionedBundlesProof, ValidBundleProof,
+    ValidVersionedBundleProof,
 };
 use crate::storage_proof::{self, *};
 use crate::{
@@ -245,25 +249,29 @@ where
     DomainHeader::Hash: Into<H256> + PartialEq + Copy,
     SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
 {
-    let ValidBundleProof {
-        bundle_with_proof, ..
-    } = fraud_proof;
+    let (extrinsics, bundle_index) = match fraud_proof {
+        ValidBundleProof::V0(ValidBundleV0Proof { bundle_with_proof }) => {
+            bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
+            (
+                bundle_with_proof.bundle.extrinsics.clone(),
+                bundle_with_proof.bundle_index,
+            )
+        }
+        ValidBundleProof::Versioned(ValidVersionedBundleProof { bundle_with_proof }) => {
+            bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
+            (
+                bundle_with_proof.bundle.extrinsics().to_vec(),
+                bundle_with_proof.bundle_index,
+            )
+        }
+    };
 
-    bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
-    let OpaqueBundleWithProof {
-        bundle,
-        bundle_index,
-        ..
-    } = bundle_with_proof;
-
-    let valid_bundle_digest = fraud_proof_runtime_interface::derive_bundle_digest(
-        domain_runtime_code,
-        bundle.extrinsics.clone(),
-    )
-    .ok_or(VerificationError::FailedToDeriveBundleDigest)?;
+    let valid_bundle_digest =
+        fraud_proof_runtime_interface::derive_bundle_digest(domain_runtime_code, extrinsics)
+            .ok_or(VerificationError::FailedToDeriveBundleDigest)?;
 
     let bad_valid_bundle_digest = bad_receipt
-        .valid_bundle_digest_at(*bundle_index as usize)
+        .valid_bundle_digest_at(bundle_index as usize)
         .ok_or(VerificationError::TargetValidBundleNotFound)?;
 
     if bad_valid_bundle_digest.into() == valid_bundle_digest {
@@ -593,15 +601,44 @@ where
     SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
     MPV: MmrProofVerifier<MmrHash, NumberFor<CBlock>, CBlock::Hash>,
 {
-    let InvalidBundlesProof {
-        bundle_index,
-        invalid_bundle_type,
-        is_good_invalid_fraud_proof,
-        proof_data,
-        ..
-    } = invalid_bundles_fraud_proof;
-    let (bundle_index, is_good_invalid_fraud_proof) = (*bundle_index, *is_good_invalid_fraud_proof);
+    let (bundle_index, is_good_invalid_fraud_proof, invalid_bundle_type, proof_data) =
+        match invalid_bundles_fraud_proof {
+            InvalidBundlesProof::V0(proof) => {
+                let InvalidBundlesV0Proof {
+                    bundle_index,
+                    invalid_bundle_type,
+                    is_good_invalid_fraud_proof,
+                    proof_data,
+                } = proof;
+                (
+                    bundle_index,
+                    is_good_invalid_fraud_proof,
+                    invalid_bundle_type,
+                    // this is a bit of penality but should not be in long run
+                    // since V0 will not be used once runtime is upgraded
+                    // and blocks with V0 bundles are confirmed.
+                    // but doing this, we will get same code path for both
+                    // types.
+                    &proof_data.clone().into(),
+                )
+            }
+            InvalidBundlesProof::Versioned(proof) => {
+                let InvalidVersionedBundlesProof {
+                    bundle_index,
+                    invalid_bundle_type,
+                    is_good_invalid_fraud_proof,
+                    proof_data,
+                } = proof;
+                (
+                    bundle_index,
+                    is_good_invalid_fraud_proof,
+                    invalid_bundle_type,
+                    proof_data,
+                )
+            }
+        };
 
+    let (bundle_index, is_good_invalid_fraud_proof) = (*bundle_index, *is_good_invalid_fraud_proof);
     let targeted_invalid_bundle_entry = check_expected_bundle_entry::<CBlock, DomainHeader, Balance>(
         &bad_receipt,
         bundle_index,
@@ -629,7 +666,7 @@ where
     // is invalid
     if let Some(invalid_extrinsic_index) = targeted_invalid_bundle_entry.invalid_extrinsic_index()
         && let InvalidBundlesProofData::Bundle(bundle_with_proof) = proof_data
-        && bundle_with_proof.bundle.extrinsics.len() as u32 <= invalid_extrinsic_index
+        && bundle_with_proof.bundle.body_length() as u32 <= invalid_extrinsic_index
     {
         return Ok(());
     }
@@ -644,14 +681,13 @@ where
             };
 
             let opaque_extrinsic = bundle
-                .extrinsics
+                .extrinsics()
                 .get(*extrinsic_index as usize)
                 .cloned()
                 .ok_or(VerificationError::ExtrinsicNotFound)?;
 
             let domain_tx_range = U256::MAX / INITIAL_DOMAIN_TX_RANGE;
-            let bundle_vrf_hash =
-                U256::from_be_bytes(*bundle.sealed_header.header.proof_of_election.vrf_hash());
+            let bundle_vrf_hash = U256::from_be_bytes(*bundle.proof_of_election().vrf_hash());
 
             let is_tx_in_range = fraud_proof_runtime_interface::domain_runtime_call(
                 domain_runtime_code,
@@ -699,7 +735,7 @@ where
             }
         }
         InvalidBundleType::IllegalTx(extrinsic_index) => {
-            let (mut bundle, execution_proof) = match proof_data {
+            let (bundle, execution_proof) = match proof_data {
                 InvalidBundlesProofData::BundleAndExecution {
                     bundle_with_proof,
                     execution_proof,
@@ -708,7 +744,7 @@ where
             };
 
             let extrinsics = bundle
-                .extrinsics
+                .into_extrinsics()
                 .drain(..)
                 .take((*extrinsic_index + 1) as usize)
                 .collect();
@@ -771,7 +807,7 @@ where
             let bundle_header_weight = bundle.estimated_weight();
             let estimated_bundle_weight = fraud_proof_runtime_interface::bundle_weight(
                 domain_runtime_code,
-                bundle.extrinsics,
+                bundle.into_extrinsics(),
             )
             .ok_or(VerificationError::FailedToGetBundleWeight)?;
 

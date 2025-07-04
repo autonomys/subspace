@@ -690,7 +690,7 @@ async fn test_evm_domain_block_fee() {
 
     // Produce a bundle that contains the just sent extrinsic
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(bundle.extrinsics.len(), 3);
+    assert_eq!(bundle.extrinsics().len(), 3);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();

@@ -1,23 +1,25 @@
-use crate::fraud_proof::{FraudProof, FraudProofVariant};
+use crate::fraud_proof_v1::{FraudProofV1, FraudProofVariantV1};
 use sp_domains::InvalidBundleType;
 use sp_runtime::traits::Header as HeaderT;
 use sp_weights::Weight;
 
 pub fn fraud_proof_verification_weights<Number, Hash, DomainHeader: HeaderT, MmrHash>(
-    fp: &FraudProof<Number, Hash, DomainHeader, MmrHash>,
+    fp: &FraudProofV1<Number, Hash, DomainHeader, MmrHash>,
 ) -> Weight {
     let mut weight = match &fp.proof {
-        FraudProofVariant::InvalidStateTransition(_) => {
+        FraudProofVariantV1::InvalidStateTransition(_) => {
             invalid_state_transition_proof_verification()
         }
-        FraudProofVariant::ValidBundle(_) => valid_bundle_proof_verification(),
-        FraudProofVariant::InvalidExtrinsicsRoot(_) => invalid_domain_extrinsics_root_fraud_proof(),
-        FraudProofVariant::InvalidDomainBlockHash(_) => {
+        FraudProofVariantV1::ValidBundle(_) => valid_bundle_proof_verification(),
+        FraudProofVariantV1::InvalidExtrinsicsRoot(_) => {
+            invalid_domain_extrinsics_root_fraud_proof()
+        }
+        FraudProofVariantV1::InvalidDomainBlockHash(_) => {
             invalid_domain_block_hash_fraud_proof_verification()
         }
-        FraudProofVariant::InvalidBlockFees(_) => invalid_block_fees_fraud_proof_verification(),
-        FraudProofVariant::InvalidTransfers(_) => invalid_transfers_fraud_proof_verification(),
-        FraudProofVariant::InvalidBundles(p) => match p.invalid_bundle_type {
+        FraudProofVariantV1::InvalidBlockFees(_) => invalid_block_fees_fraud_proof_verification(),
+        FraudProofVariantV1::InvalidTransfers(_) => invalid_transfers_fraud_proof_verification(),
+        FraudProofVariantV1::InvalidBundles(p) => match p.invalid_bundle_type() {
             InvalidBundleType::UndecodableTx(_) => {
                 invalid_bundle_undecodable_tx_fraud_proof_verification()
             }
@@ -36,7 +38,7 @@ pub fn fraud_proof_verification_weights<Number, Hash, DomainHeader: HeaderT, Mmr
             }
         },
         #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-        FraudProofVariant::Dummy => Weight::zero(),
+        FraudProofVariantV1::Dummy => Weight::zero(),
     };
     if fp.maybe_mmr_proof.is_some() {
         weight = weight.saturating_add(consensus_state_root_mmr_proof_verification());

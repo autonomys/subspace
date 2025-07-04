@@ -28,7 +28,7 @@ use sp_domains::core_api::DomainCoreApi;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
     DomainId, DomainsApi, ExecutionReceipt, ExtrinsicDigest, HeaderHashingFor, InboxedBundle,
-    InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity,
+    InvalidBundleType, ReceiptValidity, VersionedOpaqueBundle, VersionedOpaqueBundles,
 };
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
@@ -178,10 +178,30 @@ where
             consensus_block_hash,
         )?;
 
-        let bundles = self
-            .consensus_client
-            .runtime_api()
-            .extract_successful_bundles(consensus_block_hash, self.domain_id, primary_extrinsics)?;
+        let runtime_api = self.consensus_client.runtime_api();
+        let domains_api_version = runtime_api
+            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_block_hash)?
+            // It is safe to return a default version of 1, since there will always be version 1.
+            .unwrap_or(1);
+
+        let bundles = if domains_api_version >= 5 {
+            runtime_api.extract_successful_bundles(
+                consensus_block_hash,
+                self.domain_id,
+                primary_extrinsics,
+            )?
+        } else {
+            #[allow(deprecated)]
+            runtime_api
+                .extract_successful_bundles_before_version_5(
+                    consensus_block_hash,
+                    self.domain_id,
+                    primary_extrinsics,
+                )?
+                .into_iter()
+                .map(VersionedOpaqueBundle::V1)
+                .collect::<Vec<_>>()
+        };
 
         if bundles.is_empty()
             && !is_runtime_upgraded::<_, _, Block>(
@@ -243,7 +263,7 @@ where
     #[allow(clippy::type_complexity)]
     fn compile_bundles_to_extrinsics(
         &self,
-        bundles: OpaqueBundles<CBlock, Block::Header, Balance>,
+        bundles: VersionedOpaqueBundles<CBlock, Block::Header, Balance>,
         tx_range: U256,
         (parent_domain_hash, parent_domain_number): (Block::Hash, NumberFor<Block>),
         at_consensus_hash: CBlock::Hash,
@@ -287,7 +307,7 @@ where
                 )?
             } else {
                 self.check_bundle_validity(
-                    &bundle,
+                    bundle,
                     &tx_range,
                     (parent_domain_hash, parent_domain_number),
                     at_consensus_hash,
@@ -371,15 +391,14 @@ where
 
     fn check_bundle_validity(
         &self,
-        bundle: &OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
+        bundle: VersionedOpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
         tx_range: &U256,
         (parent_domain_hash, parent_domain_number): (Block::Hash, NumberFor<Block>),
         at_consensus_hash: CBlock::Hash,
     ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic>> {
-        let bundle_vrf_hash =
-            U256::from_be_bytes(*bundle.sealed_header.header.proof_of_election.vrf_hash());
+        let bundle_vrf_hash = U256::from_be_bytes(*bundle.proof_of_election().vrf_hash());
 
-        let mut extrinsics = Vec::with_capacity(bundle.extrinsics.len());
+        let mut extrinsics = Vec::with_capacity(bundle.body_length());
         let mut estimated_bundle_weight = Weight::default();
         let mut maybe_invalid_bundle_type = None;
 
@@ -389,7 +408,9 @@ where
         // Check the validity of each extrinsic
         //
         // NOTE: for each extrinsic the checking order must follow `InvalidBundleType::checking_order`
-        for (index, opaque_extrinsic) in bundle.extrinsics.iter().enumerate() {
+        let bundle_hash = bundle.hash();
+        let bundle_weight = bundle.estimated_weight();
+        for (index, opaque_extrinsic) in bundle.into_extrinsics().iter().enumerate() {
             let decode_result = stateless_runtime_api.decode_extrinsic(opaque_extrinsic.clone())?;
             let extrinsic = match decode_result {
                 Ok(extrinsic) => extrinsic,
@@ -398,7 +419,7 @@ where
                         ?opaque_extrinsic,
                         ?err,
                         "Undecodable extrinsic in bundle({})",
-                        bundle.hash()
+                        bundle_hash
                     );
                     maybe_invalid_bundle_type
                         .replace(InvalidBundleType::UndecodableTx(index as u32));
@@ -477,7 +498,7 @@ where
             return Ok(BundleValidity::Invalid(invalid_bundle_type));
         }
 
-        if estimated_bundle_weight != bundle.estimated_weight() {
+        if estimated_bundle_weight != bundle_weight {
             return Ok(BundleValidity::Invalid(
                 InvalidBundleType::InvalidBundleWeight,
             ));
@@ -488,14 +509,13 @@ where
 
     fn batch_check_bundle_validity(
         &self,
-        bundle: OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
+        bundle: VersionedOpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
         tx_range: &U256,
         (parent_domain_hash, parent_domain_number): (Block::Hash, NumberFor<Block>),
         at_consensus_hash: CBlock::Hash,
     ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic>> {
-        let bundle_vrf_hash =
-            U256::from_be_bytes(*bundle.sealed_header.header.proof_of_election.vrf_hash());
-        let bundle_length = bundle.extrinsics.len();
+        let bundle_vrf_hash = U256::from_be_bytes(*bundle.proof_of_election().vrf_hash());
+        let bundle_length = bundle.body_length();
         let bundle_estimated_weight = bundle.estimated_weight();
         let mut maybe_invalid_bundle_type = None;
 
@@ -514,7 +534,8 @@ where
         //
         // NOTE: the checking order must follow `InvalidBundleType::checking_order`
 
-        let mut extrinsics = stateless_runtime_api.decode_extrinsics_prefix(bundle.extrinsics)?;
+        let mut extrinsics =
+            stateless_runtime_api.decode_extrinsics_prefix(bundle.into_extrinsics())?;
         if extrinsics.len() != bundle_length {
             // If the length changed meaning there is undecodable tx at index `extrinsics.len()`
             maybe_invalid_bundle_type

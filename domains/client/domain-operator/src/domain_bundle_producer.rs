@@ -28,19 +28,23 @@ use tracing::info;
 pub type BundleHeaderFor<Block, CBlock> =
     BundleHeader<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
-type OpaqueBundle<Block, CBlock> =
-    sp_domains::OpaqueBundle<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
+type VersionedOpaqueBundle<Block, CBlock> = sp_domains::VersionedOpaqueBundle<
+    NumberFor<CBlock>,
+    BlockHashFor<CBlock>,
+    HeaderFor<Block>,
+    Balance,
+>;
 
 type SealedSingletonReceiptFor<Block, CBlock> =
     SealedSingletonReceipt<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
 pub enum DomainProposal<Block: BlockT, CBlock: BlockT> {
-    Bundle(OpaqueBundle<Block, CBlock>),
+    Bundle(VersionedOpaqueBundle<Block, CBlock>),
     Receipt(SealedSingletonReceiptFor<Block, CBlock>),
 }
 
 impl<Block: BlockT, CBlock: BlockT> DomainProposal<Block, CBlock> {
-    pub fn into_opaque_bundle(self) -> Option<OpaqueBundle<Block, CBlock>> {
+    pub fn into_opaque_bundle(self) -> Option<VersionedOpaqueBundle<Block, CBlock>> {
         match self {
             DomainProposal::Bundle(b) => Some(b),
             DomainProposal::Receipt(_) => None,

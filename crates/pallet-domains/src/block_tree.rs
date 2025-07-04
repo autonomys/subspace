@@ -739,7 +739,7 @@ mod tests {
                     bundle_extrinsics_root,
                     receipt,
                 );
-                let bundle_header_hash = bundle.sealed_header.pre_hash();
+                let bundle_header_hash = bundle.sealed_header().pre_hash();
                 let bundle_size = bundle.size();
                 assert_ok!(crate::Pallet::<Test>::submit_bundle(
                     DomainOrigin::ValidatedUnsigned.into(),

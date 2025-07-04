@@ -313,8 +313,9 @@ impl<DomainHash> From<storage_proof::VerificationError> for VerificationError<Do
     }
 }
 
+/// A V0 version of Fraud proof.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct FraudProof<Number, Hash, DomainHeader: HeaderT, MmrHash> {
+pub struct FraudProofV0<Number, Hash, DomainHeader: HeaderT, MmrHash> {
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted
     pub bad_receipt_hash: HeaderHashFor<DomainHeader>,
@@ -328,20 +329,20 @@ pub struct FraudProof<Number, Hash, DomainHeader: HeaderT, MmrHash> {
     /// or the required domain runtime code is available from the current runtime state.
     pub maybe_domain_runtime_code_proof: Option<DomainRuntimeCodeAt<Number, Hash, MmrHash>>,
     /// The specific fraud proof variant
-    pub proof: FraudProofVariant<Number, Hash, MmrHash, DomainHeader>,
+    pub proof: FraudProofVariantV0<Number, Hash, MmrHash, DomainHeader>,
 }
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum FraudProofVariant<Number, Hash, MmrHash, DomainHeader: HeaderT> {
+pub enum FraudProofVariantV0<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     #[codec(index = 0)]
     InvalidStateTransition(InvalidStateTransitionProof),
     #[codec(index = 1)]
-    ValidBundle(ValidBundleProof<Number, Hash, DomainHeader>),
+    ValidBundle(ValidBundleV0Proof<Number, Hash, DomainHeader>),
     #[codec(index = 2)]
     InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof),
     #[codec(index = 3)]
-    InvalidBundles(InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader>),
+    InvalidBundles(InvalidBundlesV0Proof<Number, Hash, MmrHash, DomainHeader>),
     #[codec(index = 4)]
     InvalidDomainBlockHash(InvalidDomainBlockHashProof),
     #[codec(index = 5)]
@@ -354,7 +355,9 @@ pub enum FraudProofVariant<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     Dummy,
 }
 
-impl<Number, Hash, MmrHash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader, MmrHash> {
+impl<Number, Hash, MmrHash, DomainHeader: HeaderT>
+    FraudProofV0<Number, Hash, DomainHeader, MmrHash>
+{
     pub fn domain_id(&self) -> DomainId {
         self.domain_id
     }
@@ -368,7 +371,7 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT> FraudProof<Number, Hash, Doma
         // during its verification so it is unexpected to see `maybe_domain_runtime_code_proof`
         // set to `Some`
         self.maybe_domain_runtime_code_proof.is_some()
-            && matches!(self.proof, FraudProofVariant::InvalidDomainBlockHash(_))
+            && matches!(self.proof, FraudProofVariantV0::InvalidDomainBlockHash(_))
     }
 
     pub fn is_unexpected_mmr_proof(&self) -> bool {
@@ -380,9 +383,9 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT> FraudProof<Number, Hash, Doma
         // to see `maybe_mmr_proof` set to `Some`
         !matches!(
             self.proof,
-            FraudProofVariant::InvalidExtrinsicsRoot(_)
-                | FraudProofVariant::InvalidBundles(_)
-                | FraudProofVariant::ValidBundle(_)
+            FraudProofVariantV0::InvalidExtrinsicsRoot(_)
+                | FraudProofVariantV0::InvalidBundles(_)
+                | FraudProofVariantV0::ValidBundle(_)
         )
     }
 
@@ -390,18 +393,18 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT> FraudProof<Number, Hash, Doma
     pub fn dummy_fraud_proof(
         domain_id: DomainId,
         bad_receipt_hash: HeaderHashFor<DomainHeader>,
-    ) -> FraudProof<Number, Hash, DomainHeader, MmrHash> {
+    ) -> FraudProofV0<Number, Hash, DomainHeader, MmrHash> {
         Self {
             domain_id,
             bad_receipt_hash,
             maybe_mmr_proof: None,
             maybe_domain_runtime_code_proof: None,
-            proof: FraudProofVariant::Dummy,
+            proof: FraudProofVariantV0::Dummy,
         }
     }
 }
 
-impl<Number, Hash, MmrHash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader, MmrHash>
+impl<Number, Hash, MmrHash, DomainHeader: HeaderT> FraudProofV0<Number, Hash, DomainHeader, MmrHash>
 where
     Number: Encode,
     Hash: Encode,
@@ -413,39 +416,39 @@ where
 }
 
 impl<Number, Hash, MmrHash, DomainHeader: HeaderT> fmt::Debug
-    for FraudProof<Number, Hash, DomainHeader, MmrHash>
+    for FraudProofV0<Number, Hash, DomainHeader, MmrHash>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let fp_target =
             scale_info::prelude::format!("{:?}#{:?}", self.domain_id, self.bad_receipt_hash);
         match &self.proof {
-            FraudProofVariant::InvalidStateTransition(_) => {
+            FraudProofVariantV0::InvalidStateTransition(_) => {
                 write!(f, "InvalidStateTransitionFraudProof({fp_target})")
             }
-            FraudProofVariant::InvalidExtrinsicsRoot(_) => {
+            FraudProofVariantV0::InvalidExtrinsicsRoot(_) => {
                 write!(f, "InvalidExtrinsicsRootFraudProof({fp_target})")
             }
-            FraudProofVariant::InvalidBlockFees(_) => {
+            FraudProofVariantV0::InvalidBlockFees(_) => {
                 write!(f, "InvalidBlockFeesFraudProof({fp_target})")
             }
-            FraudProofVariant::ValidBundle(_) => {
+            FraudProofVariantV0::ValidBundle(_) => {
                 write!(f, "ValidBundleFraudProof({fp_target})")
             }
-            FraudProofVariant::InvalidBundles(proof) => {
+            FraudProofVariantV0::InvalidBundles(proof) => {
                 write!(
                     f,
                     "InvalidBundlesFraudProof(type: {:?}, target: {fp_target})",
                     proof.invalid_bundle_type
                 )
             }
-            FraudProofVariant::InvalidDomainBlockHash(_) => {
+            FraudProofVariantV0::InvalidDomainBlockHash(_) => {
                 write!(f, "InvalidDomainBlockHashFraudProof({fp_target})")
             }
-            FraudProofVariant::InvalidTransfers(_) => {
+            FraudProofVariantV0::InvalidTransfers(_) => {
                 write!(f, "InvalidTransfersFraudProof({fp_target})")
             }
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-            FraudProofVariant::Dummy => {
+            FraudProofVariantV0::Dummy => {
                 write!(f, "DummyFraudProof({fp_target})")
             }
         }
@@ -482,9 +485,9 @@ pub struct InvalidStateTransitionProof {
 
 /// Fraud proof for the valid bundles in `ExecutionReceipt::inboxed_bundles`
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct ValidBundleProof<Number, Hash, DomainHeader: HeaderT> {
+pub struct ValidBundleV0Proof<Number, Hash, DomainHeader: HeaderT> {
     /// The targeted bundle with proof
-    pub bundle_with_proof: OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>,
+    pub bundle_with_proof: OpaqueBundleV0WithProof<Number, Hash, DomainHeader, Balance>,
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
@@ -515,12 +518,13 @@ pub struct MmrRootProof<Number, Hash, MmrHash> {
     pub mmr_root_storage_proof: MmrRootStorageProof<MmrHash>,
 }
 
+/// V0 Invalid bundles proof data.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader: HeaderT> {
+pub enum InvalidBundlesV0ProofData<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     Extrinsic(StorageProof),
-    Bundle(OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>),
+    Bundle(OpaqueBundleV0WithProof<Number, Hash, DomainHeader, Balance>),
     BundleAndExecution {
-        bundle_with_proof: OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>,
+        bundle_with_proof: OpaqueBundleV0WithProof<Number, Hash, DomainHeader, Balance>,
         execution_proof: StorageProof,
     },
     InvalidXDMProofData {
@@ -529,9 +533,9 @@ pub enum InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     },
 }
 
-/// A proof about a bundle that was marked invalid (but might or might not actually be invalid).
+/// A proof about a bundle v0 that was marked invalid (but might or might not actually be invalid).
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader: HeaderT> {
+pub struct InvalidBundlesV0Proof<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     pub bundle_index: u32,
     /// The invalid bundle type that the bundle was marked with.
     pub invalid_bundle_type: InvalidBundleType,
@@ -539,7 +543,7 @@ pub struct InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     /// If `false`, it must prove the bundle was marked invalid, but is actually valid.
     pub is_good_invalid_fraud_proof: bool,
     /// Proof data of the bundle which was marked invalid.
-    pub proof_data: InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader>,
+    pub proof_data: InvalidBundlesV0ProofData<Number, Hash, MmrHash, DomainHeader>,
 }
 
 /// Represents an invalid block fees proof.

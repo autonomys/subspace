@@ -54,13 +54,13 @@ use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     ChainId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, DomainBundleLimit, DomainId,
-    DomainInstanceData, EMPTY_EXTRINSIC_ROOT, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, OperatorSignature, ProofOfElection, RuntimeId, SealedSingletonReceipt,
+    DomainInstanceData, EMPTY_EXTRINSIC_ROOT, ExecutionReceipt, OperatorId, OperatorPublicKey,
+    OperatorSignature, ProofOfElection, RuntimeId, SealedSingletonReceipt, VersionedOpaqueBundle,
 };
 use sp_domains_fraud_proof::fraud_proof::{
-    DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
-    InvalidDomainBlockHashProof, InvalidTransfersProof,
+    DomainRuntimeCodeAt, InvalidBlockFeesProof, InvalidDomainBlockHashProof, InvalidTransfersProof,
 };
+use sp_domains_fraud_proof::fraud_proof_v1::{FraudProofV1, FraudProofVariantV1};
 use sp_domains_fraud_proof::storage_proof::{self, BasicStorageProof, DomainRuntimeCodeProof};
 use sp_domains_fraud_proof::verification::{
     verify_invalid_block_fees_fraud_proof, verify_invalid_bundles_fraud_proof,
@@ -109,7 +109,7 @@ pub type ExecutionReceiptOf<T> = ExecutionReceipt<
     BalanceOf<T>,
 >;
 
-pub type OpaqueBundleOf<T> = OpaqueBundle<
+pub type VersionedOpaqueBundleOf<T> = VersionedOpaqueBundle<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainHeader,
@@ -123,7 +123,7 @@ pub type SingletonReceiptOf<T> = SealedSingletonReceipt<
     BalanceOf<T>,
 >;
 
-pub type FraudProofFor<T> = FraudProof<
+pub type FraudProofFor<T> = FraudProofV1<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainHeader,
@@ -235,8 +235,8 @@ mod pallet {
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
         ExecutionReceiptOf, FraudProofFor, HoldIdentifier, MAX_BUNDLE_PER_BLOCK, NominatorId,
-        OpaqueBundleOf, RawOrigin, ReceiptHashFor, STORAGE_VERSION, SingletonReceiptOf,
-        StateRootOf,
+        RawOrigin, ReceiptHashFor, STORAGE_VERSION, SingletonReceiptOf, StateRootOf,
+        VersionedOpaqueBundleOf,
     };
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
@@ -1118,7 +1118,7 @@ mod pallet {
         #[pallet::weight(Pallet::<T>::max_submit_bundle_weight())]
         pub fn submit_bundle(
             origin: OriginFor<T>,
-            opaque_bundle: OpaqueBundleOf<T>,
+            opaque_bundle: VersionedOpaqueBundleOf<T>,
         ) -> DispatchResultWithPostInfo {
             T::DomainOrigin::ensure_origin(origin)?;
 
@@ -1126,7 +1126,7 @@ mod pallet {
 
             let domain_id = opaque_bundle.domain_id();
             let bundle_hash = opaque_bundle.hash();
-            let bundle_header_hash = opaque_bundle.sealed_header.pre_hash();
+            let bundle_header_hash = opaque_bundle.sealed_header().pre_hash();
             let extrinsics_root = opaque_bundle.extrinsics_root();
             let operator_id = opaque_bundle.operator_id();
             let bundle_size = opaque_bundle.size();
@@ -2212,10 +2212,12 @@ impl<T: Config> Pallet<T> {
             .map(|operator| (operator.signing_key, operator.current_total_stake))
     }
 
-    fn check_extrinsics_root(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
+    fn check_extrinsics_root(
+        opaque_bundle: &VersionedOpaqueBundleOf<T>,
+    ) -> Result<(), BundleError> {
         let expected_extrinsics_root = <T::DomainHeader as Header>::Hashing::ordered_trie_root(
             opaque_bundle
-                .extrinsics
+                .extrinsics()
                 .iter()
                 .map(|xt| xt.encode())
                 .collect(),
@@ -2290,7 +2292,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_bundle(
-        opaque_bundle: &OpaqueBundleOf<T>,
+        opaque_bundle: &VersionedOpaqueBundleOf<T>,
         domain_config: &DomainConfig<T::AccountId, BalanceOf<T>>,
     ) -> Result<(), BundleError> {
         ensure!(
@@ -2374,12 +2376,12 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_submit_bundle(
-        opaque_bundle: &OpaqueBundleOf<T>,
+        opaque_bundle: &VersionedOpaqueBundleOf<T>,
         pre_dispatch: bool,
     ) -> Result<(), BundleError> {
         let domain_id = opaque_bundle.domain_id();
         let operator_id = opaque_bundle.operator_id();
-        let sealed_header = &opaque_bundle.sealed_header;
+        let sealed_header = opaque_bundle.sealed_header();
 
         // Ensure the receipt gap is <= 1 so that the bundle will only be acceptted if its receipt is
         // derived from the latest domain block, and the stale bundle (that verified against an old
@@ -2487,7 +2489,7 @@ impl<T: Config> Pallet<T> {
         };
 
         match &fraud_proof.proof {
-            FraudProofVariant::InvalidBlockFees(InvalidBlockFeesProof { storage_proof }) => {
+            FraudProofVariantV1::InvalidBlockFees(InvalidBlockFeesProof { storage_proof }) => {
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
                     &bad_receipt,
@@ -2506,7 +2508,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidBlockFeesFraudProof
                 })?;
             }
-            FraudProofVariant::InvalidTransfers(InvalidTransfersProof { storage_proof }) => {
+            FraudProofVariantV1::InvalidTransfers(InvalidTransfersProof { storage_proof }) => {
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
                     &bad_receipt,
@@ -2525,7 +2527,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidTransfersFraudProof
                 })?;
             }
-            FraudProofVariant::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
+            FraudProofVariantV1::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
                 digest_storage_proof,
             }) => {
                 let parent_receipt =
@@ -2546,7 +2548,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidDomainBlockHashFraudProof
                 })?;
             }
-            FraudProofVariant::InvalidExtrinsicsRoot(proof) => {
+            FraudProofVariantV1::InvalidExtrinsicsRoot(proof) => {
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
                     &bad_receipt,
@@ -2575,7 +2577,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidExtrinsicRootFraudProof
                 })?;
             }
-            FraudProofVariant::InvalidStateTransition(proof) => {
+            FraudProofVariantV1::InvalidStateTransition(proof) => {
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
                     &bad_receipt,
@@ -2596,7 +2598,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidStateTransitionFraudProof
                 })?;
             }
-            FraudProofVariant::InvalidBundles(proof) => {
+            FraudProofVariantV1::InvalidBundles(proof) => {
                 let state_root = maybe_state_root.ok_or(FraudProofError::MissingMmrProof)?;
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
@@ -2629,7 +2631,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidBundleFraudProof
                 })?;
             }
-            FraudProofVariant::ValidBundle(proof) => {
+            FraudProofVariantV1::ValidBundle(proof) => {
                 let state_root = maybe_state_root.ok_or(FraudProofError::MissingMmrProof)?;
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
@@ -2655,7 +2657,7 @@ impl<T: Config> Pallet<T> {
                 })?
             }
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-            FraudProofVariant::Dummy => {
+            FraudProofVariantV1::Dummy => {
                 // Almost every fraud proof (except `InvalidDomainBlockHash` fraud proof) need to call
                 // `get_domain_runtime_code_for_receipt` thus we include this part in the benchmark of
                 // the dummy fraud proof.
@@ -3155,9 +3157,9 @@ where
     T: Config + CreateUnsigned<Call<T>>,
 {
     /// Submits an unsigned extrinsic [`Call::submit_bundle`].
-    pub fn submit_bundle_unsigned(opaque_bundle: OpaqueBundleOf<T>) {
-        let slot = opaque_bundle.sealed_header.slot_number();
-        let extrinsics_count = opaque_bundle.extrinsics.len();
+    pub fn submit_bundle_unsigned(opaque_bundle: VersionedOpaqueBundleOf<T>) {
+        let slot = opaque_bundle.slot_number();
+        let extrinsics_count = opaque_bundle.body_length();
 
         let call = Call::submit_bundle { opaque_bundle };
         let ext = T::create_unsigned(call.into());
