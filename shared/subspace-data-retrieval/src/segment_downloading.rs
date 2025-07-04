@@ -14,6 +14,14 @@ use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 use tracing::debug;
 
+/// The number of times we try to download a segment before giving up.
+/// This is a suggested default, callers can supply their own value if needed.
+pub const SEGMENT_DOWNLOAD_RETRIES: usize = 3;
+
+/// The amount of time we wait between segment download retries.
+/// This is a suggested default, callers can supply their own value if needed.
+pub const SEGMENT_DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(10);
+
 /// Segment getter errors.
 #[derive(Debug, thiserror::Error)]
 pub enum SegmentDownloadingError {
