@@ -1,14 +1,13 @@
 use crate::block_tree::{BlockTreeNode, verify_execution_receipt};
 use crate::domain_registry::{DomainConfig, DomainConfigParams, DomainObject};
-use crate::pallet::OperatorIdOwner;
 use crate::runtime_registry::ScheduledRuntimeUpgrade;
-use crate::staking::Operator;
+use crate::staking_epoch::do_finalize_domain_current_epoch;
 use crate::{
     self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
     ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry,
     DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptOf,
-    FraudProofError, FungibleHoldId, HeadDomainNumber, HeadReceiptNumber, NextDomainId, Operators,
-    RawOrigin as DomainOrigin, RuntimeRegistry, ScheduledRuntimeUpgrades,
+    FraudProofError, FungibleHoldId, HeadDomainNumber, HeadReceiptNumber, NextDomainId,
+    OperatorConfig, RawOrigin as DomainOrigin, RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
 use core::mem;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
@@ -515,7 +514,7 @@ pub(crate) fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_ha
     }
 }
 
-pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorId>) -> DomainId {
+pub(crate) fn register_genesis_domain(creator: u128, operator_number: usize) -> DomainId {
     let raw_genesis_storage = RawGenesis::dummy(vec![1, 2, 3, 4]).encode();
     assert_ok!(crate::Pallet::<Test>::set_permissioned_action_allowed_by(
         RawOrigin::Root.into(),
@@ -532,6 +531,7 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
     <Test as Config>::Currency::make_free_balance_be(
         &creator,
         <Test as Config>::DomainInstantiationDeposit::get()
+            + operator_number as u128 * <Test as Config>::MinOperatorStake::get()
             + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
     );
     crate::Pallet::<Test>::instantiate_domain(
@@ -549,10 +549,20 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
     .unwrap();
 
     let pair = OperatorPair::from_seed(&[0; 32]);
-    for operator_id in operator_ids {
-        Operators::<Test>::insert(operator_id, Operator::dummy(domain_id, pair.public(), AI3));
-        OperatorIdOwner::<Test>::insert(operator_id, creator);
+    for _ in 0..operator_number {
+        crate::Pallet::<Test>::register_operator(
+            RawOrigin::Signed(creator).into(),
+            domain_id,
+            <Test as Config>::MinOperatorStake::get(),
+            OperatorConfig {
+                signing_key: pair.public(),
+                minimum_nominator_stake: AI3,
+                nomination_tax: Default::default(),
+            },
+        )
+        .unwrap();
     }
+    do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
     domain_id
 }
@@ -780,11 +790,11 @@ fn test_bundle_format_verification() {
 #[test]
 fn test_invalid_fraud_proof() {
     let creator = 0u128;
-    let operator_id = 1u64;
+    let operator_id = 0u64;
     let head_domain_number = 10;
     let mut ext = new_test_ext_with_extensions();
     ext.execute_with(|| {
-        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        let domain_id = register_genesis_domain(creator, 1);
         extend_block_tree_from_zero(domain_id, operator_id, head_domain_number + 2);
         assert_eq!(
             HeadReceiptNumber::<Test>::get(domain_id),
@@ -816,8 +826,8 @@ fn test_invalid_fraud_proof() {
 #[test]
 fn test_basic_fraud_proof_processing() {
     let creator = 0u128;
-    let malicious_operator = 1u64;
-    let honest_operator = 2u64;
+    let malicious_operator = 0u64;
+    let honest_operator = 1u64;
     let head_domain_number = BlockTreePruningDepth::get() - 1;
     let test_cases = vec![
         1,
@@ -829,8 +839,7 @@ fn test_basic_fraud_proof_processing() {
     for bad_receipt_at in test_cases {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id =
-                register_genesis_domain(creator, vec![malicious_operator, honest_operator]);
+            let domain_id = register_genesis_domain(creator, 2);
             extend_block_tree_from_zero(domain_id, malicious_operator, head_domain_number + 2);
             assert_eq!(
                 HeadReceiptNumber::<Test>::get(domain_id),
@@ -948,10 +957,9 @@ fn schedule_domain_runtime_upgrade<T: Config>(
 fn test_domain_runtime_upgrade_record() {
     let runtime_id = 0u32;
     let creator = 0u128;
-    let operator_id = 1u64;
     let mut ext = new_test_ext_with_extensions();
     ext.execute_with(|| {
-        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        let domain_id = register_genesis_domain(creator, 1);
         assert_eq!(Domains::missed_domain_runtime_upgrade(domain_id), Ok(0));
 
         // Schedule domain runtime upgrade for the next 2 blocks
@@ -983,10 +991,10 @@ fn test_domain_runtime_upgrade_record() {
 fn test_domain_runtime_upgrade_with_bundle() {
     let runtime_id = 0u32;
     let creator = 0u128;
-    let operator_id = 1u64;
+    let operator_id = 0u64;
     let mut ext = new_test_ext_with_extensions();
     ext.execute_with(|| {
-        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        let domain_id = register_genesis_domain(creator, 1);
         assert_eq!(HeadDomainNumber::<Test>::get(domain_id), 0);
         assert_eq!(Domains::missed_domain_runtime_upgrade(domain_id), Ok(0));
 
