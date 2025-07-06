@@ -24,7 +24,7 @@ use scale_info::TypeInfo;
 use sp_core::{Get, sr25519};
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey, OperatorRewardSource};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
-use sp_runtime::{PerThing, Perbill, Percent, Perquintill, Saturating};
+use sp_runtime::{PerThing, Percent, Perquintill, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::collections::vec_deque::VecDeque;
@@ -808,7 +808,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                         current_share_price::<T>(operator_id, operator, &domain_stake_summary)?;
 
                     let remaining_storage_fee =
-                        Perbill::from_rational(remaining_shares, known_shares)
+                        Perquintill::from_rational(remaining_shares.into(), known_shares.into())
                             .mul_floor(deposit.known.storage_fee_deposit);
 
                     let remaining_stake = share_price
@@ -833,8 +833,9 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 
             // Withdraw storage fund, the `withdraw_storage_fee` amount of fund will be transfered
             // and hold on the nominator account
-            let storage_fee_to_withdraw = Perbill::from_rational(shares_withdrew, known_shares)
-                .mul_floor(deposit.known.storage_fee_deposit);
+            let storage_fee_to_withdraw =
+                Perquintill::from_rational(shares_withdrew.into(), known_shares.into())
+                    .mul_floor(deposit.known.storage_fee_deposit);
 
             let withdraw_storage_fee = {
                 let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
@@ -1570,7 +1571,7 @@ pub(crate) mod tests {
         OperatorRewardSource,
     };
     use sp_runtime::traits::Zero;
-    use sp_runtime::{PerThing, Perbill};
+    use sp_runtime::{PerThing, Perquintill};
     use std::collections::{BTreeMap, BTreeSet};
     use std::vec;
     use subspace_runtime_primitives::AI3;
@@ -1578,7 +1579,7 @@ pub(crate) mod tests {
     type Balances = pallet_balances::Pallet<Test>;
     type Domains = crate::Pallet<Test>;
 
-    const STORAGE_FEE_RESERVE: Perbill = Perbill::from_percent(20);
+    const STORAGE_FEE_RESERVE: Perquintill = Perquintill::from_percent(20);
 
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn register_operator(
@@ -2226,7 +2227,7 @@ pub(crate) mod tests {
             // given the reward, operator will get 164.28 AI3
             // taking 58 shares will give this following approximate amount.
             maybe_deposit: None,
-            expected_withdraw: Some((63523809503809523790, false)),
+            expected_withdraw: Some((63523809523809523770, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2244,7 +2245,7 @@ pub(crate) mod tests {
                 (5 * AI3, Err(StakingError::MinimumOperatorStake)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((63523809503809523790, false)),
+            expected_withdraw: Some((63523809523809523770, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2259,7 +2260,7 @@ pub(crate) mod tests {
             nominator_id: 0,
             withdraws: vec![(53 * AI3, Ok(())), (5 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((63523809499724987700, false)),
+            expected_withdraw: Some((63523809523809523769, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2274,7 +2275,7 @@ pub(crate) mod tests {
             nominator_id: 0,
             withdraws: vec![(49 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((48999999980000000000, false)),
+            expected_withdraw: Some((48999999999999999980, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2289,7 +2290,7 @@ pub(crate) mod tests {
             nominator_id: 0,
             withdraws: vec![(29 * AI3, Ok(())), (20 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((48999999986852892560, false)),
+            expected_withdraw: Some((48999999999999999981, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2308,7 +2309,7 @@ pub(crate) mod tests {
                 (20 * AI3, Err(StakingError::MinimumOperatorStake)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((48999999986852892560, false)),
+            expected_withdraw: Some((48999999999999999981, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2445,7 +2446,7 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![(35 * AI3, Ok(())), (5 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523808523809511, false)),
+            expected_withdraw: Some((43809523809523809510, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2464,7 +2465,7 @@ pub(crate) mod tests {
                 (15 * AI3, Err(StakingError::InsufficientShares)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523808523809511, false)),
+            expected_withdraw: Some((43809523809523809510, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2494,7 +2495,7 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![(35 * AI3, Ok(())), (5 * AI3 - 100000000000, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((39999999898000000000, false)),
+            expected_withdraw: Some((39999999899999999998, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2513,7 +2514,7 @@ pub(crate) mod tests {
                 (15 * AI3, Err(StakingError::InsufficientShares)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((39999999898000000000, false)),
+            expected_withdraw: Some((39999999899999999998, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2532,7 +2533,7 @@ pub(crate) mod tests {
                 (10 * AI3, Err(StakingError::MinimumNominatorStake)),
             ],
             maybe_deposit: Some(2 * AI3),
-            expected_withdraw: Some((39999999898000000000, false)),
+            expected_withdraw: Some((39999999899999999998, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2554,7 +2555,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: Some(2 * AI3),
-            expected_withdraw: Some((43809523808523809511, false)),
+            expected_withdraw: Some((43809523809523809510, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2587,7 +2588,7 @@ pub(crate) mod tests {
             // The storage fund increased 50% (i.e. 21 * AI3) thus the nominator make 50%
             // storage fee profit i.e. 5 * AI3 with rounding dust deducted
             storage_fund_change: (true, 21),
-            expected_withdraw: Some((54999999994000000000, true)),
+            expected_withdraw: Some((54999999999999999985, true)),
             expected_nominator_count_reduced_by: 1,
         })
     }
@@ -2604,7 +2605,7 @@ pub(crate) mod tests {
             // The storage fund decreased 50% (i.e. 21 * AI3) thus the nominator loss 50%
             // storage fee deposit i.e. 5 * AI3 with rounding dust deducted
             storage_fund_change: (false, 21),
-            expected_withdraw: Some((44999999998000000000, true)),
+            expected_withdraw: Some((44999999999999999995, true)),
             expected_nominator_count_reduced_by: 1,
         })
     }
@@ -2639,7 +2640,7 @@ pub(crate) mod tests {
             // storage fee profit i.e. 5 * AI3 with rounding dust deducted, withdraw 60% of
             // the stake and the storage fee profit
             storage_fund_change: (true, 21),
-            expected_withdraw: Some((30 * AI3 + 2999999855527204374, false)),
+            expected_withdraw: Some((30 * AI3 + 2999999999999999863, false)),
             expected_nominator_count_reduced_by: 0,
         })
     }
@@ -2657,7 +2658,7 @@ pub(crate) mod tests {
             // storage fee i.e. 5 * AI3 with rounding dust deducted, withdraw 40% of
             // the stake and 40% of the storage fee loss are deducted
             storage_fund_change: (false, 21),
-            expected_withdraw: Some((20 * AI3 - 2 * AI3 - 33331097576, false)),
+            expected_withdraw: Some((20 * AI3 - 2 * AI3 - 39, false)),
             expected_nominator_count_reduced_by: 0,
         })
     }
@@ -2757,7 +2758,7 @@ pub(crate) mod tests {
             let total_balance = Balances::usable_balance(nominator_account);
             assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));
             assert_eq!(
-                Balances::usable_balance(nominator_account) + 60246126106, // `60246126106` is a minor rounding dust
+                Balances::usable_balance(nominator_account) + 74, // `74` is a minor rounding dust
                 total_balance
                     + (<Test as crate::Config>::WithdrawalLimit::get() as u128 - 1) * total_deposit
                         / 100
@@ -2775,7 +2776,7 @@ pub(crate) mod tests {
             let total_balance = Balances::usable_balance(nominator_account);
             assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));
             assert_eq!(
-                Balances::usable_balance(nominator_account) + 18473897451, // `18473897451` is a minor rounding dust
+                Balances::usable_balance(nominator_account) - 2, // `2` is a minor rounding dust
                 total_balance + 5 * total_deposit / 100
             );
             assert!(Withdrawals::<Test>::get(operator_id, nominator_account).is_none());
