@@ -3501,7 +3501,7 @@ pub(crate) mod tests {
             // arithmetic dust generated during stake-to-share convertion are leave to the pool
             // and can't withdraw/unlock, otherwise, `ShareOverflow` error will happen on `current_total_shares`
             // during withdraw/unlock.
-            assert!(total_deposited_share >= deposited_share);
+            assert_eq!(total_deposited_share, deposited_share);
 
             // `total_stake` must remains large than `total_shares`, otherwise, it means the reward are
             // lost during stake-to-share convertion.
@@ -3512,7 +3512,7 @@ pub(crate) mod tests {
     #[test]
     fn test_share_price_withdraw() {
         let total_shares = 123 * AI3;
-        let total_stake = 123 * AI3 + 13;
+        let total_stake = 123 * AI3 + 4567;
         let sp = SharePrice::new::<Test>(total_shares, total_stake).unwrap();
 
         // Each item in this list represents an individual withdrawal requested by a nominator
@@ -3553,7 +3553,7 @@ pub(crate) mod tests {
             // `total_withdrawn_stake` must larger or equal to `withdrawn_stake`, meaning the
             // arithmetic dust generated during share-to-stake convertion are leave to the pool,
             // otherwise, the nominator will be able to mint reward out of thin air during unlock.
-            assert!(total_withdrawn_stake >= withdrawn_stake);
+            assert_eq!(total_withdrawn_stake, withdrawn_stake);
 
             // `total_stake` must remains large than `total_shares`, otherwise, it means the reward are
             // lost during share-to-stake convertion.
