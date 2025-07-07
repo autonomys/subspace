@@ -1,7 +1,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::execution_receipt::ExecutionReceipt;
+use crate::execution_receipt::ExecutionReceiptV0;
 use crate::{
     DomainId, HeaderHashFor, HeaderHashingFor, HeaderNumberFor, OperatorId, OperatorSignature,
     ProofOfElection,
@@ -31,7 +31,7 @@ pub struct BundleHeader<Number, Hash, DomainHeader: HeaderT, Balance> {
     pub proof_of_election: ProofOfElection,
     /// Execution receipt that should extend the receipt chain or add confirmations
     /// to the head receipt.
-    pub receipt: ExecutionReceipt<
+    pub receipt: ExecutionReceiptV0<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -138,7 +138,7 @@ impl<
     /// Return a reference of the execution receipt.
     pub fn receipt(
         &self,
-    ) -> &ExecutionReceipt<
+    ) -> &ExecutionReceiptV0<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -152,7 +152,7 @@ impl<
     /// Consumes [`Bundle`] to extract the execution receipt.
     pub fn into_receipt(
         self,
-    ) -> ExecutionReceipt<
+    ) -> ExecutionReceiptV0<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -265,7 +265,7 @@ impl<
     /// Returns a mutable reference to Execution receipt.
     pub fn execution_receipt_as_mut(
         &mut self,
-    ) -> &mut ExecutionReceipt<
+    ) -> &mut ExecutionReceiptV0<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -312,7 +312,7 @@ pub fn dummy_opaque_bundle<
 >(
     domain_id: DomainId,
     operator_id: OperatorId,
-    receipt: ExecutionReceipt<
+    receipt: ExecutionReceiptV0<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,

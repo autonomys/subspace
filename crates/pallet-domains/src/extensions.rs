@@ -3,7 +3,7 @@
 use crate::pallet::Call as DomainsCall;
 use crate::weights::WeightInfo;
 use crate::{
-    Config, FraudProofFor, Origin, Pallet as Domains, SingletonReceiptOf, VersionedOpaqueBundleOf,
+    Config, FraudProofFor, OpaqueBundleOf, Origin, Pallet as Domains, SingletonReceiptV0Of,
 };
 use frame_support::ensure;
 use frame_support::pallet_prelude::{PhantomData, TypeInfo};
@@ -70,7 +70,7 @@ where
     Runtime: Config + scale_info::TypeInfo + fmt::Debug + Send + Sync,
 {
     fn do_validate_submit_bundle(
-        opaque_bundle: &VersionedOpaqueBundleOf<Runtime>,
+        opaque_bundle: &OpaqueBundleOf<Runtime>,
         source: TransactionSource,
     ) -> TransactionValidity {
         let pre_dispatch = TransactionSource::InBlock == source;
@@ -135,7 +135,7 @@ where
     }
 
     fn do_validate_singleton_receipt(
-        singleton_receipt: &SingletonReceiptOf<Runtime>,
+        singleton_receipt: &SingletonReceiptV0Of<Runtime>,
         source: TransactionSource,
     ) -> TransactionValidity {
         let pre_dispatch = TransactionSource::InBlock == source;

@@ -94,7 +94,7 @@ impl<Balance> Transfers<Balance> {
 
 /// Receipt of a domain block execution.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
+pub struct ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// The index of the current domain block that forms the basis of this ER.
     pub domain_block_number: DomainNumber,
     /// The block hash corresponding to `domain_block_number`.
@@ -128,7 +128,7 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
 }
 
 impl<Number, Hash, DomainNumber, DomainHash, Balance>
-    ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
+    ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance>
 {
     pub fn bundles_extrinsics_roots(&self) -> Vec<&DomainHash> {
         self.inboxed_bundles
@@ -178,7 +178,7 @@ impl<
     DomainNumber: Encode + Zero,
     DomainHash: Clone + Encode + Default,
     Balance: Encode + Zero + Default,
-> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
+> ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance>
 {
     /// Returns the hash of this execution receipt.
     pub fn hash<DomainHashing: HashT<Output = DomainHash>>(&self) -> DomainHash {
@@ -190,7 +190,7 @@ impl<
         genesis_extrinsic_root: DomainHash,
         genesis_domain_block_hash: DomainHash,
     ) -> Self {
-        ExecutionReceipt {
+        ExecutionReceiptV0 {
             domain_block_number: Zero::zero(),
             domain_block_hash: genesis_domain_block_hash,
             domain_block_extrinsic_root: genesis_extrinsic_root,
@@ -212,7 +212,7 @@ impl<
         consensus_block_hash: Hash,
         domain_block_number: DomainNumber,
         parent_domain_block_receipt_hash: DomainHash,
-    ) -> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
+    ) -> ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance>
     where
         DomainHashing: HashT<Output = DomainHash>,
     {
@@ -227,7 +227,7 @@ impl<
                 .expect("Compute merkle root of trace should success")
                 .into()
         };
-        ExecutionReceipt {
+        ExecutionReceiptV0 {
             domain_block_number,
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),
@@ -247,11 +247,11 @@ impl<
 /// Singleton receipt submit along when there is a gap between `domain_best_number`
 /// and `HeadReceiptNumber`
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct SingletonReceipt<Number, Hash, DomainHeader: HeaderT, Balance> {
+pub struct SingletonReceiptV0<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Proof of receipt producer election.
     pub proof_of_election: ProofOfElection,
     /// The receipt to submit
-    pub receipt: ExecutionReceipt<
+    pub receipt: ExecutionReceiptV0<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -261,7 +261,7 @@ pub struct SingletonReceipt<Number, Hash, DomainHeader: HeaderT, Balance> {
 }
 
 impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
-    SingletonReceipt<Number, Hash, DomainHeader, Balance>
+    SingletonReceiptV0<Number, Hash, DomainHeader, Balance>
 {
     pub fn hash(&self) -> HeaderHashFor<DomainHeader> {
         HeaderHashingFor::<DomainHeader>::hash_of(&self)
@@ -269,15 +269,15 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct SealedSingletonReceipt<Number, Hash, DomainHeader: HeaderT, Balance> {
+pub struct SealedSingletonReceiptV0<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// A collection of the receipt.
-    pub singleton_receipt: SingletonReceipt<Number, Hash, DomainHeader, Balance>,
+    pub singleton_receipt: SingletonReceiptV0<Number, Hash, DomainHeader, Balance>,
     /// Signature of the receipt bundle.
     pub signature: OperatorSignature,
 }
 
 impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
-    SealedSingletonReceipt<Number, Hash, DomainHeader, Balance>
+    SealedSingletonReceiptV0<Number, Hash, DomainHeader, Balance>
 {
     /// Returns the `domain_id`
     pub fn domain_id(&self) -> DomainId {
@@ -297,7 +297,7 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
     /// Return the receipt
     pub fn receipt(
         &self,
-    ) -> &ExecutionReceipt<
+    ) -> &ExecutionReceiptV0<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -310,7 +310,7 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
     /// Consume this `SealedSingletonReceipt` and return the receipt
     pub fn into_receipt(
         self,
-    ) -> ExecutionReceipt<
+    ) -> ExecutionReceiptV0<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -331,7 +331,7 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
     }
 }
 
-pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
+pub type ExecutionReceiptV0For<DomainHeader, CBlock, Balance> = ExecutionReceiptV0<
     NumberFor<CBlock>,
     BlockHashFor<CBlock>,
     <DomainHeader as HeaderT>::Number,

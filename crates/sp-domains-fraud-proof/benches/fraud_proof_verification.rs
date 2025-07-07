@@ -3,7 +3,7 @@ use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_test_service::EcdsaKeyring::{Alice, Bob};
 use domain_test_service::Sr25519Keyring::{self, Ferdie};
 use domain_test_service::{EVM_DOMAIN_ID, EvmDomainNode};
-use pallet_domains::VersionedOpaqueBundleOf;
+use pallet_domains::OpaqueBundleOf;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{Backend, HeaderBackend};
@@ -12,7 +12,7 @@ use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
 use sp_core::{H256, Pair as _};
 use sp_domains::bundle::{BundleValidity, InvalidBundleType};
-use sp_domains::execution_receipt::{ExecutionReceiptFor, Transfers};
+use sp_domains::execution_receipt::{ExecutionReceiptV0For, Transfers};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{ChainId, DomainsApi};
 use sp_domains_fraud_proof::fraud_proof::DomainRuntimeCodeAt;
@@ -40,7 +40,7 @@ type FraudProofFor<Block, DomainBlock> =
 
 fn bundle_to_tx(
     ferdie: &MockConsensusNode,
-    opaque_bundle: VersionedOpaqueBundleOf<Runtime>,
+    opaque_bundle: OpaqueBundleOf<Runtime>,
 ) -> OpaqueExtrinsic {
     ferdie
         .construct_unsigned_extrinsic(pallet_domains::Call::submit_bundle { opaque_bundle })
@@ -204,15 +204,15 @@ fn mmr_proof_and_runtime_code_proof_verification(c: &mut Criterion) {
 
 async fn prepare_fraud_proof(
     tokio_handle: Handle,
-    bad_receipt_maker: impl Fn(&mut ExecutionReceiptFor<HeaderFor<DomainBlock>, Block, Balance>)
+    bad_receipt_maker: impl Fn(&mut ExecutionReceiptV0For<HeaderFor<DomainBlock>, Block, Balance>)
     + Send
     + 'static,
 ) -> (
     (TempDir, MockConsensusNode, EvmDomainNode),
     TestExternalities,
     BlockHashFor<Block>,
-    ExecutionReceiptFor<HeaderFor<DomainBlock>, Block, Balance>,
-    ExecutionReceiptFor<HeaderFor<DomainBlock>, Block, Balance>,
+    ExecutionReceiptV0For<HeaderFor<DomainBlock>, Block, Balance>,
+    ExecutionReceiptV0For<HeaderFor<DomainBlock>, Block, Balance>,
     Vec<u8>,
     FraudProofFor<Block, DomainBlock>,
 ) {

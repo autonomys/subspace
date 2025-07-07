@@ -1133,7 +1133,7 @@ mod benchmark_fixtures_gen {
     use frame_support::pallet_prelude::{Decode, Encode};
     use sp_core::H256;
     use sp_domains::ChannelId;
-    use sp_domains::execution_receipt::{BlockFees, ExecutionReceipt, Transfers};
+    use sp_domains::execution_receipt::{BlockFees, ExecutionReceiptV0, Transfers};
     use sp_messenger::messages::{CrossDomainMessage, MessageWeightTag, Nonce, Proof};
     use sp_mmr_primitives::EncodableOpaqueLeaf;
     use sp_subspace_mmr::ConsensusChainMmrLeafProof;
@@ -1404,7 +1404,7 @@ mod benchmark_fixtures_gen {
             nonce,
         );
 
-        let er = ExecutionReceipt {
+        let er = ExecutionReceiptV0 {
             domain_block_number: Default::default(),
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),
@@ -1500,7 +1500,7 @@ mod benchmark_fixtures_gen {
             nonce,
         );
 
-        let er = ExecutionReceipt {
+        let er = ExecutionReceiptV0 {
             domain_block_number: Default::default(),
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),
@@ -1641,7 +1641,7 @@ mod benchmark_fixtures_gen {
                 nonce,
             );
 
-        let er = ExecutionReceipt {
+        let er = ExecutionReceiptV0 {
             domain_block_number: Default::default(),
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),

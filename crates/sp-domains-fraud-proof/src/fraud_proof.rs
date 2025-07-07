@@ -10,7 +10,7 @@ use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::ExtrinsicDigest;
 use sp_domains::bundle::{BundleValidity, InvalidBundleType};
-use sp_domains::execution_receipt::ExecutionReceiptFor;
+use sp_domains::execution_receipt::ExecutionReceiptV0For;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::{Digest, DigestItem};
@@ -98,8 +98,8 @@ impl ExecutionPhase {
 
     pub fn pre_post_state_root<CBlock, DomainHeader, Balance>(
         &self,
-        bad_receipt: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
-        bad_receipt_parent: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
+        bad_receipt: &ExecutionReceiptV0For<DomainHeader, CBlock, Balance>,
+        bad_receipt_parent: &ExecutionReceiptV0For<DomainHeader, CBlock, Balance>,
     ) -> Result<(H256, H256), VerificationError<DomainHeader::Hash>>
     where
         CBlock: BlockT,
@@ -166,8 +166,8 @@ impl ExecutionPhase {
 
     pub fn call_data<CBlock, DomainHeader, Balance>(
         &self,
-        bad_receipt: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
-        bad_receipt_parent: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
+        bad_receipt: &ExecutionReceiptV0For<DomainHeader, CBlock, Balance>,
+        bad_receipt_parent: &ExecutionReceiptV0For<DomainHeader, CBlock, Balance>,
     ) -> Result<Vec<u8>, VerificationError<DomainHeader::Hash>>
     where
         CBlock: BlockT,

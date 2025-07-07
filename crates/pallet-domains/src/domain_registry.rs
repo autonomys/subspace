@@ -8,7 +8,7 @@ use crate::pallet::{DomainStakingSummary, NextEVMChainId};
 use crate::runtime_registry::DomainRuntimeInfo;
 use crate::staking::StakingSummary;
 use crate::{
-    BalanceOf, Config, DomainHashingFor, DomainRegistry, DomainSudoCalls, ExecutionReceiptOf,
+    BalanceOf, Config, DomainHashingFor, DomainRegistry, DomainSudoCalls, ExecutionReceiptV0Of,
     HoldIdentifier, NextDomainId, RuntimeRegistry, into_complete_raw_genesis,
 };
 #[cfg(not(feature = "std"))]
@@ -313,7 +313,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
             Default::default(),
         );
 
-        ExecutionReceiptOf::<T>::genesis(
+        ExecutionReceiptV0Of::<T>::genesis(
             state_root,
             sp_domains::EMPTY_EXTRINSIC_ROOT.into(),
             genesis_block_hash,

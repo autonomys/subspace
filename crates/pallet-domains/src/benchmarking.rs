@@ -16,7 +16,7 @@ use crate::staking_epoch::{
     operator_take_reward_tax_and_stake,
 };
 use crate::{
-    DomainBlockNumberFor, ExecutionReceiptOf, MAX_NOMINATORS_TO_SLASH, Pallet as Domains,
+    DomainBlockNumberFor, ExecutionReceiptV0Of, MAX_NOMINATORS_TO_SLASH, Pallet as Domains,
     RawOrigin as DomainOrigin,
 };
 #[cfg(not(feature = "std"))]
@@ -36,7 +36,9 @@ use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::sr25519::vrf::{VrfPreOutput, VrfProof, VrfSignature};
 use sp_domains::bundle::bundle_v1::BundleV1;
 use sp_domains::bundle::{BundleHeader, SealedBundleHeader, dummy_opaque_bundle};
-use sp_domains::execution_receipt::{ExecutionReceipt, SealedSingletonReceipt, SingletonReceipt};
+use sp_domains::execution_receipt::{
+    ExecutionReceiptV0, SealedSingletonReceiptV0, SingletonReceiptV0,
+};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     DomainId, EMPTY_EXTRINSIC_ROOT, OperatorAllowList, OperatorId, OperatorPublicKey,
@@ -98,7 +100,7 @@ mod benchmarks {
                 // (i.e. 14_400 number of ERs) which seems take forever to finish, thus we instead
                 // manually insert the last ER into the state.
                 let receipt_block_number = domain_block_number - One::one();
-                let receipt = ExecutionReceipt::dummy::<DomainHashingFor<T>>(
+                let receipt = ExecutionReceiptV0::dummy::<DomainHashingFor<T>>(
                     consensus_block_number - One::one(),
                     frame_system::Pallet::<T>::block_hash(consensus_block_number - One::one()),
                     receipt_block_number,
@@ -120,7 +122,7 @@ mod benchmarks {
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
             let parent_domain_block_receipt = BlockTree::<T>::get(domain_id, head_receipt_number)
                 .expect("parent receipt must exist");
-            receipt = ExecutionReceipt::dummy::<DomainHashingFor<T>>(
+            receipt = ExecutionReceiptV0::dummy::<DomainHashingFor<T>>(
                 consensus_block_number,
                 frame_system::Pallet::<T>::block_hash(consensus_block_number),
                 domain_block_number,
@@ -186,7 +188,7 @@ mod benchmarks {
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
             let parent_domain_block_receipt = BlockTree::<T>::get(domain_id, head_receipt_number)
                 .expect("parent receipt must exist");
-            receipt = ExecutionReceipt::dummy::<DomainHashingFor<T>>(
+            receipt = ExecutionReceiptV0::dummy::<DomainHashingFor<T>>(
                 consensus_block_number,
                 frame_system::Pallet::<T>::block_hash(consensus_block_number),
                 domain_block_number,
@@ -227,7 +229,7 @@ mod benchmarks {
 
         // Construct a bad ER ar block #1 and inject it in to the block tree
         let receipt_number = 1u32.into();
-        let receipt = ExecutionReceipt::dummy::<DomainHashingFor<T>>(
+        let receipt = ExecutionReceiptV0::dummy::<DomainHashingFor<T>>(
             1u32.into(),
             frame_system::Pallet::<T>::block_hash::<BlockNumberFor<T>>(1u32.into()),
             receipt_number,
@@ -904,8 +906,8 @@ mod benchmarks {
             er.domain_block_number = One::one();
             er
         };
-        let sealed_singleton_receipt = SealedSingletonReceipt {
-            singleton_receipt: SingletonReceipt {
+        let sealed_singleton_receipt = SealedSingletonReceiptV0 {
+            singleton_receipt: SingletonReceiptV0 {
                 proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
                 receipt,
             },
@@ -1015,7 +1017,7 @@ mod benchmarks {
             },
         );
 
-        let singleton_receipt: SingletonReceipt<_, _, T::DomainHeader, _> = SingletonReceipt {
+        let singleton_receipt: SingletonReceiptV0<_, _, T::DomainHeader, _> = SingletonReceiptV0 {
             proof_of_election,
             receipt,
         };
@@ -1029,7 +1031,7 @@ mod benchmarks {
             195, 94, 212, 225, 14, 184, 141,
         ]);
 
-        let sealed_singleton_receipt = SealedSingletonReceipt {
+        let sealed_singleton_receipt = SealedSingletonReceiptV0 {
             singleton_receipt,
             signature,
         };
@@ -1078,7 +1080,7 @@ mod benchmarks {
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
             let parent_domain_block_receipt = BlockTree::<T>::get(domain_id, head_receipt_number)
                 .expect("parent receipt must exist");
-            receipt = ExecutionReceipt::dummy::<DomainHashingFor<T>>(
+            receipt = ExecutionReceiptV0::dummy::<DomainHashingFor<T>>(
                 consensus_block_number,
                 frame_system::Pallet::<T>::block_hash(consensus_block_number),
                 domain_block_number,
@@ -1260,7 +1262,7 @@ mod benchmarks {
 
     // Return a mock `receipt` which should be a constant value, otherwise, it won't match
     // with the hardcoded signature
-    fn mock_constant_receipt<T: Config>(domain_id: DomainId) -> ExecutionReceiptOf<T> {
+    fn mock_constant_receipt<T: Config>(domain_id: DomainId) -> ExecutionReceiptV0Of<T> {
         // The genesis ER will changed as the runtime code changed, thus using a mock genesis
         // ER hash to ensure the return ER is constant
         let mock_genesis_er_hash = H256::from_slice(
@@ -1287,7 +1289,7 @@ mod benchmarks {
                 .unwrap()
                 .into()
         };
-        ExecutionReceipt {
+        ExecutionReceiptV0 {
             domain_block_number: One::one(),
             domain_block_hash: H256::repeat_byte(7).into(),
             domain_block_extrinsic_root: EMPTY_EXTRINSIC_ROOT.into(),

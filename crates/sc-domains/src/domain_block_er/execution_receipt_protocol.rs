@@ -23,7 +23,7 @@ use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::{NetworkBackend, PeerId};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_domains::execution_receipt::ExecutionReceiptFor;
+use sp_domains::execution_receipt::ExecutionReceiptV0For;
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{Block as BlockT, Header};
 use std::marker::PhantomData;
@@ -78,7 +78,7 @@ pub enum DomainBlockERRequest {
 #[derive(Clone, PartialEq, Encode, Decode, Debug)]
 pub enum DomainBlockERResponse<CBlock: BlockT, DomainHeader: Header> {
     /// Response for last confirmed Domain block ER.
-    LastConfirmedER(ExecutionReceiptFor<DomainHeader, CBlock, Balance>),
+    LastConfirmedER(ExecutionReceiptV0For<DomainHeader, CBlock, Balance>),
 }
 
 /// Handler for incoming block requests from a remote peer.
@@ -189,7 +189,7 @@ where
     fn get_execution_receipts(
         &self,
         domain_id: DomainId,
-    ) -> Result<ExecutionReceiptFor<Block::Header, CBlock, Balance>, HandleRequestError> {
+    ) -> Result<ExecutionReceiptV0For<Block::Header, CBlock, Balance>, HandleRequestError> {
         let best_consensus_hash = self.consensus_client.info().best_hash;
 
         // Get the last confirmed block receipt

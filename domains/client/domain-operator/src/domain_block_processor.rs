@@ -1,4 +1,4 @@
-use crate::ExecutionReceiptFor;
+use crate::ExecutionReceiptV0For;
 use crate::aux_schema::BundleMismatchType;
 use crate::fraud_proof::{FraudProofFor, FraudProofGenerator};
 use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
@@ -20,7 +20,7 @@ use sp_core::H256;
 use sp_core::traits::CodeExecutor;
 use sp_domains::bundle::BundleValidity;
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::execution_receipt::ExecutionReceipt;
+use sp_domains::execution_receipt::ExecutionReceiptV0;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, DomainsApi, HeaderHashingFor};
 use sp_domains_fraud_proof::FraudProofApi;
@@ -50,7 +50,7 @@ where
 {
     pub header_hash: Block::Hash,
     pub header_number: NumberFor<Block>,
-    pub execution_receipt: ExecutionReceiptFor<Block, CBlock>,
+    pub execution_receipt: ExecutionReceiptV0For<Block, CBlock>,
 }
 
 /// An abstracted domain block processor.
@@ -354,7 +354,7 @@ where
                     "Domain block header for #{genesis_hash:?} not found",
                 ))
             })?;
-            ExecutionReceipt::genesis(
+            ExecutionReceiptV0::genesis(
                 *genesis_header.state_root(),
                 *genesis_header.extrinsics_root(),
                 genesis_hash,
@@ -373,7 +373,7 @@ where
         let block_fees = runtime_api.block_fees(header_hash)?;
         let transfers = runtime_api.transfers(header_hash)?;
 
-        let execution_receipt = ExecutionReceipt {
+        let execution_receipt = ExecutionReceiptV0 {
             domain_block_number: header_number,
             domain_block_hash: header_hash,
             domain_block_extrinsic_root: extrinsics_root,
@@ -580,8 +580,8 @@ pub(crate) struct InboxedBundleMismatchInfo {
 
 // Find the first mismatch of the `InboxedBundle` in the `ER::inboxed_bundles` list
 pub(crate) fn find_inboxed_bundles_mismatch<Block, CBlock>(
-    local_receipt: &ExecutionReceiptFor<Block, CBlock>,
-    external_receipt: &ExecutionReceiptFor<Block, CBlock>,
+    local_receipt: &ExecutionReceiptV0For<Block, CBlock>,
+    external_receipt: &ExecutionReceiptV0For<Block, CBlock>,
 ) -> Result<Option<InboxedBundleMismatchInfo>, sp_blockchain::Error>
 where
     Block: BlockT,
@@ -693,8 +693,8 @@ where
     Block: BlockT,
     CBlock: BlockT,
 {
-    local_receipt: ExecutionReceiptFor<Block, CBlock>,
-    bad_receipt: ExecutionReceiptFor<Block, CBlock>,
+    local_receipt: ExecutionReceiptV0For<Block, CBlock>,
+    bad_receipt: ExecutionReceiptV0For<Block, CBlock>,
 }
 
 impl<Block, Client, CBlock, CClient, Backend, E>
@@ -988,12 +988,12 @@ mod tests {
 
     fn create_test_execution_receipt(
         inboxed_bundles: Vec<InboxedBundle<BlockHashFor<Block>>>,
-    ) -> ExecutionReceiptFor<Block, CBlock>
+    ) -> ExecutionReceiptV0For<Block, CBlock>
     where
         Block: BlockT,
         CBlock: BlockT,
     {
-        ExecutionReceipt {
+        ExecutionReceiptV0 {
             domain_block_number: Zero::zero(),
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),

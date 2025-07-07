@@ -1,4 +1,4 @@
-use domain_client_operator::{ExecutionReceiptFor, VersionedOpaqueBundleFor};
+use domain_client_operator::{ExecutionReceiptV0For, VersionedOpaqueBundleFor};
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
@@ -56,7 +56,7 @@ where
     keystore: KeystorePtr,
     // A cache for recently produced bad receipts
     bad_receipts_cache:
-        BTreeMap<NumberFor<Block>, HashMap<CBlock::Hash, ExecutionReceiptFor<Block, CBlock>>>,
+        BTreeMap<NumberFor<Block>, HashMap<CBlock::Hash, ExecutionReceiptV0For<Block, CBlock>>>,
 }
 
 impl<Block, CBlock, Client> MaliciousBundleTamper<Block, CBlock, Client>
@@ -94,7 +94,7 @@ where
 
     fn make_receipt_fraudulent(
         &mut self,
-        receipt: &mut ExecutionReceiptFor<Block, CBlock>,
+        receipt: &mut ExecutionReceiptV0For<Block, CBlock>,
     ) -> Result<(), Box<dyn Error>> {
         // We can't make the genesis receipt into a bad ER
         if receipt.domain_block_number.is_zero() {

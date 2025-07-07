@@ -6,7 +6,7 @@ extern crate alloc;
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, Config, ConsensusBlockHash,
     DomainBlockNumberFor, DomainGenesisBlockExecutionReceipt, DomainHashingFor,
-    DomainRuntimeUpgradeRecords, ExecutionInbox, ExecutionReceiptOf, HeadDomainNumber,
+    DomainRuntimeUpgradeRecords, ExecutionInbox, ExecutionReceiptV0Of, HeadDomainNumber,
     HeadReceiptNumber, InboxedBundleAuthor, LatestConfirmedDomainExecutionReceipt,
     LatestSubmittedER, NewAddedHeadReceipt, Pallet, ReceiptHashFor, SkipBalanceChecks,
 };
@@ -17,7 +17,7 @@ use frame_system::pallet_prelude::BlockNumberFor;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::execution_receipt::{ExecutionReceipt, Transfers};
+use sp_domains::execution_receipt::{ExecutionReceiptV0, Transfers};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{ChainId, DomainId, DomainsTransfersTracker, OnChainRewards, OperatorId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
@@ -54,7 +54,7 @@ pub enum Error {
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct BlockTreeNode<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// The full ER for this block.
-    pub execution_receipt: ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>,
+    pub execution_receipt: ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance>,
     /// A set of all operators who have committed to this ER within a bundle. Used to determine who to
     /// slash if a fraudulent branch of the `block_tree` is pruned.
     ///
@@ -117,7 +117,7 @@ pub(crate) fn does_receipt_exists<T: Config>(
 /// Get the receipt type of the given receipt based on the current block tree state
 pub(crate) fn execution_receipt_type<T: Config>(
     domain_id: DomainId,
-    execution_receipt: &ExecutionReceiptOf<T>,
+    execution_receipt: &ExecutionReceiptV0Of<T>,
 ) -> ReceiptType {
     let receipt_number = execution_receipt.domain_block_number;
     let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
@@ -175,9 +175,9 @@ pub(crate) fn execution_receipt_type<T: Config>(
 /// Verify the execution receipt
 pub(crate) fn verify_execution_receipt<T: Config>(
     domain_id: DomainId,
-    execution_receipt: &ExecutionReceiptOf<T>,
+    execution_receipt: &ExecutionReceiptV0Of<T>,
 ) -> Result<(), Error> {
-    let ExecutionReceipt {
+    let ExecutionReceiptV0 {
         consensus_block_number,
         consensus_block_hash,
         domain_block_number,
@@ -336,7 +336,7 @@ pub(crate) type ProcessExecutionReceiptResult<T> = Result<
 pub(crate) fn process_execution_receipt<T: Config>(
     domain_id: DomainId,
     submitter: OperatorId,
-    execution_receipt: ExecutionReceiptOf<T>,
+    execution_receipt: ExecutionReceiptV0Of<T>,
     receipt_type: AcceptedReceiptType,
 ) -> ProcessExecutionReceiptResult<T> {
     let er_hash = execution_receipt.hash::<DomainHashingFor<T>>();
@@ -551,7 +551,7 @@ fn update_domain_runtime_upgrade_records<T: Config>(
 fn add_new_receipt_to_block_tree<T: Config>(
     domain_id: DomainId,
     submitter: OperatorId,
-    execution_receipt: ExecutionReceiptOf<T>,
+    execution_receipt: ExecutionReceiptV0Of<T>,
 ) -> Result<(), Error> {
     // Construct and add a new domain block to the block tree
     let er_hash = execution_receipt.hash::<DomainHashingFor<T>>();
@@ -575,7 +575,7 @@ fn add_new_receipt_to_block_tree<T: Config>(
 /// Import the genesis receipt to the block tree
 pub(crate) fn import_genesis_receipt<T: Config>(
     domain_id: DomainId,
-    genesis_receipt: ExecutionReceiptOf<T>,
+    genesis_receipt: ExecutionReceiptV0Of<T>,
 ) {
     let er_hash = genesis_receipt.hash::<DomainHashingFor<T>>();
     let domain_block_number = genesis_receipt.domain_block_number;
@@ -625,7 +625,7 @@ pub(crate) fn prune_receipt<T: Config>(
 
 pub(crate) fn invalid_bundle_authors_for_receipt<T: Config>(
     domain_id: DomainId,
-    er: &ExecutionReceiptOf<T>,
+    er: &ExecutionReceiptV0Of<T>,
 ) -> Vec<OperatorId> {
     let bundle_digests =
         ExecutionInbox::<T>::get((domain_id, er.domain_block_number, er.consensus_block_number));

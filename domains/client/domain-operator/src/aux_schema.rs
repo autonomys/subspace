@@ -1,6 +1,6 @@
 //! Schema for executor in the aux-db.
 
-use crate::ExecutionReceiptFor;
+use crate::ExecutionReceiptV0For;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, HeaderBackend, Result as ClientResult};
@@ -67,7 +67,7 @@ fn load_decode<Backend: AuxStore, T: Decode>(
 pub(super) fn write_execution_receipt<Backend, Block, CBlock>(
     backend: &Backend,
     oldest_unconfirmed_receipt_number: Option<NumberFor<Block>>,
-    execution_receipt: &ExecutionReceiptFor<Block, CBlock>,
+    execution_receipt: &ExecutionReceiptV0For<Block, CBlock>,
     challenge_period: NumberFor<CBlock>,
 ) -> Result<(), sp_blockchain::Error>
 where
@@ -153,7 +153,7 @@ where
 pub fn load_execution_receipt<Backend, Block, CBlock>(
     backend: &Backend,
     consensus_block_hash: CBlock::Hash,
-) -> ClientResult<Option<ExecutionReceiptFor<Block, CBlock>>>
+) -> ClientResult<Option<ExecutionReceiptV0For<Block, CBlock>>>
 where
     Backend: AuxStore,
     Block: BlockT,
@@ -338,7 +338,7 @@ mod tests {
 
     const PRUNING_DEPTH: BlockNumber = 1000;
 
-    type ExecutionReceipt = sp_domains::execution_receipt::ExecutionReceipt<
+    type ExecutionReceipt = sp_domains::execution_receipt::ExecutionReceiptV0<
         BlockNumber,
         Hash,
         BlockNumber,

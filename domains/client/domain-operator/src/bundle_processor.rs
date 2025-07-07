@@ -1,4 +1,4 @@
-use crate::ExecutionReceiptFor;
+use crate::ExecutionReceiptV0For;
 use crate::domain_block_processor::{
     DomainBlockProcessor, PendingConsensusBlocks, ReceiptsChecker,
 };
@@ -109,7 +109,7 @@ where
 {
     fn validate_receipt(
         &self,
-        receipt: &ExecutionReceiptFor<Block, CBlock>,
+        receipt: &ExecutionReceiptV0For<Block, CBlock>,
     ) -> sp_blockchain::Result<ReceiptValidity> {
         // Skip genesis receipt as it has been already verified by the consensus chain.
         if receipt.domain_block_number.is_zero() {

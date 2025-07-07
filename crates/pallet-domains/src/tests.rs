@@ -6,7 +6,7 @@ use crate::staking::Operator;
 use crate::{
     self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
     ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry,
-    DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptOf,
+    DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptV0Of,
     FraudProofError, FungibleHoldId, HeadDomainNumber, HeadReceiptNumber, NextDomainId, Operators,
     RawOrigin as DomainOrigin, RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
@@ -29,7 +29,7 @@ use sp_domains::bundle::bundle_v1::BundleV1;
 use sp_domains::bundle::{
     BundleHeader, BundleVersion, InboxedBundle, OpaqueBundle, SealedBundleHeader,
 };
-use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptVersion};
+use sp_domains::execution_receipt::{ExecutionReceiptV0, ExecutionReceiptVersion};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
@@ -418,7 +418,7 @@ pub(crate) fn create_dummy_receipt(
     consensus_block_hash: Hash,
     parent_domain_block_receipt_hash: H256,
     block_extrinsics_roots: Vec<H256>,
-) -> ExecutionReceipt<BlockNumber, Hash, DomainBlockNumber, H256, u128> {
+) -> ExecutionReceiptV0<BlockNumber, Hash, DomainBlockNumber, H256, u128> {
     let (execution_trace, execution_trace_root) = if block_number == 0 {
         (Vec::new(), Default::default())
     } else {
@@ -437,7 +437,7 @@ pub(crate) fn create_dummy_receipt(
         .into_iter()
         .map(InboxedBundle::dummy)
         .collect();
-    ExecutionReceipt {
+    ExecutionReceiptV0 {
         domain_block_number: block_number as DomainBlockNumber,
         domain_block_hash: H256::random(),
         domain_block_extrinsic_root: Default::default(),
@@ -476,7 +476,7 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     domain_id: DomainId,
     operator_id: OperatorId,
     bundle_extrinsics_root: H256,
-    receipt: ExecutionReceipt<BlockNumber, Hash, DomainBlockNumber, H256, u128>,
+    receipt: ExecutionReceiptV0<BlockNumber, Hash, DomainBlockNumber, H256, u128>,
 ) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
     let pair = OperatorPair::from_seed(&[0; 32]);
 
@@ -571,7 +571,7 @@ pub(crate) fn extend_block_tree_from_zero(
     domain_id: DomainId,
     operator_id: u64,
     to: DomainBlockNumberFor<Test>,
-) -> ExecutionReceiptOf<Test> {
+) -> ExecutionReceiptV0Of<Test> {
     let genesis_receipt = get_block_tree_node_at::<Test>(domain_id, 0)
         .unwrap()
         .execution_receipt;
@@ -583,8 +583,8 @@ pub(crate) fn extend_block_tree(
     domain_id: DomainId,
     operator_id: u64,
     to: DomainBlockNumberFor<Test>,
-    mut latest_receipt: ExecutionReceiptOf<Test>,
-) -> ExecutionReceiptOf<Test> {
+    mut latest_receipt: ExecutionReceiptV0Of<Test>,
+) -> ExecutionReceiptV0Of<Test> {
     let current_block_number = frame_system::Pallet::<Test>::current_block_number();
     assert!(current_block_number < to);
 

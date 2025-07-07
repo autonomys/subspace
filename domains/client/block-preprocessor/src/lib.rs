@@ -26,7 +26,7 @@ use sp_core::H256;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode};
 use sp_domains::bundle::{InboxedBundle, InvalidBundleType, OpaqueBundle, OpaqueBundles};
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::execution_receipt::ExecutionReceipt;
+use sp_domains::execution_receipt::ExecutionReceiptV0;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, ReceiptValidity};
 use sp_messenger::MessengerApi;
@@ -115,7 +115,7 @@ where
 {
     fn validate_receipt(
         &self,
-        receipt: &ExecutionReceipt<
+        receipt: &ExecutionReceiptV0<
             NumberFor<CBlock>,
             CBlock::Hash,
             NumberFor<Block>,

@@ -12,7 +12,7 @@ use sp_consensus_slots::Slot;
 use sp_domains::bundle::bundle_v1::BundleV1;
 use sp_domains::bundle::{BundleHeader, SealedBundleHeader};
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::execution_receipt::{SealedSingletonReceipt, SingletonReceipt};
+use sp_domains::execution_receipt::{SealedSingletonReceiptV0, SingletonReceiptV0};
 use sp_domains::{
     BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
     OperatorSignature, ProofOfElection,
@@ -38,7 +38,7 @@ type VersionedOpaqueBundle<Block, CBlock> = sp_domains::bundle::OpaqueBundle<
 >;
 
 type SealedSingletonReceiptFor<Block, CBlock> =
-    SealedSingletonReceipt<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
+    SealedSingletonReceiptV0<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
 pub enum DomainProposal<Block: BlockT, CBlock: BlockT> {
     Bundle(VersionedOpaqueBundle<Block, CBlock>),
@@ -269,7 +269,7 @@ where
                 .domain_bundle_proposer
                 .load_next_receipt(domain_best_number_onchain, head_receipt_number)?;
 
-            let singleton_receipt = SingletonReceipt {
+            let singleton_receipt = SingletonReceiptV0 {
                 proof_of_election: proof_of_election.clone(),
                 receipt,
             };
@@ -280,7 +280,7 @@ where
             };
 
             let sealed_singleton_receipt: SealedSingletonReceiptFor<Block, CBlock> =
-                SealedSingletonReceipt {
+                SealedSingletonReceiptV0 {
                     singleton_receipt,
                     signature,
                 };

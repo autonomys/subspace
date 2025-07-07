@@ -1,4 +1,4 @@
-use crate::ExecutionReceiptFor;
+use crate::ExecutionReceiptV0For;
 use crate::aux_schema::BundleMismatchType;
 use domain_block_builder::BlockBuilder;
 use domain_runtime_primitives::CheckExtrinsicsValidityError;
@@ -245,7 +245,7 @@ where
     fn maybe_generate_domain_runtime_code_proof_for_receipt(
         &self,
         domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        local_receipt: &ExecutionReceiptV0For<Block, CBlock>,
     ) -> Result<Option<DomainRuntimeCodeAt<NumberFor<CBlock>, CBlock::Hash, H256>>, FraudProofError>
     {
         // NOTE: domain runtime code is take affect in the next block, so we need to get
@@ -298,7 +298,7 @@ where
         &self,
         domain_id: DomainId,
         execution_phase: ExecutionPhase,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        local_receipt: &ExecutionReceiptV0For<Block, CBlock>,
         bad_receipt_trace_length: usize,
         bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
@@ -457,7 +457,7 @@ where
     pub(crate) fn generate_valid_bundle_proof(
         &self,
         domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        local_receipt: &ExecutionReceiptV0For<Block, CBlock>,
         bundle_index: usize,
         bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
@@ -549,7 +549,7 @@ where
     pub(crate) fn generate_invalid_domain_extrinsics_root_proof(
         &self,
         domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        local_receipt: &ExecutionReceiptV0For<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let consensus_block_hash = local_receipt.consensus_block_hash;
@@ -664,7 +664,7 @@ where
     pub(crate) fn generate_valid_bundle_digest_for_receipt(
         &self,
         domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        local_receipt: &ExecutionReceiptV0For<Block, CBlock>,
     ) -> Result<Vec<ValidBundleDigest>, FraudProofError> {
         let consensus_block_hash = local_receipt.consensus_block_hash;
         let consensus_extrinsics = self
@@ -724,7 +724,7 @@ where
     pub(crate) fn generate_invalid_bundle_proof(
         &self,
         domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        local_receipt: &ExecutionReceiptV0For<Block, CBlock>,
         mismatch_type: BundleMismatchType,
         bundle_index: u32,
         bad_receipt_hash: Block::Hash,
@@ -744,7 +744,7 @@ where
     pub(crate) fn generate_invalid_bundle_proof_for_test(
         &self,
         domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        local_receipt: &ExecutionReceiptV0For<Block, CBlock>,
         mismatch_type: BundleMismatchType,
         bundle_index: u32,
         bad_receipt_hash: Block::Hash,
@@ -764,7 +764,7 @@ where
     fn generate_invalid_bundle_proof_inner(
         &self,
         domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        local_receipt: &ExecutionReceiptV0For<Block, CBlock>,
         mismatch_type: BundleMismatchType,
         bundle_index: u32,
         bad_receipt_hash: Block::Hash,
@@ -1165,7 +1165,7 @@ where
     pub(crate) fn generate_invalid_block_fees_proof(
         &self,
         domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        local_receipt: &ExecutionReceiptV0For<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
@@ -1207,7 +1207,7 @@ where
     pub(crate) fn generate_invalid_transfers_proof(
         &self,
         domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        local_receipt: &ExecutionReceiptV0For<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
@@ -1248,7 +1248,7 @@ where
     pub(crate) fn generate_invalid_domain_block_hash_proof(
         &self,
         domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        local_receipt: &ExecutionReceiptV0For<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;

@@ -15,7 +15,7 @@ use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_subspace_sync_common::snap_sync_engine::SnapSyncingEngine;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
-use sp_domains::execution_receipt::ExecutionReceiptFor;
+use sp_domains::execution_receipt::ExecutionReceiptV0For;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Header, NumberFor};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -48,7 +48,7 @@ where
     /// Synchronizes consensus snap sync stages.
     pub snap_sync_orchestrator: Arc<SnapSyncOrchestrator>,
     /// Confirmed last Domain block ER
-    pub last_domain_block_er: ExecutionReceiptFor<DomainHeader, Block, Balance>,
+    pub last_domain_block_er: ExecutionReceiptV0For<DomainHeader, Block, Balance>,
     /// Consensus chain block importing stream
     pub block_importing_notification_stream:
         Box<dyn Stream<Item = BlockImportingAcknowledgement<Block>> + Sync + Send + Unpin>,

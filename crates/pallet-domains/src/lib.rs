@@ -53,7 +53,7 @@ use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_core::H256;
 use sp_domains::bundle::OpaqueBundle;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
-use sp_domains::execution_receipt::{ExecutionReceipt, SealedSingletonReceipt};
+use sp_domains::execution_receipt::{ExecutionReceiptV0, SealedSingletonReceiptV0};
 use sp_domains::{
     ChainId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, DomainBundleLimit, DomainId,
     DomainInstanceData, EMPTY_EXTRINSIC_ROOT, OperatorId, OperatorPublicKey, OperatorSignature,
@@ -103,7 +103,7 @@ pub trait BlockSlot<T: frame_system::Config> {
     fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> Option<BlockNumberFor<T>>;
 }
 
-pub type ExecutionReceiptOf<T> = ExecutionReceipt<
+pub type ExecutionReceiptV0Of<T> = ExecutionReceiptV0<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
     DomainBlockNumberFor<T>,
@@ -111,14 +111,14 @@ pub type ExecutionReceiptOf<T> = ExecutionReceipt<
     BalanceOf<T>,
 >;
 
-pub type VersionedOpaqueBundleOf<T> = OpaqueBundle<
+pub type OpaqueBundleOf<T> = OpaqueBundle<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainHeader,
     BalanceOf<T>,
 >;
 
-pub type SingletonReceiptOf<T> = SealedSingletonReceipt<
+pub type SingletonReceiptV0Of<T> = SealedSingletonReceiptV0<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainHeader,
@@ -236,9 +236,9 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
-        ExecutionReceiptOf, FraudProofFor, HoldIdentifier, MAX_BUNDLE_PER_BLOCK, NominatorId,
-        RawOrigin, ReceiptHashFor, STORAGE_VERSION, SingletonReceiptOf, StateRootOf,
-        VersionedOpaqueBundleOf,
+        ExecutionReceiptV0Of, FraudProofFor, HoldIdentifier, MAX_BUNDLE_PER_BLOCK, NominatorId,
+        OpaqueBundleOf, RawOrigin, ReceiptHashFor, STORAGE_VERSION, SingletonReceiptV0Of,
+        StateRootOf,
     };
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
@@ -695,13 +695,13 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn latest_confirmed_domain_execution_receipt)]
     pub type LatestConfirmedDomainExecutionReceipt<T: Config> =
-        StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
+        StorageMap<_, Identity, DomainId, ExecutionReceiptV0Of<T>, OptionQuery>;
 
     /// Storage to hold all the domain's genesis execution receipt.
     #[pallet::storage]
     #[pallet::getter(fn domain_genesis_block_execution_receipt)]
     pub type DomainGenesisBlockExecutionReceipt<T: Config> =
-        StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
+        StorageMap<_, Identity, DomainId, ExecutionReceiptV0Of<T>, OptionQuery>;
 
     /// The latest ER submitted by the operator for a given domain. It is used to determine if the operator
     /// has submitted bad ER and is pending to slash.
@@ -1122,7 +1122,7 @@ mod pallet {
         #[pallet::weight(Pallet::<T>::max_submit_bundle_weight())]
         pub fn submit_bundle(
             origin: OriginFor<T>,
-            opaque_bundle: VersionedOpaqueBundleOf<T>,
+            opaque_bundle: OpaqueBundleOf<T>,
         ) -> DispatchResultWithPostInfo {
             T::DomainOrigin::ensure_origin(origin)?;
 
@@ -1775,7 +1775,7 @@ mod pallet {
         #[pallet::weight(Pallet::<T>::max_submit_receipt_weight())]
         pub fn submit_receipt(
             origin: OriginFor<T>,
-            singleton_receipt: SingletonReceiptOf<T>,
+            singleton_receipt: SingletonReceiptV0Of<T>,
         ) -> DispatchResultWithPostInfo {
             T::DomainOrigin::ensure_origin(origin)?;
 
@@ -2216,9 +2216,7 @@ impl<T: Config> Pallet<T> {
             .map(|operator| (operator.signing_key, operator.current_total_stake))
     }
 
-    fn check_extrinsics_root(
-        opaque_bundle: &VersionedOpaqueBundleOf<T>,
-    ) -> Result<(), BundleError> {
+    fn check_extrinsics_root(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
         let expected_extrinsics_root = <T::DomainHeader as Header>::Hashing::ordered_trie_root(
             opaque_bundle
                 .extrinsics()
@@ -2296,7 +2294,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_bundle(
-        opaque_bundle: &VersionedOpaqueBundleOf<T>,
+        opaque_bundle: &OpaqueBundleOf<T>,
         domain_config: &DomainConfig<T::AccountId, BalanceOf<T>>,
     ) -> Result<(), BundleError> {
         ensure!(
@@ -2380,7 +2378,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_submit_bundle(
-        opaque_bundle: &VersionedOpaqueBundleOf<T>,
+        opaque_bundle: &OpaqueBundleOf<T>,
         pre_dispatch: bool,
     ) -> Result<(), BundleError> {
         let domain_id = opaque_bundle.domain_id();
@@ -2419,7 +2417,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_singleton_receipt(
-        sealed_singleton_receipt: &SingletonReceiptOf<T>,
+        sealed_singleton_receipt: &SingletonReceiptV0Of<T>,
         pre_dispatch: bool,
     ) -> Result<(), BundleError> {
         let domain_id = sealed_singleton_receipt.domain_id();
@@ -2867,7 +2865,7 @@ impl<T: Config> Pallet<T> {
         sp_domains::DOMAIN_STORAGE_FEE_MULTIPLIER * transaction_byte_fee
     }
 
-    pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptOf<T>> {
+    pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptV0Of<T>> {
         BlockTreeNodes::<T>::get(receipt_hash).map(|db| db.execution_receipt)
     }
 
@@ -3007,7 +3005,7 @@ impl<T: Config> Pallet<T> {
     // the state then get it from the state otherwise from the `maybe_domain_runtime_code_at` proof.
     pub fn get_domain_runtime_code_for_receipt(
         domain_id: DomainId,
-        receipt: &ExecutionReceiptOf<T>,
+        receipt: &ExecutionReceiptV0Of<T>,
         maybe_domain_runtime_code_at: Option<
             DomainRuntimeCodeAt<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         >,
@@ -3161,7 +3159,7 @@ where
     T: Config + CreateUnsigned<Call<T>>,
 {
     /// Submits an unsigned extrinsic [`Call::submit_bundle`].
-    pub fn submit_bundle_unsigned(opaque_bundle: VersionedOpaqueBundleOf<T>) {
+    pub fn submit_bundle_unsigned(opaque_bundle: OpaqueBundleOf<T>) {
         let slot = opaque_bundle.slot_number();
         let extrinsics_count = opaque_bundle.body_length();
 
@@ -3179,7 +3177,7 @@ where
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_receipt`].
-    pub fn submit_receipt_unsigned(singleton_receipt: SingletonReceiptOf<T>) {
+    pub fn submit_receipt_unsigned(singleton_receipt: SingletonReceiptV0Of<T>) {
         let slot = singleton_receipt.slot_number();
         let domain_block_number = singleton_receipt.receipt().domain_block_number;
 

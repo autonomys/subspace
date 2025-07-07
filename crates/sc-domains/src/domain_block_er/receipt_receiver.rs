@@ -14,7 +14,7 @@ use sc_network_sync::SyncingService;
 use sp_blockchain::HeaderBackend;
 use sp_core::{Hasher, KeccakHasher};
 use sp_domains::DomainId;
-use sp_domains::execution_receipt::ExecutionReceiptFor;
+use sp_domains::execution_receipt::ExecutionReceiptV0For;
 use sp_runtime::traits::{Block as BlockT, Header};
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
@@ -91,7 +91,7 @@ where
     /// Returns execution receipts for the last confirmed domain block.
     pub async fn get_last_confirmed_domain_block_receipt(
         &self,
-    ) -> Option<ExecutionReceiptFor<Block::Header, CBlock, Balance>> {
+    ) -> Option<ExecutionReceiptV0For<Block::Header, CBlock, Balance>> {
         let info = self.consensus_client.info();
         let protocol_name = generate_protocol_name(info.genesis_hash, self.fork_id.as_deref());
         // Used to debug failures

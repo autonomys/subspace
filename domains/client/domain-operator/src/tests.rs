@@ -23,7 +23,7 @@ use domain_test_utils::test_ethereum_tx::{AccountInfo, address_build, contract_a
 use ethereum::TransactionV2 as EthereumTransaction;
 use fp_rpc::EthereumRuntimeRPCApi;
 use futures::StreamExt;
-use pallet_domains::{FraudProofFor, OperatorConfig, VersionedOpaqueBundleOf};
+use pallet_domains::{FraudProofFor, OpaqueBundleOf, OperatorConfig};
 use pallet_messenger::ChainAllowlistUpdate;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
@@ -8766,7 +8766,7 @@ async fn test_false_bundle_author() {
 
 fn bundle_to_tx(
     ferdie: &MockConsensusNode,
-    opaque_bundle: VersionedOpaqueBundleOf<Runtime>,
+    opaque_bundle: OpaqueBundleOf<Runtime>,
 ) -> OpaqueExtrinsic {
     ferdie
         .construct_unsigned_extrinsic(pallet_domains::Call::submit_bundle { opaque_bundle })

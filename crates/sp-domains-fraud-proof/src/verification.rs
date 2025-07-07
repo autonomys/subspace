@@ -22,7 +22,7 @@ use parity_scale_codec::{Decode, Encode};
 use sp_core::H256;
 use sp_core::storage::StorageKey;
 use sp_domains::bundle::{BundleValidity, InboxedBundle, InvalidBundleType};
-use sp_domains::execution_receipt::{BlockFees, ExecutionReceipt, Transfers};
+use sp_domains::execution_receipt::{BlockFees, ExecutionReceiptV0, Transfers};
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::valued_trie::valued_ordered_trie_root;
@@ -48,7 +48,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
     Hashing,
     SKP,
 >(
-    bad_receipt: ExecutionReceipt<
+    bad_receipt: ExecutionReceiptV0<
         NumberFor<CBlock>,
         CBlock::Hash,
         HeaderNumberFor<DomainHeader>,
@@ -231,7 +231,7 @@ where
 
 /// Verifies valid bundle fraud proof.
 pub fn verify_valid_bundle_fraud_proof<CBlock, DomainHeader, Balance, SKP>(
-    bad_receipt: ExecutionReceipt<
+    bad_receipt: ExecutionReceiptV0<
         NumberFor<CBlock>,
         CBlock::Hash,
         HeaderNumberFor<DomainHeader>,
@@ -284,14 +284,14 @@ where
 
 /// Verifies invalid state transition fraud proof.
 pub fn verify_invalid_state_transition_fraud_proof<CBlock, DomainHeader, Balance>(
-    bad_receipt: ExecutionReceipt<
+    bad_receipt: ExecutionReceiptV0<
         NumberFor<CBlock>,
         CBlock::Hash,
         DomainHeader::Number,
         DomainHeader::Hash,
         Balance,
     >,
-    bad_receipt_parent: ExecutionReceipt<
+    bad_receipt_parent: ExecutionReceiptV0<
         NumberFor<CBlock>,
         CBlock::Hash,
         DomainHeader::Number,
@@ -353,7 +353,7 @@ where
 
 /// Verifies invalid domain block hash fraud proof.
 pub fn verify_invalid_domain_block_hash_fraud_proof<CBlock, Balance, DomainHeader>(
-    bad_receipt: ExecutionReceipt<
+    bad_receipt: ExecutionReceiptV0<
         NumberFor<CBlock>,
         CBlock::Hash,
         DomainHeader::Number,
@@ -403,7 +403,7 @@ pub fn verify_invalid_block_fees_fraud_proof<
     Balance,
     DomainHashing,
 >(
-    bad_receipt: ExecutionReceipt<
+    bad_receipt: ExecutionReceiptV0<
         NumberFor<CBlock>,
         CBlock::Hash,
         DomainNumber,
@@ -452,7 +452,7 @@ pub fn verify_invalid_transfers_fraud_proof<
     Balance,
     DomainHashing,
 >(
-    bad_receipt: ExecutionReceipt<
+    bad_receipt: ExecutionReceiptV0<
         NumberFor<CBlock>,
         CBlock::Hash,
         DomainNumber,
@@ -497,7 +497,7 @@ where
 /// If the entry is expected then it will be returned
 /// In any other cases VerificationError will be returned
 fn check_expected_bundle_entry<CBlock, DomainHeader, Balance>(
-    bad_receipt: &ExecutionReceipt<
+    bad_receipt: &ExecutionReceiptV0<
         NumberFor<CBlock>,
         CBlock::Hash,
         HeaderNumberFor<DomainHeader>,
@@ -569,14 +569,14 @@ fn get_extrinsic_from_proof<DomainHeader: HeaderT>(
 }
 
 pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, MmrHash, Balance, SKP, MPV>(
-    bad_receipt: ExecutionReceipt<
+    bad_receipt: ExecutionReceiptV0<
         NumberFor<CBlock>,
         CBlock::Hash,
         HeaderNumberFor<DomainHeader>,
         HeaderHashFor<DomainHeader>,
         Balance,
     >,
-    bad_receipt_parent: ExecutionReceipt<
+    bad_receipt_parent: ExecutionReceiptV0<
         NumberFor<CBlock>,
         CBlock::Hash,
         HeaderNumberFor<DomainHeader>,

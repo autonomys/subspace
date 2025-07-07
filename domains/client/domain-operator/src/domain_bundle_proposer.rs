@@ -1,4 +1,4 @@
-use crate::ExecutionReceiptFor;
+use crate::ExecutionReceiptV0For;
 use domain_runtime_primitives::CheckExtrinsicsValidityError;
 use futures::{FutureExt, select};
 use parity_scale_codec::Encode;
@@ -9,7 +9,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::bundle::BundleHeader;
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::execution_receipt::ExecutionReceipt;
+use sp_domains::execution_receipt::ExecutionReceiptV0;
 use sp_domains::{DomainId, DomainsApi, HeaderHashingFor, OperatorId, ProofOfElection};
 use sp_messenger::MessengerApi;
 use sp_runtime::Percent;
@@ -125,7 +125,7 @@ where
         proof_of_election: ProofOfElection,
         tx_range: U256,
         operator_id: OperatorId,
-        receipt: ExecutionReceiptFor<Block, CBlock>,
+        receipt: ExecutionReceiptV0For<Block, CBlock>,
     ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>> {
         // NOTE: use the domain block that derive the ER to validate the extrinsic to be included
         // in the bundle, so the validity of the extrinsic is committed to the ER that submited together.
@@ -371,7 +371,7 @@ where
         &self,
         domain_best_number_onchain: NumberFor<Block>,
         head_receipt_number: NumberFor<Block>,
-    ) -> sp_blockchain::Result<ExecutionReceiptFor<Block, CBlock>> {
+    ) -> sp_blockchain::Result<ExecutionReceiptV0For<Block, CBlock>> {
         tracing::trace!(
             ?domain_best_number_onchain,
             ?head_receipt_number,
@@ -388,7 +388,7 @@ where
                 ))
             })?;
 
-            return Ok(ExecutionReceipt::genesis(
+            return Ok(ExecutionReceiptV0::genesis(
                 *genesis_header.state_root(),
                 *genesis_header.extrinsics_root(),
                 genesis_hash,
