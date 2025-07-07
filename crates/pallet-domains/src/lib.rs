@@ -51,7 +51,7 @@ use scale_info::TypeInfo;
 use sp_consensus_subspace::WrappedPotOutput;
 use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_core::H256;
-use sp_domains::bundle::OpaqueBundle;
+use sp_domains::bundle::{Bundle, BundleVersion, OpaqueBundle};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::execution_receipt::{ExecutionReceiptV0, SealedSingletonReceiptV0};
 use sp_domains::{
@@ -823,6 +823,8 @@ mod pallet {
         ExpectingReceiptGap,
         /// Failed to get missed domain runtime upgrade count
         FailedToGetMissedUpgradeCount,
+        /// Bundle version mismatch
+        BundleVersionMismatch,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -2381,6 +2383,16 @@ impl<T: Config> Pallet<T> {
         opaque_bundle: &OpaqueBundleOf<T>,
         pre_dispatch: bool,
     ) -> Result<(), BundleError> {
+        let current_bundle_version =
+            T::CurrentBundleAndExecutionReceiptVersion::get().bundle_version;
+
+        // bundle version check
+        match (current_bundle_version, opaque_bundle) {
+            (BundleVersion::V0, Bundle::V0(_)) => Ok(()),
+            (BundleVersion::V1, Bundle::V1(_)) => Ok(()),
+            _ => Err(BundleError::BundleVersionMismatch),
+        }?;
+
         let domain_id = opaque_bundle.domain_id();
         let operator_id = opaque_bundle.operator_id();
         let sealed_header = opaque_bundle.sealed_header();

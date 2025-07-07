@@ -5,12 +5,13 @@ use crate::utils::OperatorSlotInfo;
 use async_trait::async_trait;
 use parity_scale_codec::Decode;
 use sc_client_api::{AuxStore, BlockBackend};
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
+use sp_domains::bundle::bundle_v0::BundleV0;
 use sp_domains::bundle::bundle_v1::BundleV1;
-use sp_domains::bundle::{BundleHeader, SealedBundleHeader};
+use sp_domains::bundle::{BundleHeader, BundleVersion, SealedBundleHeader};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::execution_receipt::{SealedSingletonReceiptV0, SingletonReceiptV0};
 use sp_domains::{
@@ -30,7 +31,7 @@ use tracing::info;
 pub type BundleHeaderFor<Block, CBlock> =
     BundleHeader<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
-type VersionedOpaqueBundle<Block, CBlock> = sp_domains::bundle::OpaqueBundle<
+type OpaqueBundle<Block, CBlock> = sp_domains::bundle::OpaqueBundle<
     NumberFor<CBlock>,
     BlockHashFor<CBlock>,
     HeaderFor<Block>,
@@ -41,12 +42,12 @@ type SealedSingletonReceiptFor<Block, CBlock> =
     SealedSingletonReceiptV0<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
 pub enum DomainProposal<Block: BlockT, CBlock: BlockT> {
-    Bundle(VersionedOpaqueBundle<Block, CBlock>),
+    Bundle(OpaqueBundle<Block, CBlock>),
     Receipt(SealedSingletonReceiptFor<Block, CBlock>),
 }
 
 impl<Block: BlockT, CBlock: BlockT> DomainProposal<Block, CBlock> {
-    pub fn into_opaque_bundle(self) -> Option<VersionedOpaqueBundle<Block, CBlock>> {
+    pub fn into_opaque_bundle(self) -> Option<OpaqueBundle<Block, CBlock>> {
         match self {
             DomainProposal::Bundle(b) => Some(b),
             DomainProposal::Receipt(_) => None,
@@ -340,15 +341,24 @@ where
         bundle_header: BundleHeaderFor<Block, CBlock>,
         operator_signing_key: &OperatorPublicKey,
         extrinsics: Vec<ExtrinsicFor<Block>>,
+        current_bundle_version: BundleVersion,
     ) -> sp_blockchain::Result<DomainProposal<Block, CBlock>> {
         let signature = {
             let to_sign = bundle_header.hash();
             self.sign(operator_signing_key, to_sign.as_ref())?
         };
 
-        let bundle = BundleV1 {
-            sealed_header: SealedBundleHeader::new(bundle_header, signature),
-            extrinsics,
+        let bundle = match current_bundle_version {
+            BundleVersion::V0 => BundleV0 {
+                sealed_header: SealedBundleHeader::new(bundle_header, signature),
+                extrinsics,
+            }
+            .into_opaque_bundle(),
+            BundleVersion::V1 => BundleV1 {
+                sealed_header: SealedBundleHeader::new(bundle_header, signature),
+                extrinsics,
+            }
+            .into_opaque_bundle(),
         };
 
         // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
@@ -356,7 +366,7 @@ where
         // tracing::error!(error = ?e, "Failed to send transaction bundle");
         // }
 
-        Ok(DomainProposal::Bundle(bundle.into_opaque_bundle()))
+        Ok(DomainProposal::Bundle(bundle))
     }
 }
 
@@ -384,6 +394,22 @@ where
     ) -> sp_blockchain::Result<Option<DomainProposal<Block, CBlock>>> {
         let domain_best_number = self.client.info().best_number;
         let consensus_chain_best_hash = self.consensus_client.info().best_hash;
+
+        let runtime_api = self.consensus_client.runtime_api();
+        let domains_api_version = runtime_api
+            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_chain_best_hash)
+            .ok()
+            .flatten()
+            // It is safe to return a default version of 1, since there will always be version 1.
+            .unwrap_or(1);
+
+        let bundle_version = if domains_api_version >= 5 {
+            let versions = runtime_api
+                .current_bundle_and_execution_receipt_version(consensus_chain_best_hash)?;
+            versions.bundle_version
+        } else {
+            BundleVersion::V0
+        };
 
         let Some((
             domain_best_number_onchain,
@@ -434,7 +460,12 @@ where
 
         info!("🔖 Producing bundle at slot {:?}", slot_info.slot);
 
-        let bundle = self.seal_bundle(bundle_header, &operator_signing_key, extrinsics)?;
+        let bundle = self.seal_bundle(
+            bundle_header,
+            &operator_signing_key,
+            extrinsics,
+            bundle_version,
+        )?;
 
         Ok(Some(bundle))
     }
@@ -552,6 +583,22 @@ where
         let domain_best_number = self.inner.client.info().best_number;
         let consensus_chain_best_hash = self.inner.consensus_client.info().best_hash;
 
+        let runtime_api = self.inner.consensus_client.runtime_api();
+        let domains_api_version = runtime_api
+            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_chain_best_hash)
+            .ok()
+            .flatten()
+            // It is safe to return a default version of 1, since there will always be version 1.
+            .unwrap_or(1);
+
+        let bundle_version = if domains_api_version >= 5 {
+            let versions = runtime_api
+                .current_bundle_and_execution_receipt_version(consensus_chain_best_hash)?;
+            versions.bundle_version
+        } else {
+            BundleVersion::V0
+        };
+
         // Test-only behaviour: skip slot if configured to do so
         let skip_out_of_order_slot = self.skip_out_of_order_slot
             && self
@@ -624,9 +671,12 @@ where
 
         info!("🔖 Producing bundle at slot {:?}", slot_info.slot);
 
-        let bundle = self
-            .inner
-            .seal_bundle(bundle_header, &operator_signing_key, extrinsics)?;
+        let bundle = self.inner.seal_bundle(
+            bundle_header,
+            &operator_signing_key,
+            extrinsics,
+            bundle_version,
+        )?;
 
         Ok(Some(bundle))
     }

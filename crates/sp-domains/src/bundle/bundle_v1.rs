@@ -6,9 +6,8 @@ use crate::bundle::{OpaqueBundle, SealedBundleHeader};
 use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_core::H256;
 use sp_runtime::OpaqueExtrinsic;
-use sp_runtime::traits::{BlakeTwo256, Hash, Header as HeaderT};
+use sp_runtime::traits::Header as HeaderT;
 
 /// Domain bundle v1.
 // TODO: update sealed header to include versioned execution receipt.
@@ -18,15 +17,6 @@ pub struct BundleV1<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
     pub sealed_header: SealedBundleHeader<Number, Hash, DomainHeader, Balance>,
     /// The accompanying extrinsics.
     pub extrinsics: Vec<Extrinsic>,
-}
-
-impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
-    BundleV1<Extrinsic, Number, Hash, DomainHeader, Balance>
-{
-    /// Returns the hash of this bundle.
-    pub fn hash(&self) -> H256 {
-        BlakeTwo256::hash_of(self)
-    }
 }
 
 impl<Extrinsic: Encode, Number, Hash, DomainHeader: HeaderT, Balance>

@@ -312,14 +312,13 @@ where
 
 /// Bundle with proof data for fraud proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct VersionedOpaqueBundleWithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
+pub struct OpaqueBundleWithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
     pub bundle: OpaqueBundle<Number, Hash, DomainHeader, Balance>,
     pub bundle_index: u32,
     pub bundle_storage_proof: SuccessfulBundlesProof,
 }
 
-impl<Number, Hash, DomainHeader, Balance>
-    VersionedOpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>
+impl<Number, Hash, DomainHeader, Balance> OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>
 where
     Number: Encode,
     Hash: Encode,
@@ -347,7 +346,7 @@ where
             storage_key_provider,
         )?;
 
-        Ok(VersionedOpaqueBundleWithProof {
+        Ok(OpaqueBundleWithProof {
             bundle,
             bundle_index,
             bundle_storage_proof,
@@ -373,6 +372,27 @@ where
             .ok_or(VerificationError::InvalidBundleStorageProof)?;
 
         Ok(())
+    }
+
+    /// Converts Opaque Bundle into V0 proof
+    /// Returns none if Bundle version is non-zero.
+    pub fn into_opaque_bundle_v0_proof(
+        self,
+    ) -> Option<OpaqueBundleV0WithProof<Number, Hash, DomainHeader, Balance>> {
+        let OpaqueBundleWithProof {
+            bundle,
+            bundle_index,
+            bundle_storage_proof,
+        } = self;
+
+        let OpaqueBundle::V0(bundle) = bundle else {
+            return None;
+        };
+        Some(OpaqueBundleV0WithProof {
+            bundle,
+            bundle_index,
+            bundle_storage_proof,
+        })
     }
 }
 

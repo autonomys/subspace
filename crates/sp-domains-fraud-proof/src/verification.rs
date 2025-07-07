@@ -1,10 +1,8 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::fraud_proof::fraud_proof_v0::{InvalidBundlesV0Proof, ValidBundleV0Proof};
 use crate::fraud_proof::fraud_proof_v1::{
-    InvalidBundlesProof, InvalidBundlesProofData, InvalidVersionedBundlesProof, ValidBundleProof,
-    ValidVersionedBundleProof,
+    InvalidBundlesProof, InvalidBundlesProofData, ValidBundleProof,
 };
 use crate::fraud_proof::{
     InvalidExtrinsicsRootProof, InvalidStateTransitionProof, MmrRootProof, VerificationError,
@@ -250,22 +248,12 @@ where
     DomainHeader::Hash: Into<H256> + PartialEq + Copy,
     SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
 {
-    let (extrinsics, bundle_index) = match fraud_proof {
-        ValidBundleProof::V0(ValidBundleV0Proof { bundle_with_proof }) => {
-            bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
-            (
-                bundle_with_proof.bundle.extrinsics.clone(),
-                bundle_with_proof.bundle_index,
-            )
-        }
-        ValidBundleProof::Versioned(ValidVersionedBundleProof { bundle_with_proof }) => {
-            bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
-            (
-                bundle_with_proof.bundle.extrinsics().to_vec(),
-                bundle_with_proof.bundle_index,
-            )
-        }
-    };
+    let ValidBundleProof { bundle_with_proof } = fraud_proof;
+    bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
+    let (extrinsics, bundle_index) = (
+        bundle_with_proof.bundle.extrinsics().to_vec(),
+        bundle_with_proof.bundle_index,
+    );
 
     let valid_bundle_digest =
         fraud_proof_runtime_interface::derive_bundle_digest(domain_runtime_code, extrinsics)
@@ -602,42 +590,12 @@ where
     SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
     MPV: MmrProofVerifier<MmrHash, NumberFor<CBlock>, CBlock::Hash>,
 {
-    let (bundle_index, is_good_invalid_fraud_proof, invalid_bundle_type, proof_data) =
-        match invalid_bundles_fraud_proof {
-            InvalidBundlesProof::V0(proof) => {
-                let InvalidBundlesV0Proof {
-                    bundle_index,
-                    invalid_bundle_type,
-                    is_good_invalid_fraud_proof,
-                    proof_data,
-                } = proof;
-                (
-                    bundle_index,
-                    is_good_invalid_fraud_proof,
-                    invalid_bundle_type,
-                    // this is a bit of penality but should not be in long run
-                    // since V0 will not be used once runtime is upgraded
-                    // and blocks with V0 bundles are confirmed.
-                    // but doing this, we will get same code path for both
-                    // types.
-                    &proof_data.clone().into(),
-                )
-            }
-            InvalidBundlesProof::Versioned(proof) => {
-                let InvalidVersionedBundlesProof {
-                    bundle_index,
-                    invalid_bundle_type,
-                    is_good_invalid_fraud_proof,
-                    proof_data,
-                } = proof;
-                (
-                    bundle_index,
-                    is_good_invalid_fraud_proof,
-                    invalid_bundle_type,
-                    proof_data,
-                )
-            }
-        };
+    let InvalidBundlesProof {
+        bundle_index,
+        invalid_bundle_type,
+        is_good_invalid_fraud_proof,
+        proof_data,
+    } = invalid_bundles_fraud_proof;
 
     let (bundle_index, is_good_invalid_fraud_proof) = (*bundle_index, *is_good_invalid_fraud_proof);
     let targeted_invalid_bundle_entry = check_expected_bundle_entry::<CBlock, DomainHeader, Balance>(

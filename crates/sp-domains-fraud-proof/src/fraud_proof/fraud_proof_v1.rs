@@ -1,9 +1,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::fraud_proof::fraud_proof_v0::{
-    InvalidBundlesV0Proof, InvalidBundlesV0ProofData, ValidBundleV0Proof,
-};
+use crate::fraud_proof::fraud_proof_v0::InvalidBundlesV0ProofData;
 use crate::fraud_proof::{
     DomainRuntimeCodeAt, InvalidBlockFeesProof, InvalidDomainBlockHashProof,
     InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTransfersProof, MmrRootProof,
@@ -14,7 +12,7 @@ use alloc::vec::Vec;
 use core::fmt;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_domains::bundle::{InvalidBundleType, OpaqueBundle};
+use sp_domains::bundle::InvalidBundleType;
 use sp_domains::{DomainId, HeaderHashFor, HeaderHashingFor};
 use sp_runtime::traits::{Hash as HashT, Header as HeaderT};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
@@ -163,64 +161,16 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT> fmt::Debug
     }
 }
 
-/// Proof for bundle.
+/// Fraud proof for the valid bundles in `ExecutionReceipt::inboxed_bundles`
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub enum ValidBundleProof<Number, Hash, DomainHeader: HeaderT> {
-    /// V0 version of bundle and its proof
-    V0(ValidBundleV0Proof<Number, Hash, DomainHeader>),
-    /// Versioned bundle and its proof
-    Versioned(ValidVersionedBundleProof<Number, Hash, DomainHeader>),
+pub struct ValidBundleProof<Number, Hash, DomainHeader: HeaderT> {
+    /// The targeted bundle with proof
+    pub bundle_with_proof: OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>,
 }
 
 impl<Number, Hash, DomainHeader: HeaderT> ValidBundleProof<Number, Hash, DomainHeader> {
     pub fn set_bundle_index(&mut self, index: u32) {
-        match self {
-            ValidBundleProof::V0(proof) => proof.bundle_with_proof.bundle_index = index,
-            ValidBundleProof::Versioned(proof) => proof.bundle_with_proof.bundle_index = index,
-        }
-    }
-}
-
-/// Fraud proof for the valid bundles in `ExecutionReceipt::inboxed_bundles`
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct ValidVersionedBundleProof<Number, Hash, DomainHeader: HeaderT> {
-    /// The targeted bundle with proof
-    pub bundle_with_proof: VersionedOpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>,
-}
-
-/// An invalid bundle proof.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader: HeaderT> {
-    /// For V0 bundle.
-    V0(InvalidBundlesV0Proof<Number, Hash, MmrHash, DomainHeader>),
-    /// For versioned bundle.
-    Versioned(InvalidVersionedBundlesProof<Number, Hash, MmrHash, DomainHeader>),
-}
-
-impl<Number, Hash, MmrHash, DomainHeader: HeaderT>
-    InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader>
-{
-    pub fn invalid_bundle_type(&self) -> InvalidBundleType {
-        match self {
-            InvalidBundlesProof::V0(proof) => proof.invalid_bundle_type.clone(),
-            InvalidBundlesProof::Versioned(proof) => proof.invalid_bundle_type.clone(),
-        }
-    }
-
-    pub fn is_good_invalid_fraud_proof(&self) -> bool {
-        match self {
-            InvalidBundlesProof::V0(proof) => proof.is_good_invalid_fraud_proof,
-            InvalidBundlesProof::Versioned(proof) => proof.is_good_invalid_fraud_proof,
-        }
-    }
-
-    pub fn v1_proof_data(
-        &self,
-    ) -> Option<&InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader>> {
-        match self {
-            InvalidBundlesProof::V0(_) => None,
-            InvalidBundlesProof::Versioned(proof) => Some(&proof.proof_data),
-        }
+        self.bundle_with_proof.bundle_index = index
     }
 }
 
@@ -228,9 +178,9 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT>
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     Extrinsic(StorageProof),
-    Bundle(VersionedOpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>),
+    Bundle(OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>),
     BundleAndExecution {
-        bundle_with_proof: VersionedOpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>,
+        bundle_with_proof: OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>,
         execution_proof: StorageProof,
     },
     InvalidXDMProofData {
@@ -241,7 +191,7 @@ pub enum InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader: HeaderT> {
 
 /// A proof about a bundle that was marked invalid (but might or might not actually be invalid).
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct InvalidVersionedBundlesProof<Number, Hash, MmrHash, DomainHeader: HeaderT> {
+pub struct InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     pub bundle_index: u32,
     /// The invalid bundle type that the bundle was marked with.
     pub invalid_bundle_type: InvalidBundleType,
@@ -253,39 +203,54 @@ pub struct InvalidVersionedBundlesProof<Number, Hash, MmrHash, DomainHeader: Hea
 }
 
 impl<Number, Hash, MmrHash, DomainHeader: HeaderT>
-    From<InvalidBundlesV0ProofData<Number, Hash, MmrHash, DomainHeader>>
-    for InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader>
+    InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader>
 {
-    fn from(value: InvalidBundlesV0ProofData<Number, Hash, MmrHash, DomainHeader>) -> Self {
-        match value {
-            InvalidBundlesV0ProofData::Extrinsic(proof) => {
-                InvalidBundlesProofData::Extrinsic(proof)
+    pub fn invalid_bundle_type(&self) -> InvalidBundleType {
+        self.invalid_bundle_type.clone()
+    }
+
+    pub fn is_good_invalid_fraud_proof(&self) -> bool {
+        self.is_good_invalid_fraud_proof
+    }
+}
+
+impl<Number, Hash, MmrHash, DomainHeader>
+    InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader>
+where
+    Number: Encode,
+    Hash: Encode,
+    DomainHeader: HeaderT,
+{
+    /// Converts bundles proof to v0 bundles proof.
+    /// Returns none, if non-zero bundle version is present.
+    pub fn into_invalid_bundles_v0_proof_data(
+        self,
+    ) -> Option<InvalidBundlesV0ProofData<Number, Hash, MmrHash, DomainHeader>> {
+        match self {
+            InvalidBundlesProofData::Extrinsic(proof) => {
+                Some(InvalidBundlesV0ProofData::Extrinsic(proof))
             }
-            InvalidBundlesV0ProofData::Bundle(bundle_with_proof) => {
-                InvalidBundlesProofData::Bundle(VersionedOpaqueBundleWithProof {
-                    bundle: OpaqueBundle::V1(bundle_with_proof.bundle.into()),
-                    bundle_index: bundle_with_proof.bundle_index,
-                    bundle_storage_proof: bundle_with_proof.bundle_storage_proof,
-                })
+            InvalidBundlesProofData::Bundle(bundle_with_proof) => {
+                let bundle_with_proof = bundle_with_proof.into_opaque_bundle_v0_proof()?;
+                Some(InvalidBundlesV0ProofData::Bundle(bundle_with_proof))
             }
-            InvalidBundlesV0ProofData::BundleAndExecution {
+            InvalidBundlesProofData::BundleAndExecution {
                 bundle_with_proof,
                 execution_proof,
-            } => InvalidBundlesProofData::BundleAndExecution {
-                bundle_with_proof: VersionedOpaqueBundleWithProof {
-                    bundle: OpaqueBundle::V1(bundle_with_proof.bundle.into()),
-                    bundle_index: bundle_with_proof.bundle_index,
-                    bundle_storage_proof: bundle_with_proof.bundle_storage_proof,
-                },
-                execution_proof,
-            },
-            InvalidBundlesV0ProofData::InvalidXDMProofData {
+            } => {
+                let bundle_with_proof = bundle_with_proof.into_opaque_bundle_v0_proof()?;
+                Some(InvalidBundlesV0ProofData::BundleAndExecution {
+                    bundle_with_proof,
+                    execution_proof,
+                })
+            }
+            InvalidBundlesProofData::InvalidXDMProofData {
                 extrinsic_proof,
                 mmr_root_proof,
-            } => InvalidBundlesProofData::InvalidXDMProofData {
+            } => Some(InvalidBundlesV0ProofData::InvalidXDMProofData {
                 extrinsic_proof,
                 mmr_root_proof,
-            },
+            }),
         }
     }
 }

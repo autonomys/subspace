@@ -1,8 +1,8 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::bundle::SealedBundleHeader;
 use crate::bundle::bundle_v1::BundleV1;
+use crate::bundle::{OpaqueBundle, SealedBundleHeader};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
@@ -59,6 +59,25 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Bal
     /// Returns the hash of this bundle.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
+    }
+
+    /// Convert a bundle with generic extrinsic to a bundle with opaque extrinsic.
+    pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, DomainHeader, Balance> {
+        let BundleV0 {
+            sealed_header,
+            extrinsics,
+        } = self;
+        let opaque_extrinsics = extrinsics
+            .into_iter()
+            .map(|xt| {
+                OpaqueExtrinsic::from_bytes(&xt.encode())
+                    .expect("We have just encoded a valid extrinsic; qed")
+            })
+            .collect();
+        OpaqueBundle::V0(BundleV0 {
+            sealed_header,
+            extrinsics: opaque_extrinsics,
+        })
     }
 }
 

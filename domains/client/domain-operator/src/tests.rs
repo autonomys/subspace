@@ -4205,7 +4205,7 @@ async fn test_false_invalid_bundles_non_exist_extrinsic_proof_creation_and_verif
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
-            && let InvalidBundlesProofData::Bundle(_) = proof.v1_proof_data().unwrap()
+            && let InvalidBundlesProofData::Bundle(_) = proof.proof_data
         {
             assert_eq!(fp.targeted_bad_receipt_hash(), bad_receipt_hash);
             return true;

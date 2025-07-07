@@ -93,6 +93,8 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
 /// Bundle Versions.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum BundleVersion {
+    /// V0 bundle version
+    V0,
     /// V1 bundle version
     V1,
 }
@@ -100,6 +102,8 @@ pub enum BundleVersion {
 /// Versioned Domain Bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum Bundle<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
+    /// V0 version of the domain bundle.
+    V0(BundleV0<Extrinsic, Number, Hash, DomainHeader, Balance>),
     /// V1 version of the domain bundle.
     V1(BundleV1<Extrinsic, Number, Hash, DomainHeader, Balance>),
 }
@@ -114,25 +118,37 @@ impl<
 {
     /// Returns the hash of this bundle.
     pub fn hash(&self) -> H256 {
-        BlakeTwo256::hash_of(self)
+        match self {
+            // V0 bundle hash is derived from inner v0 bundle
+            // instead of self to maintain backward compatibility.
+            Bundle::V0(bundle) => bundle.hash(),
+            // Any version above 0, will be hash of entire type.
+            _ => BlakeTwo256::hash_of(self),
+        }
     }
 
     /// Returns the domain_id of this bundle.
     pub fn domain_id(&self) -> DomainId {
-        let Bundle::V1(bundle) = self;
-        bundle.sealed_header.header.proof_of_election.domain_id
+        match self {
+            Bundle::V0(bundle) => bundle.sealed_header.header.proof_of_election.domain_id,
+            Bundle::V1(bundle) => bundle.sealed_header.header.proof_of_election.domain_id,
+        }
     }
 
     /// Return the `bundle_extrinsics_root`
     pub fn extrinsics_root(&self) -> HeaderHashFor<DomainHeader> {
-        let Bundle::V1(bundle) = self;
-        bundle.sealed_header.header.bundle_extrinsics_root
+        match self {
+            Bundle::V0(bundle) => bundle.sealed_header.header.bundle_extrinsics_root,
+            Bundle::V1(bundle) => bundle.sealed_header.header.bundle_extrinsics_root,
+        }
     }
 
     /// Return the `operator_id`
     pub fn operator_id(&self) -> OperatorId {
-        let Bundle::V1(bundle) = self;
-        bundle.sealed_header.header.proof_of_election.operator_id
+        match self {
+            Bundle::V0(bundle) => bundle.sealed_header.header.proof_of_election.operator_id,
+            Bundle::V1(bundle) => bundle.sealed_header.header.proof_of_election.operator_id,
+        }
     }
 
     /// Return a reference of the execution receipt.
@@ -145,8 +161,10 @@ impl<
         HeaderHashFor<DomainHeader>,
         Balance,
     > {
-        let Bundle::V1(bundle) = self;
-        &bundle.sealed_header.header.receipt
+        match self {
+            Bundle::V0(bundle) => &bundle.sealed_header.header.receipt,
+            Bundle::V1(bundle) => &bundle.sealed_header.header.receipt,
+        }
     }
 
     /// Consumes [`Bundle`] to extract the execution receipt.
@@ -159,20 +177,30 @@ impl<
         HeaderHashFor<DomainHeader>,
         Balance,
     > {
-        let Bundle::V1(bundle) = self;
-        bundle.sealed_header.header.receipt
+        match self {
+            Bundle::V0(bundle) => bundle.sealed_header.header.receipt,
+            Bundle::V1(bundle) => bundle.sealed_header.header.receipt,
+        }
     }
 
     /// Return the bundle size (include header and body) in bytes
     pub fn size(&self) -> u32 {
-        self.encoded_size() as u32
+        match self {
+            // for v0 backward compatibility,
+            // use inner bundle's encoded size
+            Bundle::V0(bundle) => bundle.encoded_size() as u32,
+            _ => self.encoded_size() as u32,
+        }
     }
 
     /// Return the bundle body size in bytes
     pub fn body_size(&self) -> u32 {
-        let Bundle::V1(bundle) = self;
-        bundle
-            .extrinsics
+        let extrinsics = match self {
+            Bundle::V0(bundle) => &bundle.extrinsics,
+            Bundle::V1(bundle) => &bundle.extrinsics,
+        };
+
+        extrinsics
             .iter()
             .map(|tx| tx.encoded_size() as u32)
             .sum::<u32>()
@@ -180,86 +208,111 @@ impl<
 
     /// Return the bundle body length. i.e number of extrinsics in the bundle.
     pub fn body_length(&self) -> usize {
-        let Bundle::V1(bundle) = self;
-        bundle.extrinsics.len()
+        let extrinsics = match self {
+            Bundle::V0(bundle) => &bundle.extrinsics,
+            Bundle::V1(bundle) => &bundle.extrinsics,
+        };
+        extrinsics.len()
     }
 
     /// Returns the estimated weight of the Bundle.
     pub fn estimated_weight(&self) -> Weight {
-        let Bundle::V1(bundle) = self;
-        bundle.sealed_header.header.estimated_bundle_weight
+        match self {
+            Bundle::V0(bundle) => bundle.sealed_header.header.estimated_bundle_weight,
+            Bundle::V1(bundle) => bundle.sealed_header.header.estimated_bundle_weight,
+        }
     }
 
     /// Returns the slot number at this bundle was constructed.
     pub fn slot_number(&self) -> u64 {
-        let Bundle::V1(bundle) = self;
-        bundle.sealed_header.header.proof_of_election.slot_number
+        match self {
+            Bundle::V0(bundle) => bundle.sealed_header.header.proof_of_election.slot_number,
+            Bundle::V1(bundle) => bundle.sealed_header.header.proof_of_election.slot_number,
+        }
     }
 
     /// Returns the reference to proof of election.
     pub fn proof_of_election(&self) -> &ProofOfElection {
-        let Bundle::V1(bundle) = self;
-        &bundle.sealed_header.header.proof_of_election
+        match self {
+            Bundle::V0(bundle) => &bundle.sealed_header.header.proof_of_election,
+            Bundle::V1(bundle) => &bundle.sealed_header.header.proof_of_election,
+        }
     }
 
     /// Returns the sealed header in the Bundle.
     pub fn sealed_header(&self) -> &SealedBundleHeader<Number, Hash, DomainHeader, Balance> {
-        let Bundle::V1(bundle) = self;
-        &bundle.sealed_header
+        match self {
+            Bundle::V0(bundle) => &bundle.sealed_header,
+            Bundle::V1(bundle) => &bundle.sealed_header,
+        }
     }
 
     /// Returns the bundle body consuming the bundle. ie extrinsics.
     pub fn into_extrinsics(self) -> Vec<Extrinsic> {
-        let Bundle::V1(bundle) = self;
-        bundle.extrinsics
+        match self {
+            Bundle::V0(bundle) => bundle.extrinsics,
+            Bundle::V1(bundle) => bundle.extrinsics,
+        }
     }
 
     /// Returns the reference to bundle body. ie extrinsics.
     pub fn extrinsics(&self) -> &[Extrinsic] {
-        let Bundle::V1(bundle) = self;
-        &bundle.extrinsics
-    }
-
-    /// Returns BundleV0 consuming the Versioned Bundle.
-    pub fn into_bundle_v0(self) -> BundleV0<Extrinsic, Number, Hash, DomainHeader, Balance> {
-        let Bundle::V1(bundle) = self;
-        bundle.into()
+        match self {
+            Bundle::V0(bundle) => &bundle.extrinsics,
+            Bundle::V1(bundle) => &bundle.extrinsics,
+        }
     }
 
     /// Add new extrinsic to the bundle.
     pub fn push_extrinsic(&mut self, ext: Extrinsic) {
-        let Bundle::V1(bundle) = self;
-        bundle.extrinsics.push(ext);
+        let extrinsics = match self {
+            Bundle::V0(bundle) => &mut bundle.extrinsics,
+            Bundle::V1(bundle) => &mut bundle.extrinsics,
+        };
+        extrinsics.push(ext);
     }
 
     /// Add new extrinsisc to the bundle.
     pub fn push_extrinsics(&mut self, exts: &[Extrinsic]) {
-        let Bundle::V1(bundle) = self;
-        bundle.extrinsics.extend_from_slice(exts);
+        let extrinsics = match self {
+            Bundle::V0(bundle) => &mut bundle.extrinsics,
+            Bundle::V1(bundle) => &mut bundle.extrinsics,
+        };
+        extrinsics.extend_from_slice(exts);
     }
 
     /// Add new extrinsic to the bundle at specified index.
     pub fn set_extrinsic(&mut self, idx: usize, ext: Extrinsic) {
-        let Bundle::V1(bundle) = self;
-        bundle.extrinsics[idx] = ext;
+        let extrinsics = match self {
+            Bundle::V0(bundle) => &mut bundle.extrinsics,
+            Bundle::V1(bundle) => &mut bundle.extrinsics,
+        };
+        extrinsics[idx] = ext;
     }
 
     /// Sets extrinsics to the bundle.
     pub fn set_extrinsics(&mut self, exts: Vec<Extrinsic>) {
-        let Bundle::V1(bundle) = self;
-        bundle.extrinsics = exts;
+        match self {
+            Bundle::V0(bundle) => bundle.extrinsics = exts,
+            Bundle::V1(bundle) => bundle.extrinsics = exts,
+        }
     }
 
     /// Return the first extrinsic from the bundle.
     pub fn pop_extrinsic(&mut self) -> Option<Extrinsic> {
-        let Bundle::V1(bundle) = self;
-        bundle.extrinsics.pop()
+        let extrinsics = match self {
+            Bundle::V0(bundle) => &mut bundle.extrinsics,
+            Bundle::V1(bundle) => &mut bundle.extrinsics,
+        };
+        extrinsics.pop()
     }
 
     /// Sets bundle extrinsic root.
     pub fn set_bundle_extrinsics_root(&mut self, root: HeaderHashFor<DomainHeader>) {
-        let Bundle::V1(bundle) = self;
-        bundle.sealed_header.header.bundle_extrinsics_root = root;
+        match self {
+            Bundle::V0(bundle) => bundle.sealed_header.header.bundle_extrinsics_root = root,
+            Bundle::V1(bundle) => bundle.sealed_header.header.bundle_extrinsics_root = root,
+        }
     }
 
     /// Returns a mutable reference to Execution receipt.
@@ -272,26 +325,34 @@ impl<
         HeaderHashFor<DomainHeader>,
         Balance,
     > {
-        let Bundle::V1(bundle) = self;
-        &mut bundle.sealed_header.header.receipt
+        match self {
+            Bundle::V0(bundle) => &mut bundle.sealed_header.header.receipt,
+            Bundle::V1(bundle) => &mut bundle.sealed_header.header.receipt,
+        }
     }
 
     /// Set estimated bundle weight.
     pub fn set_estimated_bundle_weight(&mut self, weight: Weight) {
-        let Bundle::V1(bundle) = self;
-        bundle.sealed_header.header.estimated_bundle_weight = weight;
+        match self {
+            Bundle::V0(bundle) => bundle.sealed_header.header.estimated_bundle_weight = weight,
+            Bundle::V1(bundle) => bundle.sealed_header.header.estimated_bundle_weight = weight,
+        }
     }
 
     /// Sets signature of the bundle.
     pub fn set_signature(&mut self, signature: OperatorSignature) {
-        let Bundle::V1(bundle) = self;
-        bundle.sealed_header.signature = signature;
+        match self {
+            Bundle::V0(bundle) => bundle.sealed_header.signature = signature,
+            Bundle::V1(bundle) => bundle.sealed_header.signature = signature,
+        }
     }
 
     /// Sets proof of election for bundle.
     pub fn set_proof_of_election(&mut self, poe: ProofOfElection) {
-        let Bundle::V1(bundle) = self;
-        bundle.sealed_header.header.proof_of_election = poe;
+        match self {
+            Bundle::V0(bundle) => bundle.sealed_header.header.proof_of_election = poe,
+            Bundle::V1(bundle) => bundle.sealed_header.header.proof_of_election = poe,
+        }
     }
 }
 

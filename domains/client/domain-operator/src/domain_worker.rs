@@ -170,11 +170,17 @@ pub(super) async fn start_worker<
                                             tracing::error!(?slot, ?err, "Error at submitting bundle.");
                                         }
                                     } else {
-                                        let opaque_bundle = opaque_bundle.into_bundle_v0();
-                                        #[allow(deprecated)]
-                                        if let Err(err) = runtime_api.submit_bundle_unsigned_before_version_5(best_hash, opaque_bundle) {
-                                            tracing::error!(?slot, ?err, "Error at submitting bundle.");
-                                        }
+                                        // for domain api version < 5,
+                                        // it will always be V0 bundle
+                                        if let OpaqueBundle::V0(opaque_bundle) = opaque_bundle{
+                                            #[allow(deprecated)]
+                                            if let Err(err) = runtime_api.submit_bundle_unsigned_before_version_5(best_hash, opaque_bundle) {
+                                                tracing::error!(?slot, ?err, "Error at submitting bundle.");
+                                            }
+                                        } else{
+                                            tracing::error!(?slot, "Error at submitting bundle. Expected V0 bundle");
+                                        };
+
                                     }
                                 },
                                 DomainProposal::Receipt(singleton_receipt) => {

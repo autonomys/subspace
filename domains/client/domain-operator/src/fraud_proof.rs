@@ -11,20 +11,18 @@ use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
-use sp_domains::bundle::bundle_v0::{OpaqueBundleV0, OpaqueBundlesV0};
-use sp_domains::bundle::{InvalidBundleType, OpaqueBundle, OpaqueBundles};
+use sp_domains::bundle::{InvalidBundleType, OpaqueBundles};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, RuntimeId};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::fraud_proof_v0::{
-    FraudProofV0, FraudProofVariantV0, InvalidBundlesV0Proof, InvalidBundlesV0ProofData,
-    ValidBundleV0Proof,
+    FraudProofV0, FraudProofVariantV0, InvalidBundlesV0Proof, ValidBundleV0Proof,
 };
 use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::{
     FraudProofV1, FraudProofVariantV1, InvalidBundlesProof, InvalidBundlesProofData,
-    InvalidVersionedBundlesProof, ValidBundleProof, ValidVersionedBundleProof,
+    ValidBundleProof,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, DomainRuntimeCodeAt, ExecutionPhase, FinalizeBlockMismatch,
@@ -36,7 +34,7 @@ use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor, One};
-use sp_runtime::{Digest, DigestItem, OpaqueExtrinsic};
+use sp_runtime::{Digest, DigestItem};
 use sp_trie::LayoutV1;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -108,72 +106,6 @@ impl<Block: BlockT, CBlock, Client, CClient, Backend, E> Clone
             code_executor: self.code_executor.clone(),
             storage_key_provider: self.storage_key_provider.clone(),
             _phantom: self._phantom,
-        }
-    }
-}
-
-enum InvalidBundlesProofDataFor<Number, Hash, MmrHash, DomainHeader: HeaderT> {
-    V0(InvalidBundlesV0ProofData<Number, Hash, MmrHash, DomainHeader>),
-    Versioned(InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader>),
-}
-
-enum BundleFor<Block: BlockT, DomainHeader: HeaderT, Balance> {
-    V0(OpaqueBundleV0<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>),
-    Versioned(OpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>),
-}
-
-impl<Block: BlockT, DomainHeader: HeaderT, Balance: Encode>
-    BundleFor<Block, DomainHeader, Balance>
-{
-    fn body_length(&self) -> usize {
-        match self {
-            BundleFor::V0(bundle) => bundle.extrinsics.len(),
-            BundleFor::Versioned(bundle) => bundle.body_length(),
-        }
-    }
-
-    fn extrinsics(&self) -> &[OpaqueExtrinsic] {
-        match self {
-            BundleFor::V0(bundle) => &bundle.extrinsics,
-            BundleFor::Versioned(bundle) => bundle.extrinsics(),
-        }
-    }
-}
-
-enum ExtractedBundles<Block: BlockT, DomainHeader: HeaderT, Balance> {
-    V0(OpaqueBundlesV0<Block, DomainHeader, Balance>),
-    Versioned(OpaqueBundles<Block, DomainHeader, Balance>),
-}
-
-impl<Block: BlockT, DomainHeader: HeaderT, Balance: Encode>
-    ExtractedBundles<Block, DomainHeader, Balance>
-{
-    fn extrinsics(&self, index: u32) -> Option<&[OpaqueExtrinsic]> {
-        match self {
-            ExtractedBundles::V0(bundles) => {
-                let bundle = bundles.get(index as usize)?;
-                Some(&bundle.extrinsics)
-            }
-            ExtractedBundles::Versioned(bundles) => {
-                let bundle = bundles.get(index as usize)?;
-                Some(bundle.extrinsics())
-            }
-        }
-    }
-
-    fn len(&self) -> usize {
-        match self {
-            ExtractedBundles::V0(bundles) => bundles.len(),
-            ExtractedBundles::Versioned(bundles) => bundles.len(),
-        }
-    }
-
-    fn swap_remove(self, index: usize) -> BundleFor<Block, DomainHeader, Balance> {
-        match self {
-            ExtractedBundles::V0(mut bundles) => BundleFor::V0(bundles.swap_remove(index)),
-            ExtractedBundles::Versioned(mut bundles) => {
-                BundleFor::Versioned(bundles.swap_remove(index))
-            }
         }
     }
 }
@@ -420,7 +352,7 @@ where
         consensus_block_hash: CBlock::Hash,
         domain_id: DomainId,
         consensus_extrinsics: Vec<CBlock::Extrinsic>,
-    ) -> Result<ExtractedBundles<CBlock, Block::Header, Balance>, FraudProofError> {
+    ) -> Result<OpaqueBundles<CBlock, Block::Header, Balance>, FraudProofError> {
         let runtime_api = self.consensus_client.runtime_api();
         let domains_api_version = runtime_api
             .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_block_hash)?
@@ -429,7 +361,6 @@ where
         if domains_api_version >= 5 {
             runtime_api
                 .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)
-                .map(ExtractedBundles::Versioned)
                 .map_err(FraudProofError::RuntimeApi)
         } else {
             #[allow(deprecated)]
@@ -439,7 +370,12 @@ where
                     domain_id,
                     consensus_extrinsics,
                 )
-                .map(ExtractedBundles::V0)
+                .map(|bundles| {
+                    bundles
+                        .into_iter()
+                        .map(|bundle| bundle.into_opaque_bundle())
+                        .collect()
+                })
                 .map_err(FraudProofError::RuntimeApi)
         }
     }
@@ -474,73 +410,42 @@ where
         let maybe_domain_runtime_code_proof =
             self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
 
-        let extracted_bundles =
+        let mut bundles =
             self.extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)?;
 
-        let valid_bundle_proof = match extracted_bundles {
-            ExtractedBundles::V0(mut bundles) => {
-                if bundle_index >= bundles.len() {
-                    return Err(FraudProofError::MissingBundle { bundle_index });
-                }
-                let bundle = bundles.swap_remove(bundle_index);
+        if bundle_index >= bundles.len() {
+            return Err(FraudProofError::MissingBundle { bundle_index });
+        }
+        let bundle = bundles.swap_remove(bundle_index);
 
-                let bundle_with_proof = OpaqueBundleV0WithProof::generate(
-                    &self.storage_key_provider,
-                    self.consensus_client.as_ref(),
-                    domain_id,
-                    consensus_block_hash,
-                    bundle,
-                    bundle_index as u32,
-                )?;
+        let bundle_with_proof = OpaqueBundleWithProof::generate(
+            &self.storage_key_provider,
+            self.consensus_client.as_ref(),
+            domain_id,
+            consensus_block_hash,
+            bundle,
+            bundle_index as u32,
+        )?;
 
-                if self.is_fraud_proof_v1_available()? {
-                    FraudProofFor::V1(FraudProofV1 {
-                        domain_id,
-                        bad_receipt_hash,
-                        maybe_mmr_proof: Some(mmr_proof),
-                        maybe_domain_runtime_code_proof,
-                        proof: FraudProofVariantV1::ValidBundle(ValidBundleProof::V0(
-                            ValidBundleV0Proof { bundle_with_proof },
-                        )),
-                    })
-                } else {
-                    FraudProofFor::V0(FraudProofV0 {
-                        domain_id,
-                        bad_receipt_hash,
-                        maybe_mmr_proof: Some(mmr_proof),
-                        maybe_domain_runtime_code_proof,
-                        proof: FraudProofVariantV0::ValidBundle(ValidBundleV0Proof {
-                            bundle_with_proof,
-                        }),
-                    })
-                }
-            }
-            ExtractedBundles::Versioned(mut bundles) => {
-                if bundle_index >= bundles.len() {
-                    return Err(FraudProofError::MissingBundle { bundle_index });
-                }
-                let bundle = bundles.swap_remove(bundle_index);
-
-                let bundle_with_proof = VersionedOpaqueBundleWithProof::generate(
-                    &self.storage_key_provider,
-                    self.consensus_client.as_ref(),
-                    domain_id,
-                    consensus_block_hash,
-                    bundle,
-                    bundle_index as u32,
-                )?;
-
-                // if there is versioned bundle, there is fraud proof v1 api
-                FraudProofFor::V1(FraudProofV1 {
-                    domain_id,
-                    bad_receipt_hash,
-                    maybe_mmr_proof: Some(mmr_proof),
-                    maybe_domain_runtime_code_proof,
-                    proof: FraudProofVariantV1::ValidBundle(ValidBundleProof::Versioned(
-                        ValidVersionedBundleProof { bundle_with_proof },
-                    )),
-                })
-            }
+        let valid_bundle_proof = if self.is_fraud_proof_v1_available()? {
+            FraudProofFor::V1(FraudProofV1 {
+                domain_id,
+                bad_receipt_hash,
+                maybe_mmr_proof: Some(mmr_proof),
+                maybe_domain_runtime_code_proof,
+                proof: FraudProofVariantV1::ValidBundle(ValidBundleProof { bundle_with_proof }),
+            })
+        } else {
+            let bundle_with_proof = bundle_with_proof
+                .into_opaque_bundle_v0_proof()
+                .ok_or(FraudProofError::BundleVersionMismatch)?;
+            FraudProofFor::V0(FraudProofV0 {
+                domain_id,
+                bad_receipt_hash,
+                maybe_mmr_proof: Some(mmr_proof),
+                maybe_domain_runtime_code_proof,
+                proof: FraudProofVariantV0::ValidBundle(ValidBundleV0Proof { bundle_with_proof }),
+            })
         };
 
         Ok(valid_bundle_proof)
@@ -682,12 +587,12 @@ where
         let domain_runtime_api = self.client.runtime_api();
         let mut valid_bundle_digests = Vec::new();
         for bundle_index in local_receipt.valid_bundle_indexes() {
-            let extrinsics =
-                bundles
-                    .extrinsics(bundle_index)
-                    .ok_or(FraudProofError::MissingBundle {
-                        bundle_index: bundle_index as usize,
-                    })?;
+            let extrinsics = bundles
+                .get(bundle_index as usize)
+                .map(|bundle| bundle.extrinsics())
+                .ok_or(FraudProofError::MissingBundle {
+                    bundle_index: bundle_index as usize,
+                })?;
 
             let mut exts = Vec::with_capacity(extrinsics.len());
             for opaque_extrinsic in extrinsics {
@@ -785,7 +690,7 @@ where
                 .block_body(consensus_block_hash)?
                 .ok_or(FraudProofError::MissingConsensusExtrinsics)?;
 
-            let bundles = self.extract_successful_bundles(
+            let mut bundles = self.extract_successful_bundles(
                 consensus_block_hash,
                 domain_id,
                 consensus_extrinsics,
@@ -818,34 +723,15 @@ where
         {
             // The bad receipt claims a non-exist extrinsic is invalid, in this case, generate a
             // `bundle_with_proof` as proof data is enough
-            match bundle {
-                BundleFor::V0(bundle) => {
-                    let bundle_with_proof = OpaqueBundleV0WithProof::generate(
-                        &self.storage_key_provider,
-                        self.consensus_client.as_ref(),
-                        domain_id,
-                        consensus_block_hash,
-                        bundle,
-                        bundle_index,
-                    )?;
-                    InvalidBundlesProofDataFor::V0(InvalidBundlesV0ProofData::Bundle(
-                        bundle_with_proof,
-                    ))
-                }
-                BundleFor::Versioned(bundle) => {
-                    let bundle_with_proof = VersionedOpaqueBundleWithProof::generate(
-                        &self.storage_key_provider,
-                        self.consensus_client.as_ref(),
-                        domain_id,
-                        consensus_block_hash,
-                        bundle,
-                        bundle_index,
-                    )?;
-                    InvalidBundlesProofDataFor::Versioned(InvalidBundlesProofData::Bundle(
-                        bundle_with_proof,
-                    ))
-                }
-            }
+            let bundle_with_proof = OpaqueBundleWithProof::generate(
+                &self.storage_key_provider,
+                self.consensus_client.as_ref(),
+                domain_id,
+                consensus_block_hash,
+                bundle,
+                bundle_index,
+            )?;
+            InvalidBundlesProofData::Bundle(bundle_with_proof)
         } else {
             match invalid_type {
                 InvalidBundleType::IllegalTx(expected_extrinsic_index) => {
@@ -928,75 +814,31 @@ where
                     }
 
                     let execution_proof = proof_recorder.drain_storage_proof();
+                    let bundle_with_proof = OpaqueBundleWithProof::generate(
+                        &self.storage_key_provider,
+                        self.consensus_client.as_ref(),
+                        domain_id,
+                        consensus_block_hash,
+                        bundle,
+                        bundle_index,
+                    )?;
 
-                    match bundle {
-                        BundleFor::V0(bundle) => {
-                            let bundle_with_proof = OpaqueBundleV0WithProof::generate(
-                                &self.storage_key_provider,
-                                self.consensus_client.as_ref(),
-                                domain_id,
-                                consensus_block_hash,
-                                bundle,
-                                bundle_index,
-                            )?;
-
-                            InvalidBundlesProofDataFor::V0(
-                                InvalidBundlesV0ProofData::BundleAndExecution {
-                                    bundle_with_proof,
-                                    execution_proof,
-                                },
-                            )
-                        }
-                        BundleFor::Versioned(bundle) => {
-                            let bundle_with_proof = VersionedOpaqueBundleWithProof::generate(
-                                &self.storage_key_provider,
-                                self.consensus_client.as_ref(),
-                                domain_id,
-                                consensus_block_hash,
-                                bundle,
-                                bundle_index,
-                            )?;
-
-                            InvalidBundlesProofDataFor::Versioned(
-                                InvalidBundlesProofData::BundleAndExecution {
-                                    bundle_with_proof,
-                                    execution_proof,
-                                },
-                            )
-                        }
+                    InvalidBundlesProofData::BundleAndExecution {
+                        bundle_with_proof,
+                        execution_proof,
                     }
                 }
                 InvalidBundleType::OutOfRangeTx(_) | InvalidBundleType::InvalidBundleWeight => {
-                    match bundle {
-                        BundleFor::V0(bundle) => {
-                            let bundle_with_proof = OpaqueBundleV0WithProof::generate(
-                                &self.storage_key_provider,
-                                self.consensus_client.as_ref(),
-                                domain_id,
-                                consensus_block_hash,
-                                bundle,
-                                bundle_index,
-                            )?;
+                    let bundle_with_proof = OpaqueBundleWithProof::generate(
+                        &self.storage_key_provider,
+                        self.consensus_client.as_ref(),
+                        domain_id,
+                        consensus_block_hash,
+                        bundle,
+                        bundle_index,
+                    )?;
 
-                            InvalidBundlesProofDataFor::V0(InvalidBundlesV0ProofData::Bundle(
-                                bundle_with_proof,
-                            ))
-                        }
-                        BundleFor::Versioned(bundle) => {
-                            let bundle_with_proof = VersionedOpaqueBundleWithProof::generate(
-                                &self.storage_key_provider,
-                                self.consensus_client.as_ref(),
-                                domain_id,
-                                consensus_block_hash,
-                                bundle,
-                                bundle_index,
-                            )?;
-
-                            InvalidBundlesProofDataFor::Versioned(InvalidBundlesProofData::Bundle(
-                                bundle_with_proof,
-                            ))
-                        }
-                    }
+                    InvalidBundlesProofData::Bundle(bundle_with_proof)
                 }
                 InvalidBundleType::UndecodableTx(extrinsic_index)
                 | InvalidBundleType::InherentExtrinsic(extrinsic_index) => {
@@ -1011,14 +853,7 @@ where
                     )
                     .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?;
 
-                    match bundle {
-                        BundleFor::V0(_) => InvalidBundlesProofDataFor::V0(
-                            InvalidBundlesV0ProofData::Extrinsic(extrinsic_proof),
-                        ),
-                        BundleFor::Versioned(_) => InvalidBundlesProofDataFor::Versioned(
-                            InvalidBundlesProofData::Extrinsic(extrinsic_proof),
-                        ),
-                    }
+                    InvalidBundlesProofData::Extrinsic(extrinsic_proof)
                 }
                 InvalidBundleType::InvalidXDM(extrinsic_index) => {
                     let encoded_extrinsic = bundle.extrinsics()[extrinsic_index as usize].encode();
@@ -1081,19 +916,9 @@ where
                         .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?
                     };
 
-                    match bundle {
-                        BundleFor::V0(_) => InvalidBundlesProofDataFor::V0(
-                            InvalidBundlesV0ProofData::InvalidXDMProofData {
-                                extrinsic_proof,
-                                mmr_root_proof,
-                            },
-                        ),
-                        BundleFor::Versioned(_) => InvalidBundlesProofDataFor::Versioned(
-                            InvalidBundlesProofData::InvalidXDMProofData {
-                                extrinsic_proof,
-                                mmr_root_proof,
-                            },
-                        ),
+                    InvalidBundlesProofData::InvalidXDMProofData {
+                        extrinsic_proof,
+                        mmr_root_proof,
                     }
                 }
             }
@@ -1106,26 +931,12 @@ where
             self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
 
         let invalid_bundle_proof = if self.is_fraud_proof_v1_available()? {
-            let proof = match proof_data {
-                InvalidBundlesProofDataFor::V0(proof_data) => FraudProofVariantV1::InvalidBundles(
-                    InvalidBundlesProof::V0(InvalidBundlesV0Proof {
-                        bundle_index,
-                        invalid_bundle_type: invalid_type,
-                        is_good_invalid_fraud_proof,
-                        proof_data,
-                    }),
-                ),
-                InvalidBundlesProofDataFor::Versioned(proof_data) => {
-                    FraudProofVariantV1::InvalidBundles(InvalidBundlesProof::Versioned(
-                        InvalidVersionedBundlesProof {
-                            bundle_index,
-                            invalid_bundle_type: invalid_type,
-                            is_good_invalid_fraud_proof,
-                            proof_data,
-                        },
-                    ))
-                }
-            };
+            let proof = FraudProofVariantV1::InvalidBundles(InvalidBundlesProof {
+                bundle_index,
+                invalid_bundle_type: invalid_type,
+                is_good_invalid_fraud_proof,
+                proof_data,
+            });
             FraudProofFor::V1(FraudProofV1 {
                 domain_id,
                 bad_receipt_hash,
@@ -1137,19 +948,14 @@ where
             // if fraud proof v1 is not available at the best block hash,
             // then it will not be available at the hash when bad receipt was created.
             // so there must be no Versioned bundles available at this time.
-            let proof = match proof_data {
-                InvalidBundlesProofDataFor::V0(proof_data) => {
-                    FraudProofVariantV0::InvalidBundles(InvalidBundlesV0Proof {
-                        bundle_index,
-                        invalid_bundle_type: invalid_type,
-                        is_good_invalid_fraud_proof,
-                        proof_data,
-                    })
-                }
-                InvalidBundlesProofDataFor::Versioned(_) => {
-                    return Err(FraudProofError::BundleVersionMismatch);
-                }
-            };
+            let proof = FraudProofVariantV0::InvalidBundles(InvalidBundlesV0Proof {
+                bundle_index,
+                invalid_bundle_type: invalid_type,
+                is_good_invalid_fraud_proof,
+                proof_data: proof_data
+                    .into_invalid_bundles_v0_proof_data()
+                    .ok_or(FraudProofError::BundleVersionMismatch)?,
+            });
             FraudProofFor::V0(FraudProofV0 {
                 domain_id,
                 bad_receipt_hash,
