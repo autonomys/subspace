@@ -15,7 +15,7 @@ use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_subspace_sync_common::snap_sync_engine::SnapSyncingEngine;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
-use sp_domains::ExecutionReceiptFor;
+use sp_domains::execution_receipt::ExecutionReceiptFor;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Header, NumberFor};
 use std::collections::HashSet;
 use std::sync::Arc;

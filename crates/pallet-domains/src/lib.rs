@@ -53,10 +53,11 @@ use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_core::H256;
 use sp_domains::bundle::OpaqueBundle;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
+use sp_domains::execution_receipt::{ExecutionReceipt, SealedSingletonReceipt};
 use sp_domains::{
     ChainId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, DomainBundleLimit, DomainId,
-    DomainInstanceData, EMPTY_EXTRINSIC_ROOT, ExecutionReceipt, OperatorId, OperatorPublicKey,
-    OperatorSignature, ProofOfElection, RuntimeId, SealedSingletonReceipt,
+    DomainInstanceData, EMPTY_EXTRINSIC_ROOT, OperatorId, OperatorPublicKey, OperatorSignature,
+    ProofOfElection, RuntimeId,
 };
 use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::{FraudProofV1, FraudProofVariantV1};
 use sp_domains_fraud_proof::fraud_proof::{

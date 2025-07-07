@@ -1341,7 +1341,7 @@ mod pallet {
                         .ok_or(UnknownTransaction::CannotLookup)?;
 
                 StorageProofVerifier::<T::Hashing>::get_decoded_value::<
-                    sp_domains::ExecutionReceipt<
+                    sp_domains::execution_receipt::ExecutionReceipt<
                         BlockNumberFor<T>,
                         T::Hash,
                         BlockNumberFor<T>,

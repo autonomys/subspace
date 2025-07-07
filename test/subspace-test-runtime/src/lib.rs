@@ -70,12 +70,12 @@ use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionRanges, Vote};
 use sp_core::crypto::KeyTypeId;
 use sp_core::{H256, OpaqueMetadata};
-use sp_domains::bundle::{BundleVersion, OpaqueBundle, VersionedOpaqueBundles};
+use sp_domains::bundle::{BundleVersion, OpaqueBundle, OpaqueBundles};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
+use sp_domains::execution_receipt::ExecutionReceiptFor;
 use sp_domains::{
     DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates, DomainId, DomainInstanceData,
-    ExecutionReceiptFor, INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey,
-    PermissionedActionAllowedBy,
+    INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_domains_fraud_proof::storage_proof::{
@@ -1270,7 +1270,7 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
 fn extract_successful_bundles(
     domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> VersionedOpaqueBundles<Block, DomainHeader, Balance> {
+) -> OpaqueBundles<Block, DomainHeader, Balance> {
     let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
@@ -1520,7 +1520,7 @@ impl_runtime_apis! {
         }
 
         fn submit_receipt_unsigned(
-            singleton_receipt: sp_domains::SealedSingletonReceipt<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
+            singleton_receipt: sp_domains::execution_receipt::SealedSingletonReceipt<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
         ) {
             Domains::submit_receipt_unsigned(singleton_receipt)
         }
@@ -1528,7 +1528,7 @@ impl_runtime_apis! {
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<ExtrinsicFor<Block>>,
-        ) -> VersionedOpaqueBundles<Block, DomainHeader, Balance> {
+        ) -> OpaqueBundles<Block, DomainHeader, Balance> {
             extract_successful_bundles(domain_id, extrinsics)
         }
 

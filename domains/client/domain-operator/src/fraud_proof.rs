@@ -12,7 +12,7 @@ use sp_core::H256;
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domains::bundle::bundle_v0::{OpaqueBundleV0, OpaqueBundlesV0};
-use sp_domains::bundle::{InvalidBundleType, OpaqueBundle, VersionedOpaqueBundles};
+use sp_domains::bundle::{InvalidBundleType, OpaqueBundle, OpaqueBundles};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, RuntimeId};
@@ -142,7 +142,7 @@ impl<Block: BlockT, DomainHeader: HeaderT, Balance: Encode>
 
 enum ExtractedBundles<Block: BlockT, DomainHeader: HeaderT, Balance> {
     V0(OpaqueBundlesV0<Block, DomainHeader, Balance>),
-    Versioned(VersionedOpaqueBundles<Block, DomainHeader, Balance>),
+    Versioned(OpaqueBundles<Block, DomainHeader, Balance>),
 }
 
 impl<Block: BlockT, DomainHeader: HeaderT, Balance: Encode>

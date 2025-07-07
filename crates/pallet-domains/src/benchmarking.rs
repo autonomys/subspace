@@ -36,11 +36,12 @@ use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::sr25519::vrf::{VrfPreOutput, VrfProof, VrfSignature};
 use sp_domains::bundle::bundle_v1::BundleV1;
 use sp_domains::bundle::{BundleHeader, SealedBundleHeader, dummy_opaque_bundle};
+use sp_domains::execution_receipt::{ExecutionReceipt, SealedSingletonReceipt, SingletonReceipt};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    DomainId, EMPTY_EXTRINSIC_ROOT, ExecutionReceipt, OperatorAllowList, OperatorId,
-    OperatorPublicKey, OperatorRewardSource, OperatorSignature, PermissionedActionAllowedBy,
-    ProofOfElection, RuntimeType, SealedSingletonReceipt, SingletonReceipt,
+    DomainId, EMPTY_EXTRINSIC_ROOT, OperatorAllowList, OperatorId, OperatorPublicKey,
+    OperatorRewardSource, OperatorSignature, PermissionedActionAllowedBy, ProofOfElection,
+    RuntimeType,
 };
 use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_runtime::traits::{CheckedAdd, One, Zero};

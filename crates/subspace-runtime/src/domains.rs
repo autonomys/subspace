@@ -10,7 +10,7 @@ use sp_domains::DomainId;
 pub(crate) fn extract_successful_bundles(
     domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> sp_domains::bundle::VersionedOpaqueBundles<Block, DomainHeader, Balance> {
+) -> sp_domains::bundle::OpaqueBundles<Block, DomainHeader, Balance> {
     let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()

@@ -12,9 +12,10 @@ use sp_consensus_slots::Slot;
 use sp_domains::bundle::bundle_v1::BundleV1;
 use sp_domains::bundle::{BundleHeader, SealedBundleHeader};
 use sp_domains::core_api::DomainCoreApi;
+use sp_domains::execution_receipt::{SealedSingletonReceipt, SingletonReceipt};
 use sp_domains::{
     BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
-    OperatorSignature, ProofOfElection, SealedSingletonReceipt, SingletonReceipt,
+    OperatorSignature, ProofOfElection,
 };
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;

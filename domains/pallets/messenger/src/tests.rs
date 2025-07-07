@@ -1132,7 +1132,8 @@ mod benchmark_fixtures_gen {
     use frame_support::assert_ok;
     use frame_support::pallet_prelude::{Decode, Encode};
     use sp_core::H256;
-    use sp_domains::{BlockFees, ChannelId, ExecutionReceipt, Transfers};
+    use sp_domains::ChannelId;
+    use sp_domains::execution_receipt::{BlockFees, ExecutionReceipt, Transfers};
     use sp_messenger::messages::{CrossDomainMessage, MessageWeightTag, Nonce, Proof};
     use sp_mmr_primitives::EncodableOpaqueLeaf;
     use sp_subspace_mmr::ConsensusChainMmrLeafProof;

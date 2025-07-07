@@ -22,12 +22,13 @@ use parity_scale_codec::{Decode, Encode};
 use sp_core::H256;
 use sp_core::storage::StorageKey;
 use sp_domains::bundle::{BundleValidity, InboxedBundle, InvalidBundleType};
+use sp_domains::execution_receipt::{BlockFees, ExecutionReceipt, Transfers};
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::valued_trie::valued_ordered_trie_root;
 use sp_domains::{
-    BlockFees, DomainId, ExecutionReceipt, ExtrinsicDigest, HeaderHashFor, HeaderHashingFor,
-    HeaderNumberFor, INITIAL_DOMAIN_TX_RANGE, RuntimeId, Transfers,
+    DomainId, ExtrinsicDigest, HeaderHashFor, HeaderHashingFor, HeaderNumberFor,
+    INITIAL_DOMAIN_TX_RANGE, RuntimeId,
 };
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{

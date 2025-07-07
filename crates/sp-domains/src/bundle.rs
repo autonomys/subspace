@@ -1,9 +1,10 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use crate::execution_receipt::ExecutionReceipt;
 use crate::{
-    DomainId, ExecutionReceipt, HeaderHashFor, HeaderHashingFor, HeaderNumberFor, OperatorId,
-    OperatorSignature, ProofOfElection,
+    DomainId, HeaderHashFor, HeaderHashingFor, HeaderNumberFor, OperatorId, OperatorSignature,
+    ProofOfElection,
 };
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
@@ -299,7 +300,7 @@ pub type OpaqueBundle<Number, Hash, DomainHeader, Balance> =
     Bundle<OpaqueExtrinsic, Number, Hash, DomainHeader, Balance>;
 
 /// List of [`OpaqueBundle`].
-pub type VersionedOpaqueBundles<Block, DomainHeader, Balance> =
+pub type OpaqueBundles<Block, DomainHeader, Balance> =
     Vec<OpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>>;
 
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]

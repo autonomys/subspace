@@ -9,9 +9,8 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::bundle::BundleHeader;
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::{
-    DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, OperatorId, ProofOfElection,
-};
+use sp_domains::execution_receipt::ExecutionReceipt;
+use sp_domains::{DomainId, DomainsApi, HeaderHashingFor, OperatorId, ProofOfElection};
 use sp_messenger::MessengerApi;
 use sp_runtime::Percent;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};

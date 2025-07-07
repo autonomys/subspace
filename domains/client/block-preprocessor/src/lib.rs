@@ -24,12 +24,11 @@ use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode};
-use sp_domains::bundle::{InboxedBundle, InvalidBundleType, OpaqueBundle, VersionedOpaqueBundles};
+use sp_domains::bundle::{InboxedBundle, InvalidBundleType, OpaqueBundle, OpaqueBundles};
 use sp_domains::core_api::DomainCoreApi;
+use sp_domains::execution_receipt::ExecutionReceipt;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
-use sp_domains::{
-    DomainId, DomainsApi, ExecutionReceipt, ExtrinsicDigest, HeaderHashingFor, ReceiptValidity,
-};
+use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, ReceiptValidity};
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, NumberFor};
@@ -263,7 +262,7 @@ where
     #[allow(clippy::type_complexity)]
     fn compile_bundles_to_extrinsics(
         &self,
-        bundles: VersionedOpaqueBundles<CBlock, Block::Header, Balance>,
+        bundles: OpaqueBundles<CBlock, Block::Header, Balance>,
         tx_range: U256,
         (parent_domain_hash, parent_domain_number): (Block::Hash, NumberFor<Block>),
         at_consensus_hash: CBlock::Hash,

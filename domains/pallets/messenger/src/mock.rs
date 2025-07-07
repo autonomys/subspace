@@ -329,7 +329,8 @@ pub(crate) fn storage_proof_of_domain_state_root<T: pallet_domains::Config>(
 pub(crate) mod pallet_domains {
     use frame_support::pallet_prelude::*;
     use sp_core::H256;
-    use sp_domains::{DomainId, ExecutionReceipt};
+    use sp_domains::DomainId;
+    use sp_domains::execution_receipt::ExecutionReceipt;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {}

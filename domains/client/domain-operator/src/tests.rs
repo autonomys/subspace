@@ -41,10 +41,11 @@ use sp_core::{H160, H256, Pair, U256};
 use sp_domain_digests::AsPredigest;
 use sp_domains::bundle::{Bundle, BundleValidity, InboxedBundle, InvalidBundleType};
 use sp_domains::core_api::DomainCoreApi;
+use sp_domains::execution_receipt::{BlockFees, Transfers};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    BlockFees, ChainId, ChannelId, DomainsApi, HeaderHashingFor, OperatorPublicKey,
-    PermissionedActionAllowedBy, Transfers,
+    ChainId, ChannelId, DomainsApi, HeaderHashingFor, OperatorPublicKey,
+    PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::{

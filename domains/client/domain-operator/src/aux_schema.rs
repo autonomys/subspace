@@ -338,8 +338,13 @@ mod tests {
 
     const PRUNING_DEPTH: BlockNumber = 1000;
 
-    type ExecutionReceipt =
-        sp_domains::ExecutionReceipt<BlockNumber, Hash, BlockNumber, Hash, Balance>;
+    type ExecutionReceipt = sp_domains::execution_receipt::ExecutionReceipt<
+        BlockNumber,
+        Hash,
+        BlockNumber,
+        Hash,
+        Balance,
+    >;
 
     fn create_execution_receipt(consensus_block_number: BlockNumber) -> ExecutionReceipt {
         ExecutionReceipt {

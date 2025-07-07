@@ -17,11 +17,9 @@ use frame_system::pallet_prelude::BlockNumberFor;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
+use sp_domains::execution_receipt::{ExecutionReceipt, Transfers};
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{
-    ChainId, DomainId, DomainsTransfersTracker, ExecutionReceipt, OnChainRewards, OperatorId,
-    Transfers,
-};
+use sp_domains::{ChainId, DomainId, DomainsTransfersTracker, OnChainRewards, OperatorId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;

@@ -37,7 +37,8 @@ use frame_support::traits::Currency;
 pub use pallet::*;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_domains::{DomainId, DomainsTransfersTracker, SkipBalanceChecks, Transfers};
+use sp_domains::execution_receipt::Transfers;
+use sp_domains::{DomainId, DomainsTransfersTracker, SkipBalanceChecks};
 use sp_messenger::NoteChainTransfer;
 use sp_messenger::endpoint::EndpointResponse;
 use sp_messenger::messages::ChainId;
@@ -84,7 +85,8 @@ mod pallet {
     use frame_support::weights::Weight;
     use frame_system::pallet_prelude::*;
     use parity_scale_codec::{Decode, Encode};
-    use sp_domains::{DomainId, DomainsTransfersTracker, SkipBalanceChecks, Transfers};
+    use sp_domains::execution_receipt::Transfers;
+    use sp_domains::{DomainId, DomainsTransfersTracker, SkipBalanceChecks};
     use sp_messenger::endpoint::{
         Endpoint, EndpointHandler as EndpointHandlerT, EndpointId, EndpointRequest,
         EndpointResponse, Sender,
