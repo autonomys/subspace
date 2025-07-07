@@ -72,10 +72,11 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::{H256, OpaqueMetadata};
 use sp_domains::bundle::{BundleVersion, OpaqueBundle, OpaqueBundles};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
-use sp_domains::execution_receipt::ExecutionReceiptFor;
+use sp_domains::execution_receipt::{ExecutionReceiptFor, ExecutionReceiptVersion};
 use sp_domains::{
-    DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates, DomainId, DomainInstanceData,
-    INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
+    BundleAndExecutionReceiptVersion, DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates,
+    DomainId, DomainInstanceData, INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey,
+    PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_domains_fraud_proof::storage_proof::{
@@ -818,7 +819,10 @@ parameter_types! {
     pub const MinInitialDomainAccountBalance: Balance = AI3;
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 32;
-    pub const CurrentBundleVersion: BundleVersion = BundleVersion::V1;
+    pub const CurrentBundleAndExecutionReceiptVersion: BundleAndExecutionReceiptVersion = BundleAndExecutionReceiptVersion {
+        bundle_version: BundleVersion::V1,
+        execution_receipt_version: ExecutionReceiptVersion::V0,
+    };
 }
 
 // `BlockSlotCount` must at least keep the slot for the current and the parent block, it also need to
@@ -909,7 +913,7 @@ impl pallet_domains::Config for Runtime {
     type FraudProofStorageKeyProvider = StorageKeyProvider;
     type OnChainRewards = OnChainRewards;
     type WithdrawalLimit = WithdrawalLimit;
-    type CurrentBundleVersion = CurrentBundleVersion;
+    type CurrentBundleAndExecutionReceiptVersion = CurrentBundleAndExecutionReceiptVersion;
 }
 
 parameter_types! {
@@ -1642,8 +1646,8 @@ impl_runtime_apis! {
             Domains::latest_confirmed_domain_execution_receipt(domain_id)
         }
 
-        fn current_bundle_version() -> BundleVersion {
-            BundleVersion::V1
+        fn current_bundle_and_execution_receipt_version() -> BundleAndExecutionReceiptVersion {
+            CurrentBundleAndExecutionReceiptVersion::get()
         }
     }
 

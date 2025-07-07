@@ -19,6 +19,13 @@ use sp_runtime::traits::{CheckedAdd, Hash as HashT, Header as HeaderT, NumberFor
 use sp_std::collections::btree_map::BTreeMap;
 use subspace_runtime_primitives::BlockHashFor;
 
+/// Execution Receipt Versions.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum ExecutionReceiptVersion {
+    /// V0 execution receipt.
+    V0,
+}
+
 #[derive(Clone, Debug, Decode, Default, Encode, Eq, PartialEq, TypeInfo)]
 pub struct BlockFees<Balance> {
     /// The consensus chain storage fee

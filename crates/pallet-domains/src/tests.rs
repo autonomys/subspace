@@ -29,12 +29,12 @@ use sp_domains::bundle::bundle_v1::BundleV1;
 use sp_domains::bundle::{
     BundleHeader, BundleVersion, InboxedBundle, OpaqueBundle, SealedBundleHeader,
 };
-use sp_domains::execution_receipt::ExecutionReceipt;
+use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptVersion};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    ChainId, DomainId, OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeId,
-    RuntimeType,
+    BundleAndExecutionReceiptVersion, ChainId, DomainId, OperatorAllowList, OperatorId,
+    OperatorPair, ProofOfElection, RuntimeId, RuntimeType,
 };
 use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_runtime::generic::{EXTRINSIC_FORMAT_VERSION, Preamble};
@@ -172,7 +172,10 @@ parameter_types! {
     pub const MinInitialDomainAccountBalance: Balance = AI3;
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 10;
-    pub const CurrentBundleVersion: BundleVersion = BundleVersion::V1;
+    pub const CurrentBundleAndExecutionReceiptVersion: BundleAndExecutionReceiptVersion = BundleAndExecutionReceiptVersion {
+        bundle_version: BundleVersion::V1,
+        execution_receipt_version: ExecutionReceiptVersion::V0,
+    };
 }
 
 pub struct MockRandomness;
@@ -304,7 +307,7 @@ impl pallet_domains::Config for Test {
     type OnChainRewards = ();
     type WithdrawalLimit = WithdrawalLimit;
     type DomainOrigin = crate::EnsureDomainOrigin;
-    type CurrentBundleVersion = CurrentBundleVersion;
+    type CurrentBundleAndExecutionReceiptVersion = CurrentBundleAndExecutionReceiptVersion;
 }
 
 pub struct ExtrinsicStorageFees;

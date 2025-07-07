@@ -18,6 +18,7 @@ pub mod valued_trie;
 extern crate alloc;
 
 use crate::bundle::{BundleVersion, OpaqueBundle, OpaqueBundles};
+use crate::execution_receipt::ExecutionReceiptVersion;
 use crate::storage::{RawGenesis, StorageKey};
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
@@ -960,6 +961,13 @@ impl SkipBalanceChecks for () {
     }
 }
 
+/// Bundle and Execution Versions.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct BundleAndExecutionReceiptVersion {
+    pub bundle_version: BundleVersion,
+    pub execution_receipt_version: ExecutionReceiptVersion,
+}
+
 sp_api::decl_runtime_apis! {
     /// APIs used to access the domains pallet.
     // When updating this version, document new APIs with "Only present in API versions" comments.
@@ -1077,7 +1085,7 @@ sp_api::decl_runtime_apis! {
         fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
 
         /// Returns the current bundle version that is accepted by runtime.
-        fn current_bundle_version() -> BundleVersion;
+        fn current_bundle_and_execution_receipt_version() -> BundleAndExecutionReceiptVersion;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

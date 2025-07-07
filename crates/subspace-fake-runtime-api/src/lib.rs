@@ -8,12 +8,11 @@ use frame_support::weights::Weight;
 use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionRanges};
 use sp_core::crypto::KeyTypeId;
 use sp_core::{H256, OpaqueMetadata};
-use sp_domains::bundle::BundleVersion;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::execution_receipt::ExecutionReceiptFor;
 use sp_domains::{
-    DomainAllowlistUpdates, DomainId, DomainInstanceData, OperatorId, OperatorPublicKey,
-    PermissionedActionAllowedBy,
+    BundleAndExecutionReceiptVersion, DomainAllowlistUpdates, DomainId, DomainInstanceData,
+    OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
@@ -293,7 +292,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn current_bundle_version() -> BundleVersion {
+        fn current_bundle_and_execution_receipt_version() -> BundleAndExecutionReceiptVersion {
             unreachable!()
         }
     }

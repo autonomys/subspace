@@ -256,11 +256,12 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use parity_scale_codec::FullCodec;
     use sp_core::H256;
-    use sp_domains::bundle::{BundleDigest, BundleVersion};
+    use sp_domains::bundle::BundleDigest;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        DomainBundleSubmitted, DomainId, DomainOwner, DomainSudoCall, DomainsTransfersTracker,
-        EpochIndex, EvmDomainContractCreationAllowedByCall, GenesisDomain, OnChainRewards,
+        BundleAndExecutionReceiptVersion, DomainBundleSubmitted, DomainId, DomainOwner,
+        DomainSudoCall, DomainsTransfersTracker, EpochIndex,
+        EvmDomainContractCreationAllowedByCall, GenesisDomain, OnChainRewards,
         OnDomainInstantiated, OperatorAllowList, OperatorId, OperatorRewardSource, RuntimeId,
         RuntimeObject, RuntimeType,
     };
@@ -464,7 +465,7 @@ mod pallet {
 
         /// Current bundle version accepted by the runtime.
         #[pallet::constant]
-        type CurrentBundleVersion: Get<BundleVersion>;
+        type CurrentBundleAndExecutionReceiptVersion: Get<BundleAndExecutionReceiptVersion>;
     }
 
     #[pallet::pallet]
