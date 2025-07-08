@@ -1598,6 +1598,15 @@ impl_runtime_apis! {
         fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>{
             Domains::latest_confirmed_domain_execution_receipt(domain_id)
         }
+
+        fn nominator_position(
+            operator_id: OperatorId,
+            nominator_account: sp_runtime::AccountId32,
+        ) -> Option<sp_domains::NominatorPosition<Balance, DomainNumber>> {
+            // Convert AccountId32 to the runtime's AccountId type
+            let account_id: AccountId = nominator_account.into();
+            Domains::nominator_position(operator_id, account_id)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
