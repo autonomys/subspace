@@ -2438,6 +2438,7 @@ pub(crate) mod tests {
             );
 
             let expected_withdraw = (
+                // TODO: work out how to avoid this multiplication on WithdrawParams.withdraws
                 STORAGE_FEE_RESERVE
                     .left_from_one()
                     .mul_ceil(operator_stake)
