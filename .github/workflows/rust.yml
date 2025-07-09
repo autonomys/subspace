@@ -19,6 +19,13 @@ env:
   # Build smaller artifacts to avoid running out of space in CI and make it a bit faster
   RUSTFLAGS: -C strip=symbols
   RUST_BACKTRACE: full
+  # If a property test fails, we want to shrink it as much as possible to find the minimal failing
+  # case. This only happens on test failure, so it's not a big deal if it's slow.
+  PROPTEST_MAX_SHRINK_ITERS: 100000
+  # Default is 256, but we want PRs to check more cases, so they fail in CI before we merge them.
+  # For slow tests, this can be reduced using `#[property_test(config = "ProptestConfig { .. }")]`.
+  PROPTEST_CASES: 10000
+  PROPTEST_MAX_GLOBAL_REJECTS: 100000
 
 jobs:
   cargo-fmt:
