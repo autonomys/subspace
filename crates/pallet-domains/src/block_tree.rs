@@ -3,6 +3,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use crate::migrations::execution_receipt::{get_block_tree_node, take_block_tree_node};
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, Config, ConsensusBlockHash,
     DomainBlockNumberFor, DomainGenesisBlockExecutionReceipt, DomainHashingFor,
@@ -54,7 +55,6 @@ pub enum Error {
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-// TODO: migrate
 pub struct BlockTreeNode<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// The full ER for this block.
     pub execution_receipt: ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>,
@@ -458,12 +458,10 @@ pub(crate) fn process_execution_receipt<T: Config>(
         }
         AcceptedReceiptType::CurrentHead => {
             // Add confirmation to the current head receipt
-            BlockTreeNodes::<T>::mutate(er_hash, |maybe_node| {
-                let node = maybe_node.as_mut().expect(
-                    "The domain block of `CurrentHead` receipt is checked to be exist in `execution_receipt_type`; qed"
-                );
-                node.operator_ids.push(submitter);
-            });
+            let mut node = get_block_tree_node::<T>(er_hash)
+                .expect("The domain block of `CurrentHead` receipt is checked to be exist in `execution_receipt_type`; qed");
+            node.operator_ids.push(submitter);
+            BlockTreeNodes::<T>::insert(er_hash, node);
         }
     }
 
@@ -608,7 +606,7 @@ pub(crate) fn prune_receipt<T: Config>(
         None => return Ok(None),
     };
     let block_tree_node =
-        BlockTreeNodes::<T>::take(receipt_hash).ok_or(Error::MissingDomainBlock)?;
+        take_block_tree_node::<T>(receipt_hash).ok_or(Error::MissingDomainBlock)?;
 
     // If the pruned ER is the operator's `latest_submitted_er` for this domain, it means either:
     //

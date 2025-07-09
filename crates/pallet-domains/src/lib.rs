@@ -24,6 +24,7 @@ extern crate alloc;
 use crate::block_tree::{Error as BlockTreeError, verify_execution_receipt};
 use crate::bundle_storage_fund::{charge_bundle_storage_fee, storage_fund_account};
 use crate::domain_registry::{DomainConfig, Error as DomainRegistryError};
+use crate::migrations::execution_receipt::get_block_tree_node;
 use crate::runtime_registry::into_complete_raw_genesis;
 use crate::staking::OperatorStatus;
 #[cfg(feature = "runtime-benchmarks")]
@@ -227,6 +228,7 @@ mod pallet {
         DomainConfigParams, DomainObject, Error as DomainRegistryError, do_instantiate_domain,
         do_update_domain_allow_list,
     };
+    use crate::migrations::execution_receipt::get_block_tree_node;
     use crate::runtime_registry::{
         DomainRuntimeUpgradeEntry, Error as RuntimeRegistryError, ScheduledRuntimeUpgrade,
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
@@ -704,15 +706,11 @@ mod pallet {
 
     /// Storage to hold all the domain's latest confirmed block.
     #[pallet::storage]
-    #[pallet::getter(fn latest_confirmed_domain_execution_receipt)]
-    // TODO: migration
     pub type LatestConfirmedDomainExecutionReceipt<T: Config> =
         StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
 
     /// Storage to hold all the domain's genesis execution receipt.
     #[pallet::storage]
-    #[pallet::getter(fn domain_genesis_block_execution_receipt)]
-    // TODO: migration
     pub type DomainGenesisBlockExecutionReceipt<T: Config> =
         StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
 
@@ -1345,7 +1343,7 @@ mod pallet {
             let domain_id = fraud_proof.domain_id();
             let bad_receipt_hash = fraud_proof.targeted_bad_receipt_hash();
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
-            let bad_receipt_number = *BlockTreeNodes::<T>::get(bad_receipt_hash)
+            let bad_receipt_number = *get_block_tree_node::<T>(bad_receipt_hash)
                 .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?
                 .execution_receipt
                 .domain_block_number();
@@ -1720,7 +1718,7 @@ mod pallet {
             );
 
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
-            let bad_receipt_number = *BlockTreeNodes::<T>::get(bad_receipt_hash)
+            let bad_receipt_number = *get_block_tree_node::<T>(bad_receipt_hash)
                 .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?
                 .execution_receipt
                 .domain_block_number();
@@ -2200,7 +2198,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
-        DomainGenesisBlockExecutionReceipt::<T>::get(domain_id)
+        crate::migrations::execution_receipt::domain_genesis_block_execution_receipt::<T>(domain_id)
             .map(|er| (*er.final_state_root()).into())
     }
 
@@ -2486,7 +2484,7 @@ impl<T: Config> Pallet<T> {
     ) -> Result<(DomainId, TransactionPriority), FraudProofError> {
         let domain_id = fraud_proof.domain_id();
         let bad_receipt_hash = fraud_proof.targeted_bad_receipt_hash();
-        let bad_receipt = BlockTreeNodes::<T>::get(bad_receipt_hash)
+        let bad_receipt = get_block_tree_node::<T>(bad_receipt_hash)
             .ok_or(FraudProofError::BadReceiptNotFound)?
             .execution_receipt;
         let bad_receipt_domain_block_number = *bad_receipt.domain_block_number();
@@ -2562,7 +2560,7 @@ impl<T: Config> Pallet<T> {
                 digest_storage_proof,
             }) => {
                 let parent_receipt =
-                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash())
+                    get_block_tree_node::<T>(*bad_receipt.parent_domain_block_receipt_hash())
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
                 verify_invalid_domain_block_hash_fraud_proof::<
@@ -2615,7 +2613,7 @@ impl<T: Config> Pallet<T> {
                     fraud_proof.maybe_domain_runtime_code_proof.clone(),
                 )?;
                 let bad_receipt_parent =
-                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash())
+                    get_block_tree_node::<T>(*bad_receipt.parent_domain_block_receipt_hash())
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
 
@@ -2638,7 +2636,7 @@ impl<T: Config> Pallet<T> {
                 )?;
 
                 let bad_receipt_parent =
-                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash())
+                    get_block_tree_node::<T>(*bad_receipt.parent_domain_block_receipt_hash())
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
 
@@ -2775,16 +2773,20 @@ impl<T: Config> Pallet<T> {
     /// Returns the latest confirmed domain block number for a given domain
     /// Zero block is always a default confirmed block.
     pub fn latest_confirmed_domain_block_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
-        LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
-            .map(|er| *er.domain_block_number())
-            .unwrap_or_default()
+        crate::migrations::execution_receipt::latest_confirmed_domain_execution_receipt::<T>(
+            domain_id,
+        )
+        .map(|er| *er.domain_block_number())
+        .unwrap_or_default()
     }
 
     pub fn latest_confirmed_domain_block(
         domain_id: DomainId,
     ) -> Option<(DomainBlockNumberFor<T>, T::DomainHash)> {
-        LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
-            .map(|er| (*er.domain_block_number(), *er.domain_block_hash()))
+        crate::migrations::execution_receipt::latest_confirmed_domain_execution_receipt::<T>(
+            domain_id,
+        )
+        .map(|er| (*er.domain_block_number(), *er.domain_block_hash()))
     }
 
     /// Returns the domain bundle limit of the given domain
@@ -2895,7 +2897,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptOf<T>> {
-        BlockTreeNodes::<T>::get(receipt_hash).map(|db| db.execution_receipt)
+        get_block_tree_node::<T>(receipt_hash).map(|db| db.execution_receipt)
     }
 
     pub fn receipt_hash(
@@ -3047,7 +3049,7 @@ impl<T: Config> Pallet<T> {
         // that used to derive `receipt` we need to use runtime code at `parent_receipt.consensus_block_number`
         let at = {
             let parent_receipt =
-                BlockTreeNodes::<T>::get(receipt.parent_domain_block_receipt_hash())
+                get_block_tree_node::<T>(*receipt.parent_domain_block_receipt_hash())
                     .ok_or(FraudProofError::ParentReceiptNotFound)?
                     .execution_receipt;
             *parent_receipt.consensus_block_number()
@@ -3171,6 +3173,14 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
     ) -> Option<sp_domains::PermissionedActionAllowedBy<EthereumAccountId>> {
         EvmDomainContractCreationAllowedByCalls::<T>::get(domain_id).maybe_call
+    }
+
+    pub fn latest_confirmed_domain_execution_receipt(
+        domain_id: DomainId,
+    ) -> Option<ExecutionReceiptOf<T>> {
+        crate::migrations::execution_receipt::latest_confirmed_domain_execution_receipt::<T>(
+            domain_id,
+        )
     }
 }
 

@@ -1356,7 +1356,7 @@ mod pallet {
                         BlockNumberFor<T>,
                         T::Hash,
                         BalanceOf<T>,
-                    >::decode(&mut &bare_value.clone()[..])
+                    >::decode(&mut &bare_value[..])
                     {
                         Ok(receipt) => Some(receipt),
                         Err(_) => ExecutionReceiptV0::<
@@ -1365,7 +1365,7 @@ mod pallet {
                             BlockNumberFor<T>,
                             T::Hash,
                             BalanceOf<T>,
-                        >::decode(&mut &bare_value.clone()[..])
+                        >::decode(&mut &bare_value[..])
                         .map(ExecutionReceipt::V0)
                         .ok(),
                     }

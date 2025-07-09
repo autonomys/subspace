@@ -178,7 +178,7 @@ where
     )?;
     match maybe_raw_value {
         None => Ok(None),
-        Some(t) => match ExecutionReceiptFor::<Block, CBlock>::decode(&mut t.clone().as_slice()) {
+        Some(t) => match ExecutionReceiptFor::<Block, CBlock>::decode(&mut t.as_slice()) {
             Ok(receipt) => Ok(Some(receipt)),
             Err(_) => ExecutionReceiptV0For::<Block, CBlock>::decode(&mut t.as_slice())
                 .map(ExecutionReceiptFor::<Block, CBlock>::V0)

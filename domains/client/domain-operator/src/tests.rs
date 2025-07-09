@@ -7215,16 +7215,18 @@ async fn test_xdm_false_invalid_fraud_proof() {
     // produce another bundle that marks the XDM as invalid.
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
             InvalidBundleType::InvalidXDM(0),
             bundle_extrinsic_root,
         )];
 
-        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
-            .pair()
-            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
-            .into();
+        opaque_bundle.set_signature(
+            Sr25519Keyring::Alice
+                .pair()
+                .sign(opaque_bundle.sealed_header().pre_hash().as_ref())
+                .into(),
+        );
         (
             opaque_bundle.receipt().hash::<BlakeTwo256>(),
             bundle_to_tx(&ferdie, opaque_bundle),
@@ -7747,7 +7749,7 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
     produce_blocks_until!(ferdie, alice, {
         let alice_best_hash = alice.client.info().best_hash;
         let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-        for tx in opaque_bundle.extrinsics.iter() {
+        for tx in opaque_bundle.extrinsics().iter() {
             if alice
                 .client
                 .runtime_api()
@@ -7856,7 +7858,7 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_resp_relaying() {
     produce_blocks_until!(ferdie, alice, {
         let alice_best_hash = alice.client.info().best_hash;
         let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-        for tx in opaque_bundle.extrinsics.iter() {
+        for tx in opaque_bundle.extrinsics().iter() {
             if alice
                 .client
                 .runtime_api()

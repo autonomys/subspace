@@ -265,7 +265,7 @@ async fn send_request<NR: NetworkRequest, Block: BlockT, DomainHeader: Header>(
                 return Err(DomainBlockERResponseError::InvalidProtocol);
             }
 
-            let response = match DomainBlockERResponse::decode(&mut data.clone().as_slice()) {
+            let response = match DomainBlockERResponse::decode(&mut data.as_slice()) {
                 Ok(response) => Ok(response),
                 Err(_) => DomainBlockERResponseV0::decode(&mut data.as_slice()).map(Into::into),
             }

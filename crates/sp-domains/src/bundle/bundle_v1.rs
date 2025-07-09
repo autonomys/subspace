@@ -64,7 +64,6 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
 }
 
 /// Domain bundle v1.
-// TODO: update sealed header to include versioned execution receipt.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleV1<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Sealed bundle header.
