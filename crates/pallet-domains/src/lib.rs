@@ -14,6 +14,7 @@ pub mod bundle_storage_fund;
 pub mod domain_registry;
 pub mod extensions;
 pub mod migrations;
+mod nominator_position;
 pub mod runtime_registry;
 pub mod staking;
 mod staking_epoch;
@@ -3133,6 +3134,22 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
     ) -> Option<sp_domains::PermissionedActionAllowedBy<EthereumAccountId>> {
         EvmDomainContractCreationAllowedByCalls::<T>::get(domain_id).maybe_call
+    }
+
+    /// Returns the complete nominator position for a given operator and account.
+    ///
+    /// This calculates the total position including:
+    /// - Current stake value (converted from shares using instant share price including rewards)
+    /// - Total storage fee deposits (known + pending)
+    /// - Pending deposits (not yet converted to shares)
+    /// - Pending withdrawals (with unlock timing)
+    ///
+    /// Returns None if no position exists for the given nominator and operator.
+    pub fn nominator_position(
+        operator_id: OperatorId,
+        nominator_account: T::AccountId,
+    ) -> Option<sp_domains::NominatorPosition<BalanceOf<T>, DomainBlockNumberFor<T>>> {
+        nominator_position::nominator_position::<T>(operator_id, nominator_account)
     }
 }
 

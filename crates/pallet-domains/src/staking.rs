@@ -706,7 +706,7 @@ pub(crate) fn do_deregister_operator<T: Config>(
 
 /// A helper function used to calculate the share price at this instant
 /// Returns `None` if there are more shares than stake, or if either value is zero.
-fn current_share_price<T: Config>(
+pub(crate) fn current_share_price<T: Config>(
     operator_id: OperatorId,
     operator: &Operator<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
     domain_stake_summary: &StakingSummary<OperatorId, BalanceOf<T>>,
