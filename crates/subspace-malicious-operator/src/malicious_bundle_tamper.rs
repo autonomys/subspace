@@ -1,11 +1,13 @@
-use domain_client_operator::{ExecutionReceiptV0For, VersionedOpaqueBundleFor};
+use domain_client_operator::{ExecutionReceiptFor, VersionedOpaqueBundleFor};
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_domain_digests::AsPredigest;
 use sp_domains::bundle::{BundleValidity, InvalidBundleType};
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::execution_receipt::BlockFees;
+use sp_domains::execution_receipt::{
+    BlockFees, ExecutionReceipt, ExecutionReceiptMutRef, ExecutionReceiptRef,
+};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{ChainId, HeaderHashingFor, OperatorPublicKey, OperatorSignature};
 use sp_keystore::KeystorePtr;
@@ -15,6 +17,7 @@ use sp_weights::Weight;
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::sync::Arc;
+use subspace_runtime_primitives::{Balance, BlockHashFor};
 
 const MAX_BAD_RECEIPT_CACHE: u32 = 128;
 
@@ -56,8 +59,17 @@ where
     keystore: KeystorePtr,
     // A cache for recently produced bad receipts
     bad_receipts_cache:
-        BTreeMap<NumberFor<Block>, HashMap<CBlock::Hash, ExecutionReceiptV0For<Block, CBlock>>>,
+        BTreeMap<NumberFor<Block>, HashMap<CBlock::Hash, ExecutionReceiptFor<Block, CBlock>>>,
 }
+
+pub type ExecutionReceiptMutRefFor<'a, Block, CBlock> = ExecutionReceiptMutRef<
+    'a,
+    NumberFor<CBlock>,
+    BlockHashFor<CBlock>,
+    NumberFor<Block>,
+    BlockHashFor<Block>,
+    Balance,
+>;
 
 impl<Block, CBlock, Client> MaliciousBundleTamper<Block, CBlock, Client>
 where
@@ -94,15 +106,17 @@ where
 
     fn make_receipt_fraudulent(
         &mut self,
-        receipt: &mut ExecutionReceiptV0For<Block, CBlock>,
+        receipt: ExecutionReceiptMutRefFor<Block, CBlock>,
     ) -> Result<(), Box<dyn Error>> {
+        let ExecutionReceiptMutRef::V0(receipt) = receipt;
         // We can't make the genesis receipt into a bad ER
         if receipt.domain_block_number.is_zero() {
             return Ok(());
         }
         // If a bad receipt is already made for the same domain block, reuse it
         if let Some(bad_receipts_at) = self.bad_receipts_cache.get(&receipt.domain_block_number)
-            && let Some(previous_bad_receipt) = bad_receipts_at.get(&receipt.consensus_block_hash)
+            && let Some(ExecutionReceipt::V0(previous_bad_receipt)) =
+                bad_receipts_at.get(&receipt.consensus_block_hash)
         {
             *receipt = previous_bad_receipt.clone();
             return Ok(());
@@ -245,7 +259,10 @@ where
         self.bad_receipts_cache
             .entry(receipt.domain_block_number)
             .or_default()
-            .insert(receipt.consensus_block_hash, receipt.clone());
+            .insert(
+                receipt.consensus_block_hash,
+                ExecutionReceipt::V0(receipt.clone()),
+            );
         if self.bad_receipts_cache.len() as u32 > MAX_BAD_RECEIPT_CACHE {
             self.bad_receipts_cache.pop_first();
         }
@@ -269,11 +286,12 @@ where
             // 1 => InvalidBundleType::OutOfRangeTx(0),
             _ => unreachable!(),
         };
+        let ExecutionReceiptRef::V0(receipt) = opaque_bundle.receipt();
         tracing::info!(
             ?invalid_bundle_type,
             "Generate invalid bundle, receipt domain block {}#{}",
-            opaque_bundle.receipt().domain_block_number,
-            opaque_bundle.receipt().domain_block_hash,
+            receipt.domain_block_number,
+            receipt.domain_block_hash,
         );
 
         let invalid_tx = match invalid_bundle_type {
@@ -300,7 +318,9 @@ where
             _ => return Ok(()),
         };
 
-        opaque_bundle.push_extrinsic(invalid_tx);
+        let mut exts = opaque_bundle.extrinsics().to_vec();
+        exts.push(invalid_tx);
+        opaque_bundle.set_extrinsics(exts);
 
         Ok(())
     }

@@ -53,7 +53,9 @@ use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_core::H256;
 use sp_domains::bundle::{Bundle, BundleVersion, OpaqueBundle};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
-use sp_domains::execution_receipt::{ExecutionReceiptV0, SealedSingletonReceiptV0};
+use sp_domains::execution_receipt::{
+    ExecutionReceipt, ExecutionReceiptRef, SealedSingletonReceipt,
+};
 use sp_domains::{
     ChainId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, DomainBundleLimit, DomainId,
     DomainInstanceData, EMPTY_EXTRINSIC_ROOT, OperatorId, OperatorPublicKey, OperatorSignature,
@@ -103,7 +105,16 @@ pub trait BlockSlot<T: frame_system::Config> {
     fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> Option<BlockNumberFor<T>>;
 }
 
-pub type ExecutionReceiptV0Of<T> = ExecutionReceiptV0<
+pub type ExecutionReceiptOf<T> = ExecutionReceipt<
+    BlockNumberFor<T>,
+    <T as frame_system::Config>::Hash,
+    DomainBlockNumberFor<T>,
+    <T as Config>::DomainHash,
+    BalanceOf<T>,
+>;
+
+pub type ExecutionReceiptRefOf<'a, T> = ExecutionReceiptRef<
+    'a,
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
     DomainBlockNumberFor<T>,
@@ -118,7 +129,7 @@ pub type OpaqueBundleOf<T> = OpaqueBundle<
     BalanceOf<T>,
 >;
 
-pub type SingletonReceiptV0Of<T> = SealedSingletonReceiptV0<
+pub type SingletonReceiptOf<T> = SealedSingletonReceipt<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainHeader,
@@ -236,8 +247,8 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
-        ExecutionReceiptV0Of, FraudProofFor, HoldIdentifier, MAX_BUNDLE_PER_BLOCK, NominatorId,
-        OpaqueBundleOf, RawOrigin, ReceiptHashFor, STORAGE_VERSION, SingletonReceiptV0Of,
+        ExecutionReceiptOf, FraudProofFor, HoldIdentifier, MAX_BUNDLE_PER_BLOCK, NominatorId,
+        OpaqueBundleOf, RawOrigin, ReceiptHashFor, STORAGE_VERSION, SingletonReceiptOf,
         StateRootOf,
     };
     #[cfg(not(feature = "std"))]
@@ -694,14 +705,16 @@ mod pallet {
     /// Storage to hold all the domain's latest confirmed block.
     #[pallet::storage]
     #[pallet::getter(fn latest_confirmed_domain_execution_receipt)]
+    // TODO: migration
     pub type LatestConfirmedDomainExecutionReceipt<T: Config> =
-        StorageMap<_, Identity, DomainId, ExecutionReceiptV0Of<T>, OptionQuery>;
+        StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
 
     /// Storage to hold all the domain's genesis execution receipt.
     #[pallet::storage]
     #[pallet::getter(fn domain_genesis_block_execution_receipt)]
+    // TODO: migration
     pub type DomainGenesisBlockExecutionReceipt<T: Config> =
-        StorageMap<_, Identity, DomainId, ExecutionReceiptV0Of<T>, OptionQuery>;
+        StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
 
     /// The latest ER submitted by the operator for a given domain. It is used to determine if the operator
     /// has submitted bad ER and is pending to slash.
@@ -1139,14 +1152,14 @@ mod pallet {
             let slot_number = opaque_bundle.slot_number();
             let receipt = opaque_bundle.into_receipt();
             #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
-            let receipt_block_number = receipt.domain_block_number;
+            let receipt_block_number = *receipt.domain_block_number();
 
             #[cfg(not(feature = "runtime-benchmarks"))]
             let mut actual_weight = T::WeightInfo::submit_bundle();
             #[cfg(feature = "runtime-benchmarks")]
             let actual_weight = T::WeightInfo::submit_bundle();
 
-            match execution_receipt_type::<T>(domain_id, &receipt) {
+            match execution_receipt_type::<T>(domain_id, &receipt.as_execution_receipt_ref()) {
                 ReceiptType::Rejected(rejected_receipt_type) => {
                     return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
                 }
@@ -1332,10 +1345,10 @@ mod pallet {
             let domain_id = fraud_proof.domain_id();
             let bad_receipt_hash = fraud_proof.targeted_bad_receipt_hash();
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
-            let bad_receipt_number = BlockTreeNodes::<T>::get(bad_receipt_hash)
+            let bad_receipt_number = *BlockTreeNodes::<T>::get(bad_receipt_hash)
                 .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?
                 .execution_receipt
-                .domain_block_number;
+                .domain_block_number();
             // The `head_receipt_number` must greater than or equal to any existing receipt, including
             // the bad receipt, otherwise the fraud proof should be rejected due to `BadReceiptNotFound`,
             // double check here to make it more robust.
@@ -1707,10 +1720,10 @@ mod pallet {
             );
 
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
-            let bad_receipt_number = BlockTreeNodes::<T>::get(bad_receipt_hash)
+            let bad_receipt_number = *BlockTreeNodes::<T>::get(bad_receipt_hash)
                 .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?
                 .execution_receipt
-                .domain_block_number;
+                .domain_block_number();
             // The `head_receipt_number` must greater than or equal to any existing receipt, including
             // the bad receipt.
             ensure!(
@@ -1777,7 +1790,7 @@ mod pallet {
         #[pallet::weight(Pallet::<T>::max_submit_receipt_weight())]
         pub fn submit_receipt(
             origin: OriginFor<T>,
-            singleton_receipt: SingletonReceiptV0Of<T>,
+            singleton_receipt: SingletonReceiptOf<T>,
         ) -> DispatchResultWithPostInfo {
             T::DomainOrigin::ensure_origin(origin)?;
 
@@ -1790,7 +1803,7 @@ mod pallet {
             #[cfg(feature = "runtime-benchmarks")]
             let actual_weight = T::WeightInfo::submit_receipt();
 
-            match execution_receipt_type::<T>(domain_id, &receipt) {
+            match execution_receipt_type::<T>(domain_id, &receipt.as_execution_receipt_ref()) {
                 ReceiptType::Rejected(rejected_receipt_type) => {
                     return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
                 }
@@ -1806,7 +1819,7 @@ mod pallet {
                         && let Some(BlockTreeNode {
                             execution_receipt,
                             operator_ids,
-                        }) = prune_receipt::<T>(domain_id, receipt.domain_block_number)
+                        }) = prune_receipt::<T>(domain_id, *receipt.domain_block_number())
                             .map_err(Error::<T>::from)?
                     {
                         actual_weight = actual_weight.saturating_add(
@@ -2187,7 +2200,8 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
-        DomainGenesisBlockExecutionReceipt::<T>::get(domain_id).map(|er| er.final_state_root.into())
+        DomainGenesisBlockExecutionReceipt::<T>::get(domain_id)
+            .map(|er| (*er.final_state_root()).into())
     }
 
     /// Returns the tx range for the domain.
@@ -2413,13 +2427,13 @@ impl<T: Config> Pallet<T> {
 
         Self::validate_eligibility(
             sealed_header.pre_hash().as_ref(),
-            &sealed_header.signature,
-            &sealed_header.header.proof_of_election,
+            sealed_header.signature(),
+            sealed_header.proof_of_election(),
             domain_config,
             pre_dispatch,
         )?;
 
-        verify_execution_receipt::<T>(domain_id, &sealed_header.header.receipt)
+        verify_execution_receipt::<T>(domain_id, &sealed_header.receipt())
             .map_err(BundleError::Receipt)?;
 
         charge_bundle_storage_fee::<T>(operator_id, opaque_bundle.size())
@@ -2429,7 +2443,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_singleton_receipt(
-        sealed_singleton_receipt: &SingletonReceiptV0Of<T>,
+        sealed_singleton_receipt: &SingletonReceiptOf<T>,
         pre_dispatch: bool,
     ) -> Result<(), BundleError> {
         let domain_id = sealed_singleton_receipt.domain_id();
@@ -2454,7 +2468,10 @@ impl<T: Config> Pallet<T> {
 
         verify_execution_receipt::<T>(
             domain_id,
-            &sealed_singleton_receipt.singleton_receipt.receipt,
+            &sealed_singleton_receipt
+                .singleton_receipt
+                .receipt
+                .as_execution_receipt_ref(),
         )
         .map_err(BundleError::Receipt)?;
 
@@ -2472,7 +2489,7 @@ impl<T: Config> Pallet<T> {
         let bad_receipt = BlockTreeNodes::<T>::get(bad_receipt_hash)
             .ok_or(FraudProofError::BadReceiptNotFound)?
             .execution_receipt;
-        let bad_receipt_domain_block_number = bad_receipt.domain_block_number;
+        let bad_receipt_domain_block_number = *bad_receipt.domain_block_number();
 
         ensure!(
             !bad_receipt_domain_block_number.is_zero(),
@@ -2497,7 +2514,7 @@ impl<T: Config> Pallet<T> {
         let maybe_state_root = match &fraud_proof.maybe_mmr_proof {
             Some(mmr_proof) => Some(Self::verify_mmr_proof_and_extract_state_root(
                 mmr_proof.clone(),
-                bad_receipt.consensus_block_number,
+                *bad_receipt.consensus_block_number(),
             )?),
             None => None,
         };
@@ -2545,7 +2562,7 @@ impl<T: Config> Pallet<T> {
                 digest_storage_proof,
             }) => {
                 let parent_receipt =
-                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash())
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
                 verify_invalid_domain_block_hash_fraud_proof::<
@@ -2555,7 +2572,7 @@ impl<T: Config> Pallet<T> {
                 >(
                     bad_receipt,
                     digest_storage_proof.clone(),
-                    parent_receipt.domain_block_hash,
+                    *parent_receipt.domain_block_hash(),
                 )
                 .map_err(|err| {
                     log::error!("Invalid Domain block hash proof verification failed: {err:?}");
@@ -2598,7 +2615,7 @@ impl<T: Config> Pallet<T> {
                     fraud_proof.maybe_domain_runtime_code_proof.clone(),
                 )?;
                 let bad_receipt_parent =
-                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash())
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
 
@@ -2621,7 +2638,7 @@ impl<T: Config> Pallet<T> {
                 )?;
 
                 let bad_receipt_parent =
-                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash())
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
 
@@ -2759,7 +2776,7 @@ impl<T: Config> Pallet<T> {
     /// Zero block is always a default confirmed block.
     pub fn latest_confirmed_domain_block_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
         LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
-            .map(|er| er.domain_block_number)
+            .map(|er| *er.domain_block_number())
             .unwrap_or_default()
     }
 
@@ -2767,7 +2784,7 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
     ) -> Option<(DomainBlockNumberFor<T>, T::DomainHash)> {
         LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
-            .map(|er| (er.domain_block_number, er.domain_block_hash))
+            .map(|er| (*er.domain_block_number(), *er.domain_block_hash()))
     }
 
     /// Returns the domain bundle limit of the given domain
@@ -2877,7 +2894,7 @@ impl<T: Config> Pallet<T> {
         sp_domains::DOMAIN_STORAGE_FEE_MULTIPLIER * transaction_byte_fee
     }
 
-    pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptV0Of<T>> {
+    pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptOf<T>> {
         BlockTreeNodes::<T>::get(receipt_hash).map(|db| db.execution_receipt)
     }
 
@@ -3017,7 +3034,7 @@ impl<T: Config> Pallet<T> {
     // the state then get it from the state otherwise from the `maybe_domain_runtime_code_at` proof.
     pub fn get_domain_runtime_code_for_receipt(
         domain_id: DomainId,
-        receipt: &ExecutionReceiptV0Of<T>,
+        receipt: &ExecutionReceiptOf<T>,
         maybe_domain_runtime_code_at: Option<
             DomainRuntimeCodeAt<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         >,
@@ -3029,10 +3046,11 @@ impl<T: Config> Pallet<T> {
         // NOTE: domain runtime code is taking affect in the next block, so to get the domain runtime code
         // that used to derive `receipt` we need to use runtime code at `parent_receipt.consensus_block_number`
         let at = {
-            let parent_receipt = BlockTreeNodes::<T>::get(receipt.parent_domain_block_receipt_hash)
-                .ok_or(FraudProofError::ParentReceiptNotFound)?
-                .execution_receipt;
-            parent_receipt.consensus_block_number
+            let parent_receipt =
+                BlockTreeNodes::<T>::get(receipt.parent_domain_block_receipt_hash())
+                    .ok_or(FraudProofError::ParentReceiptNotFound)?
+                    .execution_receipt;
+            *parent_receipt.consensus_block_number()
         };
 
         let is_domain_runtime_upgraded = current_runtime_obj.updated_at >= at;
@@ -3189,9 +3207,9 @@ where
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_receipt`].
-    pub fn submit_receipt_unsigned(singleton_receipt: SingletonReceiptV0Of<T>) {
+    pub fn submit_receipt_unsigned(singleton_receipt: SingletonReceiptOf<T>) {
         let slot = singleton_receipt.slot_number();
-        let domain_block_number = singleton_receipt.receipt().domain_block_number;
+        let domain_block_number = *singleton_receipt.receipt().domain_block_number();
 
         let call = Call::submit_receipt { singleton_receipt };
         let ext = T::create_unsigned(call.into());

@@ -1,10 +1,11 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::execution_receipt::ExecutionReceiptV0;
+use crate::bundle::bundle_v0::SealedBundleHeaderV0;
+use crate::bundle::bundle_v1::{BundleHeaderV1, SealedBundleHeaderV1};
+use crate::execution_receipt::{ExecutionReceipt, ExecutionReceiptMutRef, ExecutionReceiptRef};
 use crate::{
-    DomainId, HeaderHashFor, HeaderHashingFor, HeaderNumberFor, OperatorId, OperatorSignature,
-    ProofOfElection,
+    DomainId, HeaderHashFor, HeaderNumberFor, OperatorId, OperatorSignature, ProofOfElection,
 };
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
@@ -18,75 +19,78 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_runtime::OpaqueExtrinsic;
-use sp_runtime::traits::{BlakeTwo256, Hash, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{BlakeTwo256, Hash, Header as HeaderT, NumberFor, Zero};
 use sp_weights::Weight;
 use subspace_runtime_primitives::BlockHashFor;
 
 pub mod bundle_v0;
 pub mod bundle_v1;
 
+/// Header of bundle holding the references to various versions of SealedHeader.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct BundleHeader<Number, Hash, DomainHeader: HeaderT, Balance> {
-    /// Proof of bundle producer election.
-    pub proof_of_election: ProofOfElection,
-    /// Execution receipt that should extend the receipt chain or add confirmations
-    /// to the head receipt.
-    pub receipt: ExecutionReceiptV0<
+pub enum SealedBundleHeaderRef<'a, Number, Hash, DomainHeader: HeaderT, Balance> {
+    V0(&'a SealedBundleHeaderV0<Number, Hash, DomainHeader, Balance>),
+    V1(&'a SealedBundleHeaderV1<Number, Hash, DomainHeader, Balance>),
+}
+
+impl<'a, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
+    SealedBundleHeaderRef<'a, Number, Hash, DomainHeader, Balance>
+{
+    /// Returns the hash of the inner unsealed header.
+    pub fn pre_hash(&self) -> HeaderHashFor<DomainHeader> {
+        match self {
+            SealedBundleHeaderRef::V0(bundle) => bundle.header.hash(),
+            SealedBundleHeaderRef::V1(bundle) => bundle.header.hash(),
+        }
+    }
+
+    /// Returns the signature on the sealed bundle header.
+    pub fn signature(&self) -> &'a OperatorSignature {
+        match self {
+            SealedBundleHeaderRef::V0(bundle) => &bundle.signature,
+            SealedBundleHeaderRef::V1(bundle) => &bundle.signature,
+        }
+    }
+
+    /// Returns the proof of election on the bundle.
+    pub fn proof_of_election(&self) -> &'a ProofOfElection {
+        match self {
+            SealedBundleHeaderRef::V0(bundle) => &bundle.header.proof_of_election,
+            SealedBundleHeaderRef::V1(bundle) => &bundle.header.proof_of_election,
+        }
+    }
+
+    /// Returns the receipt on the bundle.
+    pub fn receipt(
+        &self,
+    ) -> ExecutionReceiptRef<
+        'a,
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
         HeaderHashFor<DomainHeader>,
         Balance,
-    >,
-    /// The total (estimated) weight of all extrinsics in the bundle.
-    ///
-    /// Used to prevent overloading the bundle with compute.
-    pub estimated_bundle_weight: Weight,
-    /// The Merkle root of all new extrinsics included in this bundle.
-    pub bundle_extrinsics_root: HeaderHashFor<DomainHeader>,
-}
-
-impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
-    BundleHeader<Number, Hash, DomainHeader, Balance>
-{
-    /// Returns the hash of this header.
-    pub fn hash(&self) -> HeaderHashFor<DomainHeader> {
-        HeaderHashingFor::<DomainHeader>::hash_of(self)
-    }
-}
-
-/// Header of bundle.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct SealedBundleHeader<Number, Hash, DomainHeader: HeaderT, Balance> {
-    /// Unsealed header.
-    pub header: BundleHeader<Number, Hash, DomainHeader, Balance>,
-    /// Signature of the bundle.
-    pub signature: OperatorSignature,
-}
-
-impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
-    SealedBundleHeader<Number, Hash, DomainHeader, Balance>
-{
-    /// Constructs a new instance of [`SealedBundleHeader`].
-    pub fn new(
-        header: BundleHeader<Number, Hash, DomainHeader, Balance>,
-        signature: OperatorSignature,
-    ) -> Self {
-        Self { header, signature }
-    }
-
-    /// Returns the hash of the inner unsealed header.
-    pub fn pre_hash(&self) -> HeaderHashFor<DomainHeader> {
-        self.header.hash()
-    }
-
-    /// Returns the hash of this header.
-    pub fn hash(&self) -> HeaderHashFor<DomainHeader> {
-        HeaderHashingFor::<DomainHeader>::hash_of(self)
+    > {
+        match self {
+            SealedBundleHeaderRef::V0(bundle) => ExecutionReceiptRef::V0(&bundle.header.receipt),
+            SealedBundleHeaderRef::V1(bundle) => match &bundle.header.receipt {
+                ExecutionReceipt::V0(receipt) => ExecutionReceiptRef::V0(receipt),
+            },
+        }
     }
 
     pub fn slot_number(&self) -> u64 {
-        self.header.proof_of_election.slot_number
+        match self {
+            SealedBundleHeaderRef::V0(bundle) => bundle.header.proof_of_election.slot_number,
+            SealedBundleHeaderRef::V1(bundle) => bundle.header.proof_of_election.slot_number,
+        }
+    }
+
+    pub fn bundle_extrinsics_root(&self) -> HeaderHashFor<DomainHeader> {
+        match self {
+            SealedBundleHeaderRef::V0(bundle) => bundle.header.bundle_extrinsics_root,
+            SealedBundleHeaderRef::V1(bundle) => bundle.header.bundle_extrinsics_root,
+        }
     }
 }
 
@@ -108,13 +112,14 @@ pub enum Bundle<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
     V1(BundleV1<Extrinsic, Number, Hash, DomainHeader, Balance>),
 }
 
-impl<
+impl<Extrinsic, Number, Hash, DomainHeader, Balance>
+    Bundle<Extrinsic, Number, Hash, DomainHeader, Balance>
+where
     Extrinsic: Encode + Clone,
-    Number: Encode,
-    Hash: Encode,
+    Number: Encode + Zero,
+    Hash: Encode + Default,
     DomainHeader: HeaderT,
-    Balance: Encode,
-> Bundle<Extrinsic, Number, Hash, DomainHeader, Balance>
+    Balance: Encode + Zero + Default,
 {
     /// Returns the hash of this bundle.
     pub fn hash(&self) -> H256 {
@@ -152,25 +157,17 @@ impl<
     }
 
     /// Return a reference of the execution receipt.
-    pub fn receipt(
-        &self,
-    ) -> &ExecutionReceiptV0<
-        Number,
-        Hash,
-        HeaderNumberFor<DomainHeader>,
-        HeaderHashFor<DomainHeader>,
-        Balance,
-    > {
+    pub fn receipt_domain_block_number(&self) -> &HeaderNumberFor<DomainHeader> {
         match self {
-            Bundle::V0(bundle) => &bundle.sealed_header.header.receipt,
-            Bundle::V1(bundle) => &bundle.sealed_header.header.receipt,
+            Bundle::V0(bundle) => &bundle.sealed_header.header.receipt.domain_block_number,
+            Bundle::V1(bundle) => bundle.sealed_header.header.receipt.domain_block_number(),
         }
     }
 
     /// Consumes [`Bundle`] to extract the execution receipt.
     pub fn into_receipt(
         self,
-    ) -> ExecutionReceiptV0<
+    ) -> ExecutionReceipt<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -178,8 +175,25 @@ impl<
         Balance,
     > {
         match self {
-            Bundle::V0(bundle) => bundle.sealed_header.header.receipt,
+            Bundle::V0(bundle) => ExecutionReceipt::V0(bundle.sealed_header.header.receipt),
             Bundle::V1(bundle) => bundle.sealed_header.header.receipt,
+        }
+    }
+
+    pub fn receipt(
+        &self,
+    ) -> ExecutionReceiptRef<
+        Number,
+        Hash,
+        HeaderNumberFor<DomainHeader>,
+        HeaderHashFor<DomainHeader>,
+        Balance,
+    > {
+        match self {
+            Bundle::V0(bundle) => ExecutionReceiptRef::V0(&bundle.sealed_header.header.receipt),
+            Bundle::V1(bundle) => match &bundle.sealed_header.header.receipt {
+                ExecutionReceipt::V0(er) => ExecutionReceiptRef::V0(er),
+            },
         }
     }
 
@@ -240,10 +254,10 @@ impl<
     }
 
     /// Returns the sealed header in the Bundle.
-    pub fn sealed_header(&self) -> &SealedBundleHeader<Number, Hash, DomainHeader, Balance> {
+    pub fn sealed_header(&self) -> SealedBundleHeaderRef<Number, Hash, DomainHeader, Balance> {
         match self {
-            Bundle::V0(bundle) => &bundle.sealed_header,
-            Bundle::V1(bundle) => &bundle.sealed_header,
+            Bundle::V0(bundle) => SealedBundleHeaderRef::V0(&bundle.sealed_header),
+            Bundle::V1(bundle) => SealedBundleHeaderRef::V1(&bundle.sealed_header),
         }
     }
 
@@ -263,48 +277,12 @@ impl<
         }
     }
 
-    /// Add new extrinsic to the bundle.
-    pub fn push_extrinsic(&mut self, ext: Extrinsic) {
-        let extrinsics = match self {
-            Bundle::V0(bundle) => &mut bundle.extrinsics,
-            Bundle::V1(bundle) => &mut bundle.extrinsics,
-        };
-        extrinsics.push(ext);
-    }
-
-    /// Add new extrinsisc to the bundle.
-    pub fn push_extrinsics(&mut self, exts: &[Extrinsic]) {
-        let extrinsics = match self {
-            Bundle::V0(bundle) => &mut bundle.extrinsics,
-            Bundle::V1(bundle) => &mut bundle.extrinsics,
-        };
-        extrinsics.extend_from_slice(exts);
-    }
-
-    /// Add new extrinsic to the bundle at specified index.
-    pub fn set_extrinsic(&mut self, idx: usize, ext: Extrinsic) {
-        let extrinsics = match self {
-            Bundle::V0(bundle) => &mut bundle.extrinsics,
-            Bundle::V1(bundle) => &mut bundle.extrinsics,
-        };
-        extrinsics[idx] = ext;
-    }
-
     /// Sets extrinsics to the bundle.
     pub fn set_extrinsics(&mut self, exts: Vec<Extrinsic>) {
         match self {
             Bundle::V0(bundle) => bundle.extrinsics = exts,
             Bundle::V1(bundle) => bundle.extrinsics = exts,
         }
-    }
-
-    /// Return the first extrinsic from the bundle.
-    pub fn pop_extrinsic(&mut self) -> Option<Extrinsic> {
-        let extrinsics = match self {
-            Bundle::V0(bundle) => &mut bundle.extrinsics,
-            Bundle::V1(bundle) => &mut bundle.extrinsics,
-        };
-        extrinsics.pop()
     }
 
     /// Sets bundle extrinsic root.
@@ -318,7 +296,7 @@ impl<
     /// Returns a mutable reference to Execution receipt.
     pub fn execution_receipt_as_mut(
         &mut self,
-    ) -> &mut ExecutionReceiptV0<
+    ) -> ExecutionReceiptMutRef<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -326,8 +304,12 @@ impl<
         Balance,
     > {
         match self {
-            Bundle::V0(bundle) => &mut bundle.sealed_header.header.receipt,
-            Bundle::V1(bundle) => &mut bundle.sealed_header.header.receipt,
+            Bundle::V0(bundle) => {
+                ExecutionReceiptMutRef::V0(&mut bundle.sealed_header.header.receipt)
+            }
+            Bundle::V1(bundle) => match &mut bundle.sealed_header.header.receipt {
+                ExecutionReceipt::V0(er) => ExecutionReceiptMutRef::V0(er),
+            },
         }
     }
 
@@ -373,7 +355,7 @@ pub fn dummy_opaque_bundle<
 >(
     domain_id: DomainId,
     operator_id: OperatorId,
-    receipt: ExecutionReceiptV0<
+    receipt: ExecutionReceipt<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -383,7 +365,7 @@ pub fn dummy_opaque_bundle<
 ) -> OpaqueBundle<Number, Hash, DomainHeader, Balance> {
     use sp_core::crypto::UncheckedFrom;
 
-    let header = BundleHeader {
+    let header = BundleHeaderV1 {
         proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
         estimated_bundle_weight: Default::default(),
@@ -392,7 +374,7 @@ pub fn dummy_opaque_bundle<
     let signature = OperatorSignature::unchecked_from([0u8; 64]);
 
     OpaqueBundle::V1(BundleV1 {
-        sealed_header: SealedBundleHeader::new(header, signature),
+        sealed_header: SealedBundleHeaderV1::new(header, signature),
         extrinsics: Vec::new(),
     })
 }

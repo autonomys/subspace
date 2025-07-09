@@ -15,7 +15,7 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 use crate::bundle_processor::BundleProcessor;
-use crate::domain_bundle_producer::{BundleProducer, DomainProposal};
+use crate::domain_bundle_producer::{BundleProducer, DomainProposal, SealedSingletonReceiptFor};
 use crate::utils::{BlockInfo, OperatorSlotInfo};
 use crate::{NewSlotNotification, OperatorStreams};
 use futures::channel::mpsc;
@@ -156,15 +156,15 @@ pub(super) async fn start_worker<
                             let best_hash = consensus_client.info().best_hash;
                             let mut runtime_api = consensus_client.runtime_api();
                             runtime_api.register_extension(consensus_offchain_tx_pool_factory.offchain_transaction_pool(best_hash));
-
-                            match domain_proposal {
-                                DomainProposal::Bundle(opaque_bundle) => {
-                                    let domains_api_version = runtime_api
+                            let domains_api_version = runtime_api
                                         .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(best_hash)
                                         .ok()
                                         .flatten()
                                         // It is safe to return a default version of 1, since there will always be version 1.
                                         .unwrap_or(1);
+
+                            match domain_proposal {
+                                DomainProposal::Bundle(opaque_bundle) => {
                                     if domains_api_version >= 5 {
                                         if let Err(err) = runtime_api.submit_bundle_unsigned(best_hash, opaque_bundle) {
                                             tracing::error!(?slot, ?err, "Error at submitting bundle.");
@@ -184,9 +184,20 @@ pub(super) async fn start_worker<
                                     }
                                 },
                                 DomainProposal::Receipt(singleton_receipt) => {
-                                    if let Err(err) = runtime_api.submit_receipt_unsigned(best_hash, singleton_receipt) {
-                                        tracing::error!(?slot, ?err, "Error at submitting receipt.");
+                                    match singleton_receipt {
+                                        SealedSingletonReceiptFor::PreV0(receipt) => {
+                                            #[allow(deprecated)]
+                                            if let Err(err) = runtime_api.submit_receipt_unsigned_before_version_5(best_hash, receipt) {
+                                                tracing::error!(?slot, ?err, "Error at submitting receipt.");
+                                            }
+                                        }
+                                        SealedSingletonReceiptFor::V0(receipt) => {
+                                            if let Err(err) = runtime_api.submit_receipt_unsigned(best_hash, receipt) {
+                                                tracing::error!(?slot, ?err, "Error at submitting receipt.");
+                                            }
+                                        }
                                     }
+
                                 },
                             }
                         }

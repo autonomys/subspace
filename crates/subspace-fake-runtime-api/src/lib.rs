@@ -9,7 +9,7 @@ use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionR
 use sp_core::crypto::KeyTypeId;
 use sp_core::{H256, OpaqueMetadata};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
-use sp_domains::execution_receipt::{ExecutionReceiptV0For, SealedSingletonReceiptV0};
+use sp_domains::execution_receipt::{ExecutionReceiptFor, SealedSingletonReceipt};
 use sp_domains::{
     BundleAndExecutionReceiptVersion, DomainAllowlistUpdates, DomainId, DomainInstanceData,
     OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
@@ -176,7 +176,7 @@ sp_api::impl_runtime_apis! {
         }
 
         fn submit_receipt_unsigned(
-            _singleton_receipt: SealedSingletonReceiptV0<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
+            _singleton_receipt: SealedSingletonReceipt<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
         ) {
             unreachable!()
         }
@@ -252,7 +252,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn execution_receipt(_receipt_hash: DomainHash) -> Option<ExecutionReceiptV0For<DomainHeader, Block, Balance>> {
+        fn execution_receipt(_receipt_hash: DomainHash) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
             unreachable!()
         }
 
@@ -288,7 +288,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn last_confirmed_domain_block_receipt(_domain_id: DomainId) -> Option<ExecutionReceiptV0For<DomainHeader, Block, Balance>> {
+        fn last_confirmed_domain_block_receipt(_domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
             unreachable!()
         }
 

@@ -716,7 +716,7 @@ impl MockConsensusNode {
         loop {
             let slot = self.produce_slot();
             if let Some(bundle) = self.notify_new_slot_and_wait_for_bundle(slot).await
-                && bundle.sealed_header().header.proof_of_election.operator_id == operator_id
+                && bundle.sealed_header().proof_of_election().operator_id == operator_id
             {
                 return (slot, bundle);
             }

@@ -20,7 +20,7 @@ use parity_scale_codec::{Decode, Encode};
 use sp_core::H256;
 use sp_core::storage::StorageKey;
 use sp_domains::bundle::{BundleValidity, InboxedBundle, InvalidBundleType};
-use sp_domains::execution_receipt::{BlockFees, ExecutionReceiptV0, Transfers};
+use sp_domains::execution_receipt::{BlockFees, ExecutionReceipt, Transfers};
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::valued_trie::valued_ordered_trie_root;
@@ -30,7 +30,7 @@ use sp_domains::{
 };
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{
-    Block as BlockT, Hash, Header as HeaderT, NumberFor, UniqueSaturatedInto,
+    Block as BlockT, Hash, Header as HeaderT, NumberFor, UniqueSaturatedInto, Zero,
 };
 use sp_runtime::{OpaqueExtrinsic, SaturatedConversion};
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrProofVerifier};
@@ -46,7 +46,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
     Hashing,
     SKP,
 >(
-    bad_receipt: ExecutionReceiptV0<
+    bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
         HeaderNumberFor<DomainHeader>,
@@ -65,6 +65,7 @@ where
     DomainHeader::Hash: Into<H256> + PartialEq + Copy,
     Hashing: Hasher<Out = CBlock::Hash>,
     SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
+    Balance: Encode + Zero + Default,
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
@@ -220,7 +221,7 @@ where
     let extrinsics_root = valued_ordered_trie_root::<LayoutV1<HeaderHashingFor<DomainHeader>>>(
         ordered_trie_node_values,
     );
-    if bad_receipt.domain_block_extrinsic_root == extrinsics_root {
+    if *bad_receipt.domain_block_extrinsics_root() == extrinsics_root {
         return Err(VerificationError::InvalidProof);
     }
 
@@ -229,7 +230,7 @@ where
 
 /// Verifies valid bundle fraud proof.
 pub fn verify_valid_bundle_fraud_proof<CBlock, DomainHeader, Balance, SKP>(
-    bad_receipt: ExecutionReceiptV0<
+    bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
         HeaderNumberFor<DomainHeader>,
@@ -247,6 +248,7 @@ where
     DomainHeader: HeaderT,
     DomainHeader::Hash: Into<H256> + PartialEq + Copy,
     SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
+    Balance: Encode + Zero + Default,
 {
     let ValidBundleProof { bundle_with_proof } = fraud_proof;
     bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
@@ -272,14 +274,14 @@ where
 
 /// Verifies invalid state transition fraud proof.
 pub fn verify_invalid_state_transition_fraud_proof<CBlock, DomainHeader, Balance>(
-    bad_receipt: ExecutionReceiptV0<
+    bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
         DomainHeader::Number,
         DomainHeader::Hash,
         Balance,
     >,
-    bad_receipt_parent: ExecutionReceiptV0<
+    bad_receipt_parent: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
         DomainHeader::Number,
@@ -295,6 +297,7 @@ where
     DomainHeader: HeaderT,
     DomainHeader::Hash: Into<H256> + From<H256>,
     DomainHeader::Number: UniqueSaturatedInto<BlockNumber> + From<BlockNumber>,
+    Balance: Encode + Zero + Default,
 {
     let InvalidStateTransitionProof {
         execution_proof,
@@ -310,8 +313,8 @@ where
 
     let execution_result = fraud_proof_runtime_interface::execution_proof_check(
         (
-            bad_receipt_parent.domain_block_number.saturated_into(),
-            bad_receipt_parent.domain_block_hash.into(),
+            (*bad_receipt_parent.domain_block_number()).saturated_into(),
+            (*bad_receipt_parent.domain_block_hash()).into(),
         ),
         pre_state_root,
         execution_proof.encode(),
@@ -341,7 +344,7 @@ where
 
 /// Verifies invalid domain block hash fraud proof.
 pub fn verify_invalid_domain_block_hash_fraud_proof<CBlock, Balance, DomainHeader>(
-    bad_receipt: ExecutionReceiptV0<
+    bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
         DomainHeader::Number,
@@ -353,10 +356,10 @@ pub fn verify_invalid_domain_block_hash_fraud_proof<CBlock, Balance, DomainHeade
 ) -> Result<(), VerificationError<DomainHeader::Hash>>
 where
     CBlock: BlockT,
-    Balance: PartialEq + Decode,
+    Balance: PartialEq + Decode + Encode + Zero + Default,
     DomainHeader: HeaderT,
 {
-    let state_root = bad_receipt.final_state_root;
+    let state_root = *bad_receipt.final_state_root();
     let digest_storage_key = StorageKey(sp_domains::system_digest_final_key());
 
     let digest = StorageProofVerifier::<DomainHeader::Hashing>::get_decoded_value::<Digest>(
@@ -369,63 +372,14 @@ where
     })?;
 
     let derived_domain_block_hash = sp_domains::derive_domain_block_hash::<DomainHeader>(
-        bad_receipt.domain_block_number,
-        bad_receipt.domain_block_extrinsic_root,
+        *bad_receipt.domain_block_number(),
+        *bad_receipt.domain_block_extrinsics_root(),
         state_root,
         parent_domain_block_hash,
         digest,
     );
 
-    if bad_receipt.domain_block_hash == derived_domain_block_hash {
-        return Err(VerificationError::InvalidProof);
-    }
-
-    Ok(())
-}
-
-/// Verifies invalid block fees fraud proof.
-pub fn verify_invalid_block_fees_fraud_proof<
-    CBlock,
-    DomainNumber,
-    DomainHash,
-    Balance,
-    DomainHashing,
->(
-    bad_receipt: ExecutionReceiptV0<
-        NumberFor<CBlock>,
-        CBlock::Hash,
-        DomainNumber,
-        DomainHash,
-        Balance,
-    >,
-    storage_proof: &StorageProof,
-    domain_runtime_code: Vec<u8>,
-) -> Result<(), VerificationError<DomainHash>>
-where
-    CBlock: BlockT,
-    Balance: PartialEq + Decode,
-    DomainHashing: Hasher<Out = DomainHash>,
-{
-    let storage_key = fraud_proof_runtime_interface::domain_storage_key(
-        domain_runtime_code,
-        DomainStorageKeyRequest::BlockFees,
-    )
-    .ok_or(VerificationError::FailedToGetDomainStorageKey)?;
-
-    let block_fees =
-        StorageProofVerifier::<DomainHashing>::get_decoded_value::<BlockFees<Balance>>(
-            &bad_receipt.final_state_root,
-            storage_proof.clone(),
-            StorageKey(storage_key),
-        )
-        .map_err(|err| {
-            VerificationError::StorageProof(
-                storage_proof::VerificationError::BlockFeesStorageProof(err),
-            )
-        })?;
-
-    // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
-    if bad_receipt.block_fees == block_fees {
+    if *bad_receipt.domain_block_hash() == derived_domain_block_hash {
         return Err(VerificationError::InvalidProof);
     }
 
@@ -440,7 +394,7 @@ pub fn verify_invalid_transfers_fraud_proof<
     Balance,
     DomainHashing,
 >(
-    bad_receipt: ExecutionReceiptV0<
+    bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
         DomainNumber,
@@ -452,8 +406,9 @@ pub fn verify_invalid_transfers_fraud_proof<
 ) -> Result<(), VerificationError<DomainHash>>
 where
     CBlock: BlockT,
-    CBlock::Hash: Into<H256>,
-    Balance: PartialEq + Decode,
+    Balance: PartialEq + Decode + Encode + Zero + Default,
+    DomainNumber: Encode + Zero,
+    DomainHash: Clone + Encode + Default + Copy,
     DomainHashing: Hasher<Out = DomainHash>,
 {
     let storage_key = fraud_proof_runtime_interface::domain_storage_key(
@@ -463,7 +418,7 @@ where
     .ok_or(VerificationError::FailedToGetDomainStorageKey)?;
 
     let transfers = StorageProofVerifier::<DomainHashing>::get_decoded_value::<Transfers<Balance>>(
-        &bad_receipt.final_state_root,
+        bad_receipt.final_state_root(),
         storage_proof.clone(),
         StorageKey(storage_key),
     )
@@ -474,7 +429,58 @@ where
     })?;
 
     // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
-    if bad_receipt.transfers == transfers {
+    if bad_receipt.transfers() == &transfers {
+        return Err(VerificationError::InvalidProof);
+    }
+
+    Ok(())
+}
+
+/// Verifies invalid block fees fraud proof.
+pub fn verify_invalid_block_fees_fraud_proof<
+    CBlock,
+    DomainNumber,
+    DomainHash,
+    Balance,
+    DomainHashing,
+>(
+    bad_receipt: ExecutionReceipt<
+        NumberFor<CBlock>,
+        CBlock::Hash,
+        DomainNumber,
+        DomainHash,
+        Balance,
+    >,
+    storage_proof: &StorageProof,
+    domain_runtime_code: Vec<u8>,
+) -> Result<(), VerificationError<DomainHash>>
+where
+    CBlock: BlockT,
+    Balance: PartialEq + Decode + Encode + Zero + Default,
+    DomainHashing: Hasher<Out = DomainHash>,
+    DomainNumber: Encode + Zero,
+    DomainHash: Clone + Encode + Default + Copy,
+{
+    let storage_key = fraud_proof_runtime_interface::domain_storage_key(
+        domain_runtime_code,
+        DomainStorageKeyRequest::BlockFees,
+    )
+    .ok_or(VerificationError::FailedToGetDomainStorageKey)?;
+
+    let block_fees =
+        StorageProofVerifier::<DomainHashing>::get_decoded_value::<BlockFees<Balance>>(
+            bad_receipt.final_state_root(),
+            storage_proof.clone(),
+            StorageKey(storage_key),
+        )
+        .map_err(|err| {
+            VerificationError::StorageProof(
+                storage_proof::VerificationError::BlockFeesStorageProof(err),
+            )
+        })?;
+
+    // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
+    if bad_receipt.block_fees() == &block_fees {
         return Err(VerificationError::InvalidProof);
     }
 
@@ -485,7 +491,7 @@ where
 /// If the entry is expected then it will be returned
 /// In any other cases VerificationError will be returned
 fn check_expected_bundle_entry<CBlock, DomainHeader, Balance>(
-    bad_receipt: &ExecutionReceiptV0<
+    bad_receipt: &ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
         HeaderNumberFor<DomainHeader>,
@@ -499,9 +505,10 @@ fn check_expected_bundle_entry<CBlock, DomainHeader, Balance>(
 where
     CBlock: BlockT,
     DomainHeader: HeaderT,
+    Balance: Encode + Zero + Default,
 {
     let targeted_invalid_bundle_entry = bad_receipt
-        .inboxed_bundles
+        .inboxed_bundles()
         .get(bundle_index as usize)
         .ok_or(VerificationError::BundleNotFound)?;
 
@@ -557,14 +564,14 @@ fn get_extrinsic_from_proof<DomainHeader: HeaderT>(
 }
 
 pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, MmrHash, Balance, SKP, MPV>(
-    bad_receipt: ExecutionReceiptV0<
+    bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
         HeaderNumberFor<DomainHeader>,
         HeaderHashFor<DomainHeader>,
         Balance,
     >,
-    bad_receipt_parent: ExecutionReceiptV0<
+    bad_receipt_parent: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
         HeaderNumberFor<DomainHeader>,
@@ -589,6 +596,7 @@ where
     MmrHash: Decode + Clone,
     SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
     MPV: MmrProofVerifier<MmrHash, NumberFor<CBlock>, CBlock::Hash>,
+    Balance: Encode + Zero + Default,
 {
     let InvalidBundlesProof {
         bundle_index,
@@ -713,10 +721,10 @@ where
                 fraud_proof_runtime_interface::check_extrinsics_in_single_context(
                     domain_runtime_code,
                     (
-                        bad_receipt_parent.domain_block_number.saturated_into(),
-                        bad_receipt_parent.domain_block_hash.into(),
+                        (*bad_receipt_parent.domain_block_number()).saturated_into(),
+                        (*bad_receipt_parent.domain_block_hash()).into(),
                     ),
-                    bad_receipt_parent.final_state_root.into(),
+                    (*bad_receipt_parent.final_state_root()).into(),
                     extrinsics,
                     execution_proof.encode(),
                 )

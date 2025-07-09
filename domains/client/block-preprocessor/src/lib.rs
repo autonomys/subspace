@@ -26,7 +26,7 @@ use sp_core::H256;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode};
 use sp_domains::bundle::{InboxedBundle, InvalidBundleType, OpaqueBundle, OpaqueBundles};
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::execution_receipt::ExecutionReceiptV0;
+use sp_domains::execution_receipt::ExecutionReceipt;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, ReceiptValidity};
 use sp_messenger::MessengerApi;
@@ -115,7 +115,7 @@ where
 {
     fn validate_receipt(
         &self,
-        receipt: &ExecutionReceiptV0<
+        receipt: &ExecutionReceipt<
             NumberFor<CBlock>,
             CBlock::Hash,
             NumberFor<Block>,
@@ -285,7 +285,7 @@ where
             // NOTE: The receipt's `domain_block_number` is verified by the consensus runtime while
             // the `domain_block_hash` is not (which is take care of by the fraud proof) so we can't
             // check the parent domain block hash here.
-            if bundle.receipt().domain_block_number != parent_domain_number {
+            if *bundle.receipt_domain_block_number() != parent_domain_number {
                 return Err(sp_blockchain::Error::RuntimeApiError(
                     ApiError::Application(
                         format!(

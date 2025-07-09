@@ -330,7 +330,7 @@ pub(crate) mod pallet_domains {
     use frame_support::pallet_prelude::*;
     use sp_core::H256;
     use sp_domains::DomainId;
-    use sp_domains::execution_receipt::ExecutionReceiptV0;
+    use sp_domains::execution_receipt::ExecutionReceipt;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {}
@@ -345,7 +345,7 @@ pub(crate) mod pallet_domains {
         _,
         Identity,
         DomainId,
-        ExecutionReceiptV0<u32, H256, u32, H256, u128>,
+        ExecutionReceipt<u32, H256, u32, H256, u128>,
         OptionQuery,
     >;
 }

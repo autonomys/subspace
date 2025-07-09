@@ -14,7 +14,7 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_domains::bundle::InvalidBundleType;
 use sp_domains::{DomainId, HeaderHashFor, HeaderHashingFor};
-use sp_runtime::traits::{Hash as HashT, Header as HeaderT};
+use sp_runtime::traits::{Hash as HashT, Header as HeaderT, Zero};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
 use subspace_runtime_primitives::Balance;
@@ -217,8 +217,8 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT>
 impl<Number, Hash, MmrHash, DomainHeader>
     InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader>
 where
-    Number: Encode,
-    Hash: Encode,
+    Number: Encode + Zero,
+    Hash: Encode + Default,
     DomainHeader: HeaderT,
 {
     /// Converts bundles proof to v0 bundles proof.

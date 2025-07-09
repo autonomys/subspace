@@ -211,7 +211,7 @@ where
         let target_block_number = params
             .consensus_chain_sync_params
             .as_ref()
-            .map(|p| p.last_domain_block_er.consensus_block_number);
+            .map(|p| *p.last_domain_block_er.consensus_block_number());
 
         let sync_params = params
             .consensus_chain_sync_params

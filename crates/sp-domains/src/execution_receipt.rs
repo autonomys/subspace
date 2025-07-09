@@ -1,7 +1,11 @@
+pub mod execution_receipt_v0;
+
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::bundle::{BundleValidity, InboxedBundle};
+use crate::bundle::InboxedBundle;
+use crate::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
+use crate::runtime_decl_for_bundle_producer_election_api::HashT;
 use crate::{
     ChainId, DomainId, HeaderHashFor, HeaderHashingFor, HeaderNumberFor, OperatorId,
     OperatorSignature, ProofOfElection,
@@ -15,7 +19,7 @@ use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
-use sp_runtime::traits::{CheckedAdd, Hash as HashT, Header as HeaderT, NumberFor, Zero};
+use sp_runtime::traits::{CheckedAdd, Header as HeaderT, NumberFor, Zero};
 use sp_std::collections::btree_map::BTreeMap;
 use subspace_runtime_primitives::BlockHashFor;
 
@@ -92,105 +96,216 @@ impl<Balance> Transfers<Balance> {
     }
 }
 
-/// Receipt of a domain block execution.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance> {
-    /// The index of the current domain block that forms the basis of this ER.
-    pub domain_block_number: DomainNumber,
-    /// The block hash corresponding to `domain_block_number`.
-    pub domain_block_hash: DomainHash,
-    /// Extrinsic root field of the header of domain block referenced by this ER.
-    pub domain_block_extrinsic_root: DomainHash,
-    /// The hash of the ER for the last domain block.
-    pub parent_domain_block_receipt_hash: DomainHash,
-    /// A pointer to the consensus block index which contains all of the bundles that were used to derive and
-    /// order all extrinsics executed by the current domain block for this ER.
-    pub consensus_block_number: Number,
-    /// The block hash corresponding to `consensus_block_number`.
-    pub consensus_block_hash: Hash,
-    /// All the bundles that being included in the consensus block.
-    pub inboxed_bundles: Vec<InboxedBundle<DomainHash>>,
-    /// The final state root for the current domain block reflected by this ER.
-    ///
-    /// Used for verifying storage proofs for domains.
-    pub final_state_root: DomainHash,
-    /// List of storage roots collected during the domain block execution.
-    pub execution_trace: Vec<DomainHash>,
-    /// The Merkle root of the execution trace for the current domain block.
-    ///
-    /// Used for verifying fraud proofs.
-    pub execution_trace_root: H256,
-    /// Compute and Domain storage fees are shared across operators and Consensus
-    /// storage fees are given to the consensus block author.
-    pub block_fees: BlockFees<Balance>,
-    /// List of transfers from this Domain to other chains
-    pub transfers: Transfers<Balance>,
+/// Receipt for execution of Domain Bundle holding the reference to various ER versions.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Copy, Clone)]
+pub enum ExecutionReceiptRef<'a, Number, Hash, DomainNumber, DomainHash, Balance> {
+    V0(&'a ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance>),
 }
 
-impl<Number, Hash, DomainNumber, DomainHash, Balance>
-    ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance>
+impl<'a, Number, Hash, DomainNumber, DomainHash, Balance>
+    ExecutionReceiptRef<'a, Number, Hash, DomainNumber, DomainHash, Balance>
+where
+    Number: Encode + Clone,
+    Hash: Encode + Clone,
+    DomainNumber: Encode + Clone,
+    DomainHash: Encode + Clone,
+    Balance: Encode + Clone,
 {
-    pub fn bundles_extrinsics_roots(&self) -> Vec<&DomainHash> {
-        self.inboxed_bundles
-            .iter()
-            .map(|b| &b.extrinsics_root)
-            .collect()
-    }
-
-    pub fn valid_bundle_digest_at(&self, index: usize) -> Option<DomainHash>
-    where
-        DomainHash: Copy,
-    {
-        match self.inboxed_bundles.get(index).map(|ib| &ib.bundle) {
-            Some(BundleValidity::Valid(bundle_digest_hash)) => Some(*bundle_digest_hash),
-            _ => None,
+    pub fn hash<DomainHashing: HashT<Output = DomainHash>>(&self) -> DomainHash {
+        match self {
+            // for v0, we need hash of inner execution receipt v0
+            ExecutionReceiptRef::V0(receipt) => receipt.hash::<DomainHashing>(),
         }
     }
 
-    pub fn valid_bundle_digests(&self) -> Vec<DomainHash>
-    where
-        DomainHash: Copy,
-    {
-        self.inboxed_bundles
-            .iter()
-            .filter_map(|b| match b.bundle {
-                BundleValidity::Valid(bundle_digest_hash) => Some(bundle_digest_hash),
-                BundleValidity::Invalid(_) => None,
-            })
-            .collect()
-    }
-
-    pub fn valid_bundle_indexes(&self) -> Vec<u32> {
-        self.inboxed_bundles
-            .iter()
-            .enumerate()
-            .filter_map(|(index, b)| match b.bundle {
-                BundleValidity::Valid(_) => Some(index as u32),
-                BundleValidity::Invalid(_) => None,
-            })
-            .collect()
+    /// Returns a cloned ER. Used in tests.
+    pub fn to_owned_er(self) -> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
+        match self {
+            ExecutionReceiptRef::V0(er) => ExecutionReceipt::V0(er.clone()),
+        }
     }
 }
 
-impl<
+/// Receipt for execution of Domain Bundle holding the mutable reference to various ER versions.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq)]
+pub enum ExecutionReceiptMutRef<'a, Number, Hash, DomainNumber, DomainHash, Balance> {
+    V0(&'a mut ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance>),
+}
+
+/// Receipt for execution of Domain Bundle.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
+    V0(ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance>),
+}
+
+impl<Number, Hash, DomainNumber, DomainHash, Balance>
+    ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
+where
     Number: Encode + Zero,
     Hash: Encode + Default,
     DomainNumber: Encode + Zero,
-    DomainHash: Clone + Encode + Default,
+    DomainHash: Clone + Encode + Default + Copy,
     Balance: Encode + Zero + Default,
-> ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance>
 {
-    /// Returns the hash of this execution receipt.
-    pub fn hash<DomainHashing: HashT<Output = DomainHash>>(&self) -> DomainHash {
-        DomainHashing::hash_of(self)
+    /// Returns the domain block number.
+    pub fn domain_block_number(&self) -> &DomainNumber {
+        let ExecutionReceipt::V0(receipt) = self;
+        &receipt.domain_block_number
     }
 
+    /// Returns the domain block hash.
+    pub fn domain_block_hash(&self) -> &DomainHash {
+        let ExecutionReceipt::V0(receipt) = self;
+        &receipt.domain_block_hash
+    }
+
+    /// Returns the final state root of the execution.
+    pub fn final_state_root(&self) -> &DomainHash {
+        let ExecutionReceipt::V0(receipt) = self;
+        &receipt.final_state_root
+    }
+
+    /// Returns the parent's receipt hash.
+    pub fn parent_domain_block_receipt_hash(&self) -> &DomainHash {
+        let ExecutionReceipt::V0(receipt) = self;
+        &receipt.parent_domain_block_receipt_hash
+    }
+
+    /// Returns the consensus block number.
+    pub fn consensus_block_number(&self) -> &Number {
+        let ExecutionReceipt::V0(receipt) = self;
+        &receipt.consensus_block_number
+    }
+
+    /// Returns the consensus block hash.
+    pub fn consensus_block_hash(&self) -> &Hash {
+        let ExecutionReceipt::V0(receipt) = self;
+        &receipt.consensus_block_hash
+    }
+
+    /// Returns the inboxed bundles.
+    pub fn inboxed_bundles(&self) -> &[InboxedBundle<DomainHash>] {
+        let ExecutionReceipt::V0(receipt) = self;
+        &receipt.inboxed_bundles
+    }
+
+    /// Returns the execution traces of the execution.
+    pub fn execution_traces(&self) -> &[DomainHash] {
+        let ExecutionReceipt::V0(receipt) = self;
+        &receipt.execution_trace
+    }
+
+    /// Returns Domain block extrinsics root.
+    pub fn domain_block_extrinsics_root(&self) -> &DomainHash {
+        let ExecutionReceipt::V0(receipt) = self;
+        &receipt.domain_block_extrinsic_root
+    }
+
+    /// Returns the Block fees of the Execution.
+    pub fn block_fees(&self) -> &BlockFees<Balance> {
+        let ExecutionReceipt::V0(receipt) = self;
+        &receipt.block_fees
+    }
+
+    /// Returns the transfers of the Execution.
+    pub fn transfers(&self) -> &Transfers<Balance> {
+        let ExecutionReceipt::V0(receipt) = self;
+        &receipt.transfers
+    }
+
+    /// Returns the valid bundle digests in the ER.
+    pub fn valid_bundle_digests(&self) -> Vec<DomainHash> {
+        let ExecutionReceipt::V0(receipt) = self;
+        receipt.valid_bundle_digests()
+    }
+
+    /// Returns extrinsics roots of each bundle.
+    pub fn bundles_extrinsics_roots(&self) -> Vec<&DomainHash> {
+        let ExecutionReceipt::V0(receipt) = self;
+        receipt.bundles_extrinsics_roots()
+    }
+
+    /// Returns indexes of valid bundles.
+    pub fn valid_bundle_indexes(&self) -> Vec<u32> {
+        let ExecutionReceipt::V0(receipt) = self;
+        receipt.valid_bundle_indexes()
+    }
+
+    /// Returns a valid bundle digest at specific index in the ER.
+    pub fn valid_bundle_digest_at(&self, idx: usize) -> Option<DomainHash> {
+        let ExecutionReceipt::V0(receipt) = self;
+        receipt.valid_bundle_digest_at(idx)
+    }
+
+    /// Sets final state root on ER
+    pub fn set_final_state_root(&mut self, final_state_root: DomainHash) {
+        let ExecutionReceipt::V0(receipt) = self;
+        receipt.final_state_root = final_state_root;
+    }
+
+    /// Sets inboxed bundles on Er
+    pub fn set_inboxed_bundles(&mut self, inboxed_bundles: Vec<InboxedBundle<DomainHash>>) {
+        let ExecutionReceipt::V0(receipt) = self;
+        receipt.inboxed_bundles = inboxed_bundles;
+    }
+
+    /// Sets domain block number on ER
+    pub fn set_domain_block_number(&mut self, domain_block_number: DomainNumber) {
+        let ExecutionReceipt::V0(receipt) = self;
+        receipt.domain_block_number = domain_block_number;
+    }
+
+    /// Sets consensus block number on ER
+    pub fn set_consensus_block_number(&mut self, consensus_block_number: Number) {
+        let ExecutionReceipt::V0(receipt) = self;
+        receipt.consensus_block_number = consensus_block_number;
+    }
+
+    /// Sets consensus block hash on ER
+    pub fn set_consensus_block_hash(&mut self, consensus_block_hash: Hash) {
+        let ExecutionReceipt::V0(receipt) = self;
+        receipt.consensus_block_hash = consensus_block_hash;
+    }
+
+    /// Sets parent receipt hash on ER
+    pub fn set_parent_receipt_hash(&mut self, receipt_hash: DomainHash) {
+        let ExecutionReceipt::V0(receipt) = self;
+        receipt.parent_domain_block_receipt_hash = receipt_hash;
+    }
+
+    pub fn set_execution_traces(&mut self, execution_traces: Vec<DomainHash>) {
+        let ExecutionReceipt::V0(receipt) = self;
+        receipt.execution_trace = execution_traces;
+    }
+
+    pub fn set_execution_trace_root(&mut self, execution_trace_root: H256) {
+        let ExecutionReceipt::V0(receipt) = self;
+        receipt.execution_trace_root = execution_trace_root;
+    }
+
+    /// Returns the Execution receipt as a ref.
+    pub fn as_execution_receipt_ref(
+        &self,
+    ) -> ExecutionReceiptRef<Number, Hash, DomainNumber, DomainHash, Balance> {
+        let ExecutionReceipt::V0(receipt) = self;
+        ExecutionReceiptRef::V0(receipt)
+    }
+
+    /// Returns the hash of this execution receipt.
+    pub fn hash<DomainHashing: HashT<Output = DomainHash>>(&self) -> DomainHash {
+        match self {
+            // for v0,we need hash of inner execution receipt v0
+            ExecutionReceipt::V0(receipt) => receipt.hash::<DomainHashing>(),
+        }
+    }
+
+    /// Returns the genesis ER.
     pub fn genesis(
         genesis_state_root: DomainHash,
         genesis_extrinsic_root: DomainHash,
         genesis_domain_block_hash: DomainHash,
     ) -> Self {
-        ExecutionReceiptV0 {
+        ExecutionReceipt::V0(ExecutionReceiptV0 {
             domain_block_number: Zero::zero(),
             domain_block_hash: genesis_domain_block_hash,
             domain_block_extrinsic_root: genesis_extrinsic_root,
@@ -198,12 +313,12 @@ impl<
             consensus_block_hash: Default::default(),
             consensus_block_number: Zero::zero(),
             inboxed_bundles: Vec::new(),
-            final_state_root: genesis_state_root.clone(),
+            final_state_root: genesis_state_root,
             execution_trace: sp_std::vec![genesis_state_root],
             execution_trace_root: Default::default(),
             block_fees: Default::default(),
             transfers: Default::default(),
-        }
+        })
     }
 
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
@@ -212,7 +327,7 @@ impl<
         consensus_block_hash: Hash,
         domain_block_number: DomainNumber,
         parent_domain_block_receipt_hash: DomainHash,
-    ) -> ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance>
+    ) -> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
     where
         DomainHashing: HashT<Output = DomainHash>,
     {
@@ -227,7 +342,7 @@ impl<
                 .expect("Compute merkle root of trace should success")
                 .into()
         };
-        ExecutionReceiptV0 {
+        ExecutionReceipt::V0(ExecutionReceiptV0 {
             domain_block_number,
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),
@@ -240,18 +355,18 @@ impl<
             execution_trace_root,
             block_fees: Default::default(),
             transfers: Default::default(),
-        }
+        })
     }
 }
 
 /// Singleton receipt submit along when there is a gap between `domain_best_number`
 /// and `HeadReceiptNumber`
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct SingletonReceiptV0<Number, Hash, DomainHeader: HeaderT, Balance> {
+pub struct SingletonReceipt<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Proof of receipt producer election.
     pub proof_of_election: ProofOfElection,
     /// The receipt to submit
-    pub receipt: ExecutionReceiptV0<
+    pub receipt: ExecutionReceipt<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -261,23 +376,24 @@ pub struct SingletonReceiptV0<Number, Hash, DomainHeader: HeaderT, Balance> {
 }
 
 impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
-    SingletonReceiptV0<Number, Hash, DomainHeader, Balance>
+    SingletonReceipt<Number, Hash, DomainHeader, Balance>
 {
     pub fn hash(&self) -> HeaderHashFor<DomainHeader> {
         HeaderHashingFor::<DomainHeader>::hash_of(&self)
     }
 }
 
+/// Singleton receipt with operator signature.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct SealedSingletonReceiptV0<Number, Hash, DomainHeader: HeaderT, Balance> {
+pub struct SealedSingletonReceipt<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// A collection of the receipt.
-    pub singleton_receipt: SingletonReceiptV0<Number, Hash, DomainHeader, Balance>,
+    pub singleton_receipt: SingletonReceipt<Number, Hash, DomainHeader, Balance>,
     /// Signature of the receipt bundle.
     pub signature: OperatorSignature,
 }
 
 impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
-    SealedSingletonReceiptV0<Number, Hash, DomainHeader, Balance>
+    SealedSingletonReceipt<Number, Hash, DomainHeader, Balance>
 {
     /// Returns the `domain_id`
     pub fn domain_id(&self) -> DomainId {
@@ -297,7 +413,7 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
     /// Return the receipt
     pub fn receipt(
         &self,
-    ) -> &ExecutionReceiptV0<
+    ) -> &ExecutionReceipt<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -310,7 +426,7 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
     /// Consume this `SealedSingletonReceipt` and return the receipt
     pub fn into_receipt(
         self,
-    ) -> ExecutionReceiptV0<
+    ) -> ExecutionReceipt<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -331,7 +447,7 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
     }
 }
 
-pub type ExecutionReceiptV0For<DomainHeader, CBlock, Balance> = ExecutionReceiptV0<
+pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     NumberFor<CBlock>,
     BlockHashFor<CBlock>,
     <DomainHeader as HeaderT>::Number,

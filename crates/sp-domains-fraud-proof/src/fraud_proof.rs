@@ -4,13 +4,14 @@ extern crate alloc;
 use crate::storage_proof::{self, *};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use frame_support::pallet_prelude::Zero;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::ExtrinsicDigest;
 use sp_domains::bundle::{BundleValidity, InvalidBundleType};
-use sp_domains::execution_receipt::ExecutionReceiptV0For;
+use sp_domains::execution_receipt::ExecutionReceiptFor;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::{Digest, DigestItem};
@@ -98,66 +99,67 @@ impl ExecutionPhase {
 
     pub fn pre_post_state_root<CBlock, DomainHeader, Balance>(
         &self,
-        bad_receipt: &ExecutionReceiptV0For<DomainHeader, CBlock, Balance>,
-        bad_receipt_parent: &ExecutionReceiptV0For<DomainHeader, CBlock, Balance>,
+        bad_receipt: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
+        bad_receipt_parent: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
     ) -> Result<(H256, H256), VerificationError<DomainHeader::Hash>>
     where
         CBlock: BlockT,
         DomainHeader: HeaderT,
         DomainHeader::Hash: Into<H256>,
+        Balance: Encode + Zero + Default,
     {
-        if bad_receipt.execution_trace.len() < 2 {
+        if bad_receipt.execution_traces().len() < 2 {
             return Err(VerificationError::InvalidExecutionTrace);
         }
         let (pre, post) = match self {
             ExecutionPhase::InitializeBlock => (
-                bad_receipt_parent.final_state_root,
-                bad_receipt.execution_trace[0],
+                *bad_receipt_parent.final_state_root(),
+                bad_receipt.execution_traces()[0],
             ),
             ExecutionPhase::ApplyExtrinsic {
                 mismatch: ApplyExtrinsicMismatch::StateRoot(mismatch_index),
                 ..
             } => {
                 if *mismatch_index == 0
-                    || *mismatch_index >= bad_receipt.execution_trace.len() as u32 - 1
+                    || *mismatch_index >= bad_receipt.execution_traces().len() as u32 - 1
                 {
                     return Err(VerificationError::InvalidApplyExtrinsicTraceIndex);
                 }
                 (
-                    bad_receipt.execution_trace[*mismatch_index as usize - 1],
-                    bad_receipt.execution_trace[*mismatch_index as usize],
+                    bad_receipt.execution_traces()[*mismatch_index as usize - 1],
+                    bad_receipt.execution_traces()[*mismatch_index as usize],
                 )
             }
             ExecutionPhase::ApplyExtrinsic {
                 mismatch: ApplyExtrinsicMismatch::Shorter,
                 ..
             } => {
-                let mismatch_index = bad_receipt.execution_trace.len() - 1;
+                let mismatch_index = bad_receipt.execution_traces().len() - 1;
                 (
-                    bad_receipt.execution_trace[mismatch_index - 1],
-                    bad_receipt.execution_trace[mismatch_index],
+                    bad_receipt.execution_traces()[mismatch_index - 1],
+                    bad_receipt.execution_traces()[mismatch_index],
                 )
             }
             ExecutionPhase::FinalizeBlock {
                 mismatch: FinalizeBlockMismatch::StateRoot,
             } => {
-                let mismatch_index = bad_receipt.execution_trace.len() - 1;
+                let mismatch_index = bad_receipt.execution_traces().len() - 1;
                 (
-                    bad_receipt.execution_trace[mismatch_index - 1],
-                    bad_receipt.execution_trace[mismatch_index],
+                    bad_receipt.execution_traces()[mismatch_index - 1],
+                    bad_receipt.execution_traces()[mismatch_index],
                 )
             }
             ExecutionPhase::FinalizeBlock {
                 mismatch: FinalizeBlockMismatch::Longer(mismatch_index),
             } => {
                 if *mismatch_index == 0
-                    || *mismatch_index >= bad_receipt.execution_trace.len() as u32 - 1
+                    || *mismatch_index >= bad_receipt.execution_traces().len() as u32 - 1
                 {
                     return Err(VerificationError::InvalidLongerMismatchTraceIndex);
                 }
                 (
-                    bad_receipt.execution_trace[(*mismatch_index - 1) as usize],
-                    bad_receipt.execution_trace[*mismatch_index as usize],
+                    bad_receipt.execution_traces()[(*mismatch_index - 1) as usize],
+                    bad_receipt.execution_traces()[*mismatch_index as usize],
                 )
             }
         };
@@ -166,26 +168,27 @@ impl ExecutionPhase {
 
     pub fn call_data<CBlock, DomainHeader, Balance>(
         &self,
-        bad_receipt: &ExecutionReceiptV0For<DomainHeader, CBlock, Balance>,
-        bad_receipt_parent: &ExecutionReceiptV0For<DomainHeader, CBlock, Balance>,
+        bad_receipt: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
+        bad_receipt_parent: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
     ) -> Result<Vec<u8>, VerificationError<DomainHeader::Hash>>
     where
         CBlock: BlockT,
         DomainHeader: HeaderT,
+        Balance: Encode + Zero + Default,
     {
         Ok(match self {
             ExecutionPhase::InitializeBlock => {
                 let inherent_digests = Digest {
                     logs: sp_std::vec![DigestItem::consensus_block_info(
-                        bad_receipt.consensus_block_hash,
+                        bad_receipt.consensus_block_hash(),
                     )],
                 };
 
                 let new_header = DomainHeader::new(
-                    bad_receipt.domain_block_number,
+                    *bad_receipt.domain_block_number(),
                     Default::default(),
                     Default::default(),
-                    bad_receipt_parent.domain_block_hash,
+                    *bad_receipt_parent.domain_block_hash(),
                     inherent_digests,
                 );
                 new_header.encode()
@@ -197,7 +200,7 @@ impl ExecutionPhase {
                 let mismatch_index = match mismatch {
                     ApplyExtrinsicMismatch::StateRoot(mismatch_index) => *mismatch_index,
                     ApplyExtrinsicMismatch::Shorter => {
-                        (bad_receipt.execution_trace.len() - 1) as u32
+                        (bad_receipt.execution_traces().len() - 1) as u32
                     }
                 };
                 // There is a trace root of the `initialize_block` in the head of the trace so we
@@ -210,7 +213,7 @@ impl ExecutionPhase {
                     );
 
                 StorageProofVerifier::<DomainHeader::Hashing>::get_bare_value(
-                    &bad_receipt.domain_block_extrinsic_root,
+                    bad_receipt.domain_block_extrinsics_root(),
                     proof_of_inclusion.clone(),
                     storage_key,
                 )
@@ -241,7 +244,7 @@ pub enum VerificationError<DomainHash> {
     /// Failed to decode the header produced by `finalize_block`.
     #[error("Failed to decode the header from verifying `finalize_block`: {0}")]
     HeaderDecode(parity_scale_codec::Error),
-    #[error("The receipt's execution_trace have less than 2 traces")]
+    #[error("The receipt's execution_traces have less than 2 traces")]
     InvalidExecutionTrace,
     #[error("Invalid ApplyExtrinsic trace index")]
     InvalidApplyExtrinsicTraceIndex,

@@ -19,6 +19,9 @@ extern crate alloc;
 
 use crate::bundle::{BundleVersion, OpaqueBundle, OpaqueBundles};
 use crate::execution_receipt::ExecutionReceiptVersion;
+use crate::execution_receipt::execution_receipt_v0::{
+    ExecutionReceiptV0For, SealedSingletonReceiptV0,
+};
 use crate::storage::{RawGenesis, StorageKey};
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
@@ -32,7 +35,7 @@ use core::num::ParseIntError;
 use core::ops::{Add, Sub};
 use core::str::FromStr;
 use domain_runtime_primitives::{EthereumAccountId, MultiAccountId};
-use execution_receipt::{ExecutionReceiptV0For, SealedSingletonReceiptV0};
+use execution_receipt::{ExecutionReceiptFor, SealedSingletonReceipt};
 use frame_support::storage::storage_prefix;
 use frame_support::{Blake2_128Concat, StorageHasher};
 use hex_literal::hex;
@@ -982,8 +985,12 @@ sp_api::decl_runtime_apis! {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
 
-        // Submits a singleton receipt via an unsigned extrinsic.
+        /// Submits a singleton receipt via an unsigned extrinsic.
+        #[changed_in(5)]
         fn submit_receipt_unsigned(singleton_receipt: SealedSingletonReceiptV0<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
+
+        /// Submits a singleton receipt via an unsigned extrinsic.
+        fn submit_receipt_unsigned(singleton_receipt: SealedSingletonReceipt<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
 
         /// Extracts the bundles successfully stored from the given extrinsics.
         #[changed_in(5)]
@@ -1054,7 +1061,11 @@ sp_api::decl_runtime_apis! {
         fn domain_best_number(domain_id: DomainId) -> Option<HeaderNumberFor<DomainHeader>>;
 
         /// Returns the execution receipt with the given hash.
+        #[changed_in(5)]
         fn execution_receipt(receipt_hash: HeaderHashFor<DomainHeader>) -> Option<ExecutionReceiptV0For<DomainHeader, Block, Balance>>;
+
+        /// Returns the execution receipt with the given hash.
+        fn execution_receipt(receipt_hash: HeaderHashFor<DomainHeader>) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
 
         /// Returns the current epoch and the next epoch operators of the given domain.
         fn domain_operators(domain_id: DomainId) -> Option<(BTreeMap<OperatorId, Balance>, Vec<OperatorId>)>;
@@ -1082,7 +1093,10 @@ sp_api::decl_runtime_apis! {
         fn evm_domain_contract_creation_allowed_by_call(domain_id: DomainId) -> Option<PermissionedActionAllowedBy<EthereumAccountId>>;
 
         /// Returns the last confirmed domain block execution receipt.
+        #[changed_in(5)]
         fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptV0For<DomainHeader, Block, Balance>>;
+
+        fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
 
         /// Returns the current bundle version that is accepted by runtime.
         fn current_bundle_and_execution_receipt_version() -> BundleAndExecutionReceiptVersion;

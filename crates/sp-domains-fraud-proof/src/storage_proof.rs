@@ -12,7 +12,7 @@ use sp_domains::{
     DomainAllowlistUpdates, DomainId, DomainSudoCall, EvmDomainContractCreationAllowedByCall,
     RuntimeId, RuntimeObject,
 };
-use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor, Zero};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::marker::PhantomData;
@@ -320,10 +320,10 @@ pub struct OpaqueBundleWithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
 
 impl<Number, Hash, DomainHeader, Balance> OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>
 where
-    Number: Encode,
-    Hash: Encode,
+    Number: Encode + Zero,
+    Hash: Encode + Default,
     DomainHeader: HeaderT,
-    Balance: Encode,
+    Balance: Encode + Zero + Default,
 {
     #[cfg(feature = "std")]
     #[allow(clippy::let_and_return)]

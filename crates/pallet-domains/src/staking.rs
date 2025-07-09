@@ -12,8 +12,8 @@ use crate::pallet::{
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
     BalanceOf, Config, DepositOnHold, DomainBlockNumberFor, DomainHashingFor, Event,
-    ExecutionReceiptV0Of, HoldIdentifier, InvalidBundleAuthors, NominatorId,
-    OperatorEpochSharePrice, OperatorHighestSlot, Pallet, ReceiptHashFor, SlashedReason,
+    ExecutionReceiptOf, HoldIdentifier, InvalidBundleAuthors, NominatorId, OperatorEpochSharePrice,
+    OperatorHighestSlot, Pallet, ReceiptHashFor, SlashedReason,
 };
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
@@ -1417,7 +1417,7 @@ pub(crate) fn do_mark_operators_as_slashed<T: Config>(
 /// Mark all the invalid bundle authors from this ER and remove them from operator set.
 pub(crate) fn do_mark_invalid_bundle_authors<T: Config>(
     domain_id: DomainId,
-    er: &ExecutionReceiptV0Of<T>,
+    er: &ExecutionReceiptOf<T>,
 ) -> Result<(), Error> {
     let invalid_bundle_authors = invalid_bundle_authors_for_receipt::<T>(domain_id, er);
     let er_hash = er.hash::<DomainHashingFor<T>>();
@@ -1488,7 +1488,7 @@ fn mark_invalid_bundle_author<T: Config>(
 /// back to next operator set.
 pub(crate) fn do_unmark_invalid_bundle_authors<T: Config>(
     domain_id: DomainId,
-    er: &ExecutionReceiptV0Of<T>,
+    er: &ExecutionReceiptOf<T>,
 ) -> Result<(), Error> {
     let invalid_bundle_authors = invalid_bundle_authors_for_receipt::<T>(domain_id, er);
     let er_hash = er.hash::<DomainHashingFor<T>>();

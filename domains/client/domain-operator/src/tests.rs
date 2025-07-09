@@ -41,7 +41,9 @@ use sp_core::{H160, H256, Pair, U256};
 use sp_domain_digests::AsPredigest;
 use sp_domains::bundle::{Bundle, BundleValidity, InboxedBundle, InvalidBundleType};
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::execution_receipt::{BlockFees, Transfers};
+use sp_domains::execution_receipt::{
+    BlockFees, ExecutionReceiptMutRef, ExecutionReceiptRef, Transfers,
+};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     ChainId, ChannelId, DomainsApi, HeaderHashingFor, OperatorPublicKey,
@@ -335,7 +337,7 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -391,7 +393,7 @@ async fn test_private_evm_domain_create_contracts_with_allow_list_default() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 }
@@ -462,7 +464,7 @@ async fn test_public_evm_domain_create_contracts() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -518,7 +520,7 @@ async fn test_public_evm_domain_create_contracts() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 }
@@ -713,7 +715,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -751,7 +753,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_reject_all() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 }
@@ -888,7 +890,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -984,7 +986,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_single() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 }
@@ -1077,7 +1079,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -1168,7 +1170,7 @@ async fn test_evm_domain_create_contracts_with_allow_list_multiple() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 }
@@ -1373,9 +1375,9 @@ async fn test_evm_domain_gas_estimates() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
     assert_eq!(
-        receipt.block_fees,
+        receipt.block_fees().clone(),
         // Check the actual block fees for an EVM contract create
         BlockFees {
             consensus_storage_fee: 789,
@@ -1420,9 +1422,9 @@ async fn test_evm_domain_gas_estimates() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
     assert_eq!(
-        receipt.block_fees,
+        receipt.block_fees().clone(),
         // Check the actual block fees for an EVM contract call
         BlockFees {
             consensus_storage_fee: 849,
@@ -1898,8 +1900,8 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     let receipts_consensus_info =
         |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, Header, Balance>| {
             (
-                bundle.receipt().consensus_block_number,
-                bundle.receipt().consensus_block_hash,
+                *bundle.receipt().to_owned_er().consensus_block_number(),
+                *bundle.receipt().to_owned_er().consensus_block_hash(),
             )
         };
 
@@ -2215,8 +2217,10 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
         let undecodable_tx =
             OpaqueExtrinsic::from_bytes(&rand::random::<[u8; 5]>().to_vec().encode())
                 .expect("raw byte encoding and decoding never fails; qed");
-        b.push_extrinsic(undecodable_tx);
-        b.push_extrinsics(valid_bundle.extrinsics());
+        let mut exts = b.extrinsics().to_vec();
+        exts.push(undecodable_tx);
+        exts.extend_from_slice(valid_bundle.extrinsics());
+        b.set_extrinsics(exts);
         b
     });
 
@@ -2232,8 +2236,10 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
                 },
             )
             .into();
-        b.push_extrinsics(valid_bundle.extrinsics());
-        b.push_extrinsic(illegal_tx);
+        let mut exts = b.extrinsics().to_vec();
+        exts.extend_from_slice(valid_bundle.extrinsics());
+        exts.push(illegal_tx);
+        b.set_extrinsics(exts);
         b
     });
 
@@ -2267,7 +2273,9 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
             .into(),
         )
         .into();
-        b.push_extrinsic(invalid_xdm);
+        let mut exts = b.extrinsics().to_vec();
+        exts.push(invalid_xdm);
+        b.set_extrinsics(exts);
         b
     });
 
@@ -2278,8 +2286,10 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
             pallet_timestamp::Call::set { now: 12345 }.into(),
         )
         .into();
-        b.push_extrinsics(valid_bundle.extrinsics());
-        b.set_extrinsic(1, inherent_tx);
+        let mut exts = b.extrinsics().to_vec();
+        exts.extend_from_slice(valid_bundle.extrinsics());
+        exts[1] = inherent_tx;
+        b.set_extrinsics(exts);
         b
     });
 
@@ -2332,8 +2342,8 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
 
     let valid_receipt = bundle.into_receipt();
     let valid_receipt_hash = valid_receipt.hash::<BlakeTwo256>();
-    assert_eq!(valid_receipt.execution_trace.len(), 7);
-    assert_eq!(valid_receipt.inboxed_bundles.len(), 6);
+    assert_eq!(valid_receipt.execution_traces().len(), 7);
+    assert_eq!(valid_receipt.inboxed_bundles().len(), 6);
 
     // Produce all possible invalid fraud proof
     for bundle_index in 0..6 {
@@ -2444,7 +2454,7 @@ async fn test_bad_fraud_proof_is_rejected() {
 
     let valid_receipt = bundle.into_receipt();
     let valid_receipt_hash = valid_receipt.hash::<BlakeTwo256>();
-    assert_eq!(valid_receipt.execution_trace.len(), 5);
+    assert_eq!(valid_receipt.execution_traces().len(), 5);
 
     let mut fraud_proofs = vec![
         fraud_proof_generator
@@ -2560,7 +2570,7 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
     // We get the receipt of target bundle
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let valid_receipt = bundle.into_receipt();
-    assert_eq!(valid_receipt.execution_trace.len(), 5);
+    assert_eq!(valid_receipt.execution_traces().len(), 5);
     let valid_receipt_hash = valid_receipt.hash::<BlakeTwo256>();
 
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
@@ -2576,21 +2586,21 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
         TraceDiffType::Shorter,
         TraceDiffType::Longer,
     ] {
-        for mismatch_index in 0..valid_receipt.execution_trace.len() {
+        for mismatch_index in 0..valid_receipt.execution_traces().len() {
             let dummy_execution_trace = match trace_diff_type {
                 TraceDiffType::Shorter => valid_receipt
-                    .execution_trace
-                    .clone()
+                    .execution_traces()
+                    .to_vec()
                     .drain(..)
                     .take(mismatch_index + 1)
                     .collect(),
                 TraceDiffType::Longer => {
-                    let mut long_trace = valid_receipt.execution_trace.clone();
+                    let mut long_trace = valid_receipt.execution_traces().to_vec();
                     long_trace.push(H256::default());
                     long_trace
                 }
                 TraceDiffType::Mismatch => {
-                    let mut modified_trace = valid_receipt.execution_trace.clone();
+                    let mut modified_trace = valid_receipt.execution_traces().to_vec();
                     modified_trace[mismatch_index] = H256::default();
                     modified_trace
                 }
@@ -2598,14 +2608,14 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
 
             // For some combination of (TraceDiffType, mismatch_trace_index) there is no difference in trace
             // In this case the fraud proof cannot be generated.
-            if valid_receipt.execution_trace == dummy_execution_trace {
+            if valid_receipt.execution_traces().to_vec() == dummy_execution_trace {
                 continue;
             }
 
             // Abusing this method to generate every possible variant of ExecutionPhase
             let result_execution_phase = fraud_proof_generator.find_mismatched_execution_phase(
-                valid_receipt.domain_block_hash,
-                &valid_receipt.execution_trace,
+                *valid_receipt.domain_block_hash(),
+                valid_receipt.execution_traces(),
                 &dummy_execution_trace,
             );
 
@@ -2810,14 +2820,10 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_length = opaque_bundle
-        .sealed_header()
-        .header
-        .receipt
-        .execution_trace
-        .len();
+    let ExecutionReceiptRef::V0(receipt) = opaque_bundle.sealed_header().receipt();
+    let original_length = receipt.execution_trace.len();
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(receipt) = opaque_bundle.execution_receipt_as_mut();
         assert_eq!(receipt.execution_trace.len(), 5);
 
         match trace_diff_type {
@@ -2996,7 +3002,9 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
     let extrinsics: Vec<Vec<u8>>;
     let bundle_extrinsic_root;
     let bad_submit_bundle_tx = {
-        opaque_bundle.push_extrinsic(inherent_extrinsic());
+        let mut exts = opaque_bundle.extrinsics().to_vec();
+        exts.push(inherent_extrinsic());
+        opaque_bundle.set_extrinsics(exts);
         extrinsics = opaque_bundle
             .extrinsics()
             .iter()
@@ -3030,7 +3038,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         // bad receipt marks this particular bundle as valid even though bundle contains inherent extrinsic
         bad_receipt.inboxed_bundles =
             vec![InboxedBundle::valid(H256::random(), bundle_extrinsic_root)];
@@ -3138,7 +3146,7 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         // bad receipt marks this particular bundle as invalid even though bundle does not contain
         // inherent extrinsic
         bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
@@ -3249,7 +3257,9 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
     let extrinsics: Vec<Vec<u8>>;
     let bundle_extrinsic_root;
     let bad_submit_bundle_tx = {
-        opaque_bundle.push_extrinsic(undecodable_tx());
+        let mut exts = opaque_bundle.extrinsics().to_vec();
+        exts.push(undecodable_tx());
+        opaque_bundle.set_extrinsics(exts);
         extrinsics = opaque_bundle
             .extrinsics()
             .iter()
@@ -3283,7 +3293,7 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         // bad receipt marks this particular bundle as valid even though bundle contains inherent extrinsic
         bad_receipt.inboxed_bundles =
             vec![InboxedBundle::valid(H256::random(), bundle_extrinsic_root)];
@@ -3391,7 +3401,7 @@ async fn test_false_invalid_bundles_undecodeable_tx_proof_creation_and_verificat
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         // bad receipt marks this particular bundle as invalid even though bundle does not contain
         // inherent extrinsic
         bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
@@ -3547,7 +3557,7 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         // bad receipt marks this particular bundle as valid even though bundle contains illegal extrinsic
         bad_receipt.inboxed_bundles =
             vec![InboxedBundle::valid(H256::random(), bundle_extrinsic_root)];
@@ -3712,7 +3722,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         // bad receipt marks this particular bundle as valid even though bundle contains illegal extrinsic
         bad_receipt.inboxed_bundles =
             vec![InboxedBundle::valid(H256::random(), bundle_extrinsic_root)];
@@ -3841,7 +3851,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         // bad receipt marks this particular bundle as invalid even though bundle does not contain
         // illegal tx
         bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
@@ -3938,7 +3948,7 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(opaque_bundle.extrinsics().len(), 1);
-    let bundle_extrinsic_root = opaque_bundle.sealed_header().header.bundle_extrinsics_root;
+    let bundle_extrinsic_root = opaque_bundle.sealed_header().bundle_extrinsics_root();
     let bad_submit_bundle_tx = {
         opaque_bundle.set_estimated_bundle_weight(Weight::from_all(123456));
         opaque_bundle.set_signature(
@@ -3966,7 +3976,7 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         // bad receipt marks this particular bundle as valid even though bundle contains invalid `estimated_bundle_weight`
         bad_receipt.inboxed_bundles =
             vec![InboxedBundle::valid(H256::random(), bundle_extrinsic_root)];
@@ -4073,7 +4083,7 @@ async fn test_false_invalid_bundle_weight_proof_creation_and_verification() {
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         // bad receipt marks this particular bundle as `InvalidBundleWeight`
         bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
             InvalidBundleType::InvalidBundleWeight,
@@ -4183,7 +4193,7 @@ async fn test_false_invalid_bundles_non_exist_extrinsic_proof_creation_and_verif
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         // bad receipt marks a non-exist extrinsic as invalid
         bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
             InvalidBundleType::InherentExtrinsic(u32::MAX),
@@ -4270,7 +4280,7 @@ async fn test_invalid_block_fees_proof_creation() {
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(receipt) = opaque_bundle.execution_receipt_as_mut();
         receipt.block_fees.consensus_storage_fee = 12345;
         opaque_bundle.set_signature(
             Sr25519Keyring::Alice
@@ -4366,7 +4376,7 @@ async fn test_invalid_transfers_fraud_proof() {
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(receipt) = opaque_bundle.execution_receipt_as_mut();
         receipt.transfers = Transfers {
             transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
             transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
@@ -4467,7 +4477,7 @@ async fn test_invalid_domain_block_hash_proof_creation() {
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(receipt) = opaque_bundle.execution_receipt_as_mut();
         receipt.domain_block_hash = Default::default();
         opaque_bundle.set_signature(
             Sr25519Keyring::Alice
@@ -4563,7 +4573,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(receipt) = opaque_bundle.execution_receipt_as_mut();
         receipt.domain_block_extrinsic_root = Default::default();
         opaque_bundle.set_signature(
             Sr25519Keyring::Alice
@@ -4692,7 +4702,7 @@ async fn test_domain_block_builder_include_ext_with_failed_execution() {
     // pre_timestamp_root + pre_consensus_chain_byte_fee_root + pre_success_ext_root + pre_failed_ext_root
     // + pre_finalize_block_root + post_finalize_block_root
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let er = bundle.receipt();
+    let ExecutionReceiptRef::V0(er) = bundle.receipt();
     assert_eq!(er.execution_trace.len(), 6);
     assert_eq!(er.execution_trace[5], er.final_state_root);
 }
@@ -4782,7 +4792,7 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
     // pre_timestamp_root + pre_consensus_chain_byte_fee_root + pre_success_ext_root + pre_failed_ext_root
     // + pre_finalize_block_root + post_finalize_block_root
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let er = bundle.sealed_header().clone().header.receipt;
+    let ExecutionReceiptRef::V0(er) = bundle.sealed_header().receipt();
 
     assert_eq!(er.execution_trace.len(), 6);
     assert_eq!(er.execution_trace[5], er.final_state_root);
@@ -4857,9 +4867,8 @@ async fn test_valid_bundle_proof_generation_and_verification() {
     let (slot, mut bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let bundle_index = 1;
     let (bad_receipt, bad_submit_bundle_tx) = {
-        assert_eq!(bundle.receipt().inboxed_bundles.len(), 3);
-
-        let receipt = bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(receipt) = bundle.execution_receipt_as_mut();
+        assert_eq!(receipt.inboxed_bundles.len(), 3);
         receipt.inboxed_bundles[bundle_index].bundle = BundleValidity::Valid(H256::random());
         bundle.set_signature(
             Sr25519Keyring::Alice
@@ -4868,7 +4877,10 @@ async fn test_valid_bundle_proof_generation_and_verification() {
                 .into(),
         );
 
-        (bundle.receipt().clone(), bundle_to_tx(&ferdie, bundle))
+        (
+            bundle.receipt().to_owned_er(),
+            bundle_to_tx(&ferdie, bundle),
+        )
     };
 
     // Produce a consensus block that contains `bad_submit_bundle_tx` and the bad receipt should
@@ -5593,7 +5605,7 @@ async fn test_public_evm_rejects_allow_list_domain_sudo_calls() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -5618,7 +5630,7 @@ async fn test_public_evm_rejects_allow_list_domain_sudo_calls() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -5643,7 +5655,7 @@ async fn test_public_evm_rejects_allow_list_domain_sudo_calls() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     // produce 30 more blocks to ensure nothing went wrong
     produce_blocks!(ferdie, alice, 30).await.unwrap();
@@ -5691,7 +5703,7 @@ async fn test_public_evm_rejects_allow_list_domain_owner_calls() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
@@ -5721,7 +5733,7 @@ async fn test_public_evm_rejects_allow_list_domain_owner_calls() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     // produce 30 more blocks to ensure nothing went wrong
     produce_blocks!(ferdie, alice, 30).await.unwrap();
@@ -6217,7 +6229,7 @@ async fn test_domain_transaction_fee_and_operator_reward() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     // Transaction fee (including the tip) is deducted from alice's account
     let alice_free_balance_changes =
@@ -6227,7 +6239,7 @@ async fn test_domain_transaction_fee_and_operator_reward() {
     let domain_block_fees = alice
         .client
         .runtime_api()
-        .block_fees(receipt.domain_block_hash)
+        .block_fees(*receipt.domain_block_hash())
         .unwrap();
 
     // All the transaction fee is collected as operator reward
@@ -6235,7 +6247,7 @@ async fn test_domain_transaction_fee_and_operator_reward() {
         alice_free_balance_changes,
         domain_block_fees.domain_execution_fee + domain_block_fees.consensus_storage_fee
     );
-    assert_eq!(domain_block_fees, receipt.block_fees);
+    assert_eq!(domain_block_fees, receipt.block_fees().clone());
     assert!(!domain_block_fees.consensus_storage_fee.is_zero());
 }
 
@@ -6487,7 +6499,7 @@ async fn test_bad_receipt_chain() {
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let stale_bundle = opaque_bundle.clone();
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(receipt) = opaque_bundle.execution_receipt_as_mut();
         receipt.domain_block_hash = Default::default();
         opaque_bundle.set_signature(
             Sr25519Keyring::Alice
@@ -6545,7 +6557,7 @@ async fn test_bad_receipt_chain() {
             .expect("must win the challenge");
         let (receipt_hash, bad_submit_bundle_tx) = {
             let mut opaque_bundle = bundle;
-            let receipt = opaque_bundle.execution_receipt_as_mut();
+            let ExecutionReceiptMutRef::V0(receipt) = opaque_bundle.execution_receipt_as_mut();
             receipt.parent_domain_block_receipt_hash = parent_bad_receipt_hash;
             receipt.domain_block_hash = Default::default();
             opaque_bundle.set_signature(
@@ -7019,11 +7031,7 @@ async fn test_equivocated_bundle_check() {
 
     // Get a bundle from the txn pool
     let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let proof_of_election = opaque_bundle
-        .sealed_header()
-        .header
-        .proof_of_election
-        .clone();
+    let proof_of_election = opaque_bundle.sealed_header().proof_of_election().clone();
 
     // Construct an equivocated bundle that with the same slot but different content
     let submit_equivocated_bundle_tx = {
@@ -7378,7 +7386,9 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
     // Construct an bundle that contain the invalid xdm and submit the bundle
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let (bundle_extrinsic_root, bad_submit_bundle_tx) = {
-        opaque_bundle.push_extrinsic(xdm);
+        let mut exts = opaque_bundle.extrinsics().to_vec();
+        exts.push(xdm);
+        opaque_bundle.set_extrinsics(exts);
         let extrinsics = opaque_bundle
             .extrinsics()
             .iter()
@@ -7413,7 +7423,7 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
     // produce another bundle that marks the invalid xdm as valid.
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         assert!(bad_receipt.inboxed_bundles[0].is_invalid());
         bad_receipt.inboxed_bundles =
             vec![InboxedBundle::valid(H256::random(), bundle_extrinsic_root)];
@@ -7545,7 +7555,7 @@ async fn test_custom_api_storage_root_match_upstream_root() {
     // Get the receipt of that block, its execution trace is generated by the custom API instance
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.execution_trace.len(), 8);
+    assert_eq!(receipt.execution_traces().len(), 8);
 
     let mut roots = vec![];
     let runtime_api_instance = alice.client.runtime_api();
@@ -7557,7 +7567,7 @@ async fn test_custom_api_storage_root_match_upstream_root() {
         domain_parent_hash,
         Digest {
             logs: vec![DigestItem::consensus_block_info(
-                receipt.consensus_block_hash,
+                *receipt.consensus_block_hash(),
             )],
         },
     );
@@ -7601,7 +7611,7 @@ async fn test_custom_api_storage_root_match_upstream_root() {
         .map(|r| BlockHashFor::<DomainBlock>::decode(&mut r.as_slice()).unwrap())
         .collect();
 
-    assert_eq!(receipt.execution_trace, roots);
+    assert_eq!(receipt.execution_traces().to_vec(), roots);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -8330,7 +8340,7 @@ async fn test_invalid_chain_reward_receipt() {
     // Get a bundle from the txn pool and modify the receipt of the target bundle to has an invalid `chain_rewards`
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let (first_bad_receipt_hash, bad_submit_bundle_tx) = {
-        let receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(receipt) = opaque_bundle.execution_receipt_as_mut();
         // Set an invalid `chain_rewards` that exceeds the domain's total balance
         receipt
             .block_fees
@@ -8381,7 +8391,7 @@ async fn test_invalid_chain_reward_receipt() {
             .expect("must win the challenge");
         let bad_submit_bundle_tx = {
             let mut opaque_bundle = bundle;
-            let receipt = opaque_bundle.execution_receipt_as_mut();
+            let ExecutionReceiptMutRef::V0(receipt) = opaque_bundle.execution_receipt_as_mut();
             receipt.parent_domain_block_receipt_hash = parent_bad_receipt_hash;
             opaque_bundle.set_signature(
                 Sr25519Keyring::Alice
@@ -8653,7 +8663,7 @@ async fn test_false_bundle_author() {
         .await;
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = opaque_bundle.execution_receipt_as_mut();
+        let ExecutionReceiptMutRef::V0(bad_receipt) = opaque_bundle.execution_receipt_as_mut();
         // bad receipt marks this particular bundle as `InvalidBundleWeight`
         bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
             InvalidBundleType::InvalidBundleWeight,

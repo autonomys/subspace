@@ -61,7 +61,7 @@ use sp_core::{ConstBool, H256, OpaqueMetadata};
 use sp_domains::bundle::BundleVersion;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::execution_receipt::{
-    ExecutionReceiptV0For, ExecutionReceiptVersion, SealedSingletonReceiptV0,
+    ExecutionReceiptFor, ExecutionReceiptVersion, SealedSingletonReceipt,
 };
 use sp_domains::{
     BundleAndExecutionReceiptVersion, ChannelId, DOMAIN_STORAGE_FEE_MULTIPLIER,
@@ -1486,7 +1486,7 @@ impl_runtime_apis! {
         }
 
         fn submit_receipt_unsigned(
-            singleton_receipt: SealedSingletonReceiptV0<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
+            singleton_receipt: SealedSingletonReceipt<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
         ) {
             Domains::submit_receipt_unsigned(singleton_receipt)
         }
@@ -1562,7 +1562,7 @@ impl_runtime_apis! {
             Domains::domain_best_number(domain_id).ok()
         }
 
-        fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceiptV0For<DomainHeader, Block, Balance>> {
+        fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
             Domains::execution_receipt(receipt_hash)
         }
 
@@ -1583,7 +1583,7 @@ impl_runtime_apis! {
 
         fn is_bad_er_pending_to_prune(domain_id: DomainId, receipt_hash: DomainHash) -> bool {
             Domains::execution_receipt(receipt_hash).map(
-                |er| Domains::is_bad_er_pending_to_prune(domain_id, er.domain_block_number)
+                |er| Domains::is_bad_er_pending_to_prune(domain_id, *er.domain_block_number())
             )
             .unwrap_or(false)
         }
@@ -1604,7 +1604,7 @@ impl_runtime_apis! {
             Domains::evm_domain_contract_creation_allowed_by_call(domain_id)
         }
 
-        fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptV0For<DomainHeader, Block, Balance>>{
+        fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>{
             Domains::latest_confirmed_domain_execution_receipt(domain_id)
         }
 
