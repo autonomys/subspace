@@ -163,7 +163,8 @@ fn process_withdrawals<T: Config>(
     if let Some(withdrawal_in_shares) = withdrawal.withdrawal_in_shares {
         // This should only happen if the withdrawal is from the current epoch
         // and cannot be converted yet, so we use the passed current share price
-        let withdrawal_amount = current_share_price.shares_to_stake::<T>(withdrawal_in_shares.shares);
+        let withdrawal_amount =
+            current_share_price.shares_to_stake::<T>(withdrawal_in_shares.shares);
 
         pending_withdrawals.push(sp_domains::PendingWithdrawal {
             amount: withdrawal_amount,
@@ -175,17 +176,17 @@ fn process_withdrawals<T: Config>(
 }
 
 /// Returns the complete nominator position for a given operator and account at the current block.
-    ///
-    /// This calculates the total position including:
-    /// - Current stake value (converted from shares using instant share price including rewards)
-    /// - Total storage fee deposits (known + pending)
-    /// - Pending deposits (not yet converted to shares)
-    /// - Pending withdrawals (with unlock timing)
-    ///
-    /// Note: Operator accounts are also nominator accounts, so this call will return the position
-    /// for the operator account.
-    ///
-    /// Returns None if no position exists for the given operator and account at the current block.
+///
+/// This calculates the total position including:
+/// - Current stake value (converted from shares using instant share price including rewards)
+/// - Total storage fee deposits (known + pending)
+/// - Pending deposits (not yet converted to shares)
+/// - Pending withdrawals (with unlock timing)
+///
+/// Note: Operator accounts are also nominator accounts, so this call will return the position
+/// for the operator account.
+///
+/// Returns None if no position exists for the given operator and account at the current block.
 pub fn nominator_position<T: Config>(
     operator_id: OperatorId,
     nominator_account: T::AccountId,
@@ -839,6 +840,82 @@ mod tests {
                 position_after_refund.storage_fee_deposit.total_deposited,
                 expected_storage_fee_value,
                 "Original storage fee should never change"
+            );
+        });
+    }
+
+    #[test]
+    fn test_nominator_position_for_operator_account() {
+        let mut ext = new_test_ext_with_extensions();
+        ext.execute_with(|| {
+            let setup = TestSetup::default();
+            let (operator_id, domain_id) = setup_operator_with_nominator(setup);
+
+            // Test 1: Operator position before epoch transition
+            let operator_position =
+                nominator_position::<Test>(operator_id, setup.operator_account).unwrap();
+
+            // The operator's stake should be active immediately (different from nominator behavior)
+            let expected_operator_staked_value = expected_staking_portion(setup.operator_stake);
+            let expected_operator_storage_fee = expected_storage_fee(setup.operator_stake);
+
+            assert_eq!(
+                operator_position.current_staked_value,
+                expected_operator_staked_value,
+            );
+            assert_eq!(
+                operator_position.storage_fee_deposit.current_value,
+                expected_operator_storage_fee,
+            );
+            assert_eq!(operator_position.pending_deposits.len(), 0);
+            assert_eq!(operator_position.pending_withdrawals.len(), 0);
+
+            // Test 2: Operator position after epoch transition (should remain the same)
+            advance_epoch(domain_id);
+
+            let operator_position_after_epoch =
+                nominator_position::<Test>(operator_id, setup.operator_account).unwrap();
+
+            assert_eq!(
+                operator_position_after_epoch.current_staked_value,
+                expected_operator_staked_value
+            );
+            assert_eq!(
+                operator_position_after_epoch
+                    .storage_fee_deposit
+                    .current_value,
+                expected_operator_storage_fee,
+            );
+
+            // Test 3: Operator can also withdraw (like any nominator)
+            let withdrawal_amount = 100 * AI3;
+            withdraw_stake(
+                setup.operator_account,
+                operator_id,
+                domain_id,
+                withdrawal_amount,
+            );
+
+            let operator_position_after_withdrawal =
+                nominator_position::<Test>(operator_id, setup.operator_account).unwrap();
+
+            // Should have a pending withdrawal
+            assert_eq!(
+                operator_position_after_withdrawal.pending_withdrawals.len(),
+                1,
+            );
+
+            // Check the withdrawal amount is approximately correct
+            let actual_withdrawal_amount =
+                operator_position_after_withdrawal.pending_withdrawals[0].amount;
+            let withdrawal_range =
+                (withdrawal_amount.saturating_sub(TOLERANCE))..=(withdrawal_amount + TOLERANCE);
+            assert!(withdrawal_range.contains(&actual_withdrawal_amount),);
+
+            // Staked value should decrease
+            assert!(
+                operator_position_after_withdrawal.current_staked_value
+                    < operator_position_after_epoch.current_staked_value,
             );
         });
     }
