@@ -10,14 +10,18 @@ use sp_runtime::traits::{Saturating, Zero};
 
 /// Core data needed for nominator position calculation
 struct PositionData<T: Config> {
+    /// The nominator's deposit information including known and pending amounts
     pub deposit: crate::staking::Deposit<T::Share, BalanceOf<T>>,
+    /// The operator's current state and configuration
     pub operator: crate::staking::Operator<
         BalanceOf<T>,
         T::Share,
         DomainBlockNumberFor<T>,
         ReceiptHashFor<T>,
     >,
+    /// Current epoch index for determining deposit conversion eligibility
     pub current_epoch_index: EpochIndex,
+    /// Current share price including pending rewards for instant valuation
     pub current_share_price: crate::staking::SharePrice,
 }
 
@@ -105,7 +109,7 @@ fn process_deposits<T: Config>(
     (total_shares, total_storage_fee_deposit, pending_deposits)
 }
 
-/// Calculates adjusted storage fee deposit accounting for fund performance
+/// Calculates adjusted storage fee deposit accounting for fund gains/losses
 fn calculate_adjusted_storage_fee<T: Config>(
     operator_id: OperatorId,
     operator_total_storage_fee: BalanceOf<T>,
@@ -168,15 +172,18 @@ fn process_withdrawals<T: Config>(
     pending_withdrawals
 }
 
-/// Returns the complete nominator position for a given operator and account.
-///
-/// This calculates the total position including:
-/// - Current stake value (converted from shares using instant share price including rewards)
-/// - Total storage fee deposits (known + pending)
-/// - Pending deposits (not yet converted to shares)
-/// - Pending withdrawals (with unlock timing)
-///
-/// Returns None if no position exists for the given nominator and operator.
+/// Returns the complete nominator position for a given operator and account at the current block.
+    ///
+    /// This calculates the total position including:
+    /// - Current stake value (converted from shares using instant share price including rewards)
+    /// - Total storage fee deposits (known + pending)
+    /// - Pending deposits (not yet converted to shares)
+    /// - Pending withdrawals (with unlock timing)
+    ///
+    /// Note: Operator accounts are also nominator accounts, so this call will return the position
+    /// for the operator account.
+    ///
+    /// Returns None if no position exists for the given operator and account at the current block.
 pub fn nominator_position<T: Config>(
     operator_id: OperatorId,
     nominator_account: T::AccountId,

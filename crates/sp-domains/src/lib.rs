@@ -1658,7 +1658,7 @@ pub struct PendingWithdrawal<Balance, DomainBlockNumber> {
 /// Complete nominator position information for a specific operator
 #[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
 pub struct NominatorPosition<Balance, DomainBlockNumber> {
-    /// Current value of the nominator's position (stake converted to balance using current share price)
+    /// Current value of the nominator's position (shares converted to balance using current share price)
     pub current_staked_value: Balance,
     /// Storage fee deposit information (original and current adjusted values)
     pub storage_fee_deposit: StorageFeeDeposit<Balance>,
