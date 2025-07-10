@@ -54,6 +54,14 @@ pub enum Error {
         /// How many pieces one sector is supposed to contain (max)
         max_pieces_in_sector: u16,
     },
+    /// History size is in the future
+    #[error("History size {solution} is in the future, current is {current}")]
+    FutureHistorySize {
+        /// Current history size
+        current: HistorySize,
+        /// History size solution was created for
+        solution: HistorySize,
+    },
     /// Sector expired
     #[error("Sector expired")]
     SectorExpired {
@@ -255,12 +263,20 @@ where
         sector_expiration_check_segment_commitment,
     }) = piece_check_params
     {
+        if &solution.history_size > current_history_size {
+            return Err(Error::FutureHistorySize {
+                current: *current_history_size,
+                solution: solution.history_size,
+            });
+        }
+
         if u16::from(solution.piece_offset) >= *max_pieces_in_sector {
             return Err(Error::InvalidPieceOffset {
                 piece_offset: u16::from(solution.piece_offset),
                 max_pieces_in_sector: *max_pieces_in_sector,
             });
         }
+
         if let Some(sector_expiration_check_segment_commitment) =
             sector_expiration_check_segment_commitment
         {
