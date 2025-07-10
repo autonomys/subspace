@@ -730,7 +730,7 @@ pub fn signer_in_tx_range(bundle_vrf_hash: &U256, signer_id_hash: &U256, tx_rang
 /// Receipt invalidity type.
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
 pub enum InvalidReceipt {
-    /// The field `invalid_bundles` in [`ExecutionReceipt`] is invalid.
+    /// The field `invalid_bundles` in [`ExecutionReceiptFor`] is invalid.
     InvalidBundles,
 }
 

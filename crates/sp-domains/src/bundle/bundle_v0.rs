@@ -58,7 +58,7 @@ pub struct SealedBundleHeaderV0<Number, Hash, DomainHeader: HeaderT, Balance> {
 impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
     SealedBundleHeaderV0<Number, Hash, DomainHeader, Balance>
 {
-    /// Constructs a new instance of [`SealedBundleHeader`].
+    /// Constructs a new instance of [`SealedBundleHeaderV0`].
     pub fn new(
         header: BundleHeaderV0<Number, Hash, DomainHeader, Balance>,
         signature: OperatorSignature,
