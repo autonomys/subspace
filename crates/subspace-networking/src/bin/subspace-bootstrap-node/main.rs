@@ -25,7 +25,7 @@ use tracing::{debug, info};
 pub const KNOWN_PEERS_CACHE_SIZE: u32 = 10000;
 
 #[derive(Debug, Parser)]
-#[clap(about, version)]
+#[clap(about, version = "0.1.1")]
 enum Command {
     /// Start bootstrap node
     Start {
