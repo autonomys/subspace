@@ -1643,9 +1643,7 @@ impl_runtime_apis! {
             operator_id: OperatorId,
             nominator_account: sp_runtime::AccountId32,
         ) -> Option<sp_domains::NominatorPosition<Balance, DomainNumber>> {
-            // Convert AccountId32 to the runtime's AccountId type
-            let account_id: AccountId = nominator_account.into();
-            Domains::nominator_position(operator_id, account_id)
+            Domains::nominator_position(operator_id, nominator_account)
         }
     }
 

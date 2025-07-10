@@ -517,10 +517,7 @@ mod tests {
                 (expected_reward.saturating_sub(TOLERANCE))..=(expected_reward + TOLERANCE);
             assert!(
                 reward_range.contains(&reward_increase),
-                "Reward increase {} should be close to expected {} (within range {:?})",
-                reward_increase,
-                expected_reward,
-                reward_range
+                "Reward increase {reward_increase} should be close to expected {expected_reward} (within range {reward_range:?})"
             );
         });
     }
@@ -571,9 +568,8 @@ mod tests {
                 (withdrawal_amount.saturating_sub(TOLERANCE))..=(withdrawal_amount + TOLERANCE);
             assert!(
                 withdrawal_range.contains(&position.pending_withdrawals[0].amount),
-                "Pending withdrawal amount {} should be close to requested amount {}",
-                position.pending_withdrawals[0].amount,
-                withdrawal_amount
+                "Pending withdrawal amount {} should be close to requested amount {withdrawal_amount}",
+                position.pending_withdrawals[0].amount
             );
 
             // Should have a valid unlock block
@@ -647,7 +643,7 @@ mod tests {
             let domain_stake_summary =
                 crate::pallet::DomainStakingSummary::<Test>::get(domain_id).unwrap();
             let initial_epoch = domain_stake_summary.current_epoch_index;
-            
+
             // At this point we're in epoch 1, pending deposit is effective for epoch 1 (current epoch)
             let position_initial =
                 nominator_position::<Test>(operator_id, setup.nominator_account).unwrap();
@@ -677,15 +673,6 @@ mod tests {
             // Test: Now the deposit should be converted because effective_epoch (1) < current_epoch (2)
             let position_after_transition =
                 nominator_position::<Test>(operator_id, setup.nominator_account).unwrap();
-
-            // Check if there's an epoch share price for the initial epoch
-            let initial_epoch_domain: crate::staking::DomainEpoch =
-                (domain_id, initial_epoch).into();
-            let has_share_price = crate::pallet::OperatorEpochSharePrice::<Test>::get(
-                operator_id,
-                initial_epoch_domain,
-            )
-            .is_some();
 
             // The deposit should now be converted to shares
             assert_eq!(
@@ -788,10 +775,8 @@ mod tests {
                 (expected_value.saturating_sub(TOLERANCE))..=(expected_value + TOLERANCE);
             assert!(
                 expected_range.contains(&position_after_charge.storage_fee_deposit.current_value),
-                "Storage fee value {} should be close to expected {} (within range {:?})",
-                position_after_charge.storage_fee_deposit.current_value,
-                expected_value,
-                expected_range
+                "Storage fee value {} should be close to expected {expected_value} (within range {expected_range:?})",
+                position_after_charge.storage_fee_deposit.current_value
             );
 
             // Storage fee deposit should be reduced proportionally
@@ -800,7 +785,7 @@ mod tests {
                 position_after_charge.storage_fee_deposit.total_deposited,
                 expected_storage_fee_value
             ); // Original unchanged
-            
+
             // Test 3: Storage fund becomes profitable (refund more than charged)
             // Refund more storage fees to simulate domain users paying fees
             crate::bundle_storage_fund::refund_storage_fee::<Test>(
@@ -830,10 +815,8 @@ mod tests {
                 ..=(expected_final_value + TOLERANCE);
             assert!(
                 expected_range.contains(&position_after_refund.storage_fee_deposit.current_value),
-                "Storage fee value {} should be close to expected {} (within range {:?})",
-                position_after_refund.storage_fee_deposit.current_value,
-                expected_final_value,
-                expected_range
+                "Storage fee value {} should be close to expected {expected_final_value} (within range {expected_range:?})",
+                position_after_refund.storage_fee_deposit.current_value
             );
 
             // Verify original value never changes
