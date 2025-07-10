@@ -1,8 +1,8 @@
 //! Nominator position calculation logic
 
-use crate::pallet::{
-    Config, Deposits, DomainStakingSummary, OperatorEpochSharePrice, Operators, Withdrawals,
-};
+use crate::pallet::{Config, Deposits, DomainStakingSummary, Operators, Withdrawals};
+
+use crate::staking::{do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal};
 use crate::{BalanceOf, DomainBlockNumberFor, ReceiptHashFor};
 use alloc::vec::Vec;
 use sp_domains::{EpochIndex, OperatorId};
@@ -69,42 +69,38 @@ fn process_deposits<T: Config>(
     BalanceOf<T>,
     Vec<sp_domains::PendingDeposit<BalanceOf<T>>>,
 ) {
-    let mut total_shares = position_data.deposit.known.shares;
-    let mut total_storage_fee_deposit = position_data.deposit.known.storage_fee_deposit;
-    let mut pending_deposits = Vec::new();
+    // Clone deposit for read-only conversion
+    let mut deposit = position_data.deposit.clone();
 
-    // Process pending deposit if it exists
-    if let Some(pending_deposit) = &position_data.deposit.pending {
-        // Always include storage fee regardless of conversion status
+    // Apply previous-epoch conversion in-memory
+    let _ = do_convert_previous_epoch_deposits::<T>(
+        operator_id,
+        &mut deposit,
+        position_data.current_epoch_index,
+    );
+
+    // Extract results
+    let total_shares = deposit.known.shares;
+
+    // Accumulate storage fee deposit, including any pending deposit for current epoch
+    let mut total_storage_fee_deposit = deposit.known.storage_fee_deposit;
+    if let Some(ref pd) = deposit.pending {
         total_storage_fee_deposit =
-            total_storage_fee_deposit.saturating_add(pending_deposit.storage_fee_deposit);
-
-        let (_, effective_epoch) = pending_deposit.effective_domain_epoch.deconstruct();
-
-        // Try to convert pending deposit to shares if epoch has passed
-        if effective_epoch < position_data.current_epoch_index {
-            if let Some(epoch_share_price) = OperatorEpochSharePrice::<T>::get(
-                operator_id,
-                pending_deposit.effective_domain_epoch,
-            ) {
-                // Convert to shares using historical epoch price
-                let pending_shares = epoch_share_price.stake_to_shares::<T>(pending_deposit.amount);
-                total_shares = total_shares.saturating_add(pending_shares);
-            } else {
-                // Epoch passed but no share price available yet - keep as pending
-                pending_deposits.push(sp_domains::PendingDeposit {
-                    amount: pending_deposit.amount,
-                    effective_epoch,
-                });
-            }
-        } else {
-            // Epoch hasn't passed yet - keep as pending
-            pending_deposits.push(sp_domains::PendingDeposit {
-                amount: pending_deposit.amount,
-                effective_epoch,
-            });
-        }
+            total_storage_fee_deposit.saturating_add(pd.storage_fee_deposit);
     }
+
+    // Any remaining pending deposit is for the current epoch
+    let pending_deposits = deposit
+        .pending
+        .map(|pd| {
+            let (_, epoch) = pd.effective_domain_epoch.deconstruct();
+            sp_domains::PendingDeposit {
+                amount: pd.amount,
+                effective_epoch: epoch,
+            }
+        })
+        .into_iter()
+        .collect();
 
     (total_shares, total_storage_fee_deposit, pending_deposits)
 }
@@ -130,10 +126,21 @@ fn process_withdrawals<T: Config>(
     operator_id: OperatorId,
     nominator_account: &T::AccountId,
     current_share_price: &crate::staking::SharePrice,
+    current_epoch_index: EpochIndex,
 ) -> Vec<sp_domains::PendingWithdrawal<BalanceOf<T>, DomainBlockNumberFor<T>>> {
     let Some(withdrawal) = Withdrawals::<T>::get(operator_id, nominator_account) else {
         return Vec::new();
     };
+
+    // Clone withdrawal for read-only conversion
+    let mut withdrawal = withdrawal.clone();
+
+    // Apply previous-epoch conversion in-memory
+    let _ = do_convert_previous_epoch_withdrawal::<T>(
+        operator_id,
+        &mut withdrawal,
+        current_epoch_index,
+    );
 
     let mut pending_withdrawals = Vec::with_capacity(
         withdrawal.withdrawals.len()
@@ -152,16 +159,11 @@ fn process_withdrawals<T: Config>(
         }
     }));
 
-    // Process withdrawal in shares
+    // Process any remaining withdrawal in shares (not yet converted)
     if let Some(withdrawal_in_shares) = withdrawal.withdrawal_in_shares {
-        let withdrawal_amount =
-            OperatorEpochSharePrice::<T>::get(operator_id, withdrawal_in_shares.domain_epoch)
-                .map(|epoch_share_price| {
-                    epoch_share_price.shares_to_stake::<T>(withdrawal_in_shares.shares)
-                })
-                .unwrap_or_else(|| {
-                    current_share_price.shares_to_stake::<T>(withdrawal_in_shares.shares)
-                });
+        // This should only happen if the withdrawal is from the current epoch
+        // and cannot be converted yet, so we use the passed current share price
+        let withdrawal_amount = current_share_price.shares_to_stake::<T>(withdrawal_in_shares.shares);
 
         pending_withdrawals.push(sp_domains::PendingWithdrawal {
             amount: withdrawal_amount,
@@ -214,6 +216,7 @@ pub fn nominator_position<T: Config>(
         operator_id,
         &nominator_account,
         &position_data.current_share_price,
+        position_data.current_epoch_index,
     );
 
     Some(NominatorPosition {
