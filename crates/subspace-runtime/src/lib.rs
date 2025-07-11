@@ -254,8 +254,8 @@ impl frame_system::Config for Runtime {
     type SystemWeightInfo = weights::frame_system::WeightInfo<Runtime>;
     /// This is used as an identifier of the chain.
     type SS58Prefix = SS58Prefix;
-    /// The set code logic, just the default since we're not a parachain.
-    type OnSetCode = ();
+    /// The set code logic.
+    type OnSetCode = subspace_runtime_primitives::SetCode<Runtime, Domains>;
     type SingleBlockMigrations = ();
     type MultiBlockMigrator = ();
     type PreInherents = ();

@@ -38,6 +38,7 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use domain_runtime_primitives::EthereumAccountId;
+use frame_support::dispatch::DispatchResult;
 use frame_support::ensure;
 use frame_support::pallet_prelude::{RuntimeDebug, StorageVersion};
 use frame_support::traits::fungible::{Inspect, InspectHold};
@@ -788,6 +789,17 @@ mod pallet {
     #[pallet::storage]
     pub type InvalidBundleAuthors<T: Config> =
         StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, ValueQuery>;
+
+    /// Storage that hold a previous versions of Bundle and Execution Receipt.
+    /// Unfortunately, it adds a new item for every runtime upgrade if the versions change between
+    /// runtime upgrades. If the versions does not change, then same version is set with higher block
+    /// number.
+    /// Pruning this storage is not quiet straight forward since each domain
+    /// may submit an ER with a gap as well and also introduces the loop to find the
+    /// correct block number.
+    #[pallet::storage]
+    pub type PreviousBundleAndExecutionReceiptVersions<T> =
+        StorageValue<_, BTreeMap<BlockNumberFor<T>, BundleAndExecutionReceiptVersion>, ValueQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -3181,6 +3193,37 @@ impl<T: Config> Pallet<T> {
         crate::migrations::execution_receipt::latest_confirmed_domain_execution_receipt::<T>(
             domain_id,
         )
+    }
+}
+
+impl<T: Config> subspace_runtime_primitives::OnSetCode<BlockNumberFor<T>> for Pallet<T> {
+    /// Store the Bundle and Er versions before runtime is upgraded along with the
+    /// Consensus number at which runtime is upgraded.
+    fn set_code(block_number: BlockNumberFor<T>) -> DispatchResult {
+        let current_versions = T::CurrentBundleAndExecutionReceiptVersion::get();
+        PreviousBundleAndExecutionReceiptVersions::<T>::mutate(|versions| {
+            // first storage, so nothing much to do
+            if versions.len().is_zero() {
+                versions.insert(block_number, current_versions);
+            } else {
+                // if there is a previous version stored, and
+                // previous version matches the current one,
+                // then we can replace the same version with latest upgraded block number.
+                let (prev_number, prev_versions) = versions
+                    .pop_last()
+                    .expect("at least one version is available due to check above");
+
+                // versions matched, so insert the version with latest block number.
+                if prev_versions == current_versions {
+                    versions.insert(block_number, current_versions);
+                } else {
+                    // versions did not match, so add both
+                    versions.insert(prev_number, prev_versions);
+                    versions.insert(block_number, current_versions);
+                }
+            }
+        });
+        Ok(())
     }
 }
 
