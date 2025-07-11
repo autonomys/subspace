@@ -3,6 +3,9 @@
 !/domains
 !/shared
 !/test
+!/bump-versions.sh
 !/Cargo.lock
 !/Cargo.toml
+!/runtime-benchmark.sh
 !/rust-toolchain.toml
+!/rustfmt.toml
