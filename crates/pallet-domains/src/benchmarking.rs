@@ -8,8 +8,8 @@ use crate::bundle_storage_fund::refund_storage_fee;
 use crate::domain_registry::{DomainConfigParams, into_domain_config};
 use crate::runtime_registry::DomainRuntimeUpgradeEntry;
 use crate::staking::{
-    Error as StakingError, OperatorConfig, OperatorStatus, do_convert_previous_epoch_withdrawal,
-    do_mark_operators_as_slashed, do_reward_operators,
+    Error as StakingError, OperatorConfig, OperatorStatus, do_convert_previous_epoch_deposits,
+    do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_reward_operators,
 };
 use crate::staking_epoch::{
     do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking, do_slash_operator,
@@ -759,7 +759,7 @@ mod benchmarks {
 
         // Request `w` withdrawals in different epochs, this removes slightly under (or exactly)
         // `MinOperatorStake` from the nominator's stake.
-        for _ in 1..=w {
+        for _ in 1..w {
             assert_ok!(Domains::<T>::withdraw_stake(
                 RawOrigin::Signed(nominator.clone()).into(),
                 operator_id,
@@ -768,15 +768,24 @@ mod benchmarks {
             do_finalize_domain_epoch_staking::<T>(domain_id)
                 .expect("finalize domain staking should success");
         }
-        // Withdraw all the remaining stake. Since we just took out ~`MinOperatorStake`
-        // from the nominator's stake, the remaining stake is greater than or equal to
-        // `2 * MinOperatorStake`.
+        // Withdraw all the remaining stake.
+        let remaining_stake =
+            Deposits::<T>::try_mutate(operator_id, nominator.clone(), |maybe_deposit| {
+                let domain_stake_summary = DomainStakingSummary::<T>::get(domain_id).unwrap();
+                let deposit = maybe_deposit.as_mut().unwrap();
+                do_convert_previous_epoch_deposits::<T>(
+                    operator_id,
+                    deposit,
+                    domain_stake_summary.current_epoch_index,
+                )
+                .unwrap();
+                Ok::<T::Share, StakingError>(deposit.known.shares)
+            })
+            .unwrap();
         assert_ok!(Domains::<T>::withdraw_stake(
             RawOrigin::Signed(nominator.clone()).into(),
             operator_id,
-            // Withdraw all the remaining stake, except for the `MinOperatorStake`. Since this is
-            // the operator, we can't withdraw the entire stake.
-            T::MinOperatorStake::get().into(),
+            remaining_stake,
         ));
         do_finalize_domain_epoch_staking::<T>(domain_id)
             .expect("finalize domain staking should success");
@@ -791,7 +800,7 @@ mod benchmarks {
                 withdrawal,
                 current_domain_epoch_index,
             )?;
-            assert_eq!(withdrawal.withdrawals.len() as u32, w + 1);
+            assert_eq!(withdrawal.withdrawals.len() as u32, w);
             Ok::<(), StakingError>(())
         })
         .unwrap();
