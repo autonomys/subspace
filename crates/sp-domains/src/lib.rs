@@ -1649,8 +1649,10 @@ pub struct PendingDeposit<Balance> {
 /// Represents a nominator's pending withdrawal with unlock timing
 #[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
 pub struct PendingWithdrawal<Balance, DomainBlockNumber> {
-    /// The amount that will be withdrawn
-    pub amount: Balance,
+    /// The amount of stake that will be withdrawn
+    pub stake_withdrawal_amount: Balance,
+    /// The amount of storage fee deposit that will be refunded
+    pub storage_fee_refund: Balance,
     /// The domain block number when this withdrawal can be unlocked
     pub unlock_at_block: DomainBlockNumber,
 }

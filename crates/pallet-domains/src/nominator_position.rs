@@ -154,7 +154,8 @@ fn process_withdrawals<T: Config>(
     // Process regular withdrawals
     pending_withdrawals.extend(withdrawal.withdrawals.into_iter().map(|w| {
         sp_domains::PendingWithdrawal {
-            amount: w.amount_to_unlock,
+            stake_withdrawal_amount: w.amount_to_unlock,
+            storage_fee_refund: w.storage_fee_refund,
             unlock_at_block: w.unlock_at_confirmed_domain_block_number,
         }
     }));
@@ -167,7 +168,8 @@ fn process_withdrawals<T: Config>(
             current_share_price.shares_to_stake::<T>(withdrawal_in_shares.shares);
 
         pending_withdrawals.push(sp_domains::PendingWithdrawal {
-            amount: withdrawal_amount,
+            stake_withdrawal_amount: withdrawal_amount,
+            storage_fee_refund: withdrawal_in_shares.storage_fee_refund,
             unlock_at_block: withdrawal_in_shares.unlock_at_confirmed_domain_block_number,
         });
     }
@@ -578,9 +580,9 @@ mod tests {
             let withdrawal_range =
                 (withdrawal_amount.saturating_sub(TOLERANCE))..=(withdrawal_amount + TOLERANCE);
             assert!(
-                withdrawal_range.contains(&position.pending_withdrawals[0].amount),
+                withdrawal_range.contains(&position.pending_withdrawals[0].stake_withdrawal_amount),
                 "Pending withdrawal amount {} should be close to requested amount {withdrawal_amount}",
-                position.pending_withdrawals[0].amount
+                position.pending_withdrawals[0].stake_withdrawal_amount
             );
 
             // Should have a valid unlock block
@@ -907,7 +909,7 @@ mod tests {
 
             // Check the withdrawal amount is approximately correct
             let actual_withdrawal_amount =
-                operator_position_after_withdrawal.pending_withdrawals[0].amount;
+                operator_position_after_withdrawal.pending_withdrawals[0].stake_withdrawal_amount;
             let withdrawal_range =
                 (withdrawal_amount.saturating_sub(TOLERANCE))..=(withdrawal_amount + TOLERANCE);
             assert!(withdrawal_range.contains(&actual_withdrawal_amount),);
@@ -916,6 +918,82 @@ mod tests {
             assert!(
                 operator_position_after_withdrawal.current_staked_value
                     < operator_position_after_epoch.current_staked_value,
+            );
+        });
+    }
+
+    #[test]
+    fn test_pending_withdrawal_fields() {
+        let mut ext = new_test_ext_with_extensions();
+        ext.execute_with(|| {
+            let setup = TestSetup::default();
+            let (operator_id, domain_id) = setup_operator_with_nominator(setup);
+
+            // Epoch transition to activate staking
+            advance_epoch(domain_id);
+
+            // Get initial position data to calculate expected storage fee refund
+            let position_before =
+                nominator_position::<Test>(operator_id, setup.nominator_account).unwrap();
+            let initial_staked_value = position_before.current_staked_value;
+            let initial_storage_fee_deposit = position_before.storage_fee_deposit.current_value;
+
+            // Request withdrawal
+            let withdrawal_amount = 200 * AI3;
+            withdraw_stake(
+                setup.nominator_account,
+                operator_id,
+                domain_id,
+                withdrawal_amount,
+            );
+
+            // Test: Verify PendingWithdrawal struct has correct fields
+            let position =
+                nominator_position::<Test>(operator_id, setup.nominator_account).unwrap();
+
+            assert_eq!(position.pending_withdrawals.len(), 1);
+            let pending_withdrawal = &position.pending_withdrawals[0];
+
+            // Test stake_withdrawal_amount field is populated correctly
+            let withdrawal_range =
+                (withdrawal_amount.saturating_sub(TOLERANCE))..=(withdrawal_amount + TOLERANCE);
+            assert!(
+                withdrawal_range.contains(&pending_withdrawal.stake_withdrawal_amount),
+                "stake_withdrawal_amount should be close to requested amount"
+            );
+
+            // Test storage_fee_refund field is populated and calculate expected value
+            assert!(
+                pending_withdrawal.storage_fee_refund > 0,
+                "storage_fee_refund should be present for withdrawals"
+            );
+
+            // Calculate expected storage fee refund:
+            // 1. Calculate the proportion of stake being withdrawn
+            let withdrawal_proportion = sp_runtime::Perquintill::from_rational(
+                pending_withdrawal.stake_withdrawal_amount,
+                initial_staked_value,
+            );
+
+            // 2. Apply this proportion to the storage fee deposit
+            let expected_storage_fee_refund =
+                withdrawal_proportion.mul_floor(initial_storage_fee_deposit);
+
+            // 3. The actual refund should be close to this expected value
+            let storage_fee_refund_range = (expected_storage_fee_refund.saturating_sub(TOLERANCE))
+                ..=(expected_storage_fee_refund + TOLERANCE);
+            assert!(
+                storage_fee_refund_range.contains(&pending_withdrawal.storage_fee_refund),
+                "storage_fee_refund {} should be close to expected {} (within range {:?})",
+                pending_withdrawal.storage_fee_refund,
+                expected_storage_fee_refund,
+                storage_fee_refund_range
+            );
+
+            // Test unlock_at_block field is populated
+            assert!(
+                pending_withdrawal.unlock_at_block > 0,
+                "unlock_at_block should be set"
             );
         });
     }
