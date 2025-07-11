@@ -23,12 +23,12 @@ if [[ -z "${SED_IN_PLACE[@]+"${SED_IN_PLACE[@]}"}" ]]; then
 fi
 
 echo "Current directory: $(pwd)"
-if [[ ! -d "./crates/subspace-node" ]] || [[ ! -d "./crates/subspace-gateway" ]] || [[ ! -d "./crates/subspace-farmer" ]] || [[ ! -d "./crates/subspace-networking/src/bin/subspace-bootstrap-node" ]]; then
+if [[ ! -d "./crates/subspace-node" ]] || [[ ! -d "./crates/subspace-gateway" ]] || [[ ! -d "./crates/subspace-farmer" ]] || [[ ! -d "./crates/subspace-bootstrap-node" ]]; then
   echo "Changing to the root of the repository:"
   cd "$(dirname "$0")/.."
   echo "Current directory: $(pwd)"
-  if [[ ! -d "./crates/subspace-node" ]] || [[ ! -d "./crates/subspace-gateway" ]] || [[ ! -d "./crates/subspace-farmer" ]] || [[ ! -d "./crates/subspace-networking/src/bin/subspace-bootstrap-node" ]]; then
-    echo "Missing ./crates/subspace-node, ./crates/subspace-gateway, ./crates/subspace-farmer or ./crates/subspace-networking/src/bin/subspace-bootstrap-node"
+  if [[ ! -d "./crates/subspace-node" ]] || [[ ! -d "./crates/subspace-gateway" ]] || [[ ! -d "./crates/subspace-farmer" ]] || [[ ! -d "./crates/subspace-bootstrap-node" ]]; then
+    echo "Missing ./crates/subspace-node, ./crates/subspace-gateway, ./crates/subspace-farmer or ./crates/subspace-bootstrap-node"
     echo "This script must be run from the base of an autonomys/subspace repository checkout"
     exit 1
   fi
@@ -42,7 +42,7 @@ echo "Replacing the old version ($OLD_VERSION) with the new version ($NEW_VERSIO
     ./crates/subspace-node/Cargo.toml \
     ./crates/subspace-gateway/Cargo.toml \
     ./crates/subspace-farmer/Cargo.toml \
-    ./crates/subspace-networking/src/bin/subspace-bootstrap-node/main.rs || (echo "'$SED_IN_PLACE' failed, please set \$SED_IN_PLACE to a valid sed in-place replacement command" && exit 1)
+    ./crates/subspace-bootstrap-node/Cargo.toml || (echo "'$SED_IN_PLACE' failed, please set \$SED_IN_PLACE to a valid sed in-place replacement command" && exit 1)
 
 echo "Updating Cargo.lock..."
 cargo check

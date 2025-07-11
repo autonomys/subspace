@@ -13364,6 +13364,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-bootstrap-node"
+version = "0.1.1"
+dependencies = [
+ "clap",
+ "futures",
+ "hex",
+ "libp2p",
+ "prometheus-client",
+ "serde",
+ "serde_json",
+ "subspace-logging",
+ "subspace-metrics",
+ "subspace-networking",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
@@ -13706,8 +13724,6 @@ dependencies = [
  "prometheus-client",
  "rand 0.8.5",
  "schnellru",
- "serde",
- "serde_json",
  "subspace-core-primitives",
  "subspace-logging",
  "subspace-metrics",
