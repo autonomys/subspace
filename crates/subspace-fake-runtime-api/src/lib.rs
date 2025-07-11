@@ -9,11 +9,12 @@ use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionR
 use sp_core::crypto::KeyTypeId;
 use sp_core::{H256, OpaqueMetadata};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
+use sp_domains::execution_receipt::{ExecutionReceiptFor, SealedSingletonReceipt};
 use sp_domains::{
-    DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor, OperatorId,
-    OperatorPublicKey, PermissionedActionAllowedBy,
+    BundleAndExecutionReceiptVersion, DomainAllowlistUpdates, DomainId, DomainInstanceData,
+    OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
 };
-use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
 use sp_messenger::messages::{
     BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelId, ChannelStateWithNonce,
@@ -169,13 +170,13 @@ sp_api::impl_runtime_apis! {
 
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
-            _opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
+            _opaque_bundle: sp_domains::bundle::OpaqueBundle<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
         ) {
             unreachable!()
         }
 
         fn submit_receipt_unsigned(
-            _singleton_receipt: sp_domains::SealedSingletonReceipt<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
+            _singleton_receipt: SealedSingletonReceipt<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
         ) {
             unreachable!()
         }
@@ -183,7 +184,7 @@ sp_api::impl_runtime_apis! {
         fn extract_successful_bundles(
             _domain_id: DomainId,
             _extrinsics: Vec<ExtrinsicFor<Block>>,
-        ) -> sp_domains::OpaqueBundles<Block, DomainHeader, Balance> {
+        ) -> sp_domains::bundle::OpaqueBundles<Block, DomainHeader, Balance> {
             unreachable!()
         }
 
@@ -288,6 +289,14 @@ sp_api::impl_runtime_apis! {
         }
 
         fn last_confirmed_domain_block_receipt(_domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
+            unreachable!()
+        }
+
+        fn current_bundle_and_execution_receipt_version() -> BundleAndExecutionReceiptVersion {
+            unreachable!()
+        }
+
+        fn genesis_execution_receipt(_domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
             unreachable!()
         }
     }
@@ -432,7 +441,7 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(_fraud_proof: FraudProof<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, H256>) {
+        fn submit_fraud_proof_unsigned(_fraud_proof: FraudProofV1<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, H256>) {
             unreachable!()
         }
 

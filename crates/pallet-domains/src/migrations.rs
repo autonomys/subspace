@@ -1,3 +1,4 @@
+pub(crate) mod execution_receipt;
 mod v1_to_v5;
 
 pub(crate) use share_price_v0::OperatorEpochSharePrice as OperatorEpochSharePriceV0;

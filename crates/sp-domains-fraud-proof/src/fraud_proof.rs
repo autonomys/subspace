@@ -4,21 +4,22 @@ extern crate alloc;
 use crate::storage_proof::{self, *};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use core::fmt;
+use frame_support::pallet_prelude::Zero;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
+use sp_domains::ExtrinsicDigest;
+use sp_domains::bundle::{BundleValidity, InvalidBundleType};
+use sp_domains::execution_receipt::ExecutionReceiptFor;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
-use sp_domains::{
-    BundleValidity, DomainId, ExecutionReceiptFor, ExtrinsicDigest, HeaderHashFor,
-    HeaderHashingFor, InvalidBundleType,
-};
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::{Digest, DigestItem};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
-use subspace_runtime_primitives::Balance;
+
+pub mod fraud_proof_v0;
+pub mod fraud_proof_v1;
 
 /// Mismatch type possible for ApplyExtrinsic execution phase
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -105,59 +106,60 @@ impl ExecutionPhase {
         CBlock: BlockT,
         DomainHeader: HeaderT,
         DomainHeader::Hash: Into<H256>,
+        Balance: Encode + Zero + Default,
     {
-        if bad_receipt.execution_trace.len() < 2 {
+        if bad_receipt.execution_traces().len() < 2 {
             return Err(VerificationError::InvalidExecutionTrace);
         }
         let (pre, post) = match self {
             ExecutionPhase::InitializeBlock => (
-                bad_receipt_parent.final_state_root,
-                bad_receipt.execution_trace[0],
+                *bad_receipt_parent.final_state_root(),
+                bad_receipt.execution_traces()[0],
             ),
             ExecutionPhase::ApplyExtrinsic {
                 mismatch: ApplyExtrinsicMismatch::StateRoot(mismatch_index),
                 ..
             } => {
                 if *mismatch_index == 0
-                    || *mismatch_index >= bad_receipt.execution_trace.len() as u32 - 1
+                    || *mismatch_index >= bad_receipt.execution_traces().len() as u32 - 1
                 {
                     return Err(VerificationError::InvalidApplyExtrinsicTraceIndex);
                 }
                 (
-                    bad_receipt.execution_trace[*mismatch_index as usize - 1],
-                    bad_receipt.execution_trace[*mismatch_index as usize],
+                    bad_receipt.execution_traces()[*mismatch_index as usize - 1],
+                    bad_receipt.execution_traces()[*mismatch_index as usize],
                 )
             }
             ExecutionPhase::ApplyExtrinsic {
                 mismatch: ApplyExtrinsicMismatch::Shorter,
                 ..
             } => {
-                let mismatch_index = bad_receipt.execution_trace.len() - 1;
+                let mismatch_index = bad_receipt.execution_traces().len() - 1;
                 (
-                    bad_receipt.execution_trace[mismatch_index - 1],
-                    bad_receipt.execution_trace[mismatch_index],
+                    bad_receipt.execution_traces()[mismatch_index - 1],
+                    bad_receipt.execution_traces()[mismatch_index],
                 )
             }
             ExecutionPhase::FinalizeBlock {
                 mismatch: FinalizeBlockMismatch::StateRoot,
             } => {
-                let mismatch_index = bad_receipt.execution_trace.len() - 1;
+                let mismatch_index = bad_receipt.execution_traces().len() - 1;
                 (
-                    bad_receipt.execution_trace[mismatch_index - 1],
-                    bad_receipt.execution_trace[mismatch_index],
+                    bad_receipt.execution_traces()[mismatch_index - 1],
+                    bad_receipt.execution_traces()[mismatch_index],
                 )
             }
             ExecutionPhase::FinalizeBlock {
                 mismatch: FinalizeBlockMismatch::Longer(mismatch_index),
             } => {
                 if *mismatch_index == 0
-                    || *mismatch_index >= bad_receipt.execution_trace.len() as u32 - 1
+                    || *mismatch_index >= bad_receipt.execution_traces().len() as u32 - 1
                 {
                     return Err(VerificationError::InvalidLongerMismatchTraceIndex);
                 }
                 (
-                    bad_receipt.execution_trace[(*mismatch_index - 1) as usize],
-                    bad_receipt.execution_trace[*mismatch_index as usize],
+                    bad_receipt.execution_traces()[(*mismatch_index - 1) as usize],
+                    bad_receipt.execution_traces()[*mismatch_index as usize],
                 )
             }
         };
@@ -172,20 +174,21 @@ impl ExecutionPhase {
     where
         CBlock: BlockT,
         DomainHeader: HeaderT,
+        Balance: Encode + Zero + Default,
     {
         Ok(match self {
             ExecutionPhase::InitializeBlock => {
                 let inherent_digests = Digest {
                     logs: sp_std::vec![DigestItem::consensus_block_info(
-                        bad_receipt.consensus_block_hash,
+                        bad_receipt.consensus_block_hash(),
                     )],
                 };
 
                 let new_header = DomainHeader::new(
-                    bad_receipt.domain_block_number,
+                    *bad_receipt.domain_block_number(),
                     Default::default(),
                     Default::default(),
-                    bad_receipt_parent.domain_block_hash,
+                    *bad_receipt_parent.domain_block_hash(),
                     inherent_digests,
                 );
                 new_header.encode()
@@ -197,7 +200,7 @@ impl ExecutionPhase {
                 let mismatch_index = match mismatch {
                     ApplyExtrinsicMismatch::StateRoot(mismatch_index) => *mismatch_index,
                     ApplyExtrinsicMismatch::Shorter => {
-                        (bad_receipt.execution_trace.len() - 1) as u32
+                        (bad_receipt.execution_traces().len() - 1) as u32
                     }
                 };
                 // There is a trace root of the `initialize_block` in the head of the trace so we
@@ -210,7 +213,7 @@ impl ExecutionPhase {
                     );
 
                 StorageProofVerifier::<DomainHeader::Hashing>::get_bare_value(
-                    &bad_receipt.domain_block_extrinsic_root,
+                    bad_receipt.domain_block_extrinsics_root(),
                     proof_of_inclusion.clone(),
                     storage_key,
                 )
@@ -241,7 +244,7 @@ pub enum VerificationError<DomainHash> {
     /// Failed to decode the header produced by `finalize_block`.
     #[error("Failed to decode the header from verifying `finalize_block`: {0}")]
     HeaderDecode(parity_scale_codec::Error),
-    #[error("The receipt's execution_trace have less than 2 traces")]
+    #[error("The receipt's execution_traces have less than 2 traces")]
     InvalidExecutionTrace,
     #[error("Invalid ApplyExtrinsic trace index")]
     InvalidApplyExtrinsicTraceIndex,
@@ -313,145 +316,6 @@ impl<DomainHash> From<storage_proof::VerificationError> for VerificationError<Do
     }
 }
 
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct FraudProof<Number, Hash, DomainHeader: HeaderT, MmrHash> {
-    pub domain_id: DomainId,
-    /// Hash of the bad receipt this fraud proof targeted
-    pub bad_receipt_hash: HeaderHashFor<DomainHeader>,
-    /// The MMR proof for the consensus state root that is used to verify the storage proof
-    ///
-    /// It is set `None` if the specific fraud proof variant doesn't contain a storage proof
-    pub maybe_mmr_proof: Option<ConsensusChainMmrLeafProof<Number, Hash, MmrHash>>,
-    /// The domain runtime code storage proof
-    ///
-    /// It is set `None` if the specific fraud proof variant doesn't require domain runtime code
-    /// or the required domain runtime code is available from the current runtime state.
-    pub maybe_domain_runtime_code_proof: Option<DomainRuntimeCodeAt<Number, Hash, MmrHash>>,
-    /// The specific fraud proof variant
-    pub proof: FraudProofVariant<Number, Hash, MmrHash, DomainHeader>,
-}
-
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum FraudProofVariant<Number, Hash, MmrHash, DomainHeader: HeaderT> {
-    #[codec(index = 0)]
-    InvalidStateTransition(InvalidStateTransitionProof),
-    #[codec(index = 1)]
-    ValidBundle(ValidBundleProof<Number, Hash, DomainHeader>),
-    #[codec(index = 2)]
-    InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof),
-    #[codec(index = 3)]
-    InvalidBundles(InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader>),
-    #[codec(index = 4)]
-    InvalidDomainBlockHash(InvalidDomainBlockHashProof),
-    #[codec(index = 5)]
-    InvalidBlockFees(InvalidBlockFeesProof),
-    #[codec(index = 6)]
-    InvalidTransfers(InvalidTransfersProof),
-    /// Dummy fraud proof only used in tests and benchmarks
-    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-    #[codec(index = 100)]
-    Dummy,
-}
-
-impl<Number, Hash, MmrHash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader, MmrHash> {
-    pub fn domain_id(&self) -> DomainId {
-        self.domain_id
-    }
-
-    pub fn targeted_bad_receipt_hash(&self) -> HeaderHashFor<DomainHeader> {
-        self.bad_receipt_hash
-    }
-
-    pub fn is_unexpected_domain_runtime_code_proof(&self) -> bool {
-        // The invalid domain block hash fraud proof doesn't use the domain runtime code
-        // during its verification so it is unexpected to see `maybe_domain_runtime_code_proof`
-        // set to `Some`
-        self.maybe_domain_runtime_code_proof.is_some()
-            && matches!(self.proof, FraudProofVariant::InvalidDomainBlockHash(_))
-    }
-
-    pub fn is_unexpected_mmr_proof(&self) -> bool {
-        if self.maybe_mmr_proof.is_none() {
-            return false;
-        }
-        // Only the `InvalidExtrinsicsRoot`, `InvalidBundles` and `ValidBundle` fraud proof
-        // are using the MMR proof during verifiction, for other fraud proofs it is unexpected
-        // to see `maybe_mmr_proof` set to `Some`
-        !matches!(
-            self.proof,
-            FraudProofVariant::InvalidExtrinsicsRoot(_)
-                | FraudProofVariant::InvalidBundles(_)
-                | FraudProofVariant::ValidBundle(_)
-        )
-    }
-
-    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-    pub fn dummy_fraud_proof(
-        domain_id: DomainId,
-        bad_receipt_hash: HeaderHashFor<DomainHeader>,
-    ) -> FraudProof<Number, Hash, DomainHeader, MmrHash> {
-        Self {
-            domain_id,
-            bad_receipt_hash,
-            maybe_mmr_proof: None,
-            maybe_domain_runtime_code_proof: None,
-            proof: FraudProofVariant::Dummy,
-        }
-    }
-}
-
-impl<Number, Hash, MmrHash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader, MmrHash>
-where
-    Number: Encode,
-    Hash: Encode,
-    MmrHash: Encode,
-{
-    pub fn hash(&self) -> HeaderHashFor<DomainHeader> {
-        HeaderHashingFor::<DomainHeader>::hash(&self.encode())
-    }
-}
-
-impl<Number, Hash, MmrHash, DomainHeader: HeaderT> fmt::Debug
-    for FraudProof<Number, Hash, DomainHeader, MmrHash>
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let fp_target =
-            scale_info::prelude::format!("{:?}#{:?}", self.domain_id, self.bad_receipt_hash);
-        match &self.proof {
-            FraudProofVariant::InvalidStateTransition(_) => {
-                write!(f, "InvalidStateTransitionFraudProof({fp_target})")
-            }
-            FraudProofVariant::InvalidExtrinsicsRoot(_) => {
-                write!(f, "InvalidExtrinsicsRootFraudProof({fp_target})")
-            }
-            FraudProofVariant::InvalidBlockFees(_) => {
-                write!(f, "InvalidBlockFeesFraudProof({fp_target})")
-            }
-            FraudProofVariant::ValidBundle(_) => {
-                write!(f, "ValidBundleFraudProof({fp_target})")
-            }
-            FraudProofVariant::InvalidBundles(proof) => {
-                write!(
-                    f,
-                    "InvalidBundlesFraudProof(type: {:?}, target: {fp_target})",
-                    proof.invalid_bundle_type
-                )
-            }
-            FraudProofVariant::InvalidDomainBlockHash(_) => {
-                write!(f, "InvalidDomainBlockHashFraudProof({fp_target})")
-            }
-            FraudProofVariant::InvalidTransfers(_) => {
-                write!(f, "InvalidTransfersFraudProof({fp_target})")
-            }
-            #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-            FraudProofVariant::Dummy => {
-                write!(f, "DummyFraudProof({fp_target})")
-            }
-        }
-    }
-}
-
 /// Represents a valid bundle index and all the extrinsics within that bundle.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct ValidBundleDigest {
@@ -480,13 +344,6 @@ pub struct InvalidStateTransitionProof {
     pub execution_phase: ExecutionPhase,
 }
 
-/// Fraud proof for the valid bundles in `ExecutionReceipt::inboxed_bundles`
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct ValidBundleProof<Number, Hash, DomainHeader: HeaderT> {
-    /// The targeted bundle with proof
-    pub bundle_with_proof: OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>,
-}
-
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidExtrinsicsRootProof {
     /// Valid Bundle digests
@@ -513,33 +370,6 @@ pub struct InvalidExtrinsicsRootProof {
 pub struct MmrRootProof<Number, Hash, MmrHash> {
     pub mmr_proof: ConsensusChainMmrLeafProof<Number, Hash, MmrHash>,
     pub mmr_root_storage_proof: MmrRootStorageProof<MmrHash>,
-}
-
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader: HeaderT> {
-    Extrinsic(StorageProof),
-    Bundle(OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>),
-    BundleAndExecution {
-        bundle_with_proof: OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>,
-        execution_proof: StorageProof,
-    },
-    InvalidXDMProofData {
-        extrinsic_proof: StorageProof,
-        mmr_root_proof: Option<MmrRootProof<Number, Hash, MmrHash>>,
-    },
-}
-
-/// A proof about a bundle that was marked invalid (but might or might not actually be invalid).
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader: HeaderT> {
-    pub bundle_index: u32,
-    /// The invalid bundle type that the bundle was marked with.
-    pub invalid_bundle_type: InvalidBundleType,
-    /// If `true`, the fraud proof must prove the bundle was correctly marked invalid.
-    /// If `false`, it must prove the bundle was marked invalid, but is actually valid.
-    pub is_good_invalid_fraud_proof: bool,
-    /// Proof data of the bundle which was marked invalid.
-    pub proof_data: InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader>,
 }
 
 /// Represents an invalid block fees proof.

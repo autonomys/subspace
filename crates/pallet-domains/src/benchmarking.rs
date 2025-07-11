@@ -34,14 +34,17 @@ use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::sr25519::vrf::{VrfPreOutput, VrfProof, VrfSignature};
+use sp_domains::bundle::bundle_v1::{BundleHeaderV1, BundleV1, SealedBundleHeaderV1};
+use sp_domains::bundle::dummy_opaque_bundle;
+use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
+use sp_domains::execution_receipt::{ExecutionReceipt, SealedSingletonReceipt, SingletonReceipt};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    BundleHeader, DomainId, EMPTY_EXTRINSIC_ROOT, ExecutionReceipt, OpaqueBundle,
-    OperatorAllowList, OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature,
-    PermissionedActionAllowedBy, ProofOfElection, RuntimeType, SealedBundleHeader,
-    SealedSingletonReceipt, SingletonReceipt, dummy_opaque_bundle,
+    DomainId, EMPTY_EXTRINSIC_ROOT, OperatorAllowList, OperatorId, OperatorPublicKey,
+    OperatorRewardSource, OperatorSignature, PermissionedActionAllowedBy, ProofOfElection,
+    RuntimeType,
 };
-use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_runtime::traits::{CheckedAdd, One, Zero};
 use sp_std::collections::btree_set::BTreeSet;
 use subspace_core_primitives::Randomness;
@@ -197,7 +200,7 @@ mod benchmarks {
         assert_eq!(Domains::<T>::head_receipt_number(domain_id), 2u32.into());
 
         // Construct fraud proof that target the ER at block #1
-        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, target_receipt_hash.unwrap());
+        let fraud_proof = FraudProofV1::dummy_fraud_proof(domain_id, target_receipt_hash.unwrap());
 
         #[extrinsic_call]
         submit_fraud_proof(DomainOrigin::ValidatedUnsigned, Box::new(fraud_proof));
@@ -899,7 +902,7 @@ mod benchmarks {
                 .and_then(BlockTreeNodes::<T>::get)
                 .expect("genesis receipt must exist")
                 .execution_receipt;
-            er.domain_block_number = One::one();
+            er.set_domain_block_number(One::one());
             er
         };
         let sealed_singleton_receipt = SealedSingletonReceipt {
@@ -942,16 +945,16 @@ mod benchmarks {
             Domains::<T>::runtime_id(domain_id).unwrap(),
             |upgrade_record| {
                 upgrade_record.insert(
-                    receipt.consensus_block_number,
+                    *receipt.consensus_block_number(),
                     DomainRuntimeUpgradeEntry {
-                        at_hash: receipt.consensus_block_hash,
+                        at_hash: *receipt.consensus_block_hash(),
                         reference_count: 1,
                     },
                 )
             },
         );
 
-        let header = BundleHeader {
+        let header = BundleHeaderV1 {
             proof_of_election,
             receipt,
             estimated_bundle_weight: Default::default(),
@@ -967,10 +970,10 @@ mod benchmarks {
             201, 155, 176, 188, 254, 114, 173, 96, 134,
         ]);
 
-        let opaque_bundle = OpaqueBundle {
-            sealed_header: SealedBundleHeader::new(header, signature),
+        let opaque_bundle = OpaqueBundle::V1(BundleV1 {
+            sealed_header: SealedBundleHeaderV1::new(header, signature),
             extrinsics: Vec::new(),
-        };
+        });
 
         #[block]
         {
@@ -1004,9 +1007,9 @@ mod benchmarks {
             Domains::<T>::runtime_id(domain_id).unwrap(),
             |upgrade_record| {
                 upgrade_record.insert(
-                    receipt.consensus_block_number,
+                    *receipt.consensus_block_number(),
                     DomainRuntimeUpgradeEntry {
-                        at_hash: receipt.consensus_block_hash,
+                        at_hash: *receipt.consensus_block_hash(),
                         reference_count: 1,
                     },
                 )
@@ -1089,7 +1092,7 @@ mod benchmarks {
         assert_eq!(Domains::<T>::head_receipt_number(domain_id), 3u32.into());
 
         // Construct fraud proof that target the ER at block #3
-        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, target_receipt_hash.unwrap());
+        let fraud_proof = FraudProofV1::dummy_fraud_proof(domain_id, target_receipt_hash.unwrap());
 
         #[block]
         {
@@ -1285,7 +1288,7 @@ mod benchmarks {
                 .unwrap()
                 .into()
         };
-        ExecutionReceipt {
+        ExecutionReceipt::V0(ExecutionReceiptV0 {
             domain_block_number: One::one(),
             domain_block_hash: H256::repeat_byte(7).into(),
             domain_block_extrinsic_root: EMPTY_EXTRINSIC_ROOT.into(),
@@ -1298,7 +1301,7 @@ mod benchmarks {
             execution_trace_root,
             block_fees: Default::default(),
             transfers: Default::default(),
-        }
+        })
     }
 
     fn run_to_block<T: Config + pallet_subspace::Config>(

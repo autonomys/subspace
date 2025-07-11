@@ -24,14 +24,17 @@ use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256};
+use sp_domains::bundle::bundle_v1::{BundleHeaderV1, BundleV1, SealedBundleHeaderV1};
+use sp_domains::bundle::{BundleVersion, InboxedBundle, OpaqueBundle};
+use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
+use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptVersion};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, ChainId, DomainId, ExecutionReceipt, InboxedBundle, OpaqueBundle,
-    OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeId, RuntimeType,
-    SealedBundleHeader,
+    BundleAndExecutionReceiptVersion, ChainId, DomainId, OperatorAllowList, OperatorId,
+    OperatorPair, ProofOfElection, RuntimeId, RuntimeType,
 };
-use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
 use sp_runtime::generic::{EXTRINSIC_FORMAT_VERSION, Preamble};
 use sp_runtime::traits::{
     AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, ConstU16, Hash as HashT,
@@ -167,6 +170,10 @@ parameter_types! {
     pub const MinInitialDomainAccountBalance: Balance = AI3;
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 10;
+    pub const CurrentBundleAndExecutionReceiptVersion: BundleAndExecutionReceiptVersion = BundleAndExecutionReceiptVersion {
+        bundle_version: BundleVersion::V1,
+        execution_receipt_version: ExecutionReceiptVersion::V0,
+    };
 }
 
 pub struct MockRandomness;
@@ -298,6 +305,7 @@ impl pallet_domains::Config for Test {
     type OnChainRewards = ();
     type WithdrawalLimit = WithdrawalLimit;
     type DomainOrigin = crate::EnsureDomainOrigin;
+    type CurrentBundleAndExecutionReceiptVersion = CurrentBundleAndExecutionReceiptVersion;
 }
 
 pub struct ExtrinsicStorageFees;
@@ -427,7 +435,7 @@ pub(crate) fn create_dummy_receipt(
         .into_iter()
         .map(InboxedBundle::dummy)
         .collect();
-    ExecutionReceipt {
+    ExecutionReceipt::V0(ExecutionReceiptV0 {
         domain_block_number: block_number as DomainBlockNumber,
         domain_block_hash: H256::random(),
         domain_block_extrinsic_root: Default::default(),
@@ -440,7 +448,7 @@ pub(crate) fn create_dummy_receipt(
         execution_trace_root,
         block_fees: Default::default(),
         transfers: Default::default(),
-    }
+    })
 }
 
 fn create_dummy_bundle(
@@ -470,7 +478,7 @@ pub(crate) fn create_dummy_bundle_with_receipts(
 ) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
     let pair = OperatorPair::from_seed(&[0; 32]);
 
-    let header = BundleHeader::<_, _, DomainHeader, _> {
+    let header = BundleHeaderV1::<_, _, DomainHeader, _> {
         proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
         estimated_bundle_weight: Default::default(),
@@ -479,10 +487,10 @@ pub(crate) fn create_dummy_bundle_with_receipts(
 
     let signature = pair.sign(header.hash().as_ref());
 
-    OpaqueBundle {
-        sealed_header: SealedBundleHeader::new(header, signature),
+    OpaqueBundle::V1(BundleV1 {
+        sealed_header: SealedBundleHeaderV1::new(header, signature),
         extrinsics: Vec::new(),
-    }
+    })
 }
 
 pub(crate) struct ReadRuntimeVersion(pub Vec<u8>);
@@ -591,7 +599,7 @@ pub(crate) fn extend_block_tree(
 
     for block_number in (current_block_number + 1)..to {
         // Finilize parent block and initialize block at `block_number`
-        run_to_block::<Test>(block_number, latest_receipt.consensus_block_hash);
+        run_to_block::<Test>(block_number, *latest_receipt.consensus_block_hash());
 
         // Submit a bundle with the receipt of the last block
         let bundle_extrinsics_root = H256::random();
@@ -621,7 +629,7 @@ pub(crate) fn extend_block_tree(
     }
 
     // Finilize parent block and initialize block at `to`
-    run_to_block::<Test>(to, latest_receipt.consensus_block_hash);
+    run_to_block::<Test>(to, *latest_receipt.consensus_block_hash());
 
     latest_receipt
 }
@@ -725,35 +733,34 @@ fn test_bundle_format_verification() {
         DomainRegistry::<Test>::insert(domain_id, domain_obj);
 
         let mut valid_bundle = create_dummy_bundle(DOMAIN_ID, 0, System::parent_hash());
-        valid_bundle.extrinsics.push(opaque_extrinsic(1, 1));
-        valid_bundle.extrinsics.push(opaque_extrinsic(2, 2));
-        valid_bundle.sealed_header.header.bundle_extrinsics_root = BlakeTwo256::ordered_trie_root(
+        let mut extrinsics = valid_bundle.extrinsics().to_vec();
+        extrinsics.push(opaque_extrinsic(1, 1));
+        extrinsics.push(opaque_extrinsic(2, 2));
+        valid_bundle.set_extrinsics(extrinsics);
+        valid_bundle.set_bundle_extrinsics_root(BlakeTwo256::ordered_trie_root(
             valid_bundle
-                .extrinsics
+                .extrinsics()
                 .iter()
                 .map(|xt| xt.encode())
                 .collect(),
             sp_core::storage::StateVersion::V1,
-        );
+        ));
         assert_ok!(pallet_domains::Pallet::<Test>::check_extrinsics_root(
             &valid_bundle
         ));
 
         // Bundle exceed max size
         let mut too_large_bundle = valid_bundle.clone();
+        let mut extrinsics = too_large_bundle.extrinsics().to_vec();
         for i in 0..max_extrinsics_count {
-            too_large_bundle
-                .extrinsics
-                .push(opaque_extrinsic(i as u128, i as u128));
+            extrinsics.push(opaque_extrinsic(i as u128, i as u128));
         }
+        too_large_bundle.set_extrinsics(extrinsics);
         assert!(too_large_bundle.size() > max_bundle_size);
 
         // Bundle with wrong value of `bundle_extrinsics_root`
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
-        invalid_extrinsic_root_bundle
-            .sealed_header
-            .header
-            .bundle_extrinsics_root = H256::random();
+        invalid_extrinsic_root_bundle.set_bundle_extrinsics_root(H256::random());
         assert_err!(
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
@@ -761,7 +768,9 @@ fn test_bundle_format_verification() {
 
         // Bundle with wrong value of `extrinsics`
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
-        invalid_extrinsic_root_bundle.extrinsics[0] = opaque_extrinsic(3, 3);
+        let mut extrinsics = valid_bundle.extrinsics().to_vec();
+        extrinsics[0] = opaque_extrinsic(3, 3);
+        invalid_extrinsic_root_bundle.set_extrinsics(extrinsics);
         assert_err!(
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
@@ -769,9 +778,9 @@ fn test_bundle_format_verification() {
 
         // Bundle with addtional extrinsic
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
-        invalid_extrinsic_root_bundle
-            .extrinsics
-            .push(opaque_extrinsic(4, 4));
+        let mut extrinsics = valid_bundle.extrinsics().to_vec();
+        extrinsics.push(opaque_extrinsic(4, 4));
+        invalid_extrinsic_root_bundle.set_extrinsics(extrinsics);
         assert_err!(
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
@@ -779,7 +788,9 @@ fn test_bundle_format_verification() {
 
         // Bundle with missing extrinsic
         let mut invalid_extrinsic_root_bundle = valid_bundle;
-        invalid_extrinsic_root_bundle.extrinsics.pop();
+        let mut extrinsics = invalid_extrinsic_root_bundle.extrinsics().to_vec();
+        extrinsics.pop().unwrap();
+        invalid_extrinsic_root_bundle.set_extrinsics(extrinsics);
         assert_err!(
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
@@ -807,7 +818,7 @@ fn test_invalid_fraud_proof() {
             .unwrap()
             .execution_receipt
             .hash::<DomainHashingFor<Test>>();
-        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+        let fraud_proof = FraudProofV1::dummy_fraud_proof(domain_id, bad_receipt_hash);
         assert_eq!(
             Domains::validate_fraud_proof(&fraud_proof),
             Err(FraudProofError::ChallengingGenesisReceipt)
@@ -815,7 +826,7 @@ fn test_invalid_fraud_proof() {
 
         // Fraud proof target unknown ER is invalid
         let bad_receipt_hash = H256::random();
-        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+        let fraud_proof = FraudProofV1::dummy_fraud_proof(domain_id, bad_receipt_hash);
         assert_eq!(
             Domains::validate_fraud_proof(&fraud_proof),
             Err(FraudProofError::BadReceiptNotFound)
@@ -851,7 +862,7 @@ fn test_basic_fraud_proof_processing() {
                 .unwrap()
                 .execution_receipt;
             let bad_receipt_hash = bad_receipt.hash::<DomainHashingFor<Test>>();
-            let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+            let fraud_proof = FraudProofV1::dummy_fraud_proof(domain_id, bad_receipt_hash);
             assert_ok!(Domains::submit_fraud_proof(
                 DomainOrigin::ValidatedUnsigned.into(),
                 Box::new(fraud_proof)
@@ -914,7 +925,7 @@ fn test_basic_fraud_proof_processing() {
                 let mut receipt = BlockTreeNodes::<Test>::get(receipt_hash)
                     .unwrap()
                     .execution_receipt;
-                receipt.final_state_root = H256::random();
+                receipt.set_final_state_root(H256::random());
                 let bundle = create_dummy_bundle_with_receipts(
                     domain_id,
                     honest_operator,
@@ -933,7 +944,7 @@ fn test_basic_fraud_proof_processing() {
                 assert!(BlockTreeNodes::<Test>::get(receipt_hash).is_none());
                 assert!(!Domains::is_bad_er_pending_to_prune(
                     domain_id,
-                    receipt.domain_block_number
+                    *receipt.domain_block_number()
                 ));
             }
         });
@@ -1042,7 +1053,10 @@ fn test_domain_runtime_upgrade_with_bundle() {
                 vec![],
             );
             // These receipt must able to pass `verify_execution_receipt`
-            assert_ok!(verify_execution_receipt::<Test>(domain_id, &next_receipt));
+            assert_ok!(verify_execution_receipt::<Test>(
+                domain_id,
+                &next_receipt.as_execution_receipt_ref()
+            ));
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
                 operator_id,
@@ -1072,7 +1086,10 @@ fn test_domain_runtime_upgrade_with_bundle() {
             parent_receipt.hash::<DomainHashingFor<Test>>(),
             vec![bundle_extrinsics_root],
         );
-        assert_ok!(verify_execution_receipt::<Test>(domain_id, &next_receipt));
+        assert_ok!(verify_execution_receipt::<Test>(
+            domain_id,
+            &next_receipt.as_execution_receipt_ref()
+        ));
         let bundle =
             create_dummy_bundle_with_receipts(domain_id, operator_id, H256::random(), next_receipt);
         assert_ok!(crate::Pallet::<Test>::submit_bundle(

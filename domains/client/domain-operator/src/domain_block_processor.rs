@@ -1,6 +1,6 @@
 use crate::ExecutionReceiptFor;
 use crate::aux_schema::BundleMismatchType;
-use crate::fraud_proof::FraudProofGenerator;
+use crate::fraud_proof::{FraudProofFor, FraudProofGenerator};
 use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
 use domain_block_builder::{BlockBuilder, BuiltBlock, CollectedStorageChanges};
 use domain_block_preprocessor::PreprocessResult;
@@ -18,11 +18,13 @@ use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::H256;
 use sp_core::traits::CodeExecutor;
+use sp_domains::bundle::BundleValidity;
 use sp_domains::core_api::DomainCoreApi;
+use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
+use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptVersion};
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
+use sp_domains::{DomainId, DomainsApi, HeaderHashingFor};
 use sp_domains_fraud_proof::FraudProofApi;
-use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One, Zero};
@@ -346,18 +348,46 @@ where
             "Trace root calculated for #{header_number},{header_hash}"
         );
 
+        let runtime_api = self.consensus_client.runtime_api();
+        let domains_api_version = runtime_api
+            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_block_hash)
+            .ok()
+            .flatten()
+            // It is safe to return a default version of 1, since there will always be version 1.
+            .unwrap_or(1);
+
+        let execution_receipt_version = if domains_api_version >= 5 {
+            let versions =
+                runtime_api.current_bundle_and_execution_receipt_version(consensus_block_hash)?;
+            versions.execution_receipt_version
+        } else {
+            ExecutionReceiptVersion::V0
+        };
+
         let parent_receipt = if parent_number.is_zero() {
-            let genesis_hash = self.client.info().genesis_hash;
-            let genesis_header = self.client.header(genesis_hash)?.ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Domain block header for #{genesis_hash:?} not found",
-                ))
-            })?;
-            ExecutionReceipt::genesis(
-                *genesis_header.state_root(),
-                *genesis_header.extrinsics_root(),
-                genesis_hash,
-            )
+            if domains_api_version >= 5 {
+                runtime_api
+                    .genesis_execution_receipt(consensus_block_hash, self.domain_id)?
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Backend(
+                            "Genesis Execution receipt not found".to_string(),
+                        )
+                    })?
+            } else {
+                let genesis_hash = self.client.info().genesis_hash;
+                let genesis_header = self.client.header(genesis_hash)?.ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!(
+                        "Domain block header for #{genesis_hash:?} not found",
+                    ))
+                })?;
+                // for the domains api version < 5, execution receipt is always V0
+                ExecutionReceipt::genesis(
+                    *genesis_header.state_root(),
+                    *genesis_header.extrinsics_root(),
+                    genesis_hash,
+                    ExecutionReceiptVersion::V0,
+                )
+            }
         } else {
             crate::load_execution_receipt_by_domain_hash::<Block, CBlock, _>(
                 &*self.client,
@@ -372,20 +402,22 @@ where
         let block_fees = runtime_api.block_fees(header_hash)?;
         let transfers = runtime_api.transfers(header_hash)?;
 
-        let execution_receipt = ExecutionReceipt {
-            domain_block_number: header_number,
-            domain_block_hash: header_hash,
-            domain_block_extrinsic_root: extrinsics_root,
-            parent_domain_block_receipt_hash: parent_receipt
-                .hash::<HeaderHashingFor<Block::Header>>(),
-            consensus_block_number,
-            consensus_block_hash,
-            inboxed_bundles: bundles,
-            final_state_root: state_root,
-            execution_trace: intermediate_roots,
-            execution_trace_root: sp_core::H256(trace_root),
-            block_fees,
-            transfers,
+        let execution_receipt = match execution_receipt_version {
+            ExecutionReceiptVersion::V0 => ExecutionReceipt::V0(ExecutionReceiptV0 {
+                domain_block_number: header_number,
+                domain_block_hash: header_hash,
+                domain_block_extrinsic_root: extrinsics_root,
+                parent_domain_block_receipt_hash: parent_receipt
+                    .hash::<HeaderHashingFor<Block::Header>>(),
+                consensus_block_number,
+                consensus_block_hash,
+                inboxed_bundles: bundles,
+                final_state_root: state_root,
+                execution_trace: intermediate_roots,
+                execution_trace_root: sp_core::H256(trace_root),
+                block_fees,
+                transfers,
+            }),
         };
 
         Ok(DomainBlockResult {
@@ -586,7 +618,7 @@ where
     Block: BlockT,
     CBlock: BlockT,
 {
-    if local_receipt.inboxed_bundles == external_receipt.inboxed_bundles {
+    if local_receipt.inboxed_bundles() == external_receipt.inboxed_bundles() {
         return Ok(None);
     }
 
@@ -605,9 +637,9 @@ where
 
     // Get the first mismatch of `ER::inboxed_bundles`
     let (bundle_index, (local_bundle, external_bundle)) = local_receipt
-        .inboxed_bundles
+        .inboxed_bundles()
         .iter()
-        .zip(external_receipt.inboxed_bundles.iter())
+        .zip(external_receipt.inboxed_bundles().iter())
         .enumerate()
         .find(|(_, (local_bundle, external_bundle))| local_bundle != external_bundle)
         .expect(
@@ -746,7 +778,19 @@ where
                 self.consensus_offchain_tx_pool_factory
                     .offchain_transaction_pool(consensus_best_hash),
             );
-            consensus_runtime_api.submit_fraud_proof_unsigned(consensus_best_hash, fraud_proof)?;
+            match fraud_proof {
+                FraudProofFor::V0(fraud_proof) => {
+                    #[allow(deprecated)]
+                    consensus_runtime_api.submit_fraud_proof_unsigned_before_version_2(
+                        consensus_best_hash,
+                        fraud_proof,
+                    )?;
+                }
+                FraudProofFor::V1(fraud_proof) => {
+                    consensus_runtime_api
+                        .submit_fraud_proof_unsigned(consensus_best_hash, fraud_proof)?;
+                }
+            }
         }
 
         Ok(())
@@ -816,8 +860,8 @@ where
                         )
                     })?;
                 debug_assert_eq!(
-                    local_receipt.consensus_block_hash,
-                    bad_receipt.consensus_block_hash,
+                    local_receipt.consensus_block_hash(),
+                    bad_receipt.consensus_block_hash(),
                 );
                 Ok(Some(MismatchedReceipts {
                     local_receipt,
@@ -831,8 +875,7 @@ where
     pub fn generate_fraud_proof(
         &self,
         mismatched_receipts: MismatchedReceipts<Block, CBlock>,
-    ) -> sp_blockchain::Result<FraudProof<NumberFor<CBlock>, CBlock::Hash, Block::Header, H256>>
-    {
+    ) -> sp_blockchain::Result<FraudProofFor<CBlock, Block::Header>> {
         let MismatchedReceipts {
             local_receipt,
             bad_receipt,
@@ -878,7 +921,9 @@ where
             };
         }
 
-        if bad_receipt.domain_block_extrinsic_root != local_receipt.domain_block_extrinsic_root {
+        if bad_receipt.domain_block_extrinsics_root()
+            != local_receipt.domain_block_extrinsics_root()
+        {
             return self
                 .fraud_proof_generator
                 .generate_invalid_domain_extrinsics_root_proof(
@@ -896,9 +941,9 @@ where
         if let Some(execution_phase) = self
             .fraud_proof_generator
             .find_mismatched_execution_phase(
-                local_receipt.domain_block_hash,
-                &local_receipt.execution_trace,
-                &bad_receipt.execution_trace,
+                *local_receipt.domain_block_hash(),
+                local_receipt.execution_traces(),
+                bad_receipt.execution_traces(),
             )
             .map_err(|err| {
                 sp_blockchain::Error::Application(Box::from(format!(
@@ -912,7 +957,7 @@ where
                     self.domain_id,
                     execution_phase,
                     &local_receipt,
-                    bad_receipt.execution_trace.len(),
+                    bad_receipt.execution_traces().len(),
                     bad_receipt_hash,
                 )
                 .map_err(|err| {
@@ -922,7 +967,7 @@ where
                 });
         }
 
-        if bad_receipt.block_fees != local_receipt.block_fees {
+        if bad_receipt.block_fees() != local_receipt.block_fees() {
             return self
                 .fraud_proof_generator
                 .generate_invalid_block_fees_proof(self.domain_id, &local_receipt, bad_receipt_hash)
@@ -933,7 +978,7 @@ where
                 });
         }
 
-        if bad_receipt.transfers != local_receipt.transfers {
+        if bad_receipt.transfers() != local_receipt.transfers() {
             return self
                 .fraud_proof_generator
                 .generate_invalid_transfers_proof(self.domain_id, &local_receipt, bad_receipt_hash)
@@ -944,7 +989,7 @@ where
                 });
         }
 
-        if bad_receipt.domain_block_hash != local_receipt.domain_block_hash {
+        if bad_receipt.domain_block_hash() != local_receipt.domain_block_hash() {
             return self
                 .fraud_proof_generator
                 .generate_invalid_domain_block_hash_proof(
@@ -970,7 +1015,7 @@ where
 mod tests {
     use super::*;
     use domain_test_service::evm_domain_test_runtime::Block;
-    use sp_domains::{InboxedBundle, InvalidBundleType};
+    use sp_domains::bundle::{InboxedBundle, InvalidBundleType};
     use subspace_runtime_primitives::BlockHashFor;
     use subspace_test_runtime::Block as CBlock;
 
@@ -981,7 +1026,7 @@ mod tests {
         Block: BlockT,
         CBlock: BlockT,
     {
-        ExecutionReceipt {
+        ExecutionReceipt::V0(ExecutionReceiptV0 {
             domain_block_number: Zero::zero(),
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),
@@ -994,7 +1039,7 @@ mod tests {
             execution_trace_root: Default::default(),
             block_fees: Default::default(),
             transfers: Default::default(),
-        }
+        })
     }
 
     #[test]

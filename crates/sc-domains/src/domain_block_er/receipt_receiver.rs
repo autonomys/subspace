@@ -4,7 +4,7 @@
 #![warn(missing_docs)]
 
 use crate::domain_block_er::execution_receipt_protocol::{
-    DomainBlockERRequest, DomainBlockERResponse, generate_protocol_name,
+    DomainBlockERRequest, DomainBlockERResponse, DomainBlockERResponseV0, generate_protocol_name,
 };
 use domain_runtime_primitives::Balance;
 use futures::channel::oneshot;
@@ -13,7 +13,8 @@ use sc_network::{IfDisconnected, NetworkRequest, PeerId, RequestFailure};
 use sc_network_sync::SyncingService;
 use sp_blockchain::HeaderBackend;
 use sp_core::{Hasher, KeccakHasher};
-use sp_domains::{DomainId, ExecutionReceiptFor};
+use sp_domains::DomainId;
+use sp_domains::execution_receipt::ExecutionReceiptFor;
 use sp_runtime::traits::{Block as BlockT, Header};
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
@@ -264,8 +265,11 @@ async fn send_request<NR: NetworkRequest, Block: BlockT, DomainHeader: Header>(
                 return Err(DomainBlockERResponseError::InvalidProtocol);
             }
 
-            let response = DomainBlockERResponse::decode(&mut data.as_slice())
-                .map_err(DomainBlockERResponseError::DecodeFailed)?;
+            let response = match DomainBlockERResponse::decode(&mut data.as_slice()) {
+                Ok(response) => Ok(response),
+                Err(_) => DomainBlockERResponseV0::decode(&mut data.as_slice()).map(Into::into),
+            }
+            .map_err(DomainBlockERResponseError::DecodeFailed)?;
 
             Ok(response)
         }

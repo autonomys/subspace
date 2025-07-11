@@ -3,14 +3,16 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_core::storage::StorageKey;
+use sp_domains::bundle::OpaqueBundle;
+use sp_domains::bundle::bundle_v0::OpaqueBundleV0;
 use sp_domains::proof_provider_and_verifier::{
     StorageProofVerifier, VerificationError as StorageProofVerificationError,
 };
 use sp_domains::{
     DomainAllowlistUpdates, DomainId, DomainSudoCall, EvmDomainContractCreationAllowedByCall,
-    OpaqueBundle, RuntimeId, RuntimeObject,
+    RuntimeId, RuntimeObject,
 };
-use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor, Zero};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::marker::PhantomData;
@@ -242,6 +244,73 @@ impl<Block: BlockT> BasicStorageProof<Block> for DomainRuntimeCodeProof {
     }
 }
 
+/// V0 Bundle with proof data for Fraud proof.
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct OpaqueBundleV0WithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
+    pub bundle: OpaqueBundleV0<Number, Hash, DomainHeader, Balance>,
+    pub bundle_index: u32,
+    pub bundle_storage_proof: SuccessfulBundlesProof,
+}
+
+impl<Number, Hash, DomainHeader, Balance>
+    OpaqueBundleV0WithProof<Number, Hash, DomainHeader, Balance>
+where
+    Number: Encode,
+    Hash: Encode,
+    DomainHeader: HeaderT,
+    Balance: Encode,
+{
+    #[cfg(feature = "std")]
+    #[allow(clippy::let_and_return)]
+    pub fn generate<
+        Block: BlockT,
+        PP: ProofProvider<Block>,
+        SKP: FraudProofStorageKeyProviderInstance<NumberFor<Block>>,
+    >(
+        storage_key_provider: &SKP,
+        proof_provider: &PP,
+        domain_id: DomainId,
+        block_hash: Block::Hash,
+        bundle: OpaqueBundleV0<Number, Hash, DomainHeader, Balance>,
+        bundle_index: u32,
+    ) -> Result<Self, GenerationError> {
+        let bundle_storage_proof = SuccessfulBundlesProof::generate(
+            proof_provider,
+            block_hash,
+            domain_id,
+            storage_key_provider,
+        )?;
+
+        Ok(OpaqueBundleV0WithProof {
+            bundle,
+            bundle_index,
+            bundle_storage_proof,
+        })
+    }
+
+    /// Verify if the `bundle` does commit to the given `state_root`
+    pub fn verify<Block: BlockT, SKP: FraudProofStorageKeyProvider<NumberFor<Block>>>(
+        &self,
+        domain_id: DomainId,
+        state_root: &Block::Hash,
+    ) -> Result<(), VerificationError> {
+        let successful_bundles_at: Vec<H256> =
+            <SuccessfulBundlesProof as BasicStorageProof<Block>>::verify::<SKP>(
+                self.bundle_storage_proof.clone(),
+                domain_id,
+                state_root,
+            )?;
+
+        successful_bundles_at
+            .get(self.bundle_index as usize)
+            .filter(|b| **b == self.bundle.hash())
+            .ok_or(VerificationError::InvalidBundleStorageProof)?;
+
+        Ok(())
+    }
+}
+
+/// Bundle with proof data for fraud proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct OpaqueBundleWithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
     pub bundle: OpaqueBundle<Number, Hash, DomainHeader, Balance>,
@@ -251,10 +320,10 @@ pub struct OpaqueBundleWithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
 
 impl<Number, Hash, DomainHeader, Balance> OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>
 where
-    Number: Encode,
-    Hash: Encode,
+    Number: Encode + Zero,
+    Hash: Encode + Default,
     DomainHeader: HeaderT,
-    Balance: Encode,
+    Balance: Encode + Zero + Default,
 {
     #[cfg(feature = "std")]
     #[allow(clippy::let_and_return)]
@@ -303,6 +372,27 @@ where
             .ok_or(VerificationError::InvalidBundleStorageProof)?;
 
         Ok(())
+    }
+
+    /// Converts Opaque Bundle into V0 proof
+    /// Returns none if Bundle version is non-zero.
+    pub fn into_opaque_bundle_v0_proof(
+        self,
+    ) -> Option<OpaqueBundleV0WithProof<Number, Hash, DomainHeader, Balance>> {
+        let OpaqueBundleWithProof {
+            bundle,
+            bundle_index,
+            bundle_storage_proof,
+        } = self;
+
+        let OpaqueBundle::V0(bundle) = bundle else {
+            return None;
+        };
+        Some(OpaqueBundleV0WithProof {
+            bundle,
+            bundle_index,
+            bundle_storage_proof,
+        })
     }
 }
 

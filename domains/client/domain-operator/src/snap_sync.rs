@@ -15,7 +15,7 @@ use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_subspace_sync_common::snap_sync_engine::SnapSyncingEngine;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
-use sp_domains::ExecutionReceiptFor;
+use sp_domains::execution_receipt::ExecutionReceiptFor;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Header, NumberFor};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -254,13 +254,13 @@ where
     let last_confirmed_block_receipt = sync_params.consensus_chain_sync_params.last_domain_block_er;
 
     // TODO: Handle the special case when we just added the domain
-    if last_confirmed_block_receipt.domain_block_number == 0u32.into() {
+    if *last_confirmed_block_receipt.domain_block_number() == 0u32.into() {
         return Err(sp_blockchain::Error::Application(
             "Can't snap sync from genesis.".into(),
         ));
     }
 
-    let consensus_block_hash = last_confirmed_block_receipt.consensus_block_hash;
+    let consensus_block_hash = *last_confirmed_block_receipt.consensus_block_hash();
 
     let mut block_importing_notification_stream = sync_params
         .consensus_chain_sync_params
@@ -268,7 +268,8 @@ where
 
     let mut consensus_target_block_acknowledgement_sender = None;
     while let Some(mut block_notification) = block_importing_notification_stream.next().await {
-        if block_notification.block_number <= last_confirmed_block_receipt.consensus_block_number {
+        if block_notification.block_number <= *last_confirmed_block_receipt.consensus_block_number()
+        {
             if block_notification
                 .acknowledgement_sender
                 .send(())
@@ -291,9 +292,9 @@ where
     }
 
     let domain_block_number =
-        convert_block_number::<Block>(last_confirmed_block_receipt.domain_block_number);
+        convert_block_number::<Block>(*last_confirmed_block_receipt.domain_block_number());
 
-    let domain_block_hash = last_confirmed_block_receipt.domain_block_hash;
+    let domain_block_hash = *last_confirmed_block_receipt.domain_block_hash();
     let domain_block = get_last_confirmed_block(
         sync_params.domain_block_downloader,
         &sync_params.sync_service,

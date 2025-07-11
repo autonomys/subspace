@@ -24,6 +24,7 @@ extern crate alloc;
 use crate::block_tree::{Error as BlockTreeError, verify_execution_receipt};
 use crate::bundle_storage_fund::{charge_bundle_storage_fee, storage_fund_account};
 use crate::domain_registry::{DomainConfig, Error as DomainRegistryError};
+use crate::migrations::execution_receipt::get_block_tree_node;
 use crate::runtime_registry::into_complete_raw_genesis;
 use crate::staking::OperatorStatus;
 #[cfg(feature = "runtime-benchmarks")]
@@ -37,6 +38,7 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use domain_runtime_primitives::EthereumAccountId;
+use frame_support::dispatch::DispatchResult;
 use frame_support::ensure;
 use frame_support::pallet_prelude::{RuntimeDebug, StorageVersion};
 use frame_support::traits::fungible::{Inspect, InspectHold};
@@ -51,15 +53,19 @@ use scale_info::TypeInfo;
 use sp_consensus_subspace::WrappedPotOutput;
 use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_core::H256;
+use sp_domains::bundle::{Bundle, BundleVersion, OpaqueBundle};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
+use sp_domains::execution_receipt::{
+    ExecutionReceipt, ExecutionReceiptRef, ExecutionReceiptVersion, SealedSingletonReceipt,
+};
 use sp_domains::{
     ChainId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, DomainBundleLimit, DomainId,
-    DomainInstanceData, EMPTY_EXTRINSIC_ROOT, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, OperatorSignature, ProofOfElection, RuntimeId, SealedSingletonReceipt,
+    DomainInstanceData, EMPTY_EXTRINSIC_ROOT, OperatorId, OperatorPublicKey, OperatorSignature,
+    ProofOfElection, RuntimeId,
 };
+use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::{FraudProofV1, FraudProofVariantV1};
 use sp_domains_fraud_proof::fraud_proof::{
-    DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
-    InvalidDomainBlockHashProof, InvalidTransfersProof,
+    DomainRuntimeCodeAt, InvalidBlockFeesProof, InvalidDomainBlockHashProof, InvalidTransfersProof,
 };
 use sp_domains_fraud_proof::storage_proof::{self, BasicStorageProof, DomainRuntimeCodeProof};
 use sp_domains_fraud_proof::verification::{
@@ -109,6 +115,15 @@ pub type ExecutionReceiptOf<T> = ExecutionReceipt<
     BalanceOf<T>,
 >;
 
+pub type ExecutionReceiptRefOf<'a, T> = ExecutionReceiptRef<
+    'a,
+    BlockNumberFor<T>,
+    <T as frame_system::Config>::Hash,
+    DomainBlockNumberFor<T>,
+    <T as Config>::DomainHash,
+    BalanceOf<T>,
+>;
+
 pub type OpaqueBundleOf<T> = OpaqueBundle<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
@@ -123,7 +138,7 @@ pub type SingletonReceiptOf<T> = SealedSingletonReceipt<
     BalanceOf<T>,
 >;
 
-pub type FraudProofFor<T> = FraudProof<
+pub type FraudProofFor<T> = FraudProofV1<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainHeader,
@@ -214,6 +229,7 @@ mod pallet {
         DomainConfigParams, DomainObject, Error as DomainRegistryError, do_instantiate_domain,
         do_update_domain_allow_list,
     };
+    use crate::migrations::execution_receipt::get_block_tree_node;
     use crate::runtime_registry::{
         DomainRuntimeUpgradeEntry, Error as RuntimeRegistryError, ScheduledRuntimeUpgrade,
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
@@ -254,12 +270,14 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use parity_scale_codec::FullCodec;
     use sp_core::H256;
+    use sp_domains::bundle::BundleDigest;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        BundleDigest, DomainBundleSubmitted, DomainId, DomainOwner, DomainSudoCall,
-        DomainsTransfersTracker, EpochIndex, EvmDomainContractCreationAllowedByCall, GenesisDomain,
-        OnChainRewards, OnDomainInstantiated, OperatorAllowList, OperatorId, OperatorRewardSource,
-        RuntimeId, RuntimeObject, RuntimeType,
+        BundleAndExecutionReceiptVersion, DomainBundleSubmitted, DomainId, DomainOwner,
+        DomainSudoCall, DomainsTransfersTracker, EpochIndex,
+        EvmDomainContractCreationAllowedByCall, GenesisDomain, OnChainRewards,
+        OnDomainInstantiated, OperatorAllowList, OperatorId, OperatorRewardSource, RuntimeId,
+        RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof_runtime_interface::domain_runtime_call;
     use sp_domains_fraud_proof::storage_proof::{self, FraudProofStorageKeyProvider};
@@ -458,6 +476,10 @@ mod pallet {
         /// before requesting new withdrawal.
         #[pallet::constant]
         type WithdrawalLimit: Get<u32>;
+
+        /// Current bundle version accepted by the runtime.
+        #[pallet::constant]
+        type CurrentBundleAndExecutionReceiptVersion: Get<BundleAndExecutionReceiptVersion>;
     }
 
     #[pallet::pallet]
@@ -685,13 +707,11 @@ mod pallet {
 
     /// Storage to hold all the domain's latest confirmed block.
     #[pallet::storage]
-    #[pallet::getter(fn latest_confirmed_domain_execution_receipt)]
     pub type LatestConfirmedDomainExecutionReceipt<T: Config> =
         StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
 
     /// Storage to hold all the domain's genesis execution receipt.
     #[pallet::storage]
-    #[pallet::getter(fn domain_genesis_block_execution_receipt)]
     pub type DomainGenesisBlockExecutionReceipt<T: Config> =
         StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
 
@@ -770,6 +790,17 @@ mod pallet {
     pub type InvalidBundleAuthors<T: Config> =
         StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, ValueQuery>;
 
+    /// Storage that hold a previous versions of Bundle and Execution Receipt.
+    /// Unfortunately, it adds a new item for every runtime upgrade if the versions change between
+    /// runtime upgrades. If the versions does not change, then same version is set with higher block
+    /// number.
+    /// Pruning this storage is not quiet straight forward since each domain
+    /// may submit an ER with a gap as well and also introduces the loop to find the
+    /// correct block number.
+    #[pallet::storage]
+    pub type PreviousBundleAndExecutionReceiptVersions<T> =
+        StorageValue<_, BTreeMap<BlockNumberFor<T>, BundleAndExecutionReceiptVersion>, ValueQuery>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.
@@ -815,6 +846,12 @@ mod pallet {
         ExpectingReceiptGap,
         /// Failed to get missed domain runtime upgrade count
         FailedToGetMissedUpgradeCount,
+        /// Bundle version mismatch
+        BundleVersionMismatch,
+        /// Execution receipt version mismatch
+        ExecutionVersionMismatch,
+        /// Execution receipt version missing
+        ExecutionVersionMissing,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -1122,21 +1159,21 @@ mod pallet {
 
             let domain_id = opaque_bundle.domain_id();
             let bundle_hash = opaque_bundle.hash();
-            let bundle_header_hash = opaque_bundle.sealed_header.pre_hash();
+            let bundle_header_hash = opaque_bundle.sealed_header().pre_hash();
             let extrinsics_root = opaque_bundle.extrinsics_root();
             let operator_id = opaque_bundle.operator_id();
             let bundle_size = opaque_bundle.size();
             let slot_number = opaque_bundle.slot_number();
             let receipt = opaque_bundle.into_receipt();
             #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
-            let receipt_block_number = receipt.domain_block_number;
+            let receipt_block_number = *receipt.domain_block_number();
 
             #[cfg(not(feature = "runtime-benchmarks"))]
             let mut actual_weight = T::WeightInfo::submit_bundle();
             #[cfg(feature = "runtime-benchmarks")]
             let actual_weight = T::WeightInfo::submit_bundle();
 
-            match execution_receipt_type::<T>(domain_id, &receipt) {
+            match execution_receipt_type::<T>(domain_id, &receipt.as_execution_receipt_ref()) {
                 ReceiptType::Rejected(rejected_receipt_type) => {
                     return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
                 }
@@ -1322,10 +1359,10 @@ mod pallet {
             let domain_id = fraud_proof.domain_id();
             let bad_receipt_hash = fraud_proof.targeted_bad_receipt_hash();
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
-            let bad_receipt_number = BlockTreeNodes::<T>::get(bad_receipt_hash)
+            let bad_receipt_number = *get_block_tree_node::<T>(bad_receipt_hash)
                 .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?
                 .execution_receipt
-                .domain_block_number;
+                .domain_block_number();
             // The `head_receipt_number` must greater than or equal to any existing receipt, including
             // the bad receipt, otherwise the fraud proof should be rejected due to `BadReceiptNotFound`,
             // double check here to make it more robust.
@@ -1697,10 +1734,10 @@ mod pallet {
             );
 
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
-            let bad_receipt_number = BlockTreeNodes::<T>::get(bad_receipt_hash)
+            let bad_receipt_number = *get_block_tree_node::<T>(bad_receipt_hash)
                 .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?
                 .execution_receipt
-                .domain_block_number;
+                .domain_block_number();
             // The `head_receipt_number` must greater than or equal to any existing receipt, including
             // the bad receipt.
             ensure!(
@@ -1780,7 +1817,7 @@ mod pallet {
             #[cfg(feature = "runtime-benchmarks")]
             let actual_weight = T::WeightInfo::submit_receipt();
 
-            match execution_receipt_type::<T>(domain_id, &receipt) {
+            match execution_receipt_type::<T>(domain_id, &receipt.as_execution_receipt_ref()) {
                 ReceiptType::Rejected(rejected_receipt_type) => {
                     return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
                 }
@@ -1796,7 +1833,7 @@ mod pallet {
                         && let Some(BlockTreeNode {
                             execution_receipt,
                             operator_ids,
-                        }) = prune_receipt::<T>(domain_id, receipt.domain_block_number)
+                        }) = prune_receipt::<T>(domain_id, *receipt.domain_block_number())
                             .map_err(Error::<T>::from)?
                     {
                         actual_weight = actual_weight.saturating_add(
@@ -2176,8 +2213,8 @@ impl<T: Config> Pallet<T> {
         ))
     }
 
-    pub fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
-        DomainGenesisBlockExecutionReceipt::<T>::get(domain_id).map(|er| er.final_state_root.into())
+    pub fn genesis_execution_receipt(domain_id: DomainId) -> Option<ExecutionReceiptOf<T>> {
+        crate::migrations::execution_receipt::domain_genesis_block_execution_receipt::<T>(domain_id)
     }
 
     /// Returns the tx range for the domain.
@@ -2211,7 +2248,7 @@ impl<T: Config> Pallet<T> {
     fn check_extrinsics_root(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
         let expected_extrinsics_root = <T::DomainHeader as Header>::Hashing::ordered_trie_root(
             opaque_bundle
-                .extrinsics
+                .extrinsics()
                 .iter()
                 .map(|xt| xt.encode())
                 .collect(),
@@ -2369,13 +2406,41 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    fn check_execution_receipt_version(
+        er_derived_consensus_number: BlockNumberFor<T>,
+        receipt_version: ExecutionReceiptVersion,
+    ) -> Result<(), BundleError> {
+        let expected_execution_receipt_version =
+            Self::execution_receipt_version_for_consensus_number(er_derived_consensus_number)
+                .ok_or(BundleError::ExecutionVersionMissing)?;
+        match (receipt_version, expected_execution_receipt_version) {
+            (ExecutionReceiptVersion::V0, ExecutionReceiptVersion::V0) => Ok(()),
+        }
+    }
+
     fn validate_submit_bundle(
         opaque_bundle: &OpaqueBundleOf<T>,
         pre_dispatch: bool,
     ) -> Result<(), BundleError> {
+        let current_bundle_version =
+            T::CurrentBundleAndExecutionReceiptVersion::get().bundle_version;
+
+        // bundle version check
+        match (current_bundle_version, opaque_bundle) {
+            (BundleVersion::V0, Bundle::V0(_)) => Ok(()),
+            (BundleVersion::V1, Bundle::V1(_)) => Ok(()),
+            _ => Err(BundleError::BundleVersionMismatch),
+        }?;
+
         let domain_id = opaque_bundle.domain_id();
         let operator_id = opaque_bundle.operator_id();
-        let sealed_header = &opaque_bundle.sealed_header;
+        let sealed_header = opaque_bundle.sealed_header();
+
+        let receipt = sealed_header.receipt();
+        Self::check_execution_receipt_version(
+            *receipt.consensus_block_number(),
+            receipt.version(),
+        )?;
 
         // Ensure the receipt gap is <= 1 so that the bundle will only be acceptted if its receipt is
         // derived from the latest domain block, and the stale bundle (that verified against an old
@@ -2393,14 +2458,13 @@ impl<T: Config> Pallet<T> {
 
         Self::validate_eligibility(
             sealed_header.pre_hash().as_ref(),
-            &sealed_header.signature,
-            &sealed_header.header.proof_of_election,
+            sealed_header.signature(),
+            sealed_header.proof_of_election(),
             domain_config,
             pre_dispatch,
         )?;
 
-        verify_execution_receipt::<T>(domain_id, &sealed_header.header.receipt)
-            .map_err(BundleError::Receipt)?;
+        verify_execution_receipt::<T>(domain_id, &receipt).map_err(BundleError::Receipt)?;
 
         charge_bundle_storage_fee::<T>(operator_id, opaque_bundle.size())
             .map_err(|_| BundleError::UnableToPayBundleStorageFee)?;
@@ -2421,6 +2485,14 @@ impl<T: Config> Pallet<T> {
             BundleError::ExpectingReceiptGap,
         );
 
+        Self::check_execution_receipt_version(
+            *sealed_singleton_receipt
+                .singleton_receipt
+                .receipt
+                .consensus_block_number(),
+            sealed_singleton_receipt.singleton_receipt.receipt.version(),
+        )?;
+
         let domain_config = DomainRegistry::<T>::get(domain_id)
             .ok_or(BundleError::InvalidDomainId)?
             .domain_config;
@@ -2434,7 +2506,10 @@ impl<T: Config> Pallet<T> {
 
         verify_execution_receipt::<T>(
             domain_id,
-            &sealed_singleton_receipt.singleton_receipt.receipt,
+            &sealed_singleton_receipt
+                .singleton_receipt
+                .receipt
+                .as_execution_receipt_ref(),
         )
         .map_err(BundleError::Receipt)?;
 
@@ -2449,10 +2524,10 @@ impl<T: Config> Pallet<T> {
     ) -> Result<(DomainId, TransactionPriority), FraudProofError> {
         let domain_id = fraud_proof.domain_id();
         let bad_receipt_hash = fraud_proof.targeted_bad_receipt_hash();
-        let bad_receipt = BlockTreeNodes::<T>::get(bad_receipt_hash)
+        let bad_receipt = get_block_tree_node::<T>(bad_receipt_hash)
             .ok_or(FraudProofError::BadReceiptNotFound)?
             .execution_receipt;
-        let bad_receipt_domain_block_number = bad_receipt.domain_block_number;
+        let bad_receipt_domain_block_number = *bad_receipt.domain_block_number();
 
         ensure!(
             !bad_receipt_domain_block_number.is_zero(),
@@ -2477,13 +2552,13 @@ impl<T: Config> Pallet<T> {
         let maybe_state_root = match &fraud_proof.maybe_mmr_proof {
             Some(mmr_proof) => Some(Self::verify_mmr_proof_and_extract_state_root(
                 mmr_proof.clone(),
-                bad_receipt.consensus_block_number,
+                *bad_receipt.consensus_block_number(),
             )?),
             None => None,
         };
 
         match &fraud_proof.proof {
-            FraudProofVariant::InvalidBlockFees(InvalidBlockFeesProof { storage_proof }) => {
+            FraudProofVariantV1::InvalidBlockFees(InvalidBlockFeesProof { storage_proof }) => {
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
                     &bad_receipt,
@@ -2502,7 +2577,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidBlockFeesFraudProof
                 })?;
             }
-            FraudProofVariant::InvalidTransfers(InvalidTransfersProof { storage_proof }) => {
+            FraudProofVariantV1::InvalidTransfers(InvalidTransfersProof { storage_proof }) => {
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
                     &bad_receipt,
@@ -2521,11 +2596,11 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidTransfersFraudProof
                 })?;
             }
-            FraudProofVariant::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
+            FraudProofVariantV1::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
                 digest_storage_proof,
             }) => {
                 let parent_receipt =
-                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                    get_block_tree_node::<T>(*bad_receipt.parent_domain_block_receipt_hash())
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
                 verify_invalid_domain_block_hash_fraud_proof::<
@@ -2535,14 +2610,14 @@ impl<T: Config> Pallet<T> {
                 >(
                     bad_receipt,
                     digest_storage_proof.clone(),
-                    parent_receipt.domain_block_hash,
+                    *parent_receipt.domain_block_hash(),
                 )
                 .map_err(|err| {
                     log::error!("Invalid Domain block hash proof verification failed: {err:?}");
                     FraudProofError::InvalidDomainBlockHashFraudProof
                 })?;
             }
-            FraudProofVariant::InvalidExtrinsicsRoot(proof) => {
+            FraudProofVariantV1::InvalidExtrinsicsRoot(proof) => {
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
                     &bad_receipt,
@@ -2571,14 +2646,14 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidExtrinsicRootFraudProof
                 })?;
             }
-            FraudProofVariant::InvalidStateTransition(proof) => {
+            FraudProofVariantV1::InvalidStateTransition(proof) => {
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
                     &bad_receipt,
                     fraud_proof.maybe_domain_runtime_code_proof.clone(),
                 )?;
                 let bad_receipt_parent =
-                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                    get_block_tree_node::<T>(*bad_receipt.parent_domain_block_receipt_hash())
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
 
@@ -2592,7 +2667,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidStateTransitionFraudProof
                 })?;
             }
-            FraudProofVariant::InvalidBundles(proof) => {
+            FraudProofVariantV1::InvalidBundles(proof) => {
                 let state_root = maybe_state_root.ok_or(FraudProofError::MissingMmrProof)?;
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
@@ -2601,7 +2676,7 @@ impl<T: Config> Pallet<T> {
                 )?;
 
                 let bad_receipt_parent =
-                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                    get_block_tree_node::<T>(*bad_receipt.parent_domain_block_receipt_hash())
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
 
@@ -2625,7 +2700,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidBundleFraudProof
                 })?;
             }
-            FraudProofVariant::ValidBundle(proof) => {
+            FraudProofVariantV1::ValidBundle(proof) => {
                 let state_root = maybe_state_root.ok_or(FraudProofError::MissingMmrProof)?;
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
@@ -2651,7 +2726,7 @@ impl<T: Config> Pallet<T> {
                 })?
             }
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-            FraudProofVariant::Dummy => {
+            FraudProofVariantV1::Dummy => {
                 // Almost every fraud proof (except `InvalidDomainBlockHash` fraud proof) need to call
                 // `get_domain_runtime_code_for_receipt` thus we include this part in the benchmark of
                 // the dummy fraud proof.
@@ -2738,16 +2813,20 @@ impl<T: Config> Pallet<T> {
     /// Returns the latest confirmed domain block number for a given domain
     /// Zero block is always a default confirmed block.
     pub fn latest_confirmed_domain_block_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
-        LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
-            .map(|er| er.domain_block_number)
-            .unwrap_or_default()
+        crate::migrations::execution_receipt::latest_confirmed_domain_execution_receipt::<T>(
+            domain_id,
+        )
+        .map(|er| *er.domain_block_number())
+        .unwrap_or_default()
     }
 
     pub fn latest_confirmed_domain_block(
         domain_id: DomainId,
     ) -> Option<(DomainBlockNumberFor<T>, T::DomainHash)> {
-        LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
-            .map(|er| (er.domain_block_number, er.domain_block_hash))
+        crate::migrations::execution_receipt::latest_confirmed_domain_execution_receipt::<T>(
+            domain_id,
+        )
+        .map(|er| (*er.domain_block_number(), *er.domain_block_hash()))
     }
 
     /// Returns the domain bundle limit of the given domain
@@ -2858,7 +2937,51 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptOf<T>> {
-        BlockTreeNodes::<T>::get(receipt_hash).map(|db| db.execution_receipt)
+        get_block_tree_node::<T>(receipt_hash).map(|db| db.execution_receipt)
+    }
+
+    /// Returns the correct execution receipt version based on
+    /// the consensus block number at which execution receipt was derived.
+    pub(crate) fn execution_receipt_version_for_consensus_number(
+        er_derived_number: BlockNumberFor<T>,
+    ) -> Option<ExecutionReceiptVersion> {
+        let versions = PreviousBundleAndExecutionReceiptVersions::<T>::get();
+
+        // short circuit if the er version can be latest
+        match versions.range(..).next_back() {
+            // if there are no versions, means latest version.
+            None => {
+                return Some(
+                    T::CurrentBundleAndExecutionReceiptVersion::get().execution_receipt_version,
+                );
+            }
+            Some((number, version)) => {
+                // if er derived number of greater than last stored version,
+                // then er version should be of latest version.
+                if er_derived_number > *number {
+                    return Some(
+                        T::CurrentBundleAndExecutionReceiptVersion::get().execution_receipt_version,
+                    );
+                }
+
+                // if the er derived number is equal to last stored version,
+                // then er version should be previous er version
+                if er_derived_number == *number {
+                    return Some(version.execution_receipt_version);
+                }
+            }
+        }
+
+        // if we are here, it means er version can be either last version or version before last
+        // loop through to find the correct version.
+        for (upgraded_number, version) in versions.into_iter() {
+            if er_derived_number <= upgraded_number {
+                return Some(version.execution_receipt_version);
+            }
+        }
+
+        // should not reach here since above loop always find the oldest version
+        None
     }
 
     pub fn receipt_hash(
@@ -3009,10 +3132,11 @@ impl<T: Config> Pallet<T> {
         // NOTE: domain runtime code is taking affect in the next block, so to get the domain runtime code
         // that used to derive `receipt` we need to use runtime code at `parent_receipt.consensus_block_number`
         let at = {
-            let parent_receipt = BlockTreeNodes::<T>::get(receipt.parent_domain_block_receipt_hash)
-                .ok_or(FraudProofError::ParentReceiptNotFound)?
-                .execution_receipt;
-            parent_receipt.consensus_block_number
+            let parent_receipt =
+                get_block_tree_node::<T>(*receipt.parent_domain_block_receipt_hash())
+                    .ok_or(FraudProofError::ParentReceiptNotFound)?
+                    .execution_receipt;
+            *parent_receipt.consensus_block_number()
         };
 
         let is_domain_runtime_upgraded = current_runtime_obj.updated_at >= at;
@@ -3134,6 +3258,45 @@ impl<T: Config> Pallet<T> {
     ) -> Option<sp_domains::PermissionedActionAllowedBy<EthereumAccountId>> {
         EvmDomainContractCreationAllowedByCalls::<T>::get(domain_id).maybe_call
     }
+
+    pub fn latest_confirmed_domain_execution_receipt(
+        domain_id: DomainId,
+    ) -> Option<ExecutionReceiptOf<T>> {
+        crate::migrations::execution_receipt::latest_confirmed_domain_execution_receipt::<T>(
+            domain_id,
+        )
+    }
+}
+
+impl<T: Config> subspace_runtime_primitives::OnSetCode<BlockNumberFor<T>> for Pallet<T> {
+    /// Store the Bundle and Er versions before runtime is upgraded along with the
+    /// Consensus number at which runtime is upgraded.
+    fn set_code(block_number: BlockNumberFor<T>) -> DispatchResult {
+        let current_versions = T::CurrentBundleAndExecutionReceiptVersion::get();
+        PreviousBundleAndExecutionReceiptVersions::<T>::mutate(|versions| {
+            // first storage, so nothing much to do
+            if versions.len().is_zero() {
+                versions.insert(block_number, current_versions);
+            } else {
+                // if there is a previous version stored, and
+                // previous version matches the current one,
+                // then we can replace the same version with latest upgraded block number.
+                let (prev_number, prev_versions) = versions
+                    .pop_last()
+                    .expect("at least one version is available due to check above");
+
+                // versions matched, so insert the version with latest block number.
+                if prev_versions == current_versions {
+                    versions.insert(block_number, current_versions);
+                } else {
+                    // versions did not match, so add both
+                    versions.insert(prev_number, prev_versions);
+                    versions.insert(block_number, current_versions);
+                }
+            }
+        });
+        Ok(())
+    }
 }
 
 impl<T: Config> sp_domains::DomainOwner<T::AccountId> for Pallet<T> {
@@ -3152,8 +3315,8 @@ where
 {
     /// Submits an unsigned extrinsic [`Call::submit_bundle`].
     pub fn submit_bundle_unsigned(opaque_bundle: OpaqueBundleOf<T>) {
-        let slot = opaque_bundle.sealed_header.slot_number();
-        let extrinsics_count = opaque_bundle.extrinsics.len();
+        let slot = opaque_bundle.slot_number();
+        let extrinsics_count = opaque_bundle.body_length();
 
         let call = Call::submit_bundle { opaque_bundle };
         let ext = T::create_unsigned(call.into());
@@ -3171,7 +3334,7 @@ where
     /// Submits an unsigned extrinsic [`Call::submit_receipt`].
     pub fn submit_receipt_unsigned(singleton_receipt: SingletonReceiptOf<T>) {
         let slot = singleton_receipt.slot_number();
-        let domain_block_number = singleton_receipt.receipt().domain_block_number;
+        let domain_block_number = *singleton_receipt.receipt().domain_block_number();
 
         let call = Call::submit_receipt { singleton_receipt };
         let ext = T::create_unsigned(call.into());

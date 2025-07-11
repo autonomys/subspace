@@ -1,4 +1,5 @@
-use crate::{EMPTY_EXTRINSIC_ROOT, InvalidBundleType, signer_in_tx_range};
+use crate::bundle::InvalidBundleType;
+use crate::{EMPTY_EXTRINSIC_ROOT, signer_in_tx_range};
 use num_traits::ops::wrapping::{WrappingAdd, WrappingSub};
 use parity_scale_codec::Encode;
 use sp_runtime::OpaqueExtrinsic;

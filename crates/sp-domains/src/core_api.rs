@@ -1,7 +1,8 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::{BlockFees, DomainAllowlistUpdates, Transfers};
+use crate::DomainAllowlistUpdates;
+use crate::execution_receipt::{BlockFees, Transfers};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use domain_runtime_primitives::{

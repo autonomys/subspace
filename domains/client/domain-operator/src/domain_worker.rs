@@ -15,7 +15,7 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 use crate::bundle_processor::BundleProcessor;
-use crate::domain_bundle_producer::{BundleProducer, DomainProposal};
+use crate::domain_bundle_producer::{BundleProducer, DomainProposal, SealedSingletonReceiptFor};
 use crate::utils::{BlockInfo, OperatorSlotInfo};
 use crate::{NewSlotNotification, OperatorStreams};
 use futures::channel::mpsc;
@@ -31,8 +31,9 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::H256;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
+use sp_domains::bundle::OpaqueBundle;
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::{BundleProducerElectionApi, DomainsApi, OpaqueBundle, OperatorId};
+use sp_domains::{BundleProducerElectionApi, DomainsApi, OperatorId};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
@@ -44,7 +45,7 @@ use std::task::{Context, Poll};
 use subspace_runtime_primitives::{Balance, BlockHashFor, HeaderFor};
 use tracing::{Instrument, info};
 
-pub type OpaqueBundleFor<Block, CBlock> =
+pub type VersionedOpaqueBundleFor<Block, CBlock> =
     OpaqueBundle<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -155,17 +156,48 @@ pub(super) async fn start_worker<
                             let best_hash = consensus_client.info().best_hash;
                             let mut runtime_api = consensus_client.runtime_api();
                             runtime_api.register_extension(consensus_offchain_tx_pool_factory.offchain_transaction_pool(best_hash));
+                            let domains_api_version = runtime_api
+                                        .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(best_hash)
+                                        .ok()
+                                        .flatten()
+                                        // It is safe to return a default version of 1, since there will always be version 1.
+                                        .unwrap_or(1);
 
                             match domain_proposal {
                                 DomainProposal::Bundle(opaque_bundle) => {
-                                    if let Err(err) = runtime_api.submit_bundle_unsigned(best_hash, opaque_bundle) {
-                                        tracing::error!(?slot, ?err, "Error at submitting bundle.");
+                                    if domains_api_version >= 5 {
+                                        if let Err(err) = runtime_api.submit_bundle_unsigned(best_hash, opaque_bundle) {
+                                            tracing::error!(?slot, ?err, "Error at submitting bundle.");
+                                        }
+                                    } else {
+                                        // for domain api version < 5,
+                                        // it will always be V0 bundle
+                                        if let OpaqueBundle::V0(opaque_bundle) = opaque_bundle{
+                                            #[allow(deprecated)]
+                                            if let Err(err) = runtime_api.submit_bundle_unsigned_before_version_5(best_hash, opaque_bundle) {
+                                                tracing::error!(?slot, ?err, "Error at submitting bundle.");
+                                            }
+                                        } else{
+                                            tracing::error!(?slot, "Error at submitting bundle. Expected V0 bundle");
+                                        };
+
                                     }
                                 },
                                 DomainProposal::Receipt(singleton_receipt) => {
-                                    if let Err(err) = runtime_api.submit_receipt_unsigned(best_hash, singleton_receipt) {
-                                        tracing::error!(?slot, ?err, "Error at submitting receipt.");
+                                    match singleton_receipt {
+                                        SealedSingletonReceiptFor::PreV0(receipt) => {
+                                            #[allow(deprecated)]
+                                            if let Err(err) = runtime_api.submit_receipt_unsigned_before_version_5(best_hash, receipt) {
+                                                tracing::error!(?slot, ?err, "Error at submitting receipt.");
+                                            }
+                                        }
+                                        SealedSingletonReceiptFor::V0(receipt) => {
+                                            if let Err(err) = runtime_api.submit_receipt_unsigned(best_hash, receipt) {
+                                                tracing::error!(?slot, ?err, "Error at submitting receipt.");
+                                            }
+                                        }
                                     }
+
                                 },
                             }
                         }

@@ -11,11 +11,12 @@ use sc_domains::{ExtensionsFactory as DomainsExtensionFactory, FPStorageKeyProvi
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
 use sp_core::{H256, Pair as _};
+use sp_domains::bundle::{BundleValidity, InvalidBundleType};
+use sp_domains::execution_receipt::{ExecutionReceiptFor, ExecutionReceiptMutRef, Transfers};
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{
-    BundleValidity, ChainId, DomainsApi, ExecutionReceiptFor, InvalidBundleType, Transfers,
-};
-use sp_domains_fraud_proof::fraud_proof::{DomainRuntimeCodeAt, FraudProof, FraudProofVariant};
+use sp_domains::{ChainId, DomainsApi};
+use sp_domains_fraud_proof::fraud_proof::DomainRuntimeCodeAt;
+use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::{FraudProofV1, FraudProofVariantV1};
 use sp_domains_fraud_proof::storage_proof::{BasicStorageProof, DomainRuntimeCodeProof};
 use sp_domains_fraud_proof::verification::*;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
@@ -35,7 +36,7 @@ use tokio::runtime::{Handle, Runtime as TokioRuntime};
 type TestExternalities = sp_state_machine::TestExternalities<sp_runtime::traits::BlakeTwo256>;
 
 type FraudProofFor<Block, DomainBlock> =
-    FraudProof<NumberFor<Block>, BlockHashFor<Block>, HeaderFor<DomainBlock>, H256>;
+    FraudProofV1<NumberFor<Block>, BlockHashFor<Block>, HeaderFor<DomainBlock>, H256>;
 
 fn bundle_to_tx(
     ferdie: &MockConsensusNode,
@@ -201,11 +202,18 @@ fn mmr_proof_and_runtime_code_proof_verification(c: &mut Criterion) {
     });
 }
 
+type ExecutionReceiptMutRefFor<'a> = ExecutionReceiptMutRef<
+    'a,
+    NumberFor<Block>,
+    BlockHashFor<Block>,
+    NumberFor<DomainBlock>,
+    BlockHashFor<DomainBlock>,
+    Balance,
+>;
+
 async fn prepare_fraud_proof(
     tokio_handle: Handle,
-    bad_receipt_maker: impl Fn(&mut ExecutionReceiptFor<HeaderFor<DomainBlock>, Block, Balance>)
-    + Send
-    + 'static,
+    bad_receipt_maker: impl Fn(ExecutionReceiptMutRefFor) + Send + 'static,
 ) -> (
     (TempDir, MockConsensusNode, EvmDomainNode),
     TestExternalities,
@@ -244,7 +252,7 @@ async fn prepare_fraud_proof(
 
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
     let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(target_bundle.extrinsics.len(), 1);
+    assert_eq!(target_bundle.extrinsics().len(), 1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
@@ -253,16 +261,18 @@ async fn prepare_fraud_proof(
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let (bad_receipt, bad_submit_bundle_tx) = {
         // Make a bad receipt
-        bad_receipt_maker(&mut opaque_bundle.sealed_header.header.receipt);
+        bad_receipt_maker(opaque_bundle.execution_receipt_as_mut());
 
         // Re-seal bundle
-        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
-            .pair()
-            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
-            .into();
+        opaque_bundle.set_signature(
+            Sr25519Keyring::Alice
+                .pair()
+                .sign(opaque_bundle.sealed_header().pre_hash().as_ref())
+                .into(),
+        );
 
         (
-            opaque_bundle.receipt().clone(),
+            opaque_bundle.clone().into_receipt(),
             bundle_to_tx(&ferdie, opaque_bundle),
         )
     };
@@ -297,7 +307,7 @@ async fn prepare_fraud_proof(
         .runtime_api()
         .execution_receipt(
             ferdie.client.info().best_hash,
-            bad_receipt.parent_domain_block_receipt_hash,
+            *bad_receipt.parent_domain_block_receipt_hash(),
         )
         .unwrap()
         .unwrap();
@@ -310,7 +320,7 @@ async fn prepare_fraud_proof(
 
     let consensus_state_root = ferdie
         .client
-        .header(bad_receipt.consensus_block_hash)
+        .header(*bad_receipt.consensus_block_hash())
         .unwrap()
         .unwrap()
         .state_root;
@@ -346,6 +356,7 @@ fn invalid_state_transition_proof_verification(c: &mut Criterion) {
 
     let (_placeholder, mut ext, _, bad_receipt, bad_receipt_parent, domain_runtime_code, fp) =
         tokio_handle.block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
+            let ExecutionReceiptMutRef::V0(receipt) = receipt;
             let mismatch_trace_index = 3;
             assert_eq!(receipt.execution_trace.len(), 5);
             receipt.execution_trace[mismatch_trace_index as usize] = Default::default();
@@ -363,7 +374,7 @@ fn invalid_state_transition_proof_verification(c: &mut Criterion) {
             receipt.final_state_root = *receipt.execution_trace.last().unwrap();
         }));
 
-    if let FraudProofVariant::InvalidStateTransition(invalid_state_transition_proof) = fp.proof {
+    if let FraudProofVariantV1::InvalidStateTransition(invalid_state_transition_proof) = fp.proof {
         c.bench_function("Invalid state transition FP verification", |b| {
             b.iter_batched(
                 || {
@@ -401,11 +412,12 @@ fn valid_bundle_proof_verification(c: &mut Criterion) {
     // Prepare fraud proof
     let (_placeholder, mut ext, consensus_state_root, bad_receipt, _, domain_runtime_code, fp) =
         tokio_handle.block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
+            let ExecutionReceiptMutRef::V0(receipt) = receipt;
             assert_eq!(receipt.inboxed_bundles.len(), 1);
             receipt.inboxed_bundles[0].bundle = BundleValidity::Valid(H256::random());
         }));
 
-    if let FraudProofVariant::ValidBundle(valid_bundle_proof) = fp.proof {
+    if let FraudProofVariantV1::ValidBundle(valid_bundle_proof) = fp.proof {
         c.bench_function("Valid bundle FP verification", |b| {
             b.iter_batched(
                 || (bad_receipt.clone(), domain_runtime_code.clone()),
@@ -438,10 +450,11 @@ fn invalid_domain_extrinsics_root_fraud_proof(c: &mut Criterion) {
 
     let (_placeholder, mut ext, consensus_state_root, bad_receipt, _, domain_runtime_code, fp) =
         tokio_handle.block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
+            let ExecutionReceiptMutRef::V0(receipt) = receipt;
             receipt.domain_block_extrinsic_root = Default::default();
         }));
 
-    if let FraudProofVariant::InvalidExtrinsicsRoot(invalid_domain_extrinsics_root_fraud_proof) =
+    if let FraudProofVariantV1::InvalidExtrinsicsRoot(invalid_domain_extrinsics_root_fraud_proof) =
         fp.proof
     {
         c.bench_function("Invalid extrinsic root FP verification", |b| {
@@ -478,10 +491,11 @@ fn invalid_domain_block_hash_fraud_proof_verification(c: &mut Criterion) {
 
     let (_placeholder, mut ext, _, bad_receipt, bad_receipt_parent, _, fp) =
         tokio_handle.block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
+            let ExecutionReceiptMutRef::V0(receipt) = receipt;
             receipt.domain_block_hash = Default::default();
         }));
 
-    if let FraudProofVariant::InvalidDomainBlockHash(invalid_domain_block_hash_fraud_proof) =
+    if let FraudProofVariantV1::InvalidDomainBlockHash(invalid_domain_block_hash_fraud_proof) =
         fp.proof
     {
         c.bench_function("Invalid domain block hash FP verification", |b| {
@@ -504,7 +518,7 @@ fn invalid_domain_block_hash_fraud_proof_verification(c: &mut Criterion) {
                             invalid_domain_block_hash_fraud_proof
                                 .digest_storage_proof
                                 .clone(),
-                            bad_receipt_parent.domain_block_hash
+                            *bad_receipt_parent.domain_block_hash()
                         ))
                         .is_ok()
                     );
@@ -521,10 +535,11 @@ fn invalid_block_fees_fraud_proof_verification(c: &mut Criterion) {
 
     let (_placeholder, mut ext, _, bad_receipt, _, domain_runtime_code, fp) = tokio_handle
         .block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
+            let ExecutionReceiptMutRef::V0(receipt) = receipt;
             receipt.block_fees.consensus_storage_fee = 12345;
         }));
 
-    if let FraudProofVariant::InvalidBlockFees(invalid_block_fees_fraud_proof) = fp.proof {
+    if let FraudProofVariantV1::InvalidBlockFees(invalid_block_fees_fraud_proof) = fp.proof {
         c.bench_function("Invalid block fees FP verification", |b| {
             b.iter_batched(
                 || (bad_receipt.clone(), domain_runtime_code.clone()),
@@ -556,6 +571,7 @@ fn invalid_transfers_fraud_proof_verification(c: &mut Criterion) {
 
     let (_placeholder, mut ext, _, bad_receipt, _, domain_runtime_code, fp) = tokio_handle
         .block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
+            let ExecutionReceiptMutRef::V0(receipt) = receipt;
             receipt.transfers = Transfers {
                 transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
                 transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
@@ -564,7 +580,7 @@ fn invalid_transfers_fraud_proof_verification(c: &mut Criterion) {
             }
         }));
 
-    if let FraudProofVariant::InvalidTransfers(invalid_transfers_fraud_proof) = fp.proof {
+    if let FraudProofVariantV1::InvalidTransfers(invalid_transfers_fraud_proof) = fp.proof {
         c.bench_function("Invalid transfers FP verification", |b| {
             b.iter_batched(
                 || (bad_receipt.clone(), domain_runtime_code.clone()),
@@ -603,14 +619,15 @@ fn invalid_bundle_undecodable_tx_fraud_proof_verification(c: &mut Criterion) {
         domain_runtime_code,
         fp,
     ) = tokio_handle.block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
+        let ExecutionReceiptMutRef::V0(receipt) = receipt;
         receipt.inboxed_bundles[0].bundle =
             BundleValidity::Invalid(InvalidBundleType::UndecodableTx(0));
     }));
 
-    if let FraudProofVariant::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
+    if let FraudProofVariantV1::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
         c.bench_function("Invalid bundle UndecodableTx FP verification", |b| {
             assert!(matches!(
-                invalid_bundle_fraud_proof.invalid_bundle_type,
+                invalid_bundle_fraud_proof.invalid_bundle_type(),
                 InvalidBundleType::UndecodableTx(0)
             ));
             b.iter_batched(
@@ -660,13 +677,14 @@ fn invalid_bundle_out_of_range_tx_fraud_proof_verification(c: &mut Criterion) {
         domain_runtime_code,
         fp,
     ) = tokio_handle.block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
+        let ExecutionReceiptMutRef::V0(receipt) = receipt;
         receipt.inboxed_bundles[0].bundle =
             BundleValidity::Invalid(InvalidBundleType::OutOfRangeTx(0));
     }));
 
-    if let FraudProofVariant::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
+    if let FraudProofVariantV1::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
         assert!(matches!(
-            invalid_bundle_fraud_proof.invalid_bundle_type,
+            invalid_bundle_fraud_proof.invalid_bundle_type(),
             InvalidBundleType::OutOfRangeTx(0)
         ));
         c.bench_function("Invalid bundle OutOfRangeTx FP verification", |b| {
@@ -717,13 +735,14 @@ fn invalid_bundle_illegal_tx_fraud_proof_verification(c: &mut Criterion) {
         domain_runtime_code,
         fp,
     ) = tokio_handle.block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
+        let ExecutionReceiptMutRef::V0(receipt) = receipt;
         receipt.inboxed_bundles[0].bundle =
             BundleValidity::Invalid(InvalidBundleType::IllegalTx(0));
     }));
 
-    if let FraudProofVariant::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
+    if let FraudProofVariantV1::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
         assert!(matches!(
-            invalid_bundle_fraud_proof.invalid_bundle_type,
+            invalid_bundle_fraud_proof.invalid_bundle_type(),
             InvalidBundleType::IllegalTx(0)
         ));
         c.bench_function("Invalid bundle IllegalTx FP verification", |b| {
@@ -774,13 +793,14 @@ fn invalid_bundle_invalid_xdm_fraud_proof_verification(c: &mut Criterion) {
         domain_runtime_code,
         fp,
     ) = tokio_handle.block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
+        let ExecutionReceiptMutRef::V0(receipt) = receipt;
         receipt.inboxed_bundles[0].bundle =
             BundleValidity::Invalid(InvalidBundleType::InvalidXDM(0));
     }));
 
-    if let FraudProofVariant::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
+    if let FraudProofVariantV1::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
         assert!(matches!(
-            invalid_bundle_fraud_proof.invalid_bundle_type,
+            invalid_bundle_fraud_proof.invalid_bundle_type(),
             InvalidBundleType::InvalidXDM(0)
         ));
         c.bench_function("Invalid bundle InvalidXDM FP verification", |b| {
@@ -831,13 +851,14 @@ fn invalid_bundle_inherent_extrinsic_fraud_proof_verification(c: &mut Criterion)
         domain_runtime_code,
         fp,
     ) = tokio_handle.block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
+        let ExecutionReceiptMutRef::V0(receipt) = receipt;
         receipt.inboxed_bundles[0].bundle =
             BundleValidity::Invalid(InvalidBundleType::InherentExtrinsic(0));
     }));
 
-    if let FraudProofVariant::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
+    if let FraudProofVariantV1::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
         assert!(matches!(
-            invalid_bundle_fraud_proof.invalid_bundle_type,
+            invalid_bundle_fraud_proof.invalid_bundle_type(),
             InvalidBundleType::InherentExtrinsic(0)
         ));
         c.bench_function("Invalid bundle InherentExtrinsic FP verification", |b| {
@@ -888,13 +909,14 @@ fn invalid_bundle_weight_fraud_proof_verification(c: &mut Criterion) {
         domain_runtime_code,
         fp,
     ) = tokio_handle.block_on(prepare_fraud_proof(tokio_handle.clone(), |receipt| {
+        let ExecutionReceiptMutRef::V0(receipt) = receipt;
         receipt.inboxed_bundles[0].bundle =
             BundleValidity::Invalid(InvalidBundleType::InvalidBundleWeight);
     }));
 
-    if let FraudProofVariant::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
+    if let FraudProofVariantV1::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
         assert!(matches!(
-            invalid_bundle_fraud_proof.invalid_bundle_type,
+            invalid_bundle_fraud_proof.invalid_bundle_type(),
             InvalidBundleType::InvalidBundleWeight
         ));
         c.bench_function("Invalid bundle InvalidBundleWeight FP verification", |b| {
