@@ -56,7 +56,7 @@ use sp_core::H256;
 use sp_domains::bundle::{Bundle, BundleVersion, OpaqueBundle};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::execution_receipt::{
-    ExecutionReceipt, ExecutionReceiptRef, SealedSingletonReceipt,
+    ExecutionReceipt, ExecutionReceiptRef, ExecutionReceiptVersion, SealedSingletonReceipt,
 };
 use sp_domains::{
     ChainId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, DomainBundleLimit, DomainId,
@@ -848,6 +848,10 @@ mod pallet {
         FailedToGetMissedUpgradeCount,
         /// Bundle version mismatch
         BundleVersionMismatch,
+        /// Execution receipt version mismatch
+        ExecutionVersionMismatch,
+        /// Execution receipt version missing
+        ExecutionVersionMissing,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -2402,6 +2406,18 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    fn check_execution_receipt_version(
+        er_derived_consensus_number: BlockNumberFor<T>,
+        receipt_version: ExecutionReceiptVersion,
+    ) -> Result<(), BundleError> {
+        let expected_execution_receipt_version =
+            Self::execution_receipt_version_for_consensus_number(er_derived_consensus_number)
+                .ok_or(BundleError::ExecutionVersionMissing)?;
+        match (receipt_version, expected_execution_receipt_version) {
+            (ExecutionReceiptVersion::V0, ExecutionReceiptVersion::V0) => Ok(()),
+        }
+    }
+
     fn validate_submit_bundle(
         opaque_bundle: &OpaqueBundleOf<T>,
         pre_dispatch: bool,
@@ -2419,6 +2435,12 @@ impl<T: Config> Pallet<T> {
         let domain_id = opaque_bundle.domain_id();
         let operator_id = opaque_bundle.operator_id();
         let sealed_header = opaque_bundle.sealed_header();
+
+        let receipt = sealed_header.receipt();
+        Self::check_execution_receipt_version(
+            *receipt.consensus_block_number(),
+            receipt.version(),
+        )?;
 
         // Ensure the receipt gap is <= 1 so that the bundle will only be acceptted if its receipt is
         // derived from the latest domain block, and the stale bundle (that verified against an old
@@ -2442,8 +2464,7 @@ impl<T: Config> Pallet<T> {
             pre_dispatch,
         )?;
 
-        verify_execution_receipt::<T>(domain_id, &sealed_header.receipt())
-            .map_err(BundleError::Receipt)?;
+        verify_execution_receipt::<T>(domain_id, &receipt).map_err(BundleError::Receipt)?;
 
         charge_bundle_storage_fee::<T>(operator_id, opaque_bundle.size())
             .map_err(|_| BundleError::UnableToPayBundleStorageFee)?;
@@ -2463,6 +2484,14 @@ impl<T: Config> Pallet<T> {
             Self::receipt_gap(domain_id)? > One::one(),
             BundleError::ExpectingReceiptGap,
         );
+
+        Self::check_execution_receipt_version(
+            *sealed_singleton_receipt
+                .singleton_receipt
+                .receipt
+                .consensus_block_number(),
+            sealed_singleton_receipt.singleton_receipt.receipt.version(),
+        )?;
 
         let domain_config = DomainRegistry::<T>::get(domain_id)
             .ok_or(BundleError::InvalidDomainId)?
@@ -2909,6 +2938,50 @@ impl<T: Config> Pallet<T> {
 
     pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptOf<T>> {
         get_block_tree_node::<T>(receipt_hash).map(|db| db.execution_receipt)
+    }
+
+    /// Returns the correct execution receipt version based on
+    /// the consensus block number at which execution receipt was derived.
+    pub(crate) fn execution_receipt_version_for_consensus_number(
+        er_derived_number: BlockNumberFor<T>,
+    ) -> Option<ExecutionReceiptVersion> {
+        let versions = PreviousBundleAndExecutionReceiptVersions::<T>::get();
+
+        // short circuit if the er version can be latest
+        match versions.range(..).next_back() {
+            // if there are no versions, means latest version.
+            None => {
+                return Some(
+                    T::CurrentBundleAndExecutionReceiptVersion::get().execution_receipt_version,
+                );
+            }
+            Some((number, version)) => {
+                // if er derived number of greater than last stored version,
+                // then er version should be of latest version.
+                if er_derived_number > *number {
+                    return Some(
+                        T::CurrentBundleAndExecutionReceiptVersion::get().execution_receipt_version,
+                    );
+                }
+
+                // if the er derived number is equal to last stored version,
+                // then er version should be previous er version
+                if er_derived_number == *number {
+                    return Some(version.execution_receipt_version);
+                }
+            }
+        }
+
+        // if we are here, it means er version can be either last version or version before last
+        // loop through to find the correct version.
+        for (upgraded_number, version) in versions.into_iter() {
+            if er_derived_number <= upgraded_number {
+                return Some(version.execution_receipt_version);
+            }
+        }
+
+        // should not reach here since above loop always find the oldest version
+        None
     }
 
     pub fn receipt_hash(

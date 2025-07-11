@@ -124,6 +124,20 @@ where
             ExecutionReceiptRef::V0(er) => ExecutionReceipt::V0(er.clone()),
         }
     }
+
+    /// Returns the consensus block number at which ER is derived.
+    pub fn consensus_block_number(&self) -> &Number {
+        match self {
+            ExecutionReceiptRef::V0(er) => &er.consensus_block_number,
+        }
+    }
+
+    /// Return the execution receipt version.
+    pub fn version(&self) -> ExecutionReceiptVersion {
+        match self {
+            ExecutionReceiptRef::V0(_) => ExecutionReceiptVersion::V0,
+        }
+    }
 }
 
 /// Receipt for execution of Domain Bundle holding the mutable reference to various ER versions.
@@ -296,6 +310,13 @@ where
         match self {
             // for v0,we need hash of inner execution receipt v0
             ExecutionReceipt::V0(receipt) => receipt.hash::<DomainHashing>(),
+        }
+    }
+
+    /// Return the execution receipt version.
+    pub fn version(&self) -> ExecutionReceiptVersion {
+        match self {
+            ExecutionReceipt::V0(_) => ExecutionReceiptVersion::V0,
         }
     }
 
