@@ -95,7 +95,7 @@ impl<'a, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
 }
 
 /// Bundle Versions.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
 pub enum BundleVersion {
     /// V0 bundle version
     V0,

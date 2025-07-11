@@ -24,7 +24,7 @@ use sp_std::collections::btree_map::BTreeMap;
 use subspace_runtime_primitives::BlockHashFor;
 
 /// Execution Receipt Versions.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
 pub enum ExecutionReceiptVersion {
     /// V0 execution receipt.
     V0,
@@ -304,21 +304,24 @@ where
         genesis_state_root: DomainHash,
         genesis_extrinsic_root: DomainHash,
         genesis_domain_block_hash: DomainHash,
+        execution_receipt_version: ExecutionReceiptVersion,
     ) -> Self {
-        ExecutionReceipt::V0(ExecutionReceiptV0 {
-            domain_block_number: Zero::zero(),
-            domain_block_hash: genesis_domain_block_hash,
-            domain_block_extrinsic_root: genesis_extrinsic_root,
-            parent_domain_block_receipt_hash: Default::default(),
-            consensus_block_hash: Default::default(),
-            consensus_block_number: Zero::zero(),
-            inboxed_bundles: Vec::new(),
-            final_state_root: genesis_state_root,
-            execution_trace: sp_std::vec![genesis_state_root],
-            execution_trace_root: Default::default(),
-            block_fees: Default::default(),
-            transfers: Default::default(),
-        })
+        match execution_receipt_version {
+            ExecutionReceiptVersion::V0 => ExecutionReceipt::V0(ExecutionReceiptV0 {
+                domain_block_number: Zero::zero(),
+                domain_block_hash: genesis_domain_block_hash,
+                domain_block_extrinsic_root: genesis_extrinsic_root,
+                parent_domain_block_receipt_hash: Default::default(),
+                consensus_block_hash: Default::default(),
+                consensus_block_number: Zero::zero(),
+                inboxed_bundles: Vec::new(),
+                final_state_root: genesis_state_root,
+                execution_trace: sp_std::vec![genesis_state_root],
+                execution_trace_root: Default::default(),
+                block_fees: Default::default(),
+                transfers: Default::default(),
+            }),
+        }
     }
 
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]

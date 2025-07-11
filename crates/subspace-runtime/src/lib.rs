@@ -1539,7 +1539,8 @@ impl_runtime_apis! {
         }
 
         fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
-            Domains::genesis_state_root(domain_id)
+            Domains::genesis_execution_receipt(domain_id)
+                .map(|er| *er.final_state_root())
         }
 
         fn head_receipt_number(domain_id: DomainId) -> DomainNumber {
@@ -1610,6 +1611,10 @@ impl_runtime_apis! {
 
         fn current_bundle_and_execution_receipt_version() -> BundleAndExecutionReceiptVersion {
             CurrentBundleAndExecutionReceiptVersion::get()
+        }
+
+        fn genesis_execution_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
+            Domains::genesis_execution_receipt(domain_id)
         }
     }
 

@@ -12,6 +12,7 @@ use sp_domains::bundle::BundleVersion;
 use sp_domains::bundle::bundle_v0::BundleHeaderV0;
 use sp_domains::bundle::bundle_v1::BundleHeaderV1;
 use sp_domains::core_api::DomainCoreApi;
+use sp_domains::execution_receipt::ExecutionReceiptVersion;
 use sp_domains::{DomainId, DomainsApi, HeaderHashingFor, OperatorId, ProofOfElection};
 use sp_messenger::MessengerApi;
 use sp_runtime::Percent;
@@ -384,6 +385,7 @@ where
         &self,
         domain_best_number_onchain: NumberFor<Block>,
         head_receipt_number: NumberFor<Block>,
+        execution_receipt_version: ExecutionReceiptVersion,
     ) -> sp_blockchain::Result<ExecutionReceiptFor<Block, CBlock>> {
         tracing::trace!(
             ?domain_best_number_onchain,
@@ -405,6 +407,7 @@ where
                 *genesis_header.state_root(),
                 *genesis_header.extrinsics_root(),
                 genesis_hash,
+                execution_receipt_version,
             ));
         }
 

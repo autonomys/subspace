@@ -16,10 +16,12 @@ use sp_domains::core_api::DomainCoreApi;
 use sp_domains::execution_receipt::execution_receipt_v0::{
     SealedSingletonReceiptV0, SingletonReceiptV0,
 };
-use sp_domains::execution_receipt::{SealedSingletonReceipt, SingletonReceipt};
+use sp_domains::execution_receipt::{
+    ExecutionReceiptVersion, SealedSingletonReceipt, SingletonReceipt,
+};
 use sp_domains::{
-    BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
-    OperatorSignature, ProofOfElection,
+    BundleAndExecutionReceiptVersion, BundleProducerElectionApi, DomainId, DomainsApi, OperatorId,
+    OperatorPublicKey, OperatorSignature, ProofOfElection,
 };
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
@@ -268,6 +270,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn prepare_receipt(
         &self,
         slot_info: &OperatorSlotInfo,
@@ -276,6 +279,7 @@ where
         proof_of_election: &ProofOfElection,
         operator_signing_key: &OperatorPublicKey,
         domains_api_version: u32,
+        execution_receipt_version: ExecutionReceiptVersion,
     ) -> sp_blockchain::Result<Option<DomainProposal<Block, CBlock>>> {
         // When the receipt gap is greater than one, the operator needs to produce a receipt
         // instead of a bundle
@@ -287,9 +291,11 @@ where
                 slot_info.slot
             );
 
-            let receipt = self
-                .domain_bundle_proposer
-                .load_next_receipt(domain_best_number_onchain, head_receipt_number)?;
+            let receipt = self.domain_bundle_proposer.load_next_receipt(
+                domain_best_number_onchain,
+                head_receipt_number,
+                execution_receipt_version,
+            )?;
 
             let sealed_singleton_receipt = if domains_api_version >= 5 {
                 let singleton_receipt = SingletonReceipt {
@@ -302,10 +308,14 @@ where
                     self.sign(operator_signing_key, to_sign.as_ref())?
                 };
 
-                SealedSingletonReceiptFor::V0(SealedSingletonReceipt {
-                    singleton_receipt,
-                    signature,
-                })
+                match receipt {
+                    ExecutionReceiptFor::<Block, CBlock>::V0(_) => {
+                        SealedSingletonReceiptFor::V0(SealedSingletonReceipt {
+                            singleton_receipt,
+                            signature,
+                        })
+                    }
+                }
             } else {
                 let ExecutionReceiptFor::<Block, CBlock>::V0(receipt) = receipt;
                 let singleton_receipt = SingletonReceiptV0 {
@@ -337,7 +347,7 @@ where
         domain_best_number_onchain: NumberFor<Block>,
         head_receipt_number: NumberFor<Block>,
         proof_of_election: ProofOfElection,
-        bundle_version: BundleVersion,
+        bundle_and_execution_receipt_version: BundleAndExecutionReceiptVersion,
     ) -> sp_blockchain::Result<(BundleHeaderFor<Block, CBlock>, Vec<ExtrinsicFor<Block>>)> {
         let tx_range = self
             .consensus_client
@@ -349,9 +359,11 @@ where
                 )))
             })?;
 
-        let receipt = self
-            .domain_bundle_proposer
-            .load_next_receipt(domain_best_number_onchain, head_receipt_number)?;
+        let receipt = self.domain_bundle_proposer.load_next_receipt(
+            domain_best_number_onchain,
+            head_receipt_number,
+            bundle_and_execution_receipt_version.execution_receipt_version,
+        )?;
 
         let (bundle_header, extrinsics) = self
             .domain_bundle_proposer
@@ -360,7 +372,7 @@ where
                 tx_range,
                 operator_id,
                 receipt,
-                bundle_version,
+                bundle_and_execution_receipt_version.bundle_version,
             )
             .await?;
 
@@ -415,6 +427,32 @@ where
 
         Ok(DomainProposal::Bundle(bundle))
     }
+
+    /// Returns current bundle and execution receipt version and the DomainApi version.
+    fn current_bundle_and_execution_receipt_version(
+        &self,
+        consensus_chain_best_hash: CBlock::Hash,
+    ) -> sp_blockchain::Result<(BundleAndExecutionReceiptVersion, u32)> {
+        let runtime_api = self.consensus_client.runtime_api();
+        let domains_api_version = runtime_api
+            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_chain_best_hash)
+            .ok()
+            .flatten()
+            // It is safe to return a default version of 1, since there will always be version 1.
+            .unwrap_or(1);
+
+        if domains_api_version >= 5 {
+            runtime_api
+                .current_bundle_and_execution_receipt_version(consensus_chain_best_hash)
+                .map_err(sp_blockchain::Error::RuntimeApiError)
+        } else {
+            Ok(BundleAndExecutionReceiptVersion {
+                bundle_version: BundleVersion::V0,
+                execution_receipt_version: ExecutionReceiptVersion::V0,
+            })
+        }
+        .map(|res| (res, domains_api_version))
+    }
 }
 
 #[async_trait]
@@ -442,21 +480,8 @@ where
         let domain_best_number = self.client.info().best_number;
         let consensus_chain_best_hash = self.consensus_client.info().best_hash;
 
-        let runtime_api = self.consensus_client.runtime_api();
-        let domains_api_version = runtime_api
-            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_chain_best_hash)
-            .ok()
-            .flatten()
-            // It is safe to return a default version of 1, since there will always be version 1.
-            .unwrap_or(1);
-
-        let bundle_version = if domains_api_version >= 5 {
-            let versions = runtime_api
-                .current_bundle_and_execution_receipt_version(consensus_chain_best_hash)?;
-            versions.bundle_version
-        } else {
-            BundleVersion::V0
-        };
+        let (bundle_and_execution_receipt_version, domains_api_version) =
+            self.current_bundle_and_execution_receipt_version(consensus_chain_best_hash)?;
 
         let Some((
             domain_best_number_onchain,
@@ -480,6 +505,7 @@ where
             &proof_of_election,
             &operator_signing_key,
             domains_api_version,
+            bundle_and_execution_receipt_version.execution_receipt_version,
         )? {
             return Ok(Some(receipt));
         }
@@ -491,7 +517,7 @@ where
                 domain_best_number_onchain,
                 head_receipt_number,
                 proof_of_election,
-                bundle_version,
+                bundle_and_execution_receipt_version,
             )
             .await?;
 
@@ -627,21 +653,9 @@ where
         let domain_best_number = self.inner.client.info().best_number;
         let consensus_chain_best_hash = self.inner.consensus_client.info().best_hash;
 
-        let runtime_api = self.inner.consensus_client.runtime_api();
-        let domains_api_version = runtime_api
-            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_chain_best_hash)
-            .ok()
-            .flatten()
-            // It is safe to return a default version of 1, since there will always be version 1.
-            .unwrap_or(1);
-
-        let bundle_version = if domains_api_version >= 5 {
-            let versions = runtime_api
-                .current_bundle_and_execution_receipt_version(consensus_chain_best_hash)?;
-            versions.bundle_version
-        } else {
-            BundleVersion::V0
-        };
+        let (bundle_and_execution_receipt_version, domains_api_version) = self
+            .inner
+            .current_bundle_and_execution_receipt_version(consensus_chain_best_hash)?;
 
         // Test-only behaviour: skip slot if configured to do so
         let skip_out_of_order_slot = self.skip_out_of_order_slot
@@ -681,6 +695,7 @@ where
             &proof_of_election,
             &operator_signing_key,
             domains_api_version,
+            bundle_and_execution_receipt_version.execution_receipt_version,
         )? {
             return Ok(Some(receipt));
         }
@@ -693,7 +708,7 @@ where
                 domain_best_number_onchain,
                 head_receipt_number,
                 proof_of_election,
-                bundle_version,
+                bundle_and_execution_receipt_version,
             )
             .await?;
 

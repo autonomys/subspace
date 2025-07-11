@@ -20,8 +20,8 @@ use sp_core::H256;
 use sp_core::traits::CodeExecutor;
 use sp_domains::bundle::BundleValidity;
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::execution_receipt::ExecutionReceipt;
 use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
+use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptVersion};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, DomainsApi, HeaderHashingFor};
 use sp_domains_fraud_proof::FraudProofApi;
@@ -348,18 +348,46 @@ where
             "Trace root calculated for #{header_number},{header_hash}"
         );
 
+        let runtime_api = self.consensus_client.runtime_api();
+        let domains_api_version = runtime_api
+            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_block_hash)
+            .ok()
+            .flatten()
+            // It is safe to return a default version of 1, since there will always be version 1.
+            .unwrap_or(1);
+
+        let execution_receipt_version = if domains_api_version >= 5 {
+            let versions =
+                runtime_api.current_bundle_and_execution_receipt_version(consensus_block_hash)?;
+            versions.execution_receipt_version
+        } else {
+            ExecutionReceiptVersion::V0
+        };
+
         let parent_receipt = if parent_number.is_zero() {
-            let genesis_hash = self.client.info().genesis_hash;
-            let genesis_header = self.client.header(genesis_hash)?.ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Domain block header for #{genesis_hash:?} not found",
-                ))
-            })?;
-            ExecutionReceipt::genesis(
-                *genesis_header.state_root(),
-                *genesis_header.extrinsics_root(),
-                genesis_hash,
-            )
+            if domains_api_version >= 5 {
+                runtime_api
+                    .genesis_execution_receipt(consensus_block_hash, self.domain_id)?
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Backend(
+                            "Genesis Execution receipt not found".to_string(),
+                        )
+                    })?
+            } else {
+                let genesis_hash = self.client.info().genesis_hash;
+                let genesis_header = self.client.header(genesis_hash)?.ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!(
+                        "Domain block header for #{genesis_hash:?} not found",
+                    ))
+                })?;
+                // for the domains api version < 5, execution receipt is always V0
+                ExecutionReceipt::genesis(
+                    *genesis_header.state_root(),
+                    *genesis_header.extrinsics_root(),
+                    genesis_hash,
+                    ExecutionReceiptVersion::V0,
+                )
+            }
         } else {
             crate::load_execution_receipt_by_domain_hash::<Block, CBlock, _>(
                 &*self.client,
@@ -374,21 +402,23 @@ where
         let block_fees = runtime_api.block_fees(header_hash)?;
         let transfers = runtime_api.transfers(header_hash)?;
 
-        let execution_receipt = ExecutionReceipt::V0(ExecutionReceiptV0 {
-            domain_block_number: header_number,
-            domain_block_hash: header_hash,
-            domain_block_extrinsic_root: extrinsics_root,
-            parent_domain_block_receipt_hash: parent_receipt
-                .hash::<HeaderHashingFor<Block::Header>>(),
-            consensus_block_number,
-            consensus_block_hash,
-            inboxed_bundles: bundles,
-            final_state_root: state_root,
-            execution_trace: intermediate_roots,
-            execution_trace_root: sp_core::H256(trace_root),
-            block_fees,
-            transfers,
-        });
+        let execution_receipt = match execution_receipt_version {
+            ExecutionReceiptVersion::V0 => ExecutionReceipt::V0(ExecutionReceiptV0 {
+                domain_block_number: header_number,
+                domain_block_hash: header_hash,
+                domain_block_extrinsic_root: extrinsics_root,
+                parent_domain_block_receipt_hash: parent_receipt
+                    .hash::<HeaderHashingFor<Block::Header>>(),
+                consensus_block_number,
+                consensus_block_hash,
+                inboxed_bundles: bundles,
+                final_state_root: state_root,
+                execution_trace: intermediate_roots,
+                execution_trace_root: sp_core::H256(trace_root),
+                block_fees,
+                transfers,
+            }),
+        };
 
         Ok(DomainBlockResult {
             header_hash,

@@ -295,6 +295,10 @@ sp_api::impl_runtime_apis! {
         fn current_bundle_and_execution_receipt_version() -> BundleAndExecutionReceiptVersion {
             unreachable!()
         }
+
+        fn genesis_execution_receipt(_domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
+            unreachable!()
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

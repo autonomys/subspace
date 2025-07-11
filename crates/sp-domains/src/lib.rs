@@ -965,7 +965,7 @@ impl SkipBalanceChecks for () {
 }
 
 /// Bundle and Execution Versions.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
 pub struct BundleAndExecutionReceiptVersion {
     pub bundle_version: BundleVersion,
     pub execution_receipt_version: ExecutionReceiptVersion,
@@ -1096,10 +1096,14 @@ sp_api::decl_runtime_apis! {
         #[changed_in(5)]
         fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptV0For<DomainHeader, Block, Balance>>;
 
+        /// Returns the last confirmed domain block execution receipt.
         fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
 
         /// Returns the current bundle version that is accepted by runtime.
         fn current_bundle_and_execution_receipt_version() -> BundleAndExecutionReceiptVersion;
+
+        /// Returns genesis execution receipt for domains.
+        fn genesis_execution_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

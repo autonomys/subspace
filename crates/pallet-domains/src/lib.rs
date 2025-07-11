@@ -2209,9 +2209,8 @@ impl<T: Config> Pallet<T> {
         ))
     }
 
-    pub fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
+    pub fn genesis_execution_receipt(domain_id: DomainId) -> Option<ExecutionReceiptOf<T>> {
         crate::migrations::execution_receipt::domain_genesis_block_execution_receipt::<T>(domain_id)
-            .map(|er| (*er.final_state_root()).into())
     }
 
     /// Returns the tx range for the domain.
