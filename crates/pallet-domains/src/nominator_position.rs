@@ -60,14 +60,14 @@ fn fetch_position_data<T: Config>(
     })
 }
 
-/// Processes deposits to calculate total shares, storage fees, and pending deposits
-fn process_deposits<T: Config>(
+/// Processes deposit information to calculate total shares, storage fees, and pending deposit
+fn process_deposit<T: Config>(
     position_data: &PositionData<T>,
     operator_id: OperatorId,
 ) -> (
     T::Share,
     BalanceOf<T>,
-    Vec<sp_domains::PendingDeposit<BalanceOf<T>>>,
+    Option<sp_domains::PendingDeposit<BalanceOf<T>>>,
 ) {
     // Clone deposit for read-only conversion
     let mut deposit = position_data.deposit.clone();
@@ -89,20 +89,16 @@ fn process_deposits<T: Config>(
             total_storage_fee_deposit.saturating_add(pd.storage_fee_deposit);
     }
 
-    // Any remaining pending deposit is for the current epoch
-    let pending_deposits = deposit
-        .pending
-        .map(|pd| {
-            let (_, epoch) = pd.effective_domain_epoch.deconstruct();
-            sp_domains::PendingDeposit {
-                amount: pd.amount,
-                effective_epoch: epoch,
-            }
-        })
-        .into_iter()
-        .collect();
+    // A remaining pending deposit is for the current epoch
+    let pending_deposit = deposit.pending.map(|pd| {
+        let (_, epoch) = pd.effective_domain_epoch.deconstruct();
+        sp_domains::PendingDeposit {
+            amount: pd.amount,
+            effective_epoch: epoch,
+        }
+    });
 
-    (total_shares, total_storage_fee_deposit, pending_deposits)
+    (total_shares, total_storage_fee_deposit, pending_deposit)
 }
 
 /// Calculates adjusted storage fee deposit accounting for fund gains/losses
@@ -199,8 +195,8 @@ pub fn nominator_position<T: Config>(
     let position_data = fetch_position_data::<T>(operator_id, &nominator_account)?;
 
     // Calculate current shares and storage fees from deposits
-    let (total_shares, total_storage_fee_deposit, pending_deposits) =
-        process_deposits::<T>(&position_data, operator_id);
+    let (total_shares, total_storage_fee_deposit, pending_deposit) =
+        process_deposit::<T>(&position_data, operator_id);
 
     // Calculate current staked value using instant share price
     let current_staked_value = position_data
@@ -228,10 +224,11 @@ pub fn nominator_position<T: Config>(
             total_deposited: total_storage_fee_deposit,
             current_value: adjusted_storage_fee_deposit,
         },
-        pending_deposits,
+        pending_deposit,
         pending_withdrawals,
     })
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,7 +371,14 @@ mod tests {
             position.storage_fee_deposit.current_value,
             expected_storage_fee
         );
-        assert_eq!(position.pending_deposits.len(), expected_pending_deposits);
+        assert_eq!(
+            if position.pending_deposit.is_some() {
+                1
+            } else {
+                0
+            },
+            expected_pending_deposits
+        );
         assert_eq!(
             position.pending_withdrawals.len(),
             expected_pending_withdrawals
@@ -412,11 +416,12 @@ mod tests {
                 0, // No withdrawals
             );
             // Only the staking portion goes to pending deposit
+            let pending_deposit = position.pending_deposit.as_ref().unwrap();
             assert_eq!(
-                position.pending_deposits[0].amount,
+                pending_deposit.amount,
                 expected_staking_portion(setup.nominator_stake)
             );
-            assert_eq!(position.pending_deposits[0].effective_epoch, 1);
+            assert_eq!(pending_deposit.effective_epoch, 1);
             assert_eq!(
                 position.storage_fee_deposit.total_deposited,
                 position.storage_fee_deposit.current_value
@@ -469,8 +474,9 @@ mod tests {
                 1, // One combined pending deposit
                 0, // No withdrawals
             );
+            let pending_deposit = position.pending_deposit.as_ref().unwrap();
             assert_eq!(
-                position.pending_deposits[0].amount,
+                pending_deposit.amount,
                 expected_staking_portion(total_stake)
             );
 
@@ -669,10 +675,8 @@ mod tests {
                 1, // One pending deposit
                 0, // No withdrawals
             );
-            assert_eq!(
-                position_initial.pending_deposits[0].effective_epoch,
-                initial_epoch
-            );
+            let pending_deposit = position_initial.pending_deposit.as_ref().unwrap();
+            assert_eq!(pending_deposit.effective_epoch, initial_epoch);
 
             // Transition to next epoch - this makes the previous epoch's share price available
             // With the bug (<=), this would incorrectly try to convert a deposit effective for the current epoch
@@ -692,7 +696,7 @@ mod tests {
                 position_after_transition.current_staked_value,
                 expected_staking_portion(setup.nominator_stake)
             );
-            assert_eq!(position_after_transition.pending_deposits.len(), 0); // No more pending deposits
+            assert!(position_after_transition.pending_deposit.is_none()); // No more pending deposits
 
             // Test the boundary condition: Make a new deposit in the current epoch
             let additional_nomination = 200 * AI3;
@@ -703,11 +707,9 @@ mod tests {
                 nominator_position::<Test>(operator_id, setup.nominator_account).unwrap();
 
             // Should have 1 pending deposit effective for the current epoch
-            assert_eq!(position_new_deposit.pending_deposits.len(), 1);
-            assert_eq!(
-                position_new_deposit.pending_deposits[0].effective_epoch,
-                next_epoch
-            );
+            assert!(position_new_deposit.pending_deposit.is_some());
+            let pending_deposit = position_new_deposit.pending_deposit.as_ref().unwrap();
+            assert_eq!(pending_deposit.effective_epoch, next_epoch);
 
             // Current value should remain the same (new deposit not converted yet)
             assert_eq!(
@@ -869,7 +871,7 @@ mod tests {
                 operator_position.storage_fee_deposit.current_value,
                 expected_operator_storage_fee,
             );
-            assert_eq!(operator_position.pending_deposits.len(), 0);
+            assert!(operator_position.pending_deposit.is_none());
             assert_eq!(operator_position.pending_withdrawals.len(), 0);
 
             // Test 2: Operator position after epoch transition (should remain the same)

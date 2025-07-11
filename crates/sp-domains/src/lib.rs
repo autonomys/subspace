@@ -1664,8 +1664,8 @@ pub struct NominatorPosition<Balance, DomainBlockNumber> {
     pub current_staked_value: Balance,
     /// Storage fee deposit information (original and current adjusted values)
     pub storage_fee_deposit: StorageFeeDeposit<Balance>,
-    /// Pending deposits not yet converted to shares
-    pub pending_deposits: Vec<PendingDeposit<Balance>>,
+    /// Pending deposit not yet converted to shares
+    pub pending_deposit: Option<PendingDeposit<Balance>>,
     /// Pending withdrawals with unlock timing
     pub pending_withdrawals: Vec<PendingWithdrawal<Balance, DomainBlockNumber>>,
 }
