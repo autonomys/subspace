@@ -18,6 +18,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::mem;
 #[cfg(feature = "kzg")]
+use core::num::NonZeroU64;
+#[cfg(feature = "kzg")]
 use core::simd::Simd;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use schnorrkel::SignatureError;
@@ -263,7 +265,12 @@ where
         sector_expiration_check_segment_commitment,
     }) = piece_check_params
     {
-        if &solution.history_size > current_history_size {
+        // `+1` here is due to the possibility of plotting a sector that was just archived and whose
+        // segment root is just being included in this very block we're checking (parent block,
+        // which is where `current_history_size` comes from doesn't know about this block yet)
+        if NonZeroU64::from(solution.history_size).get()
+            > NonZeroU64::from(*current_history_size).get() + 1
+        {
             return Err(Error::FutureHistorySize {
                 current: *current_history_size,
                 solution: solution.history_size,
