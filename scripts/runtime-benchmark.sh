@@ -30,7 +30,7 @@ function find_benchmarks () {
 echo "Current directory: $(pwd)"
 if [[ ! -d "./crates/subspace-runtime/src/weights" ]] || [[ ! -d "./domains/runtime/evm/src/weights" ]] || [[ ! -d "./domains/runtime/auto-id/src/weights" ]]; then
   echo "Changing to the root of the repository:"
-  cd "$(dirname "$0")"
+  cd "$(dirname "$0")/.."
   echo "Current directory: $(pwd)"
   if [[ ! -d "./crates/subspace-runtime/src/weights" ]] || [[ ! -d "./domains/runtime/evm/src/weights" ]] || [[ ! -d "./domains/runtime/auto-id/src/weights" ]]; then
     echo "Missing ./crates/subspace-runtime/src/weights, ./domains/runtime/evm/src/weights or ./domains/runtime/auto-id/src/weights directories"
