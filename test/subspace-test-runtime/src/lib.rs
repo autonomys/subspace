@@ -1642,7 +1642,7 @@ impl_runtime_apis! {
         fn nominator_position(
             operator_id: OperatorId,
             nominator_account: sp_runtime::AccountId32,
-        ) -> Option<sp_domains::NominatorPosition<Balance, DomainNumber>> {
+        ) -> Option<sp_domains::NominatorPosition<Balance, DomainNumber, Balance>> {
             Domains::nominator_position(operator_id, nominator_account)
         }
     }

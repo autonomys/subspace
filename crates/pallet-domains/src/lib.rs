@@ -3151,7 +3151,8 @@ impl<T: Config> Pallet<T> {
     pub fn nominator_position(
         operator_id: OperatorId,
         nominator_account: T::AccountId,
-    ) -> Option<sp_domains::NominatorPosition<BalanceOf<T>, DomainBlockNumberFor<T>>> {
+    ) -> Option<sp_domains::NominatorPosition<BalanceOf<T>, DomainBlockNumberFor<T>, T::Share>>
+    {
         nominator_position::nominator_position::<T>(operator_id, nominator_account)
     }
 }

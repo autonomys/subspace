@@ -294,7 +294,7 @@ sp_api::impl_runtime_apis! {
         fn nominator_position(
             _operator_id: OperatorId,
             _nominator_account: sp_runtime::AccountId32,
-        ) -> Option<NominatorPosition<Balance, DomainNumber>> {
+        ) -> Option<NominatorPosition<Balance, DomainNumber, Balance>> {
             unreachable!()
         }
     }

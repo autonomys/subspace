@@ -188,7 +188,7 @@ fn process_withdrawals<T: Config>(
 pub fn nominator_position<T: Config>(
     operator_id: OperatorId,
     nominator_account: T::AccountId,
-) -> Option<sp_domains::NominatorPosition<BalanceOf<T>, DomainBlockNumberFor<T>>> {
+) -> Option<sp_domains::NominatorPosition<BalanceOf<T>, DomainBlockNumberFor<T>, T::Share>> {
     use sp_domains::NominatorPosition;
 
     // Fetch core data needed for position calculation
@@ -220,6 +220,7 @@ pub fn nominator_position<T: Config>(
 
     Some(NominatorPosition {
         current_staked_value,
+        total_shares,
         storage_fee_deposit: sp_domains::StorageFeeDeposit {
             total_deposited: total_storage_fee_deposit,
             current_value: adjusted_storage_fee_deposit,
@@ -360,7 +361,7 @@ mod tests {
 
     /// Helper function to assert position invariants
     fn assert_position_invariants(
-        position: &sp_domains::NominatorPosition<u128, u32>,
+        position: &sp_domains::NominatorPosition<u128, u32, u128>,
         expected_staked_value: u128,
         expected_storage_fee: u128,
         expected_pending_deposits: usize,
@@ -679,8 +680,6 @@ mod tests {
             assert_eq!(pending_deposit.effective_epoch, initial_epoch);
 
             // Transition to next epoch - this makes the previous epoch's share price available
-            // With the bug (<=), this would incorrectly try to convert a deposit effective for the current epoch
-            // With the fix (<), only deposits from completed epochs get converted
             advance_epoch(domain_id);
 
             let domain_stake_summary =
@@ -920,6 +919,81 @@ mod tests {
             assert!(
                 operator_position_after_withdrawal.current_staked_value
                     < operator_position_after_epoch.current_staked_value,
+            );
+        });
+    }
+
+    #[test]
+    fn test_nominator_position_total_shares() {
+        let mut ext = new_test_ext_with_extensions();
+        ext.execute_with(|| {
+            let setup = TestSetup::default();
+            let (operator_id, domain_id) = setup_operator_with_nominator(setup);
+
+            // Test 1: Before epoch transition (no shares yet, all pending)
+            let position_before =
+                nominator_position::<Test>(operator_id, setup.nominator_account).unwrap();
+            assert_eq!(position_before.current_staked_value, 0);
+            assert_eq!(position_before.total_shares, 0); // No shares converted yet
+
+            // Test 2: After epoch transition (shares are active)
+            advance_epoch(domain_id);
+
+            let position_after =
+                nominator_position::<Test>(operator_id, setup.nominator_account).unwrap();
+            let expected_staked_value = expected_staking_portion(setup.nominator_stake);
+
+            assert_eq!(position_after.current_staked_value, expected_staked_value);
+            // total_shares should be the actual share count, not balance equivalent
+            assert!(
+                position_after.total_shares > 0,
+                "Should have shares after epoch transition"
+            );
+
+            // Test 3: After partial withdrawal
+            let withdrawal_amount = 100 * AI3;
+            withdraw_stake(
+                setup.nominator_account,
+                operator_id,
+                domain_id,
+                withdrawal_amount,
+            );
+
+            let position_after_withdrawal =
+                nominator_position::<Test>(operator_id, setup.nominator_account).unwrap();
+
+            let expected_remaining = 300 * AI3;
+            // Current staked value should be exactly the remaining after withdrawal
+            assert_eq!(
+                position_after_withdrawal.current_staked_value,
+                expected_remaining
+            );
+
+            // Total shares should be exactly the remaining after withdrawal
+            assert_eq!(position_after_withdrawal.total_shares, expected_remaining);
+
+            // total_shares represents the actual share count, not balance equivalent
+            assert!(
+                position_after_withdrawal.total_shares > 0,
+                "Should still have shares after partial withdrawal"
+            );
+
+            // Test 4: Add rewards and verify total_shares updates with share price
+            add_rewards(domain_id, operator_id, 50 * AI3);
+
+            let position_with_rewards =
+                nominator_position::<Test>(operator_id, setup.nominator_account).unwrap();
+
+            // Current staked value should increase due to better share price
+            assert!(
+                position_with_rewards.current_staked_value
+                    > position_after_withdrawal.current_staked_value
+            );
+
+            // total_shares should remain the same (share count doesn't change with rewards)
+            assert_eq!(
+                position_with_rewards.total_shares,
+                position_after_withdrawal.total_shares
             );
         });
     }

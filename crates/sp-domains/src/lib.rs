@@ -1659,9 +1659,11 @@ pub struct PendingWithdrawal<Balance, DomainBlockNumber> {
 
 /// Complete nominator position information for a specific operator
 #[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
-pub struct NominatorPosition<Balance, DomainBlockNumber> {
+pub struct NominatorPosition<Balance, DomainBlockNumber, Share> {
     /// Current value of the nominator's position (shares converted to balance using current share price)
     pub current_staked_value: Balance,
+    /// Total shares owned by nominator
+    pub total_shares: Share,
     /// Storage fee deposit information (original and current adjusted values)
     pub storage_fee_deposit: StorageFeeDeposit<Balance>,
     /// Pending deposit not yet converted to shares
@@ -1787,7 +1789,7 @@ sp_api::decl_runtime_apis! {
         fn nominator_position(
             operator_id: OperatorId,
             nominator_account: sp_runtime::AccountId32,
-        ) -> Option<NominatorPosition<Balance, HeaderNumberFor<DomainHeader>>>;
+        ) -> Option<NominatorPosition<Balance, HeaderNumberFor<DomainHeader>, Balance>>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
