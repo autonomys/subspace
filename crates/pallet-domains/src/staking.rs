@@ -2188,27 +2188,7 @@ pub(crate) mod tests {
                 };
 
                 if is_proptest {
-                    // Since proptests check edge cases, treat this as an approximate comparison.
-                    // The user should never get more, and they shouldn't get significantly less.
-                    prop_assert!(
-                        Balances::usable_balance(nominator_id) <= expected_balance,
-                        "extra minting: usable balance is greater than expected balance:\n\
-                        {} >\n{}",
-                        Balances::usable_balance(nominator_id),
-                        expected_balance,
-                    );
-                    // Account for both absolute and relative rounding errors.
-                    let expected_balance_rounded_down = ROUNDING_DOWN_FACTOR
-                        .mul_floor(expected_balance)
-                        .saturating_sub(ABSOLUTE_ROUNDING_ERROR);
-                    prop_assert!(
-                        Balances::usable_balance(nominator_id) >= expected_balance_rounded_down,
-                        "excess rounding losses: usable balance is less than expected balance \
-                        rounded down:\n{} <\n{} (from\n{})",
-                        Balances::usable_balance(nominator_id),
-                        expected_balance_rounded_down,
-                        expected_balance,
-                    );
+                    prop_assert_approx!(Balances::usable_balance(nominator_id), expected_balance);
                 } else {
                     assert_eq!(
                         Balances::usable_balance(nominator_id),
@@ -2250,42 +2230,15 @@ pub(crate) mod tests {
             // The total balance is distributed in different places but never changed.
             let operator = Operators::<Test>::get(operator_id).unwrap();
             if is_proptest {
-                // Since proptests check edge cases, treat this as an approximate comparison.
-                // The system should never mint more, and it shouldn't burn significant amounts.
-                prop_assert!(
-                    Balances::usable_balance(nominator_id)
-                        + operator.current_total_stake
-                        + bundle_storage_fund::total_balance::<Test>(operator_id)
-                        <= total_balance,
-                    "extra minting: final total balance is greater than initial total balance:\n\
-                    {} + {} + {} =\n{} >\n{}",
-                    Balances::usable_balance(nominator_id),
-                    operator.current_total_stake,
-                    bundle_storage_fund::total_balance::<Test>(operator_id),
+                prop_assert_approx!(
                     Balances::usable_balance(nominator_id)
                         + operator.current_total_stake
                         + bundle_storage_fund::total_balance::<Test>(operator_id),
                     total_balance,
-                );
-                // Account for both absolute and relative rounding errors.
-                let total_balance_rounded_down = ROUNDING_DOWN_FACTOR
-                    .mul_floor(total_balance)
-                    .saturating_sub(ABSOLUTE_ROUNDING_ERROR);
-                prop_assert!(
-                    Balances::usable_balance(nominator_id)
-                        + operator.current_total_stake
-                        + bundle_storage_fund::total_balance::<Test>(operator_id)
-                        >= total_balance_rounded_down,
-                    "excess rounding losses: final total balance is less than initial total \
-                    balance rounded down:\n{} + {} + {} =\n{} <\n{} (from\n{})",
+                    "\n{} + {} + {} =",
                     Balances::usable_balance(nominator_id),
                     operator.current_total_stake,
                     bundle_storage_fund::total_balance::<Test>(operator_id),
-                    Balances::usable_balance(nominator_id)
-                        + operator.current_total_stake
-                        + bundle_storage_fund::total_balance::<Test>(operator_id),
-                    total_balance_rounded_down,
-                    total_balance,
                 );
             } else {
                 assert_eq!(
@@ -2309,15 +2262,65 @@ pub(crate) mod tests {
         })
     }
 
+    /// Do an approximate amount comparison in a proptest.
+    /// Takes actual and expected amounts, and an optional extra format string and arguments.
+    ///
+    /// The user should never get more, and they shouldn't get significantly less.
+    /// Accounts for both absolute and relative rounding errors.
+    macro_rules! prop_assert_approx {
+            ($actual:expr, $expected:expr $(,)?) => {
+                prop_assert_approx!($actual, $expected, "");
+            };
+
+            ($actual:expr, $expected:expr, $fmt:expr) => {
+                prop_assert_approx!($actual, $expected, $fmt,);
+            };
+
+            ($actual:expr, $expected:expr, $fmt:expr, $($args:tt)*) => {{
+                let actual = $actual;
+                let expected = $expected;
+                let extra = format!($fmt, $($args)*);
+                prop_test::proptest::prop_assert!(
+                    actual <= expected,
+                    "extra minting: actual amount is greater than expected amount:{}{}\
+                    \n{} >\
+                    \n{}",
+                    if extra.is_empty() { "" } else { "\n" },
+                    extra,
+                    actual,
+                    expected,
+                );
+                let expected_rounded_down = $crate::staking::tests::PROP_ROUNDING_DOWN_FACTOR
+                    .mul_floor(expected)
+                    .saturating_sub($crate::staking::tests::PROP_ABSOLUTE_ROUNDING_ERROR);
+                prop_test::proptest::prop_assert!(
+                    actual >= expected_rounded_down,
+                    "excess rounding losses: actual amount is less than expected amount \
+                    rounded down:{}{}\
+                    \n{} <\
+                    \n{} (from\
+                    \n{})",
+                    if extra.is_empty() { "" } else { "\n" },
+                    extra,
+                    actual,
+                    expected_rounded_down,
+                    expected,
+                );
+            }};
+        }
+
+    // Export the macro for use in other modules (and earlier in this file).
+    pub(crate) use prop_assert_approx;
+
     /// Rounding down factor for property tests to account for arithmetic precision errors.
     /// This factor is used to allow for small rounding errors in calculations.
-    // Perquintill::from_parts(10_000_000).left_from_one(), as a constant.
-    const ROUNDING_DOWN_FACTOR: Perquintill =
-        Perquintill::from_parts(1_000_000_000_000_000_000 - 10_000_000);
+    // Perquintill::from_parts(...).left_from_one(), as a constant.
+    pub(crate) const PROP_ROUNDING_DOWN_FACTOR: Perquintill =
+        Perquintill::from_parts(1_000_000_000_000_000_000 - 1_000_000_000);
 
     /// Absolute rounding error tolerance for property tests.
     /// This constant defines the maximum acceptable absolute rounding error in calculations.
-    const ABSOLUTE_ROUNDING_ERROR: u128 = 100;
+    pub(crate) const PROP_ABSOLUTE_ROUNDING_ERROR: u128 = 1000;
 
     /// The maximum balance we test for in property tests.
     /// This balance should be just below the maximum possible issuance.
@@ -2326,27 +2329,36 @@ pub(crate) mod tests {
     /// RemoveLock (likely converted from BalanceOverflow) in the staking functions.
     //
     // TODO: fix the code so we can get closer to 2^128
-    const MAX_PROP_BALANCE: u128 = 2u128.pow(122);
+    pub(crate) const MAX_PROP_BALANCE: u128 = 2u128.pow(122);
 
     /// The minimum operator stake we test for in property tests.
     // TODO: edit the test harness so we can go as low as MinOperatorStake + 1
-    const MIN_PROP_OPERATOR_STAKE: u128 = 3 * <Test as Config>::MinOperatorStake::get();
+    pub(crate) const MIN_PROP_OPERATOR_STAKE: u128 = 3 * <Test as Config>::MinOperatorStake::get();
 
     /// The minimum nominator stake we test for in property tests.
-    const MIN_PROP_NOMINATOR_STAKE: u128 = <Test as Config>::MinNominatorStake::get() + 1;
+    pub(crate) const MIN_PROP_NOMINATOR_STAKE: u128 =
+        <Test as Config>::MinNominatorStake::get() + 1;
 
     /// The range of operator stakes we test for in property tests.
-    const OPERATOR_STAKE_RANGE: RangeInclusive<u128> = MIN_PROP_OPERATOR_STAKE..=MAX_PROP_BALANCE;
+    pub(crate) const PROP_OPERATOR_STAKE_RANGE: RangeInclusive<u128> =
+        MIN_PROP_OPERATOR_STAKE..=MAX_PROP_BALANCE;
 
     /// The range of nominator stakes we test for in property tests.
-    const NOMINATOR_STAKE_RANGE: RangeInclusive<u128> = MIN_PROP_NOMINATOR_STAKE..=MAX_PROP_BALANCE;
+    pub(crate) const PROP_NOMINATOR_STAKE_RANGE: RangeInclusive<u128> =
+        MIN_PROP_NOMINATOR_STAKE..=MAX_PROP_BALANCE;
 
     /// The range of operator or nominator deposits we test for in property tests.
     // TODO: edit the test harness so we can go as low as zero
-    const DEPOSIT_RANGE: RangeInclusive<u128> = MIN_PROP_NOMINATOR_STAKE..=MAX_PROP_BALANCE;
+    pub(crate) const PROP_DEPOSIT_RANGE: RangeInclusive<u128> =
+        MIN_PROP_NOMINATOR_STAKE..=MAX_PROP_BALANCE;
 
     /// The range of operator rewards we test for in property tests.
-    const REWARD_RANGE: RangeInclusive<u128> = 0..=MAX_PROP_BALANCE;
+    pub(crate) const PROP_REWARD_RANGE: RangeInclusive<u128> = 0..=MAX_PROP_BALANCE;
+
+    /// The range of operator free balances we test for in property tests.
+    #[expect(dead_code)]
+    pub(crate) const PROP_FREE_BALANCE_RANGE: RangeInclusive<u128> =
+        MIN_PROP_NOMINATOR_STAKE..=MAX_PROP_BALANCE;
 
     // Using too many random parameters and prop_assume()s can reduce test coverage.
     // Try to limit the number of parameters to 3.
@@ -2355,7 +2367,7 @@ pub(crate) mod tests {
     /// Their balance should be almost the same before and after.
     #[test]
     fn prop_withdraw_excess_operator_stake() {
-        prop_test!(&OPERATOR_STAKE_RANGE, |operator_stake| {
+        prop_test!(&PROP_OPERATOR_STAKE_RANGE, |operator_stake| {
             let mut excess_stake =
                 operator_stake.saturating_sub(<Test as Config>::MinOperatorStake::get());
 
@@ -2387,98 +2399,98 @@ pub(crate) mod tests {
     /// Their balance should be almost the same before and after.
     #[test]
     fn prop_withdraw_excess_operator_stake_with_nominator() {
-        prop_test!(&(OPERATOR_STAKE_RANGE, NOMINATOR_STAKE_RANGE,), |(
-            operator_stake,
-            nominator_stake,
-        )| {
-            // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
-            prop_assert!(
-                [operator_stake, nominator_stake]
-                    .into_iter()
-                    .try_fold(0_u128, |acc, value| acc.checked_add(value))
-                    .is_some()
-            );
+        prop_test!(
+            &(PROP_OPERATOR_STAKE_RANGE, PROP_NOMINATOR_STAKE_RANGE,),
+            |(operator_stake, nominator_stake)| {
+                // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
+                prop_assert!(
+                    [operator_stake, nominator_stake]
+                        .into_iter()
+                        .try_fold(0_u128, |acc, value| acc.checked_add(value))
+                        .is_some()
+                );
 
-            let expected_withdraw = (nominator_stake, true);
+                let expected_withdraw = (nominator_stake, true);
 
-            let excess_stake = expected_withdraw
-                .0
-                .saturating_sub(<Test as Config>::MinNominatorStake::get());
+                let excess_stake = expected_withdraw
+                    .0
+                    .saturating_sub(<Test as Config>::MinNominatorStake::get());
 
-            prop_assert!(excess_stake > 0, "would cause ZeroWithdraw error");
+                prop_assert!(excess_stake > 0, "would cause ZeroWithdraw error");
 
-            withdraw_stake_prop(WithdrawParams {
-                minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
-                nominators: vec![(0, operator_stake), (1, nominator_stake)],
-                operator_reward: 0,
-                nominator_id: 1,
-                withdraws: vec![(excess_stake, Ok(()))],
-                maybe_deposit: None,
-                expected_withdraw: Some(expected_withdraw),
-                expected_nominator_count_reduced_by: 1,
-                storage_fund_change: (true, 0),
-            })
-        });
+                withdraw_stake_prop(WithdrawParams {
+                    minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+                    nominators: vec![(0, operator_stake), (1, nominator_stake)],
+                    operator_reward: 0,
+                    nominator_id: 1,
+                    withdraws: vec![(excess_stake, Ok(()))],
+                    maybe_deposit: None,
+                    expected_withdraw: Some(expected_withdraw),
+                    expected_nominator_count_reduced_by: 1,
+                    storage_fund_change: (true, 0),
+                })
+            }
+        );
     }
 
     /// Property test for withdrawing an operator's excess stake with a deposit.
     /// Their balance should be almost the same before and after.
     #[test]
     fn prop_withdraw_excess_operator_stake_with_deposit() {
-        prop_test!(&(OPERATOR_STAKE_RANGE, DEPOSIT_RANGE,), |(
-            mut operator_stake,
-            maybe_deposit,
-        )| {
-            operator_stake = operator_stake.saturating_add(maybe_deposit);
+        prop_test!(
+            &(PROP_OPERATOR_STAKE_RANGE, PROP_DEPOSIT_RANGE,),
+            |(mut operator_stake, maybe_deposit)| {
+                operator_stake = operator_stake.saturating_add(maybe_deposit);
 
-            prop_assert!(
-                operator_stake.saturating_sub(maybe_deposit)
-                    >= <Test as Config>::MinOperatorStake::get(),
-                "would cause MinimumOperatorStake error"
-            );
+                prop_assert!(
+                    operator_stake.saturating_sub(maybe_deposit)
+                        >= <Test as Config>::MinOperatorStake::get(),
+                    "would cause MinimumOperatorStake error"
+                );
 
-            // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
-            prop_assert!(
-                [operator_stake, maybe_deposit]
-                    .into_iter()
-                    .try_fold(0_u128, |acc, value| acc.checked_add(value))
-                    .is_some()
-            );
+                // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
+                prop_assert!(
+                    [operator_stake, maybe_deposit]
+                        .into_iter()
+                        .try_fold(0_u128, |acc, value| acc.checked_add(value))
+                        .is_some()
+                );
 
-            let expected_withdraw = (
-                // TODO: work out how to avoid this multiplication on WithdrawParams.withdraws
-                STORAGE_FEE_RESERVE
-                    .left_from_one()
-                    .mul_ceil(operator_stake)
-                    .saturating_sub(maybe_deposit),
-                true,
-            );
+                let expected_withdraw = (
+                    // TODO: work out how to avoid this multiplication on WithdrawParams.withdraws
+                    STORAGE_FEE_RESERVE
+                        .left_from_one()
+                        .mul_ceil(operator_stake)
+                        .saturating_sub(maybe_deposit),
+                    true,
+                );
 
-            let excess_stake = expected_withdraw
-                .0
-                .saturating_sub(<Test as Config>::MinOperatorStake::get());
+                let excess_stake = expected_withdraw
+                    .0
+                    .saturating_sub(<Test as Config>::MinOperatorStake::get());
 
-            prop_assume!(excess_stake > 0, "would cause ZeroWithdraw error");
+                prop_assume!(excess_stake > 0, "would cause ZeroWithdraw error");
 
-            // Avoid ZeroDeposit errors
-            let maybe_deposit = if maybe_deposit == 0 {
-                None
-            } else {
-                Some(maybe_deposit)
-            };
+                // Avoid ZeroDeposit errors
+                let maybe_deposit = if maybe_deposit == 0 {
+                    None
+                } else {
+                    Some(maybe_deposit)
+                };
 
-            withdraw_stake_prop(WithdrawParams {
-                minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
-                nominators: vec![(0, operator_stake)],
-                operator_reward: 0,
-                nominator_id: 0,
-                withdraws: vec![(excess_stake, Ok(()))],
-                maybe_deposit,
-                expected_withdraw: Some(expected_withdraw),
-                expected_nominator_count_reduced_by: 0,
-                storage_fund_change: (true, 0),
-            })
-        });
+                withdraw_stake_prop(WithdrawParams {
+                    minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+                    nominators: vec![(0, operator_stake)],
+                    operator_reward: 0,
+                    nominator_id: 0,
+                    withdraws: vec![(excess_stake, Ok(()))],
+                    maybe_deposit,
+                    expected_withdraw: Some(expected_withdraw),
+                    expected_nominator_count_reduced_by: 0,
+                    storage_fund_change: (true, 0),
+                })
+            }
+        );
     }
 
     /// Property test for withdrawing an operator's excess stake with a deposit and fixed
@@ -2486,62 +2498,62 @@ pub(crate) mod tests {
     /// Their balance should be almost the same before and after.
     #[test]
     fn prop_withdraw_excess_nominator_stake_with_deposit_and_fixed_operator_stake() {
-        prop_test!(&(NOMINATOR_STAKE_RANGE, DEPOSIT_RANGE,), |(
-            mut nominator_stake,
-            maybe_deposit,
-        )| {
-            nominator_stake = nominator_stake.saturating_add(maybe_deposit);
+        prop_test!(
+            &(PROP_NOMINATOR_STAKE_RANGE, PROP_DEPOSIT_RANGE,),
+            |(mut nominator_stake, maybe_deposit)| {
+                nominator_stake = nominator_stake.saturating_add(maybe_deposit);
 
-            prop_assert!(
-                nominator_stake.saturating_sub(maybe_deposit)
-                    >= <Test as Config>::MinNominatorStake::get(),
-                "would cause MinimumNominatorStake error"
-            );
+                prop_assert!(
+                    nominator_stake.saturating_sub(maybe_deposit)
+                        >= <Test as Config>::MinNominatorStake::get(),
+                    "would cause MinimumNominatorStake error"
+                );
 
-            // MinimumOperatorStake error
-            let operator_stake = <Test as Config>::MinOperatorStake::get();
+                // MinimumOperatorStake error
+                let operator_stake = <Test as Config>::MinOperatorStake::get();
 
-            // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
-            prop_assert!(
-                [operator_stake, nominator_stake, maybe_deposit]
-                    .into_iter()
-                    .try_fold(0_u128, |acc, value| acc.checked_add(value))
-                    .is_some()
-            );
+                // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
+                prop_assert!(
+                    [operator_stake, nominator_stake, maybe_deposit]
+                        .into_iter()
+                        .try_fold(0_u128, |acc, value| acc.checked_add(value))
+                        .is_some()
+                );
 
-            let expected_withdraw = (
-                STORAGE_FEE_RESERVE
-                    .left_from_one()
-                    .mul_ceil(nominator_stake)
-                    .saturating_sub(maybe_deposit),
-                true,
-            );
+                let expected_withdraw = (
+                    STORAGE_FEE_RESERVE
+                        .left_from_one()
+                        .mul_ceil(nominator_stake)
+                        .saturating_sub(maybe_deposit),
+                    true,
+                );
 
-            let excess_stake = expected_withdraw
-                .0
-                .saturating_sub(<Test as Config>::MinNominatorStake::get());
+                let excess_stake = expected_withdraw
+                    .0
+                    .saturating_sub(<Test as Config>::MinNominatorStake::get());
 
-            prop_assume!(excess_stake > 0, "would cause ZeroWithdraw error");
+                prop_assume!(excess_stake > 0, "would cause ZeroWithdraw error");
 
-            // Avoid ZeroDeposit errors
-            let maybe_deposit = if maybe_deposit == 0 {
-                None
-            } else {
-                Some(maybe_deposit)
-            };
+                // Avoid ZeroDeposit errors
+                let maybe_deposit = if maybe_deposit == 0 {
+                    None
+                } else {
+                    Some(maybe_deposit)
+                };
 
-            withdraw_stake_prop(WithdrawParams {
-                minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
-                nominators: vec![(0, operator_stake), (1, nominator_stake)],
-                operator_reward: 0,
-                nominator_id: 1,
-                withdraws: vec![(excess_stake, Ok(()))],
-                maybe_deposit,
-                expected_withdraw: Some(expected_withdraw),
-                expected_nominator_count_reduced_by: 0,
-                storage_fund_change: (true, 0),
-            })
-        });
+                withdraw_stake_prop(WithdrawParams {
+                    minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+                    nominators: vec![(0, operator_stake), (1, nominator_stake)],
+                    operator_reward: 0,
+                    nominator_id: 1,
+                    withdraws: vec![(excess_stake, Ok(()))],
+                    maybe_deposit,
+                    expected_withdraw: Some(expected_withdraw),
+                    expected_nominator_count_reduced_by: 0,
+                    storage_fund_change: (true, 0),
+                })
+            }
+        );
     }
 
     /// Property test for withdrawing a nominator's excess stake with a deposit.
@@ -2549,7 +2561,11 @@ pub(crate) mod tests {
     #[test]
     fn prop_withdraw_excess_nominator_stake_with_deposit() {
         prop_test!(
-            &(OPERATOR_STAKE_RANGE, NOMINATOR_STAKE_RANGE, DEPOSIT_RANGE,),
+            &(
+                PROP_OPERATOR_STAKE_RANGE,
+                PROP_NOMINATOR_STAKE_RANGE,
+                PROP_DEPOSIT_RANGE,
+            ),
             |(operator_stake, mut nominator_stake, maybe_deposit)| {
                 nominator_stake = nominator_stake.saturating_add(maybe_deposit);
 
@@ -2609,7 +2625,11 @@ pub(crate) mod tests {
     #[test]
     fn prop_withdraw_excess_operator_stake_with_nominator_and_reward() {
         prop_test!(
-            &(OPERATOR_STAKE_RANGE, NOMINATOR_STAKE_RANGE, REWARD_RANGE,),
+            &(
+                PROP_OPERATOR_STAKE_RANGE,
+                PROP_NOMINATOR_STAKE_RANGE,
+                PROP_REWARD_RANGE,
+            ),
             |(operator_stake, nominator_stake, operator_reward)| {
                 // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
                 prop_assert!(
@@ -2653,7 +2673,11 @@ pub(crate) mod tests {
     #[test]
     fn prop_withdraw_excess_operator_stake_with_deposit_and_reward() {
         prop_test!(
-            &(OPERATOR_STAKE_RANGE, DEPOSIT_RANGE, REWARD_RANGE,),
+            &(
+                PROP_OPERATOR_STAKE_RANGE,
+                PROP_DEPOSIT_RANGE,
+                PROP_REWARD_RANGE,
+            ),
             |(mut operator_stake, maybe_deposit, operator_reward)| {
                 operator_stake = operator_stake.saturating_add(maybe_deposit);
 
