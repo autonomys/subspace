@@ -13,6 +13,21 @@ EXTRA_ITERATION_SETTINGS="--steps=250 --repeat=100"
 # linking time
 SKIP_BUILDS="false"
 
+if [[ "$#" -eq 1 ]] && [[ "$1" == "check" ]]; then
+  # We don't need LTO for checking benchmark code runs correctly, but debug runtimes are too large
+  # and fail with a memory limit error.
+  PROFILE="release"
+  ITERATION_SETTINGS="--steps=2 --repeat=1"
+  EXTRA_ITERATION_SETTINGS="--steps=2 --repeat=1"
+  MODE="check"
+elif [[ "$#" -eq 0 ]] || ([[ "$#" -eq 1 ]] && [[ "$1" == "full" ]]); then
+  # Default full benchmark mode
+  MODE="full"
+else
+  echo "Usage: $0 [check|full]"
+  exit 1
+fi
+
 # Users can set their own SED_IN_PLACE, for example, if their GNU sed is `gsed`
 if [[ -z "${SED_IN_PLACE[@]+"${SED_IN_PLACE[@]}"}" ]]; then
   if [[ "$(uname)" == "Darwin" ]]; then
@@ -44,7 +59,7 @@ fi
 if [[ "$SKIP_BUILDS" != 'true' ]]; then
   # The node builds all the runtimes, and generating weights will rebuild some runtimes, even though
   # those weights are not used in the benchmarks. So it is faster to build everything upfront.
-  echo "Building subspace-node and runtimes with profile: '$PROFILE' and features: '$FEATURES'..."
+  echo "Building subspace-node and runtimes with profile: '$PROFILE', features: '$FEATURES', and mode: '$MODE'..."
   set -x
   cargo build --profile "$PROFILE" --bin subspace-node --features "$FEATURES"
   cargo build --profile "$PROFILE" --package subspace-runtime --features "$FEATURES"
@@ -150,6 +165,12 @@ echo "Fixing pallet names in weights for domain runtimes..."
   ./domains/runtime/*/src/weights/pallet_messenger_from_consensus_extension.rs
 "${SED_IN_PLACE[@]}" -e "s/pallet_messenger_between_domains_extension::WeightInfo/pallet_messenger::extensions::FromDomainWeightInfo/g" \
   ./domains/runtime/*/src/weights/pallet_messenger_between_domains_extension.rs
+
+echo "Checking that generated weights will compile correctly..."
+cargo check --profile "$PROFILE" --bin subspace-node --features "$FEATURES"
+cargo check --profile "$PROFILE" --package subspace-runtime --features "$FEATURES"
+cargo check --profile "$PROFILE" --package evm-domain-runtime --features "$FEATURES"
+cargo check --profile "$PROFILE" --package auto-id-domain-runtime --features "$FEATURES"
 
 # Stop showing executed commands
 set +x
