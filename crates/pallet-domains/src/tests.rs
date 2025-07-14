@@ -44,14 +44,16 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
+use sp_std::sync::atomic::{AtomicU8, Ordering};
 use sp_version::{ApiId, RuntimeVersion, create_apis_vec};
 use std::num::NonZeroU64;
+use std::ops::Range;
 use subspace_core_primitives::pieces::Piece;
 use subspace_core_primitives::segments::HistorySize;
 use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{SlotNumber, U256 as P256};
 use subspace_runtime_primitives::{
-    AI3, ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee,
+    AI3, ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, OnSetCode, StorageFee,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -175,6 +177,41 @@ parameter_types! {
         bundle_version: BundleVersion::V1,
         execution_receipt_version: ExecutionReceiptVersion::V0,
     };
+}
+
+static MOCK_BUNDLE_VERSION: AtomicU8 = AtomicU8::new(0);
+static MOCK_ER_VERSION: AtomicU8 = AtomicU8::new(0);
+
+pub struct MockCurrentBundleAndExecutionReceiptVersion;
+
+impl Get<BundleAndExecutionReceiptVersion> for MockCurrentBundleAndExecutionReceiptVersion {
+    fn get() -> BundleAndExecutionReceiptVersion {
+        let bundle_version = match MOCK_BUNDLE_VERSION.load(Ordering::SeqCst) {
+            0 => BundleVersion::V0,
+            1 => BundleVersion::V1,
+            _ => unreachable!(),
+        };
+        let execution_receipt_version = match MOCK_ER_VERSION.load(Ordering::SeqCst) {
+            0 => ExecutionReceiptVersion::V0,
+            1 => ExecutionReceiptVersion::V1,
+            2 => ExecutionReceiptVersion::V2,
+            _ => unreachable!(),
+        };
+
+        BundleAndExecutionReceiptVersion {
+            bundle_version,
+            execution_receipt_version,
+        }
+    }
+}
+
+impl MockCurrentBundleAndExecutionReceiptVersion {
+    fn set_bundle_version(new_version: u8) {
+        MOCK_BUNDLE_VERSION.store(new_version, Ordering::SeqCst)
+    }
+    fn set_er_version(new_version: u8) {
+        MOCK_ER_VERSION.store(new_version, Ordering::SeqCst)
+    }
 }
 
 pub struct MockRandomness;
@@ -306,7 +343,7 @@ impl pallet_domains::Config for Test {
     type OnChainRewards = ();
     type WithdrawalLimit = WithdrawalLimit;
     type DomainOrigin = crate::EnsureDomainOrigin;
-    type CurrentBundleAndExecutionReceiptVersion = CurrentBundleAndExecutionReceiptVersion;
+    type CurrentBundleAndExecutionReceiptVersion = MockCurrentBundleAndExecutionReceiptVersion;
 }
 
 pub struct ExtrinsicStorageFees;
@@ -1132,4 +1169,128 @@ fn test_type_with_default_nonce_encode() {
     let encode_1 = nonce_1.encode();
     let encode_2 = nonce_2.encode();
     assert_eq!(encode_1, encode_2);
+}
+
+#[test]
+fn test_bundle_and_er_version_store_and_get() {
+    new_test_ext_with_extensions().execute_with(|| {
+        assert_eq!(
+            <Test as Config>::CurrentBundleAndExecutionReceiptVersion::get(),
+            BundleAndExecutionReceiptVersion {
+                bundle_version: BundleVersion::V0,
+                execution_receipt_version: ExecutionReceiptVersion::V0,
+            }
+        );
+        let expected_er_version_in_range = [(0u32..10u32, ExecutionReceiptVersion::V0)];
+        for (range, version) in expected_er_version_in_range {
+            for block_number in range {
+                assert_eq!(
+                    Domains::execution_receipt_version_for_consensus_number(block_number.into())
+                        .unwrap(),
+                    version,
+                );
+            }
+        }
+
+        // Update bundle version to V1 in block #10
+        MockCurrentBundleAndExecutionReceiptVersion::set_bundle_version(1);
+        Domains::set_code(10u32.into()).unwrap();
+        assert_eq!(
+            <Test as Config>::CurrentBundleAndExecutionReceiptVersion::get(),
+            BundleAndExecutionReceiptVersion {
+                bundle_version: BundleVersion::V1,
+                execution_receipt_version: ExecutionReceiptVersion::V0,
+            }
+        );
+        let expected_er_version_in_range = [
+            (0u32..10u32, ExecutionReceiptVersion::V0),
+            (10u32..20u32, ExecutionReceiptVersion::V0),
+        ];
+        for (range, version) in expected_er_version_in_range {
+            for block_number in range {
+                assert_eq!(
+                    Domains::execution_receipt_version_for_consensus_number(block_number.into())
+                        .unwrap(),
+                    version,
+                );
+            }
+        }
+
+        // Update ER version to V1 in block #20
+        MockCurrentBundleAndExecutionReceiptVersion::set_er_version(1);
+        Domains::set_code(20u32.into()).unwrap();
+        assert_eq!(
+            <Test as Config>::CurrentBundleAndExecutionReceiptVersion::get(),
+            BundleAndExecutionReceiptVersion {
+                bundle_version: BundleVersion::V1,
+                execution_receipt_version: ExecutionReceiptVersion::V1,
+            }
+        );
+        let expected_er_version_in_range = [
+            (0u32..10u32, ExecutionReceiptVersion::V0),
+            (10u32..20u32, ExecutionReceiptVersion::V0),
+            (20u32..30u32, ExecutionReceiptVersion::V1),
+        ];
+        for (range, version) in expected_er_version_in_range {
+            for block_number in range {
+                assert_eq!(
+                    Domains::execution_receipt_version_for_consensus_number(block_number.into())
+                        .unwrap(),
+                    version,
+                );
+            }
+        }
+
+        // Another upgrade at block #30 that doesn't change the bundle/ER version
+        Domains::set_code(30u32.into()).unwrap();
+        assert_eq!(
+            <Test as Config>::CurrentBundleAndExecutionReceiptVersion::get(),
+            BundleAndExecutionReceiptVersion {
+                bundle_version: BundleVersion::V1,
+                execution_receipt_version: ExecutionReceiptVersion::V1,
+            }
+        );
+        let expected_er_version_in_range = [
+            (0u32..10u32, ExecutionReceiptVersion::V0),
+            (10u32..20u32, ExecutionReceiptVersion::V0),
+            (20u32..30u32, ExecutionReceiptVersion::V1),
+            (30u32..40u32, ExecutionReceiptVersion::V1),
+        ];
+        for (range, version) in expected_er_version_in_range {
+            for block_number in range {
+                assert_eq!(
+                    Domains::execution_receipt_version_for_consensus_number(block_number.into())
+                        .unwrap(),
+                    version,
+                );
+            }
+        }
+
+        // Update ER version to V2 in block #40
+        MockCurrentBundleAndExecutionReceiptVersion::set_er_version(2);
+        Domains::set_code(40u32.into()).unwrap();
+        assert_eq!(
+            <Test as Config>::CurrentBundleAndExecutionReceiptVersion::get(),
+            BundleAndExecutionReceiptVersion {
+                bundle_version: BundleVersion::V1,
+                execution_receipt_version: ExecutionReceiptVersion::V2,
+            }
+        );
+        let expected_er_version_in_range = [
+            (0u32..10u32, ExecutionReceiptVersion::V0),
+            (10u32..20u32, ExecutionReceiptVersion::V0),
+            (20u32..30u32, ExecutionReceiptVersion::V1),
+            (30u32..40u32, ExecutionReceiptVersion::V1),
+            (40u32..50u32, ExecutionReceiptVersion::V2),
+        ];
+        for (range, version) in expected_er_version_in_range {
+            for block_number in range {
+                assert_eq!(
+                    Domains::execution_receipt_version_for_consensus_number(block_number.into())
+                        .unwrap(),
+                    version,
+                );
+            }
+        }
+    })
 }

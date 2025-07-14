@@ -2415,6 +2415,8 @@ impl<T: Config> Pallet<T> {
                 .ok_or(BundleError::ExecutionVersionMissing)?;
         match (receipt_version, expected_execution_receipt_version) {
             (ExecutionReceiptVersion::V0, ExecutionReceiptVersion::V0) => Ok(()),
+            #[cfg(any(feature = "std", test))]
+            _ => unreachable!(),
         }
     }
 

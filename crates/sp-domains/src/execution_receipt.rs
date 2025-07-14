@@ -28,6 +28,10 @@ use subspace_runtime_primitives::BlockHashFor;
 pub enum ExecutionReceiptVersion {
     /// V0 execution receipt.
     V0,
+    #[cfg(any(feature = "std", test))]
+    V1,
+    #[cfg(any(feature = "std", test))]
+    V2,
 }
 
 #[derive(Clone, Debug, Decode, Default, Encode, Eq, PartialEq, TypeInfo)]
@@ -342,6 +346,8 @@ where
                 block_fees: Default::default(),
                 transfers: Default::default(),
             }),
+            #[cfg(any(feature = "std", test))]
+            _ => unreachable!(),
         }
     }
 
