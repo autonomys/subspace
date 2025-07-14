@@ -5,8 +5,10 @@ set -euo pipefail
 
 PROFILE="production"
 FEATURES="runtime-benchmarks"
-# While testing the script, use --steps=2 --repeat=1 for quick but inaccurate benchmarks
-BENCH_SETTINGS="--extrinsic=* --wasm-execution=compiled --genesis-builder=none --steps=50 --repeat=20 --heap-pages=4096"
+CORE_BENCH_SETTINGS="--extrinsic=* --wasm-execution=compiled --genesis-builder=none --heap-pages=4096"
+ITERATION_SETTINGS="--steps=50 --repeat=20"
+# Some benchmarks are quick (or noisy) and need extra iterations for accurate results
+EXTRA_ITERATION_SETTINGS="--steps=250 --repeat=100"
 # If you're sure the node and runtime binaries are up to date, set this to true to save rebuild and
 # linking time
 SKIP_BUILDS="false"
@@ -55,6 +57,7 @@ else
 fi
 
 echo "Generating weights for Subspace runtime..."
+BENCH_SETTINGS="$CORE_BENCH_SETTINGS $ITERATION_SETTINGS"
 # frame_benchmarking is unused, it contains benchmarks for hashing and sr25519_verification
 # TODO: `pallet_democracy` benchmark are broken, need investigation
 SUBSPACE_RUNTIME_PALLETS=$(cat ./crates/subspace-runtime/src/lib.rs | \
@@ -80,6 +83,9 @@ echo "Fixing pallet names in weights for Subspace runtime..."
 SUBSPACE_RUNTIME_PRIMITIVES=(
   "balance_transfer_check_extension"
 )
+# We need to run extra iterations to get accurate linear values in these benchmarks.
+BENCH_SETTINGS="$CORE_BENCH_SETTINGS $EXTRA_ITERATION_SETTINGS"
+
 echo "Primitives Pallet list: ${SUBSPACE_RUNTIME_PRIMITIVES[@]}"
 for PALLET in "${SUBSPACE_RUNTIME_PRIMITIVES[@]}"; do
   ./target/$PROFILE/subspace-node benchmark pallet \
@@ -93,10 +99,12 @@ echo "Fixing pallet names in weights for Subspace runtime primitives..."
   ./crates/subspace-runtime-primitives/src/weights/balance_transfer_check_extension.rs
 
 echo "Generating weights for EVM domain runtime..."
+BENCH_SETTINGS="$CORE_BENCH_SETTINGS $ITERATION_SETTINGS"
 EVM_DOMAIN_RUNTIME_PALLETS=$(cat domains/runtime/evm/src/lib.rs | \
   find_benchmarks | \
   grep -v -e "frame_benchmarking" -e "pallet_evm_tracker"
 )
+
 echo "Pallet list: $EVM_DOMAIN_RUNTIME_PALLETS"
 for PALLET in $EVM_DOMAIN_RUNTIME_PALLETS; do
   ./target/$PROFILE/subspace-node domain benchmark pallet \
@@ -110,6 +118,8 @@ done
 # TODO: pallet_evm_tracker CheckNonce extension benchmarks
 PALLET="pallet_evm_tracker"
 echo "EVM Tracker Pallet name: $PALLET"
+BENCH_SETTINGS="$CORE_BENCH_SETTINGS $ITERATION_SETTINGS"
+
 ./target/$PROFILE/subspace-node domain benchmark pallet \
   --runtime=./target/$PROFILE/wbuild/evm-domain-runtime/evm_domain_runtime.compact.compressed.wasm \
   $BENCH_SETTINGS \
@@ -120,10 +130,12 @@ echo "Fixing pallet names in weights for $PALLET..."
   ./domains/pallets/evm-tracker/src/weights/pallet_evm_tracker.rs
 
 echo "Generating weights for Auto ID domain runtime..."
+BENCH_SETTINGS="$CORE_BENCH_SETTINGS $ITERATION_SETTINGS"
 AUTO_ID_DOMAIN_RUNTIME_PALLETS=$(cat domains/runtime/auto-id/src/lib.rs | \
   find_benchmarks | \
   grep -v -e "frame_benchmarking"
 )
+
 echo "Pallet list: $AUTO_ID_DOMAIN_RUNTIME_PALLETS"
 for PALLET in $AUTO_ID_DOMAIN_RUNTIME_PALLETS; do
   ./target/$PROFILE/subspace-node domain benchmark pallet \
