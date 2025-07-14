@@ -4,7 +4,7 @@ runners:
     ram: [64, 128, 192]
     disk: default
     family: ["c7a", "c7i", "m7a", "m7i"]
-    spot: capacity-optimized
+    spot: false
     image: ubuntu22-full-x64
 # Give runner SSH access to the GitHub SSH keys of these accounts
 admins:
