@@ -3,6 +3,7 @@ use crate::domain_registry::{DomainConfig, DomainConfigParams, DomainObject};
 use crate::pallet::OperatorIdOwner;
 use crate::runtime_registry::ScheduledRuntimeUpgrade;
 use crate::staking::Operator;
+use crate::tests::pallet_mock_version_store::MockPreviousBundleAndExecutionReceiptVersions;
 use crate::{
     self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
     ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry,
@@ -83,6 +84,7 @@ frame_support::construct_runtime!(
         Domains: pallet_domains,
         DomainExecutive: domain_pallet_executive,
         BlockFees: pallet_block_fees,
+        MockVersionStore: pallet_mock_version_store,
     }
 );
 
@@ -384,6 +386,52 @@ impl pallet_subspace::Config for Test {
     type BlockSlotCount = BlockSlotCount;
     type ExtensionWeightInfo = pallet_subspace::extensions::weights::SubstrateWeight<Self>;
 }
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
+pub enum MockBundleVersion {
+    V0,
+    V1,
+    V2,
+    V3,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
+pub enum MockExecutionReceiptVersion {
+    V0,
+    V1,
+    V2,
+    V3,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
+pub struct MockBundleAndExecutionReceiptVersion {
+    pub bundle_version: MockBundleVersion,
+    pub execution_receipt_version: MockExecutionReceiptVersion,
+}
+
+#[frame_support::pallet]
+pub(crate) mod pallet_mock_version_store {
+    use super::{BlockNumberFor, MockBundleAndExecutionReceiptVersion};
+    use frame_support::pallet_prelude::*;
+    use std::collections::BTreeMap;
+
+    #[pallet::config]
+    pub trait Config: frame_system::Config {}
+
+    /// Pallet domain-id to store self domain id.
+    #[pallet::pallet]
+    #[pallet::without_storage_info]
+    pub struct Pallet<T>(_);
+
+    #[pallet::storage]
+    pub type MockPreviousBundleAndExecutionReceiptVersions<T: Config> = StorageValue<
+        _,
+        BTreeMap<BlockNumberFor<T>, MockBundleAndExecutionReceiptVersion>,
+        ValueQuery,
+    >;
+}
+
+impl pallet_mock_version_store::Config for Test {}
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
     let t = frame_system::GenesisConfig::<Test>::default()
@@ -1132,4 +1180,288 @@ fn test_type_with_default_nonce_encode() {
     let encode_1 = nonce_1.encode();
     let encode_2 = nonce_2.encode();
     assert_eq!(encode_1, encode_2);
+}
+
+/// Returns mock upgrades.
+/// (block_number, current_version)
+/// block_number: Consensus block at which `set_code` is executed
+/// current_version: Version at the time `set_code` is executed.
+/// Code is upgraded from block_number + 1 and any new version from new runtime is considered
+/// from that point which is block_number + 1
+/// until block_number, previous runtime's version is valid.
+fn get_mock_upgrades() -> Vec<(u32, MockBundleAndExecutionReceiptVersion, bool)> {
+    vec![
+        // version from 0..100
+        (
+            100u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V0,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+            // this version at this block must exist due to the change in version
+            // in the next upgrade
+            true,
+        ),
+        // version change
+        // version from 101..121
+        (
+            121u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+            // this version at this block will not exist since next upgrade
+            // carries same version
+            false,
+        ),
+        // same version as previous
+        // version from 122..130
+        (
+            130u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+            // this version at this block must exist due to the change in version
+            // in the next upgrade
+            true,
+        ),
+        // version change
+        // version from 131..150
+        (
+            150u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+            // this version at this block will not exist since next upgrade
+            // carries same version
+            false,
+        ),
+        // same version as previous
+        // version from 151..155
+        (
+            155u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+            // this version at this block must exist due to the change in version
+            // in the next upgrade
+            true,
+        ),
+        // version change
+        // version from 156..160
+        (
+            160u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+            // this version at this block must exist due to the change in version
+            // in the next upgrade
+            true,
+        ),
+        // version change
+        // version from 161..200
+        (
+            200u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V2,
+            },
+            // this version at this block will not exist since next upgrade
+            // carries same version
+            false,
+        ),
+        // same version
+        // version from 201..250
+        (
+            250u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V2,
+            },
+            // this version at this block will not exist since next upgrade
+            // carries same version
+            false,
+        ),
+        // same version
+        // version from 251..300
+        (
+            300u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V2,
+            },
+            // this version at this block must exist due to the change in version
+            // in the next upgrade
+            true,
+        ),
+    ]
+}
+
+fn get_mock_version_queries() -> Vec<(u32, MockBundleAndExecutionReceiptVersion)> {
+    vec![
+        // version from 0..100
+        (
+            90u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V0,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+        ),
+        (
+            100u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V0,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+        ),
+        // version change
+        // version from 101..130
+        (
+            101u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+        ),
+        (
+            121u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+        ),
+        (
+            130u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+        ),
+        // version change
+        // version from 131..155
+        (
+            131u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+        ),
+        (
+            155u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+        ),
+        // version change
+        // version from 156..160
+        (
+            156u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+        ),
+        (
+            160u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+        ),
+        // version change
+        // version from 161..300
+        (
+            161u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V2,
+            },
+        ),
+        (
+            250u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V2,
+            },
+        ),
+        (
+            300u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V2,
+            },
+        ),
+        // version from >= 301
+        (
+            301u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V3,
+                execution_receipt_version: MockExecutionReceiptVersion::V3,
+            },
+        ),
+        (
+            500u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V3,
+                execution_receipt_version: MockExecutionReceiptVersion::V3,
+            },
+        ),
+    ]
+}
+
+#[test]
+fn test_version_store_and_get() {
+    let mut ext = new_test_ext_with_extensions();
+
+    let upgrades = get_mock_upgrades();
+    ext.execute_with(|| {
+        for (upgraded_at, current_version, _) in upgrades.clone() {
+            Domains::set_previous_bundle_and_execution_receipt_version(
+                upgraded_at,
+                MockPreviousBundleAndExecutionReceiptVersions::<Test>::set,
+                MockPreviousBundleAndExecutionReceiptVersions::<Test>::get,
+                current_version,
+            );
+        }
+
+        let versions = MockPreviousBundleAndExecutionReceiptVersions::<Test>::get();
+        // There should be a total of 5 entries in the set
+        assert_eq!(versions.len(), 5);
+
+        for (upgraded_at, version, exists) in upgrades {
+            match versions.get(&upgraded_at) {
+                None => assert!(!exists),
+                Some(stored_version) => {
+                    assert!(exists);
+                    assert_eq!(version, stored_version.clone());
+                }
+            }
+        }
+
+        // now to test queries for version at any block
+        // 0..100 should have (V0, V0)
+        // 101..130 should have (V1, V0)
+        // 131..155 should have (V1, V1)
+        // 156..160 should have (V2, V1)
+        // 161..300 should have (V2, V2)
+        // >= 301 should have (V3, V3)
+        let current_version = MockBundleAndExecutionReceiptVersion {
+            bundle_version: MockBundleVersion::V3,
+            execution_receipt_version: MockExecutionReceiptVersion::V3,
+        };
+        for (number, expected_version) in get_mock_version_queries() {
+            let got_version = Domains::bundle_and_execution_receipt_version_for_consensus_number(
+                number,
+                MockPreviousBundleAndExecutionReceiptVersions::<Test>::get,
+                current_version,
+            )
+            .unwrap();
+            assert_eq!(expected_version, got_version);
+        }
+    })
 }

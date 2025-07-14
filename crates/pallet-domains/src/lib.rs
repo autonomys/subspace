@@ -2411,8 +2411,13 @@ impl<T: Config> Pallet<T> {
         receipt_version: ExecutionReceiptVersion,
     ) -> Result<(), BundleError> {
         let expected_execution_receipt_version =
-            Self::execution_receipt_version_for_consensus_number(er_derived_consensus_number)
-                .ok_or(BundleError::ExecutionVersionMissing)?;
+            Self::bundle_and_execution_receipt_version_for_consensus_number(
+                er_derived_consensus_number,
+                PreviousBundleAndExecutionReceiptVersions::<T>::get,
+                T::CurrentBundleAndExecutionReceiptVersion::get(),
+            )
+            .ok_or(BundleError::ExecutionVersionMissing)?
+            .execution_receipt_version;
         match (receipt_version, expected_execution_receipt_version) {
             (ExecutionReceiptVersion::V0, ExecutionReceiptVersion::V0) => Ok(()),
         }
@@ -2940,34 +2945,36 @@ impl<T: Config> Pallet<T> {
         get_block_tree_node::<T>(receipt_hash).map(|db| db.execution_receipt)
     }
 
-    /// Returns the correct execution receipt version based on
+    /// Returns the correct bundle and er version based on
     /// the consensus block number at which execution receipt was derived.
-    pub(crate) fn execution_receipt_version_for_consensus_number(
+    pub(crate) fn bundle_and_execution_receipt_version_for_consensus_number<PV, BEV>(
         er_derived_number: BlockNumberFor<T>,
-    ) -> Option<ExecutionReceiptVersion> {
-        let versions = PreviousBundleAndExecutionReceiptVersions::<T>::get();
+        previous_versions: PV,
+        current_version: BEV,
+    ) -> Option<BEV>
+    where
+        PV: Fn() -> BTreeMap<BlockNumberFor<T>, BEV>,
+        BEV: Copy + Clone,
+    {
+        let versions = previous_versions();
 
         // short circuit if the er version can be latest
-        match versions.range(..).next_back() {
+        match versions.last_key_value() {
             // if there are no versions, means latest version.
             None => {
-                return Some(
-                    T::CurrentBundleAndExecutionReceiptVersion::get().execution_receipt_version,
-                );
+                return Some(current_version);
             }
             Some((number, version)) => {
                 // if er derived number of greater than last stored version,
                 // then er version should be of latest version.
                 if er_derived_number > *number {
-                    return Some(
-                        T::CurrentBundleAndExecutionReceiptVersion::get().execution_receipt_version,
-                    );
+                    return Some(current_version);
                 }
 
                 // if the er derived number is equal to last stored version,
                 // then er version should be previous er version
                 if er_derived_number == *number {
-                    return Some(version.execution_receipt_version);
+                    return Some(*version);
                 }
             }
         }
@@ -2976,7 +2983,7 @@ impl<T: Config> Pallet<T> {
         // loop through to find the correct version.
         for (upgraded_number, version) in versions.into_iter() {
             if er_derived_number <= upgraded_number {
-                return Some(version.execution_receipt_version);
+                return Some(version);
             }
         }
 
@@ -3266,35 +3273,54 @@ impl<T: Config> Pallet<T> {
             domain_id,
         )
     }
+
+    pub(crate) fn set_previous_bundle_and_execution_receipt_version<SV, PV, BEV>(
+        block_number: BlockNumberFor<T>,
+        set_version: SV,
+        previous_versions: PV,
+        current_version: BEV,
+    ) where
+        SV: Fn(BTreeMap<BlockNumberFor<T>, BEV>),
+        PV: Fn() -> BTreeMap<BlockNumberFor<T>, BEV>,
+        BEV: PartialEq,
+    {
+        let mut versions = previous_versions();
+        // first storage, so nothing much to do
+        if versions.len().is_zero() {
+            versions.insert(block_number, current_version);
+        } else {
+            // if there is a previous version stored, and
+            // previous version matches the current one,
+            // then we can replace the same version with latest upgraded block number.
+            let (prev_number, prev_versions) = versions
+                .pop_last()
+                .expect("at least one version is available due to check above");
+
+            // versions matched, so insert the version with latest block number.
+            if prev_versions == current_version {
+                versions.insert(block_number, current_version);
+            } else {
+                // versions did not match, so add both
+                versions.insert(prev_number, prev_versions);
+                versions.insert(block_number, current_version);
+            }
+        }
+
+        set_version(versions);
+    }
 }
 
 impl<T: Config> subspace_runtime_primitives::OnSetCode<BlockNumberFor<T>> for Pallet<T> {
     /// Store the Bundle and Er versions before runtime is upgraded along with the
     /// Consensus number at which runtime is upgraded.
     fn set_code(block_number: BlockNumberFor<T>) -> DispatchResult {
-        let current_versions = T::CurrentBundleAndExecutionReceiptVersion::get();
-        PreviousBundleAndExecutionReceiptVersions::<T>::mutate(|versions| {
-            // first storage, so nothing much to do
-            if versions.len().is_zero() {
-                versions.insert(block_number, current_versions);
-            } else {
-                // if there is a previous version stored, and
-                // previous version matches the current one,
-                // then we can replace the same version with latest upgraded block number.
-                let (prev_number, prev_versions) = versions
-                    .pop_last()
-                    .expect("at least one version is available due to check above");
-
-                // versions matched, so insert the version with latest block number.
-                if prev_versions == current_versions {
-                    versions.insert(block_number, current_versions);
-                } else {
-                    // versions did not match, so add both
-                    versions.insert(prev_number, prev_versions);
-                    versions.insert(block_number, current_versions);
-                }
-            }
-        });
+        let current_version = T::CurrentBundleAndExecutionReceiptVersion::get();
+        Self::set_previous_bundle_and_execution_receipt_version(
+            block_number,
+            PreviousBundleAndExecutionReceiptVersions::<T>::set,
+            PreviousBundleAndExecutionReceiptVersions::<T>::get,
+            current_version,
+        );
         Ok(())
     }
 }
