@@ -47,13 +47,12 @@ use sp_runtime::{BuildStorage, OpaqueExtrinsic};
 use sp_std::sync::atomic::{AtomicU8, Ordering};
 use sp_version::{ApiId, RuntimeVersion, create_apis_vec};
 use std::num::NonZeroU64;
-use std::ops::Range;
 use subspace_core_primitives::pieces::Piece;
 use subspace_core_primitives::segments::HistorySize;
 use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{SlotNumber, U256 as P256};
 use subspace_runtime_primitives::{
-    AI3, ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, OnSetCode, StorageFee,
+    AI3, ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -1194,7 +1193,7 @@ fn test_bundle_and_er_version_store_and_get() {
 
         // Update bundle version to V1 in block #10
         MockCurrentBundleAndExecutionReceiptVersion::set_bundle_version(1);
-        Domains::set_code(10u32.into()).unwrap();
+        Domains::on_initialize(11u32.into());
         assert_eq!(
             <Test as Config>::CurrentBundleAndExecutionReceiptVersion::get(),
             BundleAndExecutionReceiptVersion {
@@ -1218,7 +1217,7 @@ fn test_bundle_and_er_version_store_and_get() {
 
         // Update ER version to V1 in block #20
         MockCurrentBundleAndExecutionReceiptVersion::set_er_version(1);
-        Domains::set_code(20u32.into()).unwrap();
+        Domains::on_initialize(21u32.into());
         assert_eq!(
             <Test as Config>::CurrentBundleAndExecutionReceiptVersion::get(),
             BundleAndExecutionReceiptVersion {
@@ -1242,7 +1241,7 @@ fn test_bundle_and_er_version_store_and_get() {
         }
 
         // Another upgrade at block #30 that doesn't change the bundle/ER version
-        Domains::set_code(30u32.into()).unwrap();
+        Domains::on_initialize(31u32.into());
         assert_eq!(
             <Test as Config>::CurrentBundleAndExecutionReceiptVersion::get(),
             BundleAndExecutionReceiptVersion {
@@ -1268,7 +1267,7 @@ fn test_bundle_and_er_version_store_and_get() {
 
         // Update ER version to V2 in block #40
         MockCurrentBundleAndExecutionReceiptVersion::set_er_version(2);
-        Domains::set_code(40u32.into()).unwrap();
+        Domains::on_initialize(41u32.into());
         assert_eq!(
             <Test as Config>::CurrentBundleAndExecutionReceiptVersion::get(),
             BundleAndExecutionReceiptVersion {

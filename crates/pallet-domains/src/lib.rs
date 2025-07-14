@@ -2097,6 +2097,12 @@ mod pallet {
 
             BlockInherentExtrinsicData::<T>::kill();
 
+            // NOTE: the new runtime code is take affect in the next block, thus we pass the
+            // `parent_number` since which brings the new runtime code. And most important, in the
+            // client side while using the runtime API at `parent_hash` to query the bundle/ER
+            // version, it will also return the bundle/ER version in the new runtime code.
+            Self::record_new_bundle_and_er_version(parent_number);
+
             Weight::zero()
         }
 
@@ -2949,41 +2955,52 @@ impl<T: Config> Pallet<T> {
     ) -> Option<ExecutionReceiptVersion> {
         let versions = PreviousBundleAndExecutionReceiptVersions::<T>::get();
 
-        // short circuit if the er version can be latest
-        match versions.range(..).next_back() {
-            // if there are no versions, means latest version.
+        match versions.first_key_value() {
+            // The new bundle/ER version is recorded in `PreviousBundleAndExecutionReceiptVersions`
+            // during block initialization and never removed, `PreviousBundleAndExecutionReceiptVersions`
+            // is empty means the runtime upgrade that brings the versioned bundle just happen and
+            // this function is called outside of block execution within a runtime API (e.g. in tx pool or
+            // bundle producer), in this case, simply use `CurrentBundleAndExecutionReceiptVersion`.
             None => {
                 return Some(
                     T::CurrentBundleAndExecutionReceiptVersion::get().execution_receipt_version,
                 );
             }
-            Some((number, version)) => {
-                // if er derived number of greater than last stored version,
-                // then er version should be of latest version.
-                if er_derived_number > *number {
-                    return Some(
-                        T::CurrentBundleAndExecutionReceiptVersion::get().execution_receipt_version,
-                    );
-                }
-
-                // if the er derived number is equal to last stored version,
-                // then er version should be previous er version
-                if er_derived_number == *number {
-                    return Some(version.execution_receipt_version);
+            Some((number, _)) => {
+                // The ER is derived from consensus block that was produced before the versioned ER
+                // is introduced in the runtime, thus it should be in the un-versioned format (i.e. V0).
+                if er_derived_number < *number {
+                    return Some(ExecutionReceiptVersion::V0);
                 }
             }
         }
 
-        // if we are here, it means er version can be either last version or version before last
-        // loop through to find the correct version.
-        for (upgraded_number, version) in versions.into_iter() {
-            if er_derived_number <= upgraded_number {
+        // Iterate from the latest to the oldest version and find the first version that was activated
+        // before the block, which the ER is derived from, is produced.
+        for (number, version) in versions.into_iter().rev() {
+            if er_derived_number >= number {
                 return Some(version.execution_receipt_version);
             }
         }
 
-        // should not reach here since above loop always find the oldest version
         None
+    }
+
+    fn record_new_bundle_and_er_version(block_number: BlockNumberFor<T>) {
+        let current_versions = T::CurrentBundleAndExecutionReceiptVersion::get();
+        PreviousBundleAndExecutionReceiptVersions::<T>::mutate(|versions| {
+            match versions.last_key_value() {
+                None => {
+                    versions.insert(block_number, current_versions);
+                }
+                Some((_, prev_versions)) => {
+                    // Record the new version and do nothing if the bundle and ER version are not changed
+                    if *prev_versions != current_versions {
+                        versions.insert(block_number, current_versions);
+                    }
+                }
+            }
+        });
     }
 
     pub fn receipt_hash(
