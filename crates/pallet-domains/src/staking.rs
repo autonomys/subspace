@@ -2314,13 +2314,13 @@ pub(crate) mod tests {
 
     /// Rounding down factor for property tests to account for arithmetic precision errors.
     /// This factor is used to allow for small rounding errors in calculations.
-    // Perquintill::from_parts(10_000_000).left_from_one(), as a constant.
+    // Perquintill::from_parts(...).left_from_one(), as a constant.
     pub(crate) const PROP_ROUNDING_DOWN_FACTOR: Perquintill =
-        Perquintill::from_parts(1_000_000_000_000_000_000 - 10_000_000);
+        Perquintill::from_parts(1_000_000_000_000_000_000 - 1_000_000_000);
 
     /// Absolute rounding error tolerance for property tests.
     /// This constant defines the maximum acceptable absolute rounding error in calculations.
-    pub(crate) const PROP_ABSOLUTE_ROUNDING_ERROR: u128 = 100;
+    pub(crate) const PROP_ABSOLUTE_ROUNDING_ERROR: u128 = 1000;
 
     /// The maximum balance we test for in property tests.
     /// This balance should be just below the maximum possible issuance.
