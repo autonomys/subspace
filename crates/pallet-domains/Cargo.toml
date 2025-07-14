@@ -42,7 +42,6 @@ hex-literal.workspace = true
 pallet-subspace.workspace = true
 pallet-timestamp.workspace = true
 pallet-block-fees.workspace = true
-proptest.workspace = true
 prop-test.workspace = true
 sp-externalities.workspace = true
 
