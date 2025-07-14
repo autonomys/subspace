@@ -13364,6 +13364,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-bootstrap-node"
+version = "0.1.1"
+dependencies = [
+ "clap",
+ "futures",
+ "hex",
+ "libp2p",
+ "prometheus-client",
+ "serde",
+ "serde_json",
+ "subspace-logging",
+ "subspace-metrics",
+ "subspace-networking",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
@@ -13445,7 +13463,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-farmer"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-lock 3.4.0",
@@ -13540,7 +13558,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-gateway"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "actix-web",
  "anyhow",
@@ -13706,8 +13724,6 @@ dependencies = [
  "prometheus-client",
  "rand 0.8.5",
  "schnellru",
- "serde",
- "serde_json",
  "subspace-core-primitives",
  "subspace-logging",
  "subspace-metrics",
@@ -13721,7 +13737,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-node"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "auto-id-domain-runtime",
  "bip39",
