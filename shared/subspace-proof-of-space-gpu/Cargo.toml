@@ -21,7 +21,8 @@ sppark = { workspace = true, optional = true }
 subspace-core-primitives = { workspace = true, optional = true }
 subspace-kzg = { workspace = true, optional = true }
 
-[dev-dependencies]
+# Avoid unused dependencies on macOS, GPU is not supported there
+[target.'cfg(any(target_os = "linux", windows))'.dev-dependencies]
 subspace-erasure-coding.workspace = true
 subspace-farmer-components.workspace = true
 subspace-proof-of-space.workspace = true

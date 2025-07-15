@@ -60,7 +60,6 @@ subspace-logging = { workspace = true, optional = true }
 subspace-metrics = { workspace = true, optional = true }
 subspace-networking.workspace = true
 subspace-proof-of-space.workspace = true
-subspace-proof-of-space-gpu = { workspace = true, optional = true }
 subspace-rpc-primitives.workspace = true
 subspace-verification = { workspace = true, features = ["kzg"] }
 substrate-bip39.workspace = true
@@ -72,6 +71,10 @@ tokio-stream = { workspace = true, features = ["sync"] }
 tracing.workspace = true
 ulid = { workspace = true, features = ["serde"] }
 zeroize.workspace = true
+
+# Avoid an unused dependency on macOS, GPU is not supported there
+[target.'cfg(any(target_os = "linux", windows))'.dependencies]
+subspace-proof-of-space-gpu = { workspace = true, optional = true }
 
 [features]
 default = ["default-library", "binary"]
