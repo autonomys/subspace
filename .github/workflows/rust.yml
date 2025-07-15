@@ -354,20 +354,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      # Pruning the target directory is only required if we're using a build cache or running locally
       - name: check all crates individually
         run: |
-          for crate in $(find . -name Cargo.toml -o -path ./target -prune | xargs -n 1 dirname | grep -v '^[.]$' | sort); do
-              echo "$crate";
-              pushd "$crate";
-              if ! cargo -Zgitoxide -Zgit clippy --locked --all-targets -- -D warnings; then
-                  pwd;
-                  popd;
-                  exit 1;
-              fi;
-              pwd;
-              popd;
-          done
+          scripts/check-crates-individually.sh
 
   # This job checks for incorrectly added dependencies, or dependencies that were made unused by code changes.
   cargo-unused-deps:
