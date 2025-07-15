@@ -179,33 +179,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
-      # On macOS, we need a proper Clang version, not Apple's custom version without wasm32 support
-      - name: Install LLVM and Clang for macOS
-        uses: KyleMayes/install-llvm-action@dec985c8d7b46a2f363ea1a78f660c946a3349ea # v2.0.1
-        with:
-          env: true
-          version: 17
-        if: runner.os == 'macOS'
-
-      # Because macOS, see https://andreasfertig.blog/2021/02/clang-and-gcc-on-macos-catalina-finding-the-include-paths/
-      - name: Configure C compiler macOS
-        run: |
-          echo "SDKROOT=$(xcrun --show-sdk-path)" >> $GITHUB_ENV
-        if: runner.os == 'macOS'
-
-      - name: Install glibtoolize (macOS)
-        run: brew install libtool
-        if: runner.os == 'macOS'
-
       - name: Install Protoc
         uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Needed for hwloc
-      - name: Install automake (macOS)
-        run: brew install automake
-        if: runner.os == 'macOS'
 
       - name: Configure cache
         uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
