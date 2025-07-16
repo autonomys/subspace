@@ -1,6 +1,5 @@
 //! Custom genesis block builder to inject correct genesis block.
 
-use hex_literal::hex;
 use sc_chain_spec::{BuildGenesisBlock, construct_genesis_block, resolve_state_version_from_wasm};
 use sc_client_api::{Backend, BlockImportOperation};
 use sc_executor::RuntimeVersionOf;
@@ -86,30 +85,9 @@ where
             let runtime_api = consensus_client.runtime_api();
             let consensus_best_hash = consensus_client.info().best_hash;
 
-            match runtime_api.genesis_state_root(consensus_best_hash, domain_id)? {
-                Some(hash) => Some(hash.into()),
-                None => {
-                    // TODO: remove this once the taurus runtime is upgraded
-                    // if network is taurus, then we may not have it on runtime before runtime is
-                    // upgraded, so instead return the known domain-0's state root.
-                    if consensus_client.info().genesis_hash
-                        == H256::from(hex!(
-                            "295aeafca762a304d92ee1505548695091f6082d3f0aa4d092ac3cd6397a6c5e"
-                        ))
-                        .into()
-                        && domain_id == DomainId::new(0)
-                    {
-                        Some(
-                            H256::from(hex!(
-                                "530eae1878202aa0ab5997eadf2b7245ee78f44a35ab25ff84151fab489aa334"
-                            ))
-                            .into(),
-                        )
-                    } else {
-                        None
-                    }
-                }
-            }
+            runtime_api
+                .genesis_state_root(consensus_best_hash, domain_id)?
+                .map(Into::into)
         };
 
         let genesis_state_version =

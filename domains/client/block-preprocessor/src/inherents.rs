@@ -13,12 +13,12 @@
 //! Deriving these extrinsics during fraud proof verification should be possible since
 //! verification environment will have access to consensus chain.
 
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, DomainsApi, DomainsDigestItem};
+use sp_domains::{DomainId, DomainsApi};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_timestamp::InherentType;
 use std::error::Error;
 use std::sync::Arc;
@@ -77,32 +77,9 @@ where
             "No RuntimeId found for {domain_id:?}"
         ))))?;
 
-    // The runtime_upgrades() API is only present in API versions 2 and later. On earlier versions,
-    // we need to call legacy code.
-    // TODO: remove version check before next network
-    let domains_api_version = runtime_api
-        .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_block_hash)?
-        // It is safe to return a default version of 1, since there will always be version 1.
-        .unwrap_or(1);
+    let runtime_upgrades = runtime_api.runtime_upgrades(consensus_block_hash)?;
 
-    let is_upgraded = if domains_api_version >= 2 {
-        let runtime_upgrades = runtime_api.runtime_upgrades(consensus_block_hash)?;
-        runtime_upgrades.contains(&runtime_id)
-    } else {
-        let header = consensus_client.header(consensus_block_hash)?.ok_or(
-            sp_blockchain::Error::MissingHeader(format!(
-                "No header found for {consensus_block_hash:?}"
-            )),
-        )?;
-        header
-            .digest()
-            .logs
-            .iter()
-            .filter_map(|log| log.as_domain_runtime_upgrade())
-            .any(|upgraded_runtime_id| upgraded_runtime_id == runtime_id)
-    };
-
-    Ok(is_upgraded)
+    Ok(runtime_upgrades.contains(&runtime_id))
 }
 
 /// Returns new upgraded runtime if upgraded did happen in the provided consensus block.
@@ -198,20 +175,8 @@ where
             .unwrap_or(self.consensus_client.info().best_hash);
 
         let runtime_api = self.consensus_client.runtime_api();
-        // Some APIs are only present in API versions 3 and later. On earlier versions, we need to
-        // call legacy code.
-        // TODO: remove version check before next network
-        let domains_api_version = runtime_api
-            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_block_hash)?
-            // It is safe to return a default version of 1, since there will always be version 1.
-            .unwrap_or(1);
 
-        let timestamp = if domains_api_version >= 3 {
-            runtime_api.domain_timestamp(consensus_block_hash)?
-        } else {
-            #[allow(deprecated)]
-            runtime_api.timestamp(consensus_block_hash)?
-        };
+        let timestamp = runtime_api.domain_timestamp(consensus_block_hash)?;
         let timestamp_provider =
             sp_timestamp::InherentDataProvider::new(InherentType::new(timestamp));
 
@@ -223,12 +188,8 @@ where
         let runtime_upgrade_provider =
             sp_executive::InherentDataProvider::new(maybe_runtime_upgrade_code);
 
-        let consensus_chain_byte_fee = if domains_api_version >= 3 {
-            runtime_api.consensus_transaction_byte_fee(consensus_block_hash)?
-        } else {
-            #[allow(deprecated)]
-            runtime_api.consensus_chain_byte_fee(consensus_block_hash)?
-        };
+        let consensus_chain_byte_fee =
+            runtime_api.consensus_transaction_byte_fee(consensus_block_hash)?;
         let storage_price_provider =
             sp_block_fees::InherentDataProvider::new(consensus_chain_byte_fee);
 
@@ -244,14 +205,8 @@ where
         let domain_sudo_call_inherent_provider =
             sp_domain_sudo::InherentDataProvider::new(maybe_domain_sudo_call);
 
-        let maybe_evm_domain_contract_creation_allowed_by_call = if domains_api_version >= 4 {
-            runtime_api.evm_domain_contract_creation_allowed_by_call(
-                consensus_block_hash,
-                self.domain_id,
-            )?
-        } else {
-            None
-        };
+        let maybe_evm_domain_contract_creation_allowed_by_call = runtime_api
+            .evm_domain_contract_creation_allowed_by_call(consensus_block_hash, self.domain_id)?;
         let evm_domain_contract_creation_allowed_by_call_inherent_provider =
             sp_evm_tracker::InherentDataProvider::new(
                 maybe_evm_domain_contract_creation_allowed_by_call,

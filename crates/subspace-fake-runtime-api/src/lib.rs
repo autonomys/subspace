@@ -17,8 +17,8 @@ use sp_domains::{
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
 use sp_messenger::messages::{
-    BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelId, ChannelStateWithNonce,
-    CrossDomainMessage, MessageId, MessageKey, MessagesWithStorageKey, Nonce as XdmNonce,
+    BlockMessagesQuery, ChainId, ChannelId, ChannelStateWithNonce, CrossDomainMessage, MessageKey,
+    MessagesWithStorageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_runtime::traits::NumberFor;
@@ -212,15 +212,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn timestamp() -> Moment {
-            unreachable!()
-        }
-
         fn consensus_transaction_byte_fee() -> Balance {
-            unreachable!()
-        }
-
-        fn consensus_chain_byte_fee() -> Balance {
             unreachable!()
         }
 
@@ -398,23 +390,11 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_messenger::RelayerApi<Block, BlockNumber, BlockNumber, BlockHashFor<Block>> for Runtime {
-        fn block_messages() -> BlockMessagesWithStorageKey {
-            unreachable!()
-        }
-
         fn outbox_message_unsigned(_msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             unreachable!()
         }
 
         fn inbox_response_message_unsigned(_msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
-            unreachable!()
-        }
-
-        fn should_relay_outbox_message(_dst_chain_id: ChainId, _msg_id: MessageId) -> bool {
-            unreachable!()
-        }
-
-        fn should_relay_inbox_message_response(_dst_chain_id: ChainId, _msg_id: MessageId) -> bool {
             unreachable!()
         }
 

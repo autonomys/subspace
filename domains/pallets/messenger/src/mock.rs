@@ -182,7 +182,6 @@ macro_rules! impl_runtime {
             type Sender = Messenger;
             type AccountIdConverter = MockAccountIdConverter;
             type WeightInfo = ();
-            type SkipBalanceTransferChecks = ();
             type MinimumTransfer = MinimumTransfer;
         }
 

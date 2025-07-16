@@ -5,7 +5,6 @@ extern crate alloc;
 
 use crate::block_tree::invalid_bundle_authors_for_receipt;
 use crate::bundle_storage_fund::{self, deposit_reserve_for_storage_fund};
-use crate::migrations::OperatorEpochSharePriceV0;
 use crate::pallet::{
     Deposits, DomainRegistry, DomainStakingSummary, HeadDomainNumber, NextOperatorId,
     OperatorIdOwner, Operators, PendingSlashes, PendingStakingOperationCount, Withdrawals,
@@ -88,16 +87,6 @@ impl SharePrice {
     pub(crate) fn one() -> Self {
         Self(Perquintill::one())
     }
-}
-
-// TODO: this is only needed for migration of the share price structure change in Taurus
-// remove once Taurus is deprecated
-pub(crate) fn get_share_price<T: Config>(
-    operator_id: OperatorId,
-    domain_epoch: DomainEpoch,
-) -> Option<SharePrice> {
-    OperatorEpochSharePrice::<T>::get(operator_id, domain_epoch)
-        .or_else(|| OperatorEpochSharePriceV0::<T>::get(operator_id, domain_epoch).map(Into::into))
 }
 
 /// Unique epoch identifier across all domains. A combination of Domain and its epoch.
@@ -488,7 +477,10 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
     let epoch_share_price = match deposit.pending {
         None => return Ok(()),
         Some(pending_deposit) => {
-            match get_share_price::<T>(operator_id, pending_deposit.effective_domain_epoch) {
+            match OperatorEpochSharePrice::<T>::get(
+                operator_id,
+                pending_deposit.effective_domain_epoch,
+            ) {
                 Some(p) => p,
                 None => {
                     ensure!(
@@ -541,7 +533,7 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
                 return Ok(());
             }
 
-            match get_share_price::<T>(operator_id, withdraw.domain_epoch) {
+            match OperatorEpochSharePrice::<T>::get(operator_id, withdraw.domain_epoch) {
                 Some(p) => p,
                 None => return Err(Error::MissingOperatorEpochSharePrice),
             }

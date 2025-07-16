@@ -17,7 +17,7 @@ use parity_scale_codec::{Codec, Encode};
 use rand::seq::SliceRandom;
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::{ApiExt, ApiRef, ProvideRuntimeApi};
+use sp_api::{ApiRef, ProvideRuntimeApi};
 use sp_core::H256;
 use sp_domains::{ChannelId, DomainsApi};
 use sp_messenger::messages::{
@@ -259,11 +259,6 @@ where
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
     Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
 {
-    // return no messages for previous relayer version
-    if !is_relayer_api_version_available::<_, Block, CBlock>(client, 3, fetch_message_at) {
-        return Ok(vec![]);
-    }
-
     fetch_messages::<_, _, Block, CBlock>(
         &**consensus_client,
         client,
@@ -782,28 +777,4 @@ fn should_relay_messages_to_channel(
     }
 
     should_process
-}
-
-fn is_relayer_api_version_available<Client, Block, CBlock>(
-    client: &Arc<Client>,
-    version: u32,
-    block_hash: Block::Hash,
-) -> bool
-where
-    Block: BlockT,
-    CBlock: BlockT,
-    Client: ProvideRuntimeApi<Block>,
-    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
-{
-    let relayer_api_version = client
-        .runtime_api()
-        .api_version::<dyn RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>>(
-            block_hash,
-        )
-        .ok()
-        .flatten()
-        // It is safe to return a default version of 1, since there will always be version 1.
-        .unwrap_or(1);
-
-    relayer_api_version >= version
 }

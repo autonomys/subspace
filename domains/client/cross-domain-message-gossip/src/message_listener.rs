@@ -12,7 +12,7 @@ use sc_executor::RuntimeVersionOf;
 use sc_network::NetworkPeers;
 use sc_transaction_pool_api::error::{Error as PoolError, IntoPoolError};
 use sc_transaction_pool_api::{TransactionPool, TransactionSource};
-use sp_api::{ApiError, ApiExt, ProvideRuntimeApi, StorageProof};
+use sp_api::{ApiError, ProvideRuntimeApi, StorageProof};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_core::crypto::AccountId32;
@@ -534,77 +534,55 @@ where
 {
     let block_id: BlockId<BlockOf<TxPool>> = client.info().into();
     let runtime_api = client.runtime_api();
-    let api_version = runtime_api
-        .api_version::<dyn MessengerApi<BlockOf<TxPool>, NumberFor<CBlock>, CBlock::Hash>>(
-            block_id.hash,
-        )?
-        .unwrap_or(1);
+    let xdm_id = match runtime_api.xdm_id(block_id.hash, &ext)? {
+        // not a valid xdm, so return as invalid
+        None => return Ok(false),
+        Some(xdm_id) => xdm_id,
+    };
 
-    let api_available = api_version >= 2;
-    if api_available {
-        let xdm_id = match runtime_api.xdm_id(block_id.hash, &ext)? {
-            // not a valid xdm, so return as invalid
-            None => return Ok(false),
-            Some(xdm_id) => xdm_id,
-        };
+    let (src_chain_id, channel_id) = xdm_id.get_chain_id_and_channel_id();
+    let maybe_channel_nonce = runtime_api.channel_nonce(block_id.hash, src_chain_id, channel_id)?;
 
-        let (src_chain_id, channel_id) = xdm_id.get_chain_id_and_channel_id();
-        let maybe_channel_nonce =
-            runtime_api.channel_nonce(block_id.hash, src_chain_id, channel_id)?;
+    let maybe_submitted_xdm_block =
+        get_xdm_processed_block_number::<_, BlockOf<TxPool>>(&**client, TX_POOL_PREFIX, xdm_id)?;
+    if !can_allow_xdm_submission(
+        client,
+        xdm_id,
+        maybe_submitted_xdm_block,
+        block_id.clone(),
+        maybe_channel_nonce,
+    ) {
+        tracing::debug!("Skipping XDM[{:?}] submission. At: {:?}", xdm_id, block_id);
+        return Ok(true);
+    }
 
-        let maybe_submitted_xdm_block = get_xdm_processed_block_number::<_, BlockOf<TxPool>>(
-            &**client,
-            TX_POOL_PREFIX,
-            xdm_id,
-        )?;
-        if !can_allow_xdm_submission(
-            client,
-            xdm_id,
-            maybe_submitted_xdm_block,
-            block_id.clone(),
-            maybe_channel_nonce,
-        ) {
-            tracing::debug!("Skipping XDM[{:?}] submission. At: {:?}", xdm_id, block_id);
-            return Ok(true);
-        }
+    tracing::debug!(
+        "Submitting XDM[{:?}] to tx pool for chain {:?} at block: {:?}",
+        xdm_id,
+        chain_id,
+        block_id
+    );
 
-        tracing::debug!(
-            "Submitting XDM[{:?}] to tx pool for chain {:?} at block: {:?}",
-            xdm_id,
-            chain_id,
-            block_id
-        );
+    let tx_pool_res = tx_pool
+        .submit_one(block_id.hash, TransactionSource::External, ext)
+        .await;
 
-        let tx_pool_res = tx_pool
-            .submit_one(block_id.hash, TransactionSource::External, ext)
-            .await;
-
-        let block_id: BlockId<BlockOf<TxPool>> = client.info().into();
-        if let Err(err) = tx_pool_res {
-            match err.into_pool_error() {
-                Ok(err) => match err {
-                    PoolError::TooLowPriority { .. }
-                    | PoolError::AlreadyImported(..)
-                    | PoolError::TemporarilyBanned => {
-                        tracing::debug!(
-                            "XDM[{:?}] to tx pool for Chain {:?} at block: {:?}: Already included",
-                            xdm_id,
-                            chain_id,
-                            block_id
-                        );
-                        set_xdm_message_processed_at(&**client, TX_POOL_PREFIX, xdm_id, block_id)?;
-                    }
-                    _ => {
-                        tracing::error!(
-                            "Failed to submit XDM[{:?}] to tx pool for Chain {:?} with error: {:?} at block: {:?}",
-                            xdm_id,
-                            chain_id,
-                            err,
-                            block_id
-                        );
-                    }
-                },
-                Err(err) => {
+    let block_id: BlockId<BlockOf<TxPool>> = client.info().into();
+    if let Err(err) = tx_pool_res {
+        match err.into_pool_error() {
+            Ok(err) => match err {
+                PoolError::TooLowPriority { .. }
+                | PoolError::AlreadyImported(..)
+                | PoolError::TemporarilyBanned => {
+                    tracing::debug!(
+                        "XDM[{:?}] to tx pool for Chain {:?} at block: {:?}: Already included",
+                        xdm_id,
+                        chain_id,
+                        block_id
+                    );
+                    set_xdm_message_processed_at(&**client, TX_POOL_PREFIX, xdm_id, block_id)?;
+                }
+                _ => {
                     tracing::error!(
                         "Failed to submit XDM[{:?}] to tx pool for Chain {:?} with error: {:?} at block: {:?}",
                         xdm_id,
@@ -613,50 +591,37 @@ where
                         block_id
                     );
                 }
+            },
+            Err(err) => {
+                tracing::error!(
+                    "Failed to submit XDM[{:?}] to tx pool for Chain {:?} with error: {:?} at block: {:?}",
+                    xdm_id,
+                    chain_id,
+                    err,
+                    block_id
+                );
             }
-        } else {
-            tracing::debug!(
-                "Submitted XDM[{:?}] to tx pool for chain {:?} at {:?}",
-                xdm_id,
-                chain_id,
-                block_id
-            );
-
-            set_xdm_message_processed_at(&**client, TX_POOL_PREFIX, xdm_id, block_id)?;
         }
-
-        if let Some(channel_nonce) = maybe_channel_nonce {
-            cleanup_chain_channel_storages(
-                &**client,
-                TX_POOL_PREFIX,
-                src_chain_id,
-                channel_id,
-                channel_nonce,
-            )?;
-        }
-
-        Ok(true)
     } else {
-        let tx_pool_res = tx_pool
-            .submit_one(block_id.hash, TransactionSource::External, ext)
-            .await;
+        tracing::debug!(
+            "Submitted XDM[{:?}] to tx pool for chain {:?} at {:?}",
+            xdm_id,
+            chain_id,
+            block_id
+        );
 
-        let block_id: BlockId<BlockOf<TxPool>> = client.info().into();
-        if let Err(err) = tx_pool_res {
-            tracing::error!(
-                "Failed to submit XDM to tx pool for Chain {:?} with error: {:?} at block: {:?}",
-                chain_id,
-                err,
-                block_id
-            );
-        } else {
-            tracing::debug!(
-                "Submitted XDM to tx pool for chain {:?} at {:?}",
-                chain_id,
-                block_id
-            );
-        }
-
-        Ok(true)
+        set_xdm_message_processed_at(&**client, TX_POOL_PREFIX, xdm_id, block_id)?;
     }
+
+    if let Some(channel_nonce) = maybe_channel_nonce {
+        cleanup_chain_channel_storages(
+            &**client,
+            TX_POOL_PREFIX,
+            src_chain_id,
+            channel_id,
+            channel_nonce,
+        )?;
+    }
+
+    Ok(true)
 }

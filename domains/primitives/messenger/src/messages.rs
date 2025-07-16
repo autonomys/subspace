@@ -248,42 +248,6 @@ pub struct CrossDomainMessage<CBlockNumber, CBlockHash, MmrHash> {
     pub weight_tag: MessageWeightTag,
 }
 
-/// Message with storage key to generate storage proof using the backend.
-#[derive(Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
-pub struct BlockMessageWithStorageKey {
-    /// Chain which initiated this message.
-    pub src_chain_id: ChainId,
-    /// Chain this message is intended for.
-    pub dst_chain_id: ChainId,
-    /// ChannelId the message was sent through.
-    pub channel_id: ChannelId,
-    /// Message nonce within the channel.
-    pub nonce: Nonce,
-    /// Storage key to generate proof for using proof backend.
-    pub storage_key: Vec<u8>,
-    /// The message weight tag
-    pub weight_tag: MessageWeightTag,
-}
-
-impl BlockMessageWithStorageKey {
-    pub fn id(&self) -> (ChannelId, Nonce) {
-        (self.channel_id, self.nonce)
-    }
-}
-
-/// Set of messages with storage keys to be relayed in a given block..
-#[derive(Default, Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
-pub struct BlockMessagesWithStorageKey {
-    pub outbox: Vec<BlockMessageWithStorageKey>,
-    pub inbox_responses: Vec<BlockMessageWithStorageKey>,
-}
-
-impl BlockMessagesWithStorageKey {
-    pub fn is_empty(&self) -> bool {
-        self.outbox.is_empty() && self.inbox_responses.is_empty()
-    }
-}
-
 /// Set of messages with storage keys to be relayed in a given block.
 #[derive(Default, Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
 pub struct MessagesWithStorageKey {

@@ -156,13 +156,6 @@ where
 
         let (domain_bundle_limit, storage_fund_balance, transaction_byte_fee) = {
             let consensus_runtime_api = self.consensus_client.runtime_api();
-            // Some APIs are only present in API versions 3 and later. On earlier versions, we need to
-            // call legacy code.
-            // TODO: remove version check before next network
-            let domains_api_version = consensus_runtime_api
-                .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_best_hash)?
-                // It is safe to return a default version of 1, since there will always be version 1.
-                .unwrap_or(1);
 
             let domain_bundle_limit = consensus_runtime_api
                 .domain_bundle_limit(consensus_best_hash, self.domain_id)?
@@ -175,12 +168,8 @@ where
             let storage_fund_balance = consensus_runtime_api
                 .storage_fund_account_balance(consensus_best_hash, operator_id)?;
 
-            let transaction_byte_fee = if domains_api_version >= 3 {
-                consensus_runtime_api.consensus_transaction_byte_fee(consensus_best_hash)?
-            } else {
-                #[allow(deprecated)]
-                consensus_runtime_api.consensus_chain_byte_fee(consensus_best_hash)?
-            };
+            let transaction_byte_fee =
+                consensus_runtime_api.consensus_transaction_byte_fee(consensus_best_hash)?;
 
             (
                 domain_bundle_limit,
