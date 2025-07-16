@@ -50,12 +50,10 @@ use sp_domains::{
     PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
-use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::{
-    FraudProofVariantV1, InvalidBundlesProofData,
-};
 use sp_domains_fraud_proof::fraud_proof::{
-    ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, InvalidBlockFeesProof,
-    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidTransfersProof,
+    ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProofVariant,
+    InvalidBlockFeesProof, InvalidBundlesProofData, InvalidDomainBlockHashProof,
+    InvalidExtrinsicsRootProof, InvalidTransfersProof,
 };
 use sp_messenger::MessengerApi;
 use sp_messenger::messages::{CrossDomainMessage, Proof};
@@ -2386,7 +2384,6 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
                         }
                     };
 
-                    let fp = fp.v1().unwrap();
                     let submit_fraud_proof_extrinsic = ferdie
                         .construct_unsigned_extrinsic(pallet_domains::Call::submit_fraud_proof {
                             fraud_proof: Box::new(fp),
@@ -2495,7 +2492,6 @@ async fn test_bad_fraud_proof_is_rejected() {
     );
 
     for fp in fraud_proofs {
-        let fp = fp.v1().unwrap();
         let submit_fraud_proof_extrinsic = ferdie
             .construct_unsigned_extrinsic(pallet_domains::Call::submit_fraud_proof {
                 fraud_proof: Box::new(fp),
@@ -2630,7 +2626,7 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
                 .expect("already checked for error above; qed")
                 .expect("we already checked for  None above; qed");
 
-            let fraud_proof = fraud_proof_generator
+            let mut fraud_proof = fraud_proof_generator
                 .generate_invalid_state_transition_proof(
                     EVM_DOMAIN_ID,
                     execution_phase,
@@ -2642,7 +2638,6 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
                     "Fraud proof generation should succeed for every valid execution phase; qed",
                 );
 
-            let mut fraud_proof = fraud_proof.v1().unwrap();
             let submit_fraud_proof_extrinsic = ferdie
                 .construct_unsigned_extrinsic(pallet_domains::Call::submit_fraud_proof {
                     fraud_proof: Box::new(fraud_proof.clone()),
@@ -2665,39 +2660,39 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
 
             // Modify fraud proof's mismatch index to a higher value and try to submit it.
             match &fraud_proof.proof {
-                FraudProofVariantV1::InvalidStateTransition(
-                    invalid_state_transition_fraud_proof,
-                ) => match &invalid_state_transition_fraud_proof.execution_phase {
-                    ExecutionPhase::ApplyExtrinsic {
-                        extrinsic_proof,
-                        mismatch: ApplyExtrinsicMismatch::StateRoot(_),
-                    } => {
-                        let mut modified_invalid_state_transition_fraud_proof =
-                            invalid_state_transition_fraud_proof.clone();
-                        modified_invalid_state_transition_fraud_proof.execution_phase =
-                            ExecutionPhase::ApplyExtrinsic {
-                                extrinsic_proof: extrinsic_proof.clone(),
-                                mismatch: ApplyExtrinsicMismatch::StateRoot(u32::MAX),
-                            };
-                        fraud_proof.proof = FraudProofVariantV1::InvalidStateTransition(
-                            modified_invalid_state_transition_fraud_proof,
-                        );
+                FraudProofVariant::InvalidStateTransition(invalid_state_transition_fraud_proof) => {
+                    match &invalid_state_transition_fraud_proof.execution_phase {
+                        ExecutionPhase::ApplyExtrinsic {
+                            extrinsic_proof,
+                            mismatch: ApplyExtrinsicMismatch::StateRoot(_),
+                        } => {
+                            let mut modified_invalid_state_transition_fraud_proof =
+                                invalid_state_transition_fraud_proof.clone();
+                            modified_invalid_state_transition_fraud_proof.execution_phase =
+                                ExecutionPhase::ApplyExtrinsic {
+                                    extrinsic_proof: extrinsic_proof.clone(),
+                                    mismatch: ApplyExtrinsicMismatch::StateRoot(u32::MAX),
+                                };
+                            fraud_proof.proof = FraudProofVariant::InvalidStateTransition(
+                                modified_invalid_state_transition_fraud_proof,
+                            );
+                        }
+                        ExecutionPhase::FinalizeBlock {
+                            mismatch: FinalizeBlockMismatch::Longer(_),
+                        } => {
+                            let mut modified_invalid_state_transition_fraud_proof =
+                                invalid_state_transition_fraud_proof.clone();
+                            modified_invalid_state_transition_fraud_proof.execution_phase =
+                                ExecutionPhase::FinalizeBlock {
+                                    mismatch: FinalizeBlockMismatch::Longer(u32::MAX),
+                                };
+                            fraud_proof.proof = FraudProofVariant::InvalidStateTransition(
+                                modified_invalid_state_transition_fraud_proof,
+                            );
+                        }
+                        _ => {}
                     }
-                    ExecutionPhase::FinalizeBlock {
-                        mismatch: FinalizeBlockMismatch::Longer(_),
-                    } => {
-                        let mut modified_invalid_state_transition_fraud_proof =
-                            invalid_state_transition_fraud_proof.clone();
-                        modified_invalid_state_transition_fraud_proof.execution_phase =
-                            ExecutionPhase::FinalizeBlock {
-                                mismatch: FinalizeBlockMismatch::Longer(u32::MAX),
-                            };
-                        fraud_proof.proof = FraudProofVariantV1::InvalidStateTransition(
-                            modified_invalid_state_transition_fraud_proof,
-                        );
-                    }
-                    _ => {}
-                },
+                }
                 _ => unreachable!(),
             }
 
@@ -2870,7 +2865,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidStateTransition(proof) = &fp.proof {
+        if let FraudProofVariant::InvalidStateTransition(proof) = &fp.proof {
             match (trace_diff_type, mismatch_trace_index) {
                 (TraceDiffType::Mismatch, mismatch_trace_index) => match mismatch_trace_index {
                     0 => assert!(matches!(
@@ -3057,7 +3052,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type()
         {
             assert!(proof.is_good_invalid_fraud_proof());
@@ -3168,7 +3163,7 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type()
         {
             assert!(!proof.is_good_invalid_fraud_proof());
@@ -3312,7 +3307,7 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type()
         {
             assert!(proof.is_good_invalid_fraud_proof());
@@ -3423,7 +3418,7 @@ async fn test_false_invalid_bundles_undecodeable_tx_proof_creation_and_verificat
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && let InvalidBundleType::UndecodableTx(_) = proof.invalid_bundle_type()
         {
             assert!(!proof.is_good_invalid_fraud_proof());
@@ -3576,7 +3571,7 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type()
         {
             assert!(proof.is_good_invalid_fraud_proof());
@@ -3741,7 +3736,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type()
         {
             assert!(proof.is_good_invalid_fraud_proof());
@@ -3873,7 +3868,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type()
         {
             assert!(!proof.is_good_invalid_fraud_proof());
@@ -3995,7 +3990,7 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type()
         {
             assert!(proof.is_good_invalid_fraud_proof());
@@ -4104,7 +4099,7 @@ async fn test_false_invalid_bundle_weight_proof_creation_and_verification() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type()
         {
             assert!(!proof.is_good_invalid_fraud_proof());
@@ -4214,7 +4209,7 @@ async fn test_false_invalid_bundles_non_exist_extrinsic_proof_creation_and_verif
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && let InvalidBundlesProofData::Bundle(_) = proof.proof_data
         {
             assert_eq!(fp.targeted_bad_receipt_hash(), bad_receipt_hash);
@@ -4298,7 +4293,7 @@ async fn test_invalid_block_fees_proof_creation() {
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp.proof,
-            FraudProofVariantV1::InvalidBlockFees(InvalidBlockFeesProof { .. })
+            FraudProofVariant::InvalidBlockFees(InvalidBlockFeesProof { .. })
         )
     });
 
@@ -4399,7 +4394,7 @@ async fn test_invalid_transfers_fraud_proof() {
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp.proof,
-            FraudProofVariantV1::InvalidTransfers(InvalidTransfersProof { .. })
+            FraudProofVariant::InvalidTransfers(InvalidTransfersProof { .. })
         )
     });
 
@@ -4495,7 +4490,7 @@ async fn test_invalid_domain_block_hash_proof_creation() {
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp.proof,
-            FraudProofVariantV1::InvalidDomainBlockHash(InvalidDomainBlockHashProof { .. })
+            FraudProofVariant::InvalidDomainBlockHash(InvalidDomainBlockHashProof { .. })
         )
     });
 
@@ -4591,7 +4586,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp.proof,
-            FraudProofVariantV1::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof { .. })
+            FraudProofVariant::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof { .. })
         )
     });
 
@@ -4916,7 +4911,7 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         if let subspace_test_runtime::RuntimeCall::Domains(
             pallet_domains::Call::submit_fraud_proof { fraud_proof },
         ) = ext.function
-            && let FraudProofVariantV1::ValidBundle(ref proof) = fraud_proof.proof
+            && let FraudProofVariant::ValidBundle(ref proof) = fraud_proof.proof
         {
             // The fraud proof is targetting the `bad_receipt`
             assert_eq!(
@@ -4933,7 +4928,7 @@ async fn test_valid_bundle_proof_generation_and_verification() {
             // If the fraud proof point to non-exist bundle then it is invalid
             let (mut bad_fraud_proof, mut bad_proof) = (fraud_proof.clone(), proof.clone());
             bad_proof.set_bundle_index(u32::MAX);
-            bad_fraud_proof.proof = FraudProofVariantV1::ValidBundle(bad_proof);
+            bad_fraud_proof.proof = FraudProofVariant::ValidBundle(bad_proof);
             let ext = proof_to_tx(&ferdie, bad_fraud_proof);
             assert!(ferdie.submit_transaction(ext).await.is_err());
 
@@ -6534,7 +6529,7 @@ async fn test_bad_receipt_chain() {
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp.proof,
-            FraudProofVariantV1::InvalidDomainBlockHash(InvalidDomainBlockHashProof { .. })
+            FraudProofVariant::InvalidDomainBlockHash(InvalidDomainBlockHashProof { .. })
         ) && fp.targeted_bad_receipt_hash() == bad_receipt_hash
     });
 
@@ -7235,7 +7230,7 @@ async fn test_xdm_false_invalid_fraud_proof() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type()
         {
             assert!(!proof.is_good_invalid_fraud_proof());
@@ -7443,7 +7438,7 @@ async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type()
         {
             assert!(proof.is_good_invalid_fraud_proof());
@@ -8686,7 +8681,7 @@ async fn test_false_bundle_author() {
 
     // Wait for the fraud proof that targets the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProofVariantV1::InvalidBundles(proof) = &fp.proof
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof
             && InvalidBundleType::InvalidBundleWeight == proof.invalid_bundle_type()
         {
             assert!(!proof.is_good_invalid_fraud_proof());

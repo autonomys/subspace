@@ -349,45 +349,17 @@ where
         );
 
         let runtime_api = self.consensus_client.runtime_api();
-        let domains_api_version = runtime_api
-            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_block_hash)
-            .ok()
-            .flatten()
-            // It is safe to return a default version of 1, since there will always be version 1.
-            .unwrap_or(1);
 
-        let execution_receipt_version = if domains_api_version >= 5 {
-            let versions =
-                runtime_api.current_bundle_and_execution_receipt_version(consensus_block_hash)?;
-            versions.execution_receipt_version
-        } else {
-            ExecutionReceiptVersion::V0
-        };
+        let execution_receipt_version = runtime_api
+            .current_bundle_and_execution_receipt_version(consensus_block_hash)?
+            .execution_receipt_version;
 
         let parent_receipt = if parent_number.is_zero() {
-            if domains_api_version >= 5 {
-                runtime_api
-                    .genesis_execution_receipt(consensus_block_hash, self.domain_id)?
-                    .ok_or_else(|| {
-                        sp_blockchain::Error::Backend(
-                            "Genesis Execution receipt not found".to_string(),
-                        )
-                    })?
-            } else {
-                let genesis_hash = self.client.info().genesis_hash;
-                let genesis_header = self.client.header(genesis_hash)?.ok_or_else(|| {
-                    sp_blockchain::Error::Backend(format!(
-                        "Domain block header for #{genesis_hash:?} not found",
-                    ))
-                })?;
-                // for the domains api version < 5, execution receipt is always V0
-                ExecutionReceipt::genesis(
-                    *genesis_header.state_root(),
-                    *genesis_header.extrinsics_root(),
-                    genesis_hash,
-                    ExecutionReceiptVersion::V0,
-                )
-            }
+            runtime_api
+                .genesis_execution_receipt(consensus_block_hash, self.domain_id)?
+                .ok_or_else(|| {
+                    sp_blockchain::Error::Backend("Genesis Execution receipt not found".to_string())
+                })?
         } else {
             crate::load_execution_receipt_by_domain_hash::<Block, CBlock, _>(
                 &*self.client,
@@ -778,19 +750,7 @@ where
                 self.consensus_offchain_tx_pool_factory
                     .offchain_transaction_pool(consensus_best_hash),
             );
-            match fraud_proof {
-                FraudProofFor::V0(fraud_proof) => {
-                    #[allow(deprecated)]
-                    consensus_runtime_api.submit_fraud_proof_unsigned_before_version_2(
-                        consensus_best_hash,
-                        fraud_proof,
-                    )?;
-                }
-                FraudProofFor::V1(fraud_proof) => {
-                    consensus_runtime_api
-                        .submit_fraud_proof_unsigned(consensus_best_hash, fraud_proof)?;
-                }
-            }
+            consensus_runtime_api.submit_fraud_proof_unsigned(consensus_best_hash, fraud_proof)?;
         }
 
         Ok(())

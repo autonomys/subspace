@@ -1,4 +1,4 @@
-use domain_client_operator::{ExecutionReceiptFor, VersionedOpaqueBundleFor};
+use domain_client_operator::{ExecutionReceiptFor, OpaqueBundleFor};
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
@@ -89,7 +89,7 @@ where
 
     pub fn maybe_tamper_bundle(
         &mut self,
-        opaque_bundle: &mut VersionedOpaqueBundleFor<Block, CBlock>,
+        opaque_bundle: &mut OpaqueBundleFor<Block, CBlock>,
         operator_signing_key: &OperatorPublicKey,
     ) -> Result<(), Box<dyn Error>> {
         if Random::probability(0.2) {
@@ -273,7 +273,7 @@ where
     #[allow(clippy::modulo_one)]
     fn make_bundle_invalid(
         &self,
-        opaque_bundle: &mut VersionedOpaqueBundleFor<Block, CBlock>,
+        opaque_bundle: &mut OpaqueBundleFor<Block, CBlock>,
     ) -> Result<(), Box<dyn Error>> {
         let random_seed = Random::seed();
         let invalid_bundle_type = match random_seed % 4 {
@@ -327,7 +327,7 @@ where
 
     fn reseal_bundle(
         &self,
-        opaque_bundle: &mut VersionedOpaqueBundleFor<Block, CBlock>,
+        opaque_bundle: &mut OpaqueBundleFor<Block, CBlock>,
         operator_signing_key: &OperatorPublicKey,
     ) -> Result<(), Box<dyn Error>> {
         opaque_bundle.set_bundle_extrinsics_root(

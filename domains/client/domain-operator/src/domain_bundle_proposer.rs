@@ -10,7 +10,6 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::bundle::BundleVersion;
 use sp_domains::bundle::bundle_v0::BundleHeaderV0;
-use sp_domains::bundle::bundle_v1::BundleHeaderV1;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::execution_receipt::ExecutionReceiptVersion;
 use sp_domains::{DomainId, DomainsApi, HeaderHashingFor, OperatorId, ProofOfElection};
@@ -360,16 +359,7 @@ where
         );
 
         let header = match bundle_version {
-            BundleVersion::V0 => {
-                let ExecutionReceiptFor::<Block, CBlock>::V0(receipt) = receipt;
-                BundleHeaderFor::V0(BundleHeaderV0 {
-                    proof_of_election,
-                    receipt,
-                    estimated_bundle_weight,
-                    bundle_extrinsics_root: extrinsics_root,
-                })
-            }
-            BundleVersion::V1 => BundleHeaderFor::V1(BundleHeaderV1 {
+            BundleVersion::V0 => BundleHeaderFor::V1(BundleHeaderV0 {
                 proof_of_election,
                 receipt,
                 estimated_bundle_weight,

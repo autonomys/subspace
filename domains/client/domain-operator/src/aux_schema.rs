@@ -5,7 +5,6 @@ use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, HeaderBackend, Result as ClientResult};
 use sp_domains::bundle::InvalidBundleType;
-use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0For as ExecutionReceiptV0;
 use sp_runtime::Saturating;
 use sp_runtime::traits::{
     Block as BlockT, CheckedMul, CheckedSub, NumberFor, One, SaturatedConversion, Zero,
@@ -13,9 +12,7 @@ use sp_runtime::traits::{
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
-use subspace_runtime_primitives::{
-    Balance, BlockHashFor, DOMAINS_PRUNING_DEPTH_MULTIPLIER, HeaderFor,
-};
+use subspace_runtime_primitives::{BlockHashFor, DOMAINS_PRUNING_DEPTH_MULTIPLIER};
 
 const EXECUTION_RECEIPT: &[u8] = b"execution_receipt";
 const EXECUTION_RECEIPT_START: &[u8] = b"execution_receipt_start";
@@ -63,13 +60,6 @@ fn load_decode<Backend: AuxStore, T: Decode>(
             })
             .map(Some),
     }
-}
-
-fn get_value_raw<Backend: AuxStore>(
-    backend: &Backend,
-    key: &[u8],
-) -> ClientResult<Option<Vec<u8>>> {
-    backend.get_aux(key)
 }
 
 /// Write an execution receipt to aux storage, optionally prune the receipts that are
@@ -159,9 +149,6 @@ where
     )
 }
 
-// TODO: remove this once there are no more bare ER v0 receipts stored on aux.
-type ExecutionReceiptV0For<Block, CBlock> = ExecutionReceiptV0<HeaderFor<Block>, CBlock, Balance>;
-
 /// Load the execution receipt for given consensus block hash.
 pub fn load_execution_receipt<Backend, Block, CBlock>(
     backend: &Backend,
@@ -172,20 +159,10 @@ where
     Block: BlockT,
     CBlock: BlockT,
 {
-    let maybe_raw_value = get_value_raw(
+    load_decode(
         backend,
         execution_receipt_key(consensus_block_hash).as_slice(),
-    )?;
-    match maybe_raw_value {
-        None => Ok(None),
-        Some(t) => match ExecutionReceiptFor::<Block, CBlock>::decode(&mut t.as_slice()) {
-            Ok(receipt) => Ok(Some(receipt)),
-            Err(_) => ExecutionReceiptV0For::<Block, CBlock>::decode(&mut t.as_slice())
-                .map(ExecutionReceiptFor::<Block, CBlock>::V0)
-                .map(Some),
-        },
-    }
-    .map_err(|e| ClientError::Backend(format!("Operator DB is corrupted. Decode error: {e}")))
+    )
 }
 
 type MaybeTrackedDomainHashes<Block, CBlock> =

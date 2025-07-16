@@ -14,7 +14,7 @@ use sp_domains::{
     BundleAndExecutionReceiptVersion, DomainAllowlistUpdates, DomainId, DomainInstanceData,
     OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
 };
-use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
+use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
 use sp_messenger::messages::{
     BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelId, ChannelStateWithNonce,
@@ -441,7 +441,7 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(_fraud_proof: FraudProofV1<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, H256>) {
+        fn submit_fraud_proof_unsigned(_fraud_proof: FraudProof<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, H256>) {
             unreachable!()
         }
 

@@ -4,7 +4,7 @@
 #![warn(missing_docs)]
 
 use crate::domain_block_er::execution_receipt_protocol::{
-    DomainBlockERRequest, DomainBlockERResponse, DomainBlockERResponseV0, generate_protocol_name,
+    DomainBlockERRequest, DomainBlockERResponse, generate_protocol_name,
 };
 use domain_runtime_primitives::Balance;
 use futures::channel::oneshot;
@@ -265,11 +265,8 @@ async fn send_request<NR: NetworkRequest, Block: BlockT, DomainHeader: Header>(
                 return Err(DomainBlockERResponseError::InvalidProtocol);
             }
 
-            let response = match DomainBlockERResponse::decode(&mut data.as_slice()) {
-                Ok(response) => Ok(response),
-                Err(_) => DomainBlockERResponseV0::decode(&mut data.as_slice()).map(Into::into),
-            }
-            .map_err(DomainBlockERResponseError::DecodeFailed)?;
+            let response = DomainBlockERResponse::decode(&mut data.as_slice())
+                .map_err(DomainBlockERResponseError::DecodeFailed)?;
 
             Ok(response)
         }

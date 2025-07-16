@@ -17,17 +17,11 @@ use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, RuntimeId};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
-use sp_domains_fraud_proof::fraud_proof::fraud_proof_v0::{
-    FraudProofV0, FraudProofVariantV0, InvalidBundlesV0Proof, ValidBundleV0Proof,
-};
-use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::{
-    FraudProofV1, FraudProofVariantV1, InvalidBundlesProof, InvalidBundlesProofData,
-    ValidBundleProof,
-};
 use sp_domains_fraud_proof::fraud_proof::{
-    ApplyExtrinsicMismatch, DomainRuntimeCodeAt, ExecutionPhase, FinalizeBlockMismatch,
-    InvalidBlockFeesProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
-    InvalidStateTransitionProof, InvalidTransfersProof, MmrRootProof, ValidBundleDigest,
+    ApplyExtrinsicMismatch, DomainRuntimeCodeAt, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
+    FraudProofVariant, InvalidBlockFeesProof, InvalidBundlesProof, InvalidBundlesProofData,
+    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
+    InvalidTransfersProof, MmrRootProof, ValidBundleDigest, ValidBundleProof,
 };
 use sp_domains_fraud_proof::storage_proof::{self, *};
 use sp_messenger::MessengerApi;
@@ -82,8 +76,6 @@ pub enum FraudProofError {
     },
     #[error("Fail to generate the storage proof")]
     StorageProof(#[from] storage_proof::GenerationError),
-    #[error("Bundle version mismatch")]
-    BundleVersionMismatch,
 }
 
 pub struct FraudProofGenerator<Block: BlockT, CBlock, Client, CClient, Backend, E> {
@@ -110,24 +102,8 @@ impl<Block: BlockT, CBlock, Client, CClient, Backend, E> Clone
     }
 }
 
-/// Versioned Fraud Proof.
-#[derive(Debug)]
-pub enum FraudProofFor<CBlock: BlockT, DomainHeader: HeaderT> {
-    V0(FraudProofV0<NumberFor<CBlock>, BlockHashFor<CBlock>, DomainHeader, H256>),
-    V1(FraudProofV1<NumberFor<CBlock>, BlockHashFor<CBlock>, DomainHeader, H256>),
-}
-
-impl<CBlock: BlockT, DomainHeader: HeaderT> FraudProofFor<CBlock, DomainHeader> {
-    #[cfg(test)]
-    pub fn v1(
-        self,
-    ) -> Option<FraudProofV1<NumberFor<CBlock>, BlockHashFor<CBlock>, DomainHeader, H256>> {
-        match self {
-            FraudProofFor::V0(_) => None,
-            FraudProofFor::V1(fp) => Some(fp),
-        }
-    }
-}
+pub type FraudProofFor<CBlock, DomainHeader> =
+    FraudProof<NumberFor<CBlock>, BlockHashFor<CBlock>, DomainHeader, H256>;
 
 impl<Block, CBlock, Client, CClient, Backend, E>
     FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>
@@ -320,28 +296,15 @@ where
         let maybe_domain_runtime_code_proof =
             self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
 
-        let invalid_state_transition_proof = if self.is_fraud_proof_v1_available()? {
-            FraudProofFor::V1(FraudProofV1 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: None,
-                maybe_domain_runtime_code_proof,
-                proof: FraudProofVariantV1::InvalidStateTransition(InvalidStateTransitionProof {
-                    execution_proof,
-                    execution_phase,
-                }),
-            })
-        } else {
-            FraudProofFor::V0(FraudProofV0 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: None,
-                maybe_domain_runtime_code_proof,
-                proof: FraudProofVariantV0::InvalidStateTransition(InvalidStateTransitionProof {
-                    execution_proof,
-                    execution_phase,
-                }),
-            })
+        let invalid_state_transition_proof = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: None,
+            maybe_domain_runtime_code_proof,
+            proof: FraudProofVariant::InvalidStateTransition(InvalidStateTransitionProof {
+                execution_proof,
+                execution_phase,
+            }),
         };
 
         Ok(invalid_state_transition_proof)
@@ -354,40 +317,9 @@ where
         consensus_extrinsics: Vec<CBlock::Extrinsic>,
     ) -> Result<OpaqueBundles<CBlock, Block::Header, Balance>, FraudProofError> {
         let runtime_api = self.consensus_client.runtime_api();
-        let domains_api_version = runtime_api
-            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_block_hash)?
-            // It is safe to return a default version of 1, since there will always be version 1.
-            .unwrap_or(1);
-        if domains_api_version >= 5 {
-            runtime_api
-                .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)
-                .map_err(FraudProofError::RuntimeApi)
-        } else {
-            #[allow(deprecated)]
-            runtime_api
-                .extract_successful_bundles_before_version_5(
-                    consensus_block_hash,
-                    domain_id,
-                    consensus_extrinsics,
-                )
-                .map(|bundles| {
-                    bundles
-                        .into_iter()
-                        .map(|bundle| bundle.into_opaque_bundle())
-                        .collect()
-                })
-                .map_err(FraudProofError::RuntimeApi)
-        }
-    }
-
-    fn is_fraud_proof_v1_available(&self) -> Result<bool, FraudProofError> {
-        let runtime_api = self.consensus_client.runtime_api();
-        let best_hash = self.consensus_client.info().best_hash;
-        let fraud_proof_api_version = runtime_api
-            .api_version::<dyn FraudProofApi<CBlock, CBlock::Header>>(best_hash)?
-            // It is safe to return a default version of 1, since there will always be version 1.
-            .unwrap_or(1);
-        Ok(fraud_proof_api_version >= 2)
+        runtime_api
+            .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)
+            .map_err(FraudProofError::RuntimeApi)
     }
 
     pub(crate) fn generate_valid_bundle_proof(
@@ -427,25 +359,12 @@ where
             bundle_index as u32,
         )?;
 
-        let valid_bundle_proof = if self.is_fraud_proof_v1_available()? {
-            FraudProofFor::V1(FraudProofV1 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: Some(mmr_proof),
-                maybe_domain_runtime_code_proof,
-                proof: FraudProofVariantV1::ValidBundle(ValidBundleProof { bundle_with_proof }),
-            })
-        } else {
-            let bundle_with_proof = bundle_with_proof
-                .into_opaque_bundle_v0_proof()
-                .ok_or(FraudProofError::BundleVersionMismatch)?;
-            FraudProofFor::V0(FraudProofV0 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: Some(mmr_proof),
-                maybe_domain_runtime_code_proof,
-                proof: FraudProofVariantV0::ValidBundle(ValidBundleV0Proof { bundle_with_proof }),
-            })
+        let valid_bundle_proof = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: Some(mmr_proof),
+            maybe_domain_runtime_code_proof,
+            proof: FraudProofVariant::ValidBundle(ValidBundleProof { bundle_with_proof }),
         };
 
         Ok(valid_bundle_proof)
@@ -508,36 +427,19 @@ where
                 &self.storage_key_provider,
             )?;
 
-        let invalid_domain_extrinsics_root_proof = if self.is_fraud_proof_v1_available()? {
-            FraudProofFor::V1(FraudProofV1 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: Some(mmr_proof),
-                maybe_domain_runtime_code_proof,
-                proof: FraudProofVariantV1::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof {
-                    valid_bundle_digests,
-                    invalid_inherent_extrinsic_proofs,
-                    maybe_domain_runtime_upgraded_proof,
-                    domain_chain_allowlist_proof,
-                    domain_sudo_call_proof,
-                    evm_domain_contract_creation_allowed_by_call_proof,
-                }),
-            })
-        } else {
-            FraudProofFor::V0(FraudProofV0 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: Some(mmr_proof),
-                maybe_domain_runtime_code_proof,
-                proof: FraudProofVariantV0::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof {
-                    valid_bundle_digests,
-                    invalid_inherent_extrinsic_proofs,
-                    maybe_domain_runtime_upgraded_proof,
-                    domain_chain_allowlist_proof,
-                    domain_sudo_call_proof,
-                    evm_domain_contract_creation_allowed_by_call_proof,
-                }),
-            })
+        let invalid_domain_extrinsics_root_proof = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: Some(mmr_proof),
+            maybe_domain_runtime_code_proof,
+            proof: FraudProofVariant::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof {
+                valid_bundle_digests,
+                invalid_inherent_extrinsic_proofs,
+                maybe_domain_runtime_upgraded_proof,
+                domain_chain_allowlist_proof,
+                domain_sudo_call_proof,
+                evm_domain_contract_creation_allowed_by_call_proof,
+            }),
         };
 
         Ok(invalid_domain_extrinsics_root_proof)
@@ -930,39 +832,18 @@ where
         let maybe_domain_runtime_code_proof =
             self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
 
-        let invalid_bundle_proof = if self.is_fraud_proof_v1_available()? {
-            let proof = FraudProofVariantV1::InvalidBundles(InvalidBundlesProof {
-                bundle_index,
-                invalid_bundle_type: invalid_type,
-                is_good_invalid_fraud_proof,
-                proof_data,
-            });
-            FraudProofFor::V1(FraudProofV1 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: Some(mmr_proof),
-                maybe_domain_runtime_code_proof,
-                proof,
-            })
-        } else {
-            // if fraud proof v1 is not available at the best block hash,
-            // then it will not be available at the hash when bad receipt was created.
-            // so there must be no Versioned bundles available at this time.
-            let proof = FraudProofVariantV0::InvalidBundles(InvalidBundlesV0Proof {
-                bundle_index,
-                invalid_bundle_type: invalid_type,
-                is_good_invalid_fraud_proof,
-                proof_data: proof_data
-                    .into_invalid_bundles_v0_proof_data()
-                    .ok_or(FraudProofError::BundleVersionMismatch)?,
-            });
-            FraudProofFor::V0(FraudProofV0 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: Some(mmr_proof),
-                maybe_domain_runtime_code_proof,
-                proof,
-            })
+        let proof = FraudProofVariant::InvalidBundles(InvalidBundlesProof {
+            bundle_index,
+            invalid_bundle_type: invalid_type,
+            is_good_invalid_fraud_proof,
+            proof_data,
+        });
+        let invalid_bundle_proof = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: Some(mmr_proof),
+            maybe_domain_runtime_code_proof,
+            proof,
         };
 
         Ok(invalid_bundle_proof)
@@ -985,26 +866,12 @@ where
         let maybe_domain_runtime_code_proof =
             self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
 
-        let invalid_block_fees_proof = if self.is_fraud_proof_v1_available()? {
-            FraudProofFor::V1(FraudProofV1 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: None,
-                maybe_domain_runtime_code_proof,
-                proof: FraudProofVariantV1::InvalidBlockFees(InvalidBlockFeesProof {
-                    storage_proof,
-                }),
-            })
-        } else {
-            FraudProofFor::V0(FraudProofV0 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: None,
-                maybe_domain_runtime_code_proof,
-                proof: FraudProofVariantV0::InvalidBlockFees(InvalidBlockFeesProof {
-                    storage_proof,
-                }),
-            })
+        let invalid_block_fees_proof = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: None,
+            maybe_domain_runtime_code_proof,
+            proof: FraudProofVariant::InvalidBlockFees(InvalidBlockFeesProof { storage_proof }),
         };
 
         Ok(invalid_block_fees_proof)
@@ -1026,26 +893,12 @@ where
         let maybe_domain_runtime_code_proof =
             self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
 
-        let invalid_transfers_proof = if self.is_fraud_proof_v1_available()? {
-            FraudProofFor::V1(FraudProofV1 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: None,
-                maybe_domain_runtime_code_proof,
-                proof: FraudProofVariantV1::InvalidTransfers(InvalidTransfersProof {
-                    storage_proof,
-                }),
-            })
-        } else {
-            FraudProofFor::V0(FraudProofV0 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: None,
-                maybe_domain_runtime_code_proof,
-                proof: FraudProofVariantV0::InvalidTransfers(InvalidTransfersProof {
-                    storage_proof,
-                }),
-            })
+        let invalid_transfers_proof = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: None,
+            maybe_domain_runtime_code_proof,
+            proof: FraudProofVariant::InvalidTransfers(InvalidTransfersProof { storage_proof }),
         };
 
         Ok(invalid_transfers_proof)
@@ -1063,26 +916,14 @@ where
             .client
             .read_proof(block_hash, &mut [digest_key.as_slice()].into_iter())?;
 
-        let invalid_domain_block_hash = if self.is_fraud_proof_v1_available()? {
-            FraudProofFor::V1(FraudProofV1 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: None,
-                maybe_domain_runtime_code_proof: None,
-                proof: FraudProofVariantV1::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
-                    digest_storage_proof,
-                }),
-            })
-        } else {
-            FraudProofFor::V0(FraudProofV0 {
-                domain_id,
-                bad_receipt_hash,
-                maybe_mmr_proof: None,
-                maybe_domain_runtime_code_proof: None,
-                proof: FraudProofVariantV0::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
-                    digest_storage_proof,
-                }),
-            })
+        let invalid_domain_block_hash = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: None,
+            maybe_domain_runtime_code_proof: None,
+            proof: FraudProofVariant::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
+                digest_storage_proof,
+            }),
         };
 
         Ok(invalid_domain_block_hash)

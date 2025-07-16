@@ -85,7 +85,7 @@ pub use self::aux_schema::load_execution_receipt;
 pub use self::fetch_domain_bootstrap_info::{BootstrapResult, fetch_domain_bootstrap_info};
 pub use self::operator::Operator;
 pub use self::utils::{DomainBlockImportNotification, OperatorSlotInfo};
-pub use domain_worker::VersionedOpaqueBundleFor;
+pub use domain_worker::OpaqueBundleFor;
 use futures::Stream;
 use futures::channel::mpsc;
 use sc_client_api::{AuxStore, BlockImportNotification};

@@ -24,7 +24,6 @@ extern crate alloc;
 use crate::block_tree::{Error as BlockTreeError, verify_execution_receipt};
 use crate::bundle_storage_fund::{charge_bundle_storage_fee, storage_fund_account};
 use crate::domain_registry::{DomainConfig, Error as DomainRegistryError};
-use crate::migrations::execution_receipt::get_block_tree_node;
 use crate::runtime_registry::into_complete_raw_genesis;
 use crate::staking::OperatorStatus;
 #[cfg(feature = "runtime-benchmarks")]
@@ -63,9 +62,9 @@ use sp_domains::{
     DomainInstanceData, EMPTY_EXTRINSIC_ROOT, OperatorId, OperatorPublicKey, OperatorSignature,
     ProofOfElection, RuntimeId,
 };
-use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::{FraudProofV1, FraudProofVariantV1};
 use sp_domains_fraud_proof::fraud_proof::{
-    DomainRuntimeCodeAt, InvalidBlockFeesProof, InvalidDomainBlockHashProof, InvalidTransfersProof,
+    DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
+    InvalidDomainBlockHashProof, InvalidTransfersProof,
 };
 use sp_domains_fraud_proof::storage_proof::{self, BasicStorageProof, DomainRuntimeCodeProof};
 use sp_domains_fraud_proof::verification::{
@@ -138,7 +137,7 @@ pub type SingletonReceiptOf<T> = SealedSingletonReceipt<
     BalanceOf<T>,
 >;
 
-pub type FraudProofFor<T> = FraudProofV1<
+pub type FraudProofFor<T> = FraudProof<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainHeader,
@@ -229,7 +228,6 @@ mod pallet {
         DomainConfigParams, DomainObject, Error as DomainRegistryError, do_instantiate_domain,
         do_update_domain_allow_list,
     };
-    use crate::migrations::execution_receipt::get_block_tree_node;
     use crate::runtime_registry::{
         DomainRuntimeUpgradeEntry, Error as RuntimeRegistryError, ScheduledRuntimeUpgrade,
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
@@ -707,11 +705,13 @@ mod pallet {
 
     /// Storage to hold all the domain's latest confirmed block.
     #[pallet::storage]
+    #[pallet::getter(fn latest_confirmed_domain_execution_receipt)]
     pub type LatestConfirmedDomainExecutionReceipt<T: Config> =
         StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
 
     /// Storage to hold all the domain's genesis execution receipt.
     #[pallet::storage]
+    #[pallet::getter(fn domain_genesis_block_execution_receipt)]
     pub type DomainGenesisBlockExecutionReceipt<T: Config> =
         StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
 
@@ -1359,7 +1359,7 @@ mod pallet {
             let domain_id = fraud_proof.domain_id();
             let bad_receipt_hash = fraud_proof.targeted_bad_receipt_hash();
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
-            let bad_receipt_number = *get_block_tree_node::<T>(bad_receipt_hash)
+            let bad_receipt_number = *BlockTreeNodes::<T>::get(bad_receipt_hash)
                 .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?
                 .execution_receipt
                 .domain_block_number();
@@ -1734,7 +1734,7 @@ mod pallet {
             );
 
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
-            let bad_receipt_number = *get_block_tree_node::<T>(bad_receipt_hash)
+            let bad_receipt_number = *BlockTreeNodes::<T>::get(bad_receipt_hash)
                 .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?
                 .execution_receipt
                 .domain_block_number();
@@ -2213,10 +2213,6 @@ impl<T: Config> Pallet<T> {
         ))
     }
 
-    pub fn genesis_execution_receipt(domain_id: DomainId) -> Option<ExecutionReceiptOf<T>> {
-        crate::migrations::execution_receipt::domain_genesis_block_execution_receipt::<T>(domain_id)
-    }
-
     /// Returns the tx range for the domain.
     pub fn domain_tx_range(domain_id: DomainId) -> U256 {
         DomainTxRangeState::<T>::try_get(domain_id)
@@ -2432,9 +2428,7 @@ impl<T: Config> Pallet<T> {
 
         // bundle version check
         match (current_bundle_version, opaque_bundle) {
-            (BundleVersion::V0, Bundle::V0(_)) => Ok(()),
-            (BundleVersion::V1, Bundle::V1(_)) => Ok(()),
-            _ => Err(BundleError::BundleVersionMismatch),
+            (BundleVersion::V0, Bundle::V0(_)) => Ok::<(), BundleError>(()),
         }?;
 
         let domain_id = opaque_bundle.domain_id();
@@ -2529,7 +2523,7 @@ impl<T: Config> Pallet<T> {
     ) -> Result<(DomainId, TransactionPriority), FraudProofError> {
         let domain_id = fraud_proof.domain_id();
         let bad_receipt_hash = fraud_proof.targeted_bad_receipt_hash();
-        let bad_receipt = get_block_tree_node::<T>(bad_receipt_hash)
+        let bad_receipt = BlockTreeNodes::<T>::get(bad_receipt_hash)
             .ok_or(FraudProofError::BadReceiptNotFound)?
             .execution_receipt;
         let bad_receipt_domain_block_number = *bad_receipt.domain_block_number();
@@ -2563,7 +2557,7 @@ impl<T: Config> Pallet<T> {
         };
 
         match &fraud_proof.proof {
-            FraudProofVariantV1::InvalidBlockFees(InvalidBlockFeesProof { storage_proof }) => {
+            FraudProofVariant::InvalidBlockFees(InvalidBlockFeesProof { storage_proof }) => {
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
                     &bad_receipt,
@@ -2582,7 +2576,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidBlockFeesFraudProof
                 })?;
             }
-            FraudProofVariantV1::InvalidTransfers(InvalidTransfersProof { storage_proof }) => {
+            FraudProofVariant::InvalidTransfers(InvalidTransfersProof { storage_proof }) => {
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
                     &bad_receipt,
@@ -2601,11 +2595,11 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidTransfersFraudProof
                 })?;
             }
-            FraudProofVariantV1::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
+            FraudProofVariant::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
                 digest_storage_proof,
             }) => {
                 let parent_receipt =
-                    get_block_tree_node::<T>(*bad_receipt.parent_domain_block_receipt_hash())
+                    BlockTreeNodes::<T>::get(*bad_receipt.parent_domain_block_receipt_hash())
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
                 verify_invalid_domain_block_hash_fraud_proof::<
@@ -2622,7 +2616,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidDomainBlockHashFraudProof
                 })?;
             }
-            FraudProofVariantV1::InvalidExtrinsicsRoot(proof) => {
+            FraudProofVariant::InvalidExtrinsicsRoot(proof) => {
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
                     &bad_receipt,
@@ -2651,14 +2645,14 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidExtrinsicRootFraudProof
                 })?;
             }
-            FraudProofVariantV1::InvalidStateTransition(proof) => {
+            FraudProofVariant::InvalidStateTransition(proof) => {
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
                     &bad_receipt,
                     fraud_proof.maybe_domain_runtime_code_proof.clone(),
                 )?;
                 let bad_receipt_parent =
-                    get_block_tree_node::<T>(*bad_receipt.parent_domain_block_receipt_hash())
+                    BlockTreeNodes::<T>::get(*bad_receipt.parent_domain_block_receipt_hash())
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
 
@@ -2672,7 +2666,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidStateTransitionFraudProof
                 })?;
             }
-            FraudProofVariantV1::InvalidBundles(proof) => {
+            FraudProofVariant::InvalidBundles(proof) => {
                 let state_root = maybe_state_root.ok_or(FraudProofError::MissingMmrProof)?;
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
@@ -2681,7 +2675,7 @@ impl<T: Config> Pallet<T> {
                 )?;
 
                 let bad_receipt_parent =
-                    get_block_tree_node::<T>(*bad_receipt.parent_domain_block_receipt_hash())
+                    BlockTreeNodes::<T>::get(*bad_receipt.parent_domain_block_receipt_hash())
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
 
@@ -2705,7 +2699,7 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidBundleFraudProof
                 })?;
             }
-            FraudProofVariantV1::ValidBundle(proof) => {
+            FraudProofVariant::ValidBundle(proof) => {
                 let state_root = maybe_state_root.ok_or(FraudProofError::MissingMmrProof)?;
                 let domain_runtime_code = Self::get_domain_runtime_code_for_receipt(
                     domain_id,
@@ -2731,7 +2725,7 @@ impl<T: Config> Pallet<T> {
                 })?
             }
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-            FraudProofVariantV1::Dummy => {
+            FraudProofVariant::Dummy => {
                 // Almost every fraud proof (except `InvalidDomainBlockHash` fraud proof) need to call
                 // `get_domain_runtime_code_for_receipt` thus we include this part in the benchmark of
                 // the dummy fraud proof.
@@ -2818,20 +2812,16 @@ impl<T: Config> Pallet<T> {
     /// Returns the latest confirmed domain block number for a given domain
     /// Zero block is always a default confirmed block.
     pub fn latest_confirmed_domain_block_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
-        crate::migrations::execution_receipt::latest_confirmed_domain_execution_receipt::<T>(
-            domain_id,
-        )
-        .map(|er| *er.domain_block_number())
-        .unwrap_or_default()
+        LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
+            .map(|er| *er.domain_block_number())
+            .unwrap_or_default()
     }
 
     pub fn latest_confirmed_domain_block(
         domain_id: DomainId,
     ) -> Option<(DomainBlockNumberFor<T>, T::DomainHash)> {
-        crate::migrations::execution_receipt::latest_confirmed_domain_execution_receipt::<T>(
-            domain_id,
-        )
-        .map(|er| (*er.domain_block_number(), *er.domain_block_hash()))
+        LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
+            .map(|er| (*er.domain_block_number(), *er.domain_block_hash()))
     }
 
     /// Returns the domain bundle limit of the given domain
@@ -2942,7 +2932,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptOf<T>> {
-        get_block_tree_node::<T>(receipt_hash).map(|db| db.execution_receipt)
+        BlockTreeNodes::<T>::get(receipt_hash).map(|db| db.execution_receipt)
     }
 
     /// Returns the correct bundle and er version based on
@@ -3140,7 +3130,7 @@ impl<T: Config> Pallet<T> {
         // that used to derive `receipt` we need to use runtime code at `parent_receipt.consensus_block_number`
         let at = {
             let parent_receipt =
-                get_block_tree_node::<T>(*receipt.parent_domain_block_receipt_hash())
+                BlockTreeNodes::<T>::get(*receipt.parent_domain_block_receipt_hash())
                     .ok_or(FraudProofError::ParentReceiptNotFound)?
                     .execution_receipt;
             *parent_receipt.consensus_block_number()
@@ -3264,14 +3254,6 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
     ) -> Option<sp_domains::PermissionedActionAllowedBy<EthereumAccountId>> {
         EvmDomainContractCreationAllowedByCalls::<T>::get(domain_id).maybe_call
-    }
-
-    pub fn latest_confirmed_domain_execution_receipt(
-        domain_id: DomainId,
-    ) -> Option<ExecutionReceiptOf<T>> {
-        crate::migrations::execution_receipt::latest_confirmed_domain_execution_receipt::<T>(
-            domain_id,
-        )
     }
 
     pub(crate) fn set_previous_bundle_and_execution_receipt_version<SV, PV, BEV>(

@@ -26,7 +26,7 @@ use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256};
-use sp_domains::bundle::bundle_v1::{BundleHeaderV1, BundleV1, SealedBundleHeaderV1};
+use sp_domains::bundle::bundle_v0::{BundleHeaderV0, BundleV0, SealedBundleHeaderV0};
 use sp_domains::bundle::{BundleVersion, InboxedBundle, OpaqueBundle};
 use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
 use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptVersion};
@@ -36,7 +36,7 @@ use sp_domains::{
     BundleAndExecutionReceiptVersion, ChainId, DomainId, OperatorAllowList, OperatorId,
     OperatorPair, ProofOfElection, RuntimeId, RuntimeType,
 };
-use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
+use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::generic::{EXTRINSIC_FORMAT_VERSION, Preamble};
 use sp_runtime::traits::{
     AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, ConstU16, Hash as HashT,
@@ -174,7 +174,7 @@ parameter_types! {
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 10;
     pub const CurrentBundleAndExecutionReceiptVersion: BundleAndExecutionReceiptVersion = BundleAndExecutionReceiptVersion {
-        bundle_version: BundleVersion::V1,
+        bundle_version: BundleVersion::V0,
         execution_receipt_version: ExecutionReceiptVersion::V0,
     };
 }
@@ -527,7 +527,7 @@ pub(crate) fn create_dummy_bundle_with_receipts(
 ) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
     let pair = OperatorPair::from_seed(&[0; 32]);
 
-    let header = BundleHeaderV1::<_, _, DomainHeader, _> {
+    let header = BundleHeaderV0::<_, _, DomainHeader, _> {
         proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
         estimated_bundle_weight: Default::default(),
@@ -536,8 +536,8 @@ pub(crate) fn create_dummy_bundle_with_receipts(
 
     let signature = pair.sign(header.hash().as_ref());
 
-    OpaqueBundle::V1(BundleV1 {
-        sealed_header: SealedBundleHeaderV1::new(header, signature),
+    OpaqueBundle::V0(BundleV0 {
+        sealed_header: SealedBundleHeaderV0::new(header, signature),
         extrinsics: Vec::new(),
     })
 }
@@ -856,7 +856,7 @@ fn test_invalid_fraud_proof() {
             .unwrap()
             .execution_receipt
             .hash::<DomainHashingFor<Test>>();
-        let fraud_proof = FraudProofV1::dummy_fraud_proof(domain_id, bad_receipt_hash);
+        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
         assert_eq!(
             Domains::validate_fraud_proof(&fraud_proof),
             Err(FraudProofError::ChallengingGenesisReceipt)
@@ -864,7 +864,7 @@ fn test_invalid_fraud_proof() {
 
         // Fraud proof target unknown ER is invalid
         let bad_receipt_hash = H256::random();
-        let fraud_proof = FraudProofV1::dummy_fraud_proof(domain_id, bad_receipt_hash);
+        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
         assert_eq!(
             Domains::validate_fraud_proof(&fraud_proof),
             Err(FraudProofError::BadReceiptNotFound)
@@ -901,7 +901,7 @@ fn test_basic_fraud_proof_processing() {
                 .unwrap()
                 .execution_receipt;
             let bad_receipt_hash = bad_receipt.hash::<DomainHashingFor<Test>>();
-            let fraud_proof = FraudProofV1::dummy_fraud_proof(domain_id, bad_receipt_hash);
+            let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
             assert_ok!(Domains::submit_fraud_proof(
                 DomainOrigin::ValidatedUnsigned.into(),
                 Box::new(fraud_proof)

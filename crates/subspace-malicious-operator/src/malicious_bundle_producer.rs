@@ -1,7 +1,7 @@
 use crate::malicious_bundle_tamper::MaliciousBundleTamper;
 use domain_client_operator::domain_bundle_producer::{BundleProducer, TestBundleProducer};
 use domain_client_operator::domain_bundle_proposer::DomainBundleProposer;
-use domain_client_operator::{OperatorSlotInfo, VersionedOpaqueBundleFor};
+use domain_client_operator::{OpaqueBundleFor, OperatorSlotInfo};
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::{Stream, StreamExt, TryFutureExt};
@@ -163,7 +163,7 @@ where
         &mut self,
         operator_id: OperatorId,
         new_slot_info: OperatorSlotInfo,
-    ) -> Option<VersionedOpaqueBundleFor<DomainBlock, CBlock>> {
+    ) -> Option<OpaqueBundleFor<DomainBlock, CBlock>> {
         let slot = new_slot_info.slot;
         self.bundle_producer
             .produce_bundle(operator_id, new_slot_info)
@@ -327,7 +327,7 @@ where
 
     fn submit_bundle(
         &self,
-        opaque_bundle: VersionedOpaqueBundleFor<DomainBlock, CBlock>,
+        opaque_bundle: OpaqueBundleFor<DomainBlock, CBlock>,
     ) -> Result<(), Box<dyn Error>> {
         let call = pallet_domains::Call::submit_bundle { opaque_bundle };
         self.submit_consensus_extrinsic(None, call.into())

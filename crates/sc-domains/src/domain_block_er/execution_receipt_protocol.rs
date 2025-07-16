@@ -21,10 +21,9 @@ use parity_scale_codec::{Decode, Encode};
 use sc_client_api::BlockBackend;
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::{NetworkBackend, PeerId};
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_domains::execution_receipt::ExecutionReceiptFor;
-use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0For;
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{Block as BlockT, Header};
 use std::marker::PhantomData;
@@ -80,25 +79,6 @@ pub enum DomainBlockERRequest {
 pub enum DomainBlockERResponse<CBlock: BlockT, DomainHeader: Header> {
     /// Response for last confirmed Domain block ER.
     LastConfirmedER(ExecutionReceiptFor<DomainHeader, CBlock, Balance>),
-}
-
-// TODO: remove once majority of the network is migrated.
-/// V0 Response for Domain Block ER request.
-#[derive(Clone, PartialEq, Encode, Decode, Debug)]
-pub enum DomainBlockERResponseV0<CBlock: BlockT, DomainHeader: Header> {
-    /// Response for last confirmed Domain block ER.
-    LastConfirmedER(ExecutionReceiptV0For<DomainHeader, CBlock, Balance>),
-}
-
-impl<CBlock: BlockT, DomainHeader: Header> From<DomainBlockERResponseV0<CBlock, DomainHeader>>
-    for DomainBlockERResponse<CBlock, DomainHeader>
-{
-    fn from(value: DomainBlockERResponseV0<CBlock, DomainHeader>) -> Self {
-        let DomainBlockERResponseV0::LastConfirmedER(er) = value;
-        DomainBlockERResponse::LastConfirmedER(
-            ExecutionReceiptFor::<DomainHeader, CBlock, Balance>::V0(er),
-        )
-    }
 }
 
 /// Handler for incoming block requests from a remote peer.
@@ -213,26 +193,10 @@ where
         let best_consensus_hash = self.consensus_client.info().best_hash;
 
         let runtime_api = self.consensus_client.runtime_api();
-        let domains_api_version = runtime_api
-            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(best_consensus_hash)?
-            // It is safe to return a default version of 1, since there will always be version 1.
-            .unwrap_or(1);
 
         // Get the last confirmed block receipt
-        let last_confirmed_block_receipt = if domains_api_version >= 5 {
-            self.consensus_client
-                .runtime_api()
-                .last_confirmed_domain_block_receipt(best_consensus_hash, domain_id)
-        } else {
-            #[allow(deprecated)]
-            self.consensus_client
-                .runtime_api()
-                .last_confirmed_domain_block_receipt_before_version_5(
-                    best_consensus_hash,
-                    domain_id,
-                )
-                .map(|er| er.map(ExecutionReceiptFor::<Block::Header, CBlock, Balance>::V0))
-        };
+        let last_confirmed_block_receipt =
+            runtime_api.last_confirmed_domain_block_receipt(best_consensus_hash, domain_id);
 
         let last_confirmed_block_receipt = match last_confirmed_block_receipt {
             Ok(Some(last_confirmed_block_receipt)) => last_confirmed_block_receipt,

@@ -2,19 +2,15 @@
 extern crate alloc;
 
 use crate::bundle::OpaqueBundle;
-use crate::bundle::bundle_v1::{BundleHeaderV1, BundleV1, SealedBundleHeaderV1};
 use crate::execution_receipt::ExecutionReceipt;
-use crate::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
 use crate::{HeaderHashFor, HeaderHashingFor, HeaderNumberFor, OperatorSignature, ProofOfElection};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_core::H256;
 use sp_runtime::OpaqueExtrinsic;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Hash, Header as HeaderT};
 use sp_weights::Weight;
-use subspace_runtime_primitives::BlockHashFor;
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeaderV0<Number, Hash, DomainHeader: HeaderT, Balance> {
@@ -22,7 +18,7 @@ pub struct BundleHeaderV0<Number, Hash, DomainHeader: HeaderT, Balance> {
     pub proof_of_election: ProofOfElection,
     /// Execution receipt that should extend the receipt chain or add confirmations
     /// to the head receipt.
-    pub receipt: ExecutionReceiptV0<
+    pub receipt: ExecutionReceipt<
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -67,7 +63,7 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
     }
 }
 
-/// V0 Domain bundle.
+/// Domain bundle v1.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleV0<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Sealed bundle header.
@@ -76,45 +72,9 @@ pub struct BundleV0<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
     pub extrinsics: Vec<Extrinsic>,
 }
 
-impl<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance>
-    From<BundleV0<Extrinsic, Number, Hash, DomainHeader, Balance>>
-    for BundleV1<Extrinsic, Number, Hash, DomainHeader, Balance>
-{
-    fn from(value: BundleV0<Extrinsic, Number, Hash, DomainHeader, Balance>) -> Self {
-        let BundleV0 {
-            extrinsics,
-            sealed_header,
-        } = value;
-
-        let SealedBundleHeaderV0 { header, signature } = sealed_header;
-        let BundleHeaderV0 {
-            proof_of_election,
-            receipt,
-            estimated_bundle_weight,
-            bundle_extrinsics_root,
-        } = header;
-
-        let header = BundleHeaderV1 {
-            proof_of_election,
-            receipt: ExecutionReceipt::V0(receipt),
-            estimated_bundle_weight,
-            bundle_extrinsics_root,
-        };
-        BundleV1 {
-            sealed_header: SealedBundleHeaderV1 { header, signature },
-            extrinsics,
-        }
-    }
-}
-
-impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
+impl<Extrinsic: Encode, Number, Hash, DomainHeader: HeaderT, Balance>
     BundleV0<Extrinsic, Number, Hash, DomainHeader, Balance>
 {
-    /// Returns the hash of this bundle.
-    pub fn hash(&self) -> H256 {
-        BlakeTwo256::hash_of(self)
-    }
-
     /// Convert a bundle with generic extrinsic to a bundle with opaque extrinsic.
     pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, DomainHeader, Balance> {
         let BundleV0 {
@@ -134,11 +94,3 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Bal
         })
     }
 }
-
-/// BundleV0 with opaque extrinsics.
-pub type OpaqueBundleV0<Number, Hash, DomainHeader, Balance> =
-    BundleV0<OpaqueExtrinsic, Number, Hash, DomainHeader, Balance>;
-
-/// List of [`OpaqueBundleV0`].
-pub type OpaqueBundlesV0<Block, DomainHeader, Balance> =
-    Vec<OpaqueBundleV0<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>>;

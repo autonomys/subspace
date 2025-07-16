@@ -1,11 +1,9 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::fraud_proof::fraud_proof_v1::{
-    InvalidBundlesProof, InvalidBundlesProofData, ValidBundleProof,
-};
 use crate::fraud_proof::{
-    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, MmrRootProof, VerificationError,
+    InvalidBundlesProof, InvalidBundlesProofData, InvalidExtrinsicsRootProof,
+    InvalidStateTransitionProof, MmrRootProof, ValidBundleProof, VerificationError,
 };
 use crate::storage_proof::{self, *};
 use crate::{

@@ -25,8 +25,7 @@ use crate::storage_proof::FraudProofStorageKeyRequest;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use domain_runtime_primitives::EthereumAccountId;
-use fraud_proof::fraud_proof_v0::FraudProofV0;
-use fraud_proof::fraud_proof_v1::FraudProofV1;
+use fraud_proof::FraudProof;
 #[cfg(feature = "std")]
 pub use host_functions::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofHostFunctionsImpl,
@@ -154,11 +153,7 @@ sp_api::decl_runtime_apis! {
     #[api_version(2)]
     pub trait FraudProofApi<DomainHeader: HeaderT> {
         /// Submit the fraud proof via an unsigned extrinsic.
-        #[changed_in(2)]
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProofV0<NumberFor<Block>, Block::Hash, DomainHeader, H256>);
-
-        /// Submit the fraud proof via an unsigned extrinsic.
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProofV1<NumberFor<Block>, Block::Hash, DomainHeader, H256>);
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash, DomainHeader, H256>);
 
         /// Return the storage key used in fraud proof
         fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8>;

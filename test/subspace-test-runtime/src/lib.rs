@@ -80,7 +80,7 @@ use sp_domains::{
     DomainId, DomainInstanceData, INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey,
     PermissionedActionAllowedBy,
 };
-use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
+use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
     FraudProofStorageKeyProvider, FraudProofStorageKeyRequest,
 };
@@ -822,7 +822,7 @@ parameter_types! {
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 32;
     pub const CurrentBundleAndExecutionReceiptVersion: BundleAndExecutionReceiptVersion = BundleAndExecutionReceiptVersion {
-        bundle_version: BundleVersion::V1,
+        bundle_version: BundleVersion::V0,
         execution_receipt_version: ExecutionReceiptVersion::V0,
     };
 }
@@ -1579,7 +1579,7 @@ impl_runtime_apis! {
         }
 
         fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
-            Domains::genesis_execution_receipt(domain_id)
+            Domains::domain_genesis_block_execution_receipt(domain_id)
                 .map(|er| *er.final_state_root())
         }
 
@@ -1654,7 +1654,7 @@ impl_runtime_apis! {
         }
 
         fn genesis_execution_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
-            Domains::genesis_execution_receipt(domain_id)
+            Domains::domain_genesis_block_execution_receipt(domain_id)
         }
     }
 
@@ -1822,7 +1822,7 @@ impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProofV1<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, H256>) {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, H256>) {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 

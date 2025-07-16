@@ -178,29 +178,12 @@ where
         )?;
 
         let runtime_api = self.consensus_client.runtime_api();
-        let domains_api_version = runtime_api
-            .api_version::<dyn DomainsApi<CBlock, CBlock::Header>>(consensus_block_hash)?
-            // It is safe to return a default version of 1, since there will always be version 1.
-            .unwrap_or(1);
 
-        let bundles = if domains_api_version >= 5 {
-            runtime_api.extract_successful_bundles(
-                consensus_block_hash,
-                self.domain_id,
-                primary_extrinsics,
-            )?
-        } else {
-            #[allow(deprecated)]
-            runtime_api
-                .extract_successful_bundles_before_version_5(
-                    consensus_block_hash,
-                    self.domain_id,
-                    primary_extrinsics,
-                )?
-                .into_iter()
-                .map(|bundle| OpaqueBundle::V1(bundle.into()))
-                .collect::<Vec<_>>()
-        };
+        let bundles = runtime_api.extract_successful_bundles(
+            consensus_block_hash,
+            self.domain_id,
+            primary_extrinsics,
+        )?;
 
         if bundles.is_empty()
             && !is_runtime_upgraded::<_, _, Block>(

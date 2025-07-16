@@ -171,8 +171,6 @@ mod pallet {
     use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
-    use sp_domains::execution_receipt::ExecutionReceipt;
-    use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
     use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
     use sp_domains::{DomainAllowlistUpdates, DomainId, DomainOwner};
     use sp_messenger::endpoint::{
@@ -1342,41 +1340,27 @@ mod pallet {
                     T::StorageKeys::confirmed_domain_block_storage_key(domain_id)
                         .ok_or(UnknownTransaction::CannotLookup)?;
 
-                // TODO: remove fallback decoding once XDMs does not
-                // pass bare V0 execution receipt.
-                StorageProofVerifier::<T::Hashing>::get_bare_value(
-                    &consensus_state_root,
-                    domain_proof,
-                    StorageKey(confirmed_domain_block_storage_key),
-                )
-                .map(|bare_value| {
-                    match ExecutionReceipt::<
+                *StorageProofVerifier::<T::Hashing>::get_decoded_value::<
+                    sp_domains::execution_receipt::ExecutionReceipt<
                         BlockNumberFor<T>,
                         T::Hash,
                         BlockNumberFor<T>,
                         T::Hash,
                         BalanceOf<T>,
-                    >::decode(&mut &bare_value[..])
-                    {
-                        Ok(receipt) => Some(receipt),
-                        Err(_) => ExecutionReceiptV0::<
-                            BlockNumberFor<T>,
-                            T::Hash,
-                            BlockNumberFor<T>,
-                            T::Hash,
-                            BalanceOf<T>,
-                        >::decode(&mut &bare_value[..])
-                        .map(ExecutionReceipt::V0)
-                        .ok(),
-                    }
-                })
-                .ok()
-                .flatten()
-                .map(|er| *er.final_state_root())
-                .ok_or({
-                    log::error!("Failed to verify storage proof for confirmed Domain block",);
+                    >,
+                >(
+                    &consensus_state_root,
+                    domain_proof,
+                    StorageKey(confirmed_domain_block_storage_key),
+                )
+                .map_err(|err| {
+                    log::error!(
+                        "Failed to verify storage proof for confirmed Domain block: {:?}",
+                        err
+                    );
                     TransactionValidityError::Invalid(InvalidTransaction::BadProof)
                 })?
+                .final_state_root()
             } else {
                 consensus_state_root
             };

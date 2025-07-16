@@ -15,8 +15,7 @@ use sp_domains::bundle::{BundleValidity, InvalidBundleType};
 use sp_domains::execution_receipt::{ExecutionReceiptFor, ExecutionReceiptMutRef, Transfers};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{ChainId, DomainsApi};
-use sp_domains_fraud_proof::fraud_proof::DomainRuntimeCodeAt;
-use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::{FraudProofV1, FraudProofVariantV1};
+use sp_domains_fraud_proof::fraud_proof::{DomainRuntimeCodeAt, FraudProof, FraudProofVariant};
 use sp_domains_fraud_proof::storage_proof::{BasicStorageProof, DomainRuntimeCodeProof};
 use sp_domains_fraud_proof::verification::*;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
@@ -36,7 +35,7 @@ use tokio::runtime::{Handle, Runtime as TokioRuntime};
 type TestExternalities = sp_state_machine::TestExternalities<sp_runtime::traits::BlakeTwo256>;
 
 type FraudProofFor<Block, DomainBlock> =
-    FraudProofV1<NumberFor<Block>, BlockHashFor<Block>, HeaderFor<DomainBlock>, H256>;
+    FraudProof<NumberFor<Block>, BlockHashFor<Block>, HeaderFor<DomainBlock>, H256>;
 
 fn bundle_to_tx(
     ferdie: &MockConsensusNode,
@@ -374,7 +373,7 @@ fn invalid_state_transition_proof_verification(c: &mut Criterion) {
             receipt.final_state_root = *receipt.execution_trace.last().unwrap();
         }));
 
-    if let FraudProofVariantV1::InvalidStateTransition(invalid_state_transition_proof) = fp.proof {
+    if let FraudProofVariant::InvalidStateTransition(invalid_state_transition_proof) = fp.proof {
         c.bench_function("Invalid state transition FP verification", |b| {
             b.iter_batched(
                 || {
@@ -417,7 +416,7 @@ fn valid_bundle_proof_verification(c: &mut Criterion) {
             receipt.inboxed_bundles[0].bundle = BundleValidity::Valid(H256::random());
         }));
 
-    if let FraudProofVariantV1::ValidBundle(valid_bundle_proof) = fp.proof {
+    if let FraudProofVariant::ValidBundle(valid_bundle_proof) = fp.proof {
         c.bench_function("Valid bundle FP verification", |b| {
             b.iter_batched(
                 || (bad_receipt.clone(), domain_runtime_code.clone()),
@@ -454,7 +453,7 @@ fn invalid_domain_extrinsics_root_fraud_proof(c: &mut Criterion) {
             receipt.domain_block_extrinsic_root = Default::default();
         }));
 
-    if let FraudProofVariantV1::InvalidExtrinsicsRoot(invalid_domain_extrinsics_root_fraud_proof) =
+    if let FraudProofVariant::InvalidExtrinsicsRoot(invalid_domain_extrinsics_root_fraud_proof) =
         fp.proof
     {
         c.bench_function("Invalid extrinsic root FP verification", |b| {
@@ -495,7 +494,7 @@ fn invalid_domain_block_hash_fraud_proof_verification(c: &mut Criterion) {
             receipt.domain_block_hash = Default::default();
         }));
 
-    if let FraudProofVariantV1::InvalidDomainBlockHash(invalid_domain_block_hash_fraud_proof) =
+    if let FraudProofVariant::InvalidDomainBlockHash(invalid_domain_block_hash_fraud_proof) =
         fp.proof
     {
         c.bench_function("Invalid domain block hash FP verification", |b| {
@@ -539,7 +538,7 @@ fn invalid_block_fees_fraud_proof_verification(c: &mut Criterion) {
             receipt.block_fees.consensus_storage_fee = 12345;
         }));
 
-    if let FraudProofVariantV1::InvalidBlockFees(invalid_block_fees_fraud_proof) = fp.proof {
+    if let FraudProofVariant::InvalidBlockFees(invalid_block_fees_fraud_proof) = fp.proof {
         c.bench_function("Invalid block fees FP verification", |b| {
             b.iter_batched(
                 || (bad_receipt.clone(), domain_runtime_code.clone()),
@@ -580,7 +579,7 @@ fn invalid_transfers_fraud_proof_verification(c: &mut Criterion) {
             }
         }));
 
-    if let FraudProofVariantV1::InvalidTransfers(invalid_transfers_fraud_proof) = fp.proof {
+    if let FraudProofVariant::InvalidTransfers(invalid_transfers_fraud_proof) = fp.proof {
         c.bench_function("Invalid transfers FP verification", |b| {
             b.iter_batched(
                 || (bad_receipt.clone(), domain_runtime_code.clone()),
@@ -624,7 +623,7 @@ fn invalid_bundle_undecodable_tx_fraud_proof_verification(c: &mut Criterion) {
             BundleValidity::Invalid(InvalidBundleType::UndecodableTx(0));
     }));
 
-    if let FraudProofVariantV1::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
+    if let FraudProofVariant::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
         c.bench_function("Invalid bundle UndecodableTx FP verification", |b| {
             assert!(matches!(
                 invalid_bundle_fraud_proof.invalid_bundle_type(),
@@ -682,7 +681,7 @@ fn invalid_bundle_out_of_range_tx_fraud_proof_verification(c: &mut Criterion) {
             BundleValidity::Invalid(InvalidBundleType::OutOfRangeTx(0));
     }));
 
-    if let FraudProofVariantV1::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
+    if let FraudProofVariant::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
         assert!(matches!(
             invalid_bundle_fraud_proof.invalid_bundle_type(),
             InvalidBundleType::OutOfRangeTx(0)
@@ -740,7 +739,7 @@ fn invalid_bundle_illegal_tx_fraud_proof_verification(c: &mut Criterion) {
             BundleValidity::Invalid(InvalidBundleType::IllegalTx(0));
     }));
 
-    if let FraudProofVariantV1::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
+    if let FraudProofVariant::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
         assert!(matches!(
             invalid_bundle_fraud_proof.invalid_bundle_type(),
             InvalidBundleType::IllegalTx(0)
@@ -798,7 +797,7 @@ fn invalid_bundle_invalid_xdm_fraud_proof_verification(c: &mut Criterion) {
             BundleValidity::Invalid(InvalidBundleType::InvalidXDM(0));
     }));
 
-    if let FraudProofVariantV1::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
+    if let FraudProofVariant::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
         assert!(matches!(
             invalid_bundle_fraud_proof.invalid_bundle_type(),
             InvalidBundleType::InvalidXDM(0)
@@ -856,7 +855,7 @@ fn invalid_bundle_inherent_extrinsic_fraud_proof_verification(c: &mut Criterion)
             BundleValidity::Invalid(InvalidBundleType::InherentExtrinsic(0));
     }));
 
-    if let FraudProofVariantV1::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
+    if let FraudProofVariant::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
         assert!(matches!(
             invalid_bundle_fraud_proof.invalid_bundle_type(),
             InvalidBundleType::InherentExtrinsic(0)
@@ -914,7 +913,7 @@ fn invalid_bundle_weight_fraud_proof_verification(c: &mut Criterion) {
             BundleValidity::Invalid(InvalidBundleType::InvalidBundleWeight);
     }));
 
-    if let FraudProofVariantV1::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
+    if let FraudProofVariant::InvalidBundles(invalid_bundle_fraud_proof) = fp.proof {
         assert!(matches!(
             invalid_bundle_fraud_proof.invalid_bundle_type(),
             InvalidBundleType::InvalidBundleWeight

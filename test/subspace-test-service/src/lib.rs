@@ -66,7 +66,7 @@ use sp_core::offchain::storage::OffchainDb;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_domains::bundle::OpaqueBundle;
 use sp_domains::{BundleProducerElectionApi, ChainId, DomainId, DomainsApi, OperatorId};
-use sp_domains_fraud_proof::fraud_proof::fraud_proof_v1::FraudProofV1;
+use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
@@ -108,7 +108,7 @@ use tokio::time::sleep;
 
 /// Helper type alias
 pub type FraudProofFor<Block, DomainBlock> =
-    FraudProofV1<NumberFor<Block>, BlockHashFor<Block>, HeaderFor<DomainBlock>, H256>;
+    FraudProof<NumberFor<Block>, BlockHashFor<Block>, HeaderFor<DomainBlock>, H256>;
 
 const MAX_PRODUCE_BUNDLE_TRY: usize = 10;
 
