@@ -672,7 +672,7 @@ mod tests {
     fn test_genesis_receipt() {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(0u128, vec![0u64]);
+            let domain_id = register_genesis_domain(0u128, 1);
 
             // The genesis receipt should be added to the block tree
             let block_tree_node_at_0 = BlockTree::<Test>::get(domain_id, 0).unwrap();
@@ -707,12 +707,12 @@ mod tests {
     #[test]
     fn test_new_head_receipt() {
         let creator = 0u128;
-        let operator_id = 1u64;
+        let operator_id = 0u64;
         let block_tree_pruning_depth = <Test as Config>::BlockTreePruningDepth::get();
 
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator, vec![operator_id]);
+            let domain_id = register_genesis_domain(creator, 1);
 
             // The genesis node of the block tree
             let genesis_node = get_block_tree_node_at::<Test>(domain_id, 0).unwrap();
@@ -834,11 +834,11 @@ mod tests {
     #[test]
     fn test_confirm_current_head_receipt() {
         let creator = 0u128;
-        let operator_id1 = 1u64;
-        let operator_id2 = 2u64;
+        let operator_id1 = 0u64;
+        let operator_id2 = 1u64;
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
+            let domain_id = register_genesis_domain(creator, 2);
             let next_head_receipt = extend_block_tree_from_zero(domain_id, operator_id1, 3);
 
             // Submit the new head receipt
@@ -906,11 +906,11 @@ mod tests {
     #[test]
     fn test_non_head_receipt() {
         let creator = 0u128;
-        let operator_id1 = 1u64;
-        let operator_id2 = 2u64;
+        let operator_id1 = 0u64;
+        let operator_id2 = 1u64;
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
+            let domain_id = register_genesis_domain(creator, 2);
             extend_block_tree_from_zero(domain_id, operator_id1, 3);
 
             // Receipt that confirm a non-head receipt is stale receipt
@@ -957,11 +957,11 @@ mod tests {
     #[test]
     fn test_previous_head_receipt() {
         let creator = 0u128;
-        let operator_id1 = 1u64;
-        let operator_id2 = 2u64;
+        let operator_id1 = 0u64;
+        let operator_id2 = 1u64;
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
+            let domain_id = register_genesis_domain(creator, 2);
             extend_block_tree_from_zero(domain_id, operator_id1, 3);
 
             // No new receipt submitted in current block
@@ -1004,11 +1004,11 @@ mod tests {
     #[test]
     fn test_new_branch_receipt() {
         let creator = 0u128;
-        let operator_id1 = 1u64;
-        let operator_id2 = 2u64;
+        let operator_id1 = 0u64;
+        let operator_id2 = 1u64;
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
+            let domain_id = register_genesis_domain(creator, 2);
             extend_block_tree_from_zero(domain_id, operator_id1, 3);
 
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
@@ -1057,10 +1057,10 @@ mod tests {
     #[test]
     fn test_prune_domain_execution_receipt() {
         let creator = 0u128;
-        let operator_id = 1u64;
+        let operator_id = 0u64;
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator, vec![operator_id]);
+            let domain_id = register_genesis_domain(creator, 1);
             let _next_receipt = extend_block_tree_from_zero(domain_id, operator_id, 3);
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
 
@@ -1091,10 +1091,10 @@ mod tests {
     #[test]
     fn test_invalid_receipt() {
         let creator = 0u128;
-        let operator_id = 1u64;
+        let operator_id = 0u64;
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator, vec![operator_id]);
+            let domain_id = register_genesis_domain(creator, 1);
             let next_receipt = extend_block_tree_from_zero(domain_id, operator_id, 3);
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
 
@@ -1201,10 +1201,10 @@ mod tests {
     #[test]
     fn test_invalid_receipt_with_head_receipt_already_extended() {
         let creator = 0u128;
-        let operator_id = 1u64;
+        let operator_id = 0u64;
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator, vec![operator_id]);
+            let domain_id = register_genesis_domain(creator, 1);
             let next_receipt = extend_block_tree_from_zero(domain_id, operator_id, 3);
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
 
@@ -1253,11 +1253,10 @@ mod tests {
     #[test]
     fn test_invalid_trace_root_receipt() {
         let creator = 0u128;
-        let operator_id1 = 1u64;
-        let operator_id2 = 2u64;
+        let operator_id1 = 0u64;
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
+            let domain_id = register_genesis_domain(creator, 2);
             let mut next_receipt = extend_block_tree_from_zero(domain_id, operator_id1, 3);
             let mut traces = next_receipt.execution_traces().to_vec();
             traces.push(H256::random());
@@ -1339,10 +1338,10 @@ mod tests {
     fn test_collect_invalid_bundle_author() {
         let creator = 0u128;
         let challenge_period = BlockTreePruningDepth::get();
-        let operator_set: Vec<_> = (1..15).collect();
+        let operator_set: Vec<_> = (0..14).collect();
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator, operator_set.clone());
+            let domain_id = register_genesis_domain(creator, operator_set.len());
             let next_receipt = extend_block_tree_from_zero(domain_id, operator_set[0], 3);
 
             // Submit bundle for every operator

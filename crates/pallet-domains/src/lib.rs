@@ -14,6 +14,7 @@ pub mod bundle_storage_fund;
 pub mod domain_registry;
 pub mod extensions;
 pub mod migrations;
+mod nominator_position;
 pub mod runtime_registry;
 pub mod staking;
 mod staking_epoch;
@@ -3289,6 +3290,26 @@ impl<T: Config> Pallet<T> {
         }
 
         set_version(versions);
+    }
+
+    /// Returns the complete nominator position for a given operator and account at the current block.
+    ///
+    /// This calculates the total position including:
+    /// - Current stake value (converted from shares using instant share price including rewards)
+    /// - Total storage fee deposits (known + pending)
+    /// - Pending deposits (not yet converted to shares)
+    /// - Pending withdrawals (with unlock timing)
+    ///
+    /// Note: Operator accounts are also nominator accounts, so this call will return the position
+    /// for the operator account.
+    ///
+    /// Returns None if no position exists for the given operator and account at the current block.
+    pub fn nominator_position(
+        operator_id: OperatorId,
+        nominator_account: T::AccountId,
+    ) -> Option<sp_domains::NominatorPosition<BalanceOf<T>, DomainBlockNumberFor<T>, T::Share>>
+    {
+        nominator_position::nominator_position::<T>(operator_id, nominator_account)
     }
 }
 

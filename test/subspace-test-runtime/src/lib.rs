@@ -1656,6 +1656,13 @@ impl_runtime_apis! {
         fn genesis_execution_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
             Domains::domain_genesis_block_execution_receipt(domain_id)
         }
+
+        fn nominator_position(
+            operator_id: OperatorId,
+            nominator_account: sp_runtime::AccountId32,
+        ) -> Option<sp_domains::NominatorPosition<Balance, DomainNumber, Balance>> {
+            Domains::nominator_position(operator_id, nominator_account)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

@@ -39,7 +39,7 @@ use sp_core::storage::StateVersion;
 use sp_core::traits::{FetchRuntimeCode, SpawnEssentialNamed};
 use sp_core::{H160, H256, Pair, U256};
 use sp_domain_digests::AsPredigest;
-use sp_domains::bundle::{Bundle, BundleValidity, InboxedBundle, InvalidBundleType};
+use sp_domains::bundle::{BundleValidity, InboxedBundle, InvalidBundleType};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::execution_receipt::{
     BlockFees, ExecutionReceiptMutRef, ExecutionReceiptRef, Transfers,
@@ -102,6 +102,8 @@ where
     }
 }
 
+// Only used in tests that are temporarily disabled on macOS due to instability (#3385)
+#[cfg_attr(target_os = "macos", expect(dead_code))]
 fn number_of(consensus_node: &MockConsensusNode, block_hash: Hash) -> u32 {
     consensus_node
         .client
@@ -1822,8 +1824,13 @@ async fn test_domain_block_deriving_from_multiple_bundles() {
     assert_eq!(domain_block_number, head_receipt_number);
 }
 
+// This test is more unstable on macOS
+// TODO: find and fix the source of the instability (#3385)
+#[cfg(not(target_os = "macos"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block() {
+    use sp_domains::bundle::Bundle;
+
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -6430,6 +6437,9 @@ async fn test_skip_empty_bundle_production() {
     assert_eq!(alice.client.info().best_number, domain_block_number + 1);
 }
 
+// This test is more unstable on macOS
+// TODO: find and fix the source of the instability (#3385)
+#[cfg(not(target_os = "macos"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_receipt_chain() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");

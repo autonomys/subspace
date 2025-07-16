@@ -967,6 +967,50 @@ pub struct BundleAndExecutionReceiptVersion {
     pub execution_receipt_version: ExecutionReceiptVersion,
 }
 
+/// Represents a nominator's storage fee deposit information
+#[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
+pub struct StorageFeeDeposit<Balance> {
+    /// Original amount contributed to storage fees
+    pub total_deposited: Balance,
+    /// Current value adjusted for fund performance (gains/losses)
+    pub current_value: Balance,
+}
+
+/// Represents a nominator's pending deposit that hasn't been converted to shares yet
+#[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
+pub struct PendingDeposit<Balance> {
+    /// The amount of the pending deposit
+    pub amount: Balance,
+    /// The epoch when this deposit will become effective
+    pub effective_epoch: EpochIndex,
+}
+
+/// Represents a nominator's pending withdrawal with unlock timing
+#[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
+pub struct PendingWithdrawal<Balance, DomainBlockNumber> {
+    /// The amount of stake that will be withdrawn
+    pub stake_withdrawal_amount: Balance,
+    /// The amount of storage fee deposit that will be refunded
+    pub storage_fee_refund: Balance,
+    /// The domain block number when this withdrawal can be unlocked
+    pub unlock_at_block: DomainBlockNumber,
+}
+
+/// Complete nominator position information for a specific operator
+#[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
+pub struct NominatorPosition<Balance, DomainBlockNumber, Share> {
+    /// Current value of the nominator's position (shares converted to balance using current share price)
+    pub current_staked_value: Balance,
+    /// Total shares owned by nominator
+    pub total_shares: Share,
+    /// Storage fee deposit information (original and current adjusted values)
+    pub storage_fee_deposit: StorageFeeDeposit<Balance>,
+    /// Pending deposit not yet converted to shares
+    pub pending_deposit: Option<PendingDeposit<Balance>>,
+    /// Pending withdrawals with unlock timing
+    pub pending_withdrawals: Vec<PendingWithdrawal<Balance, DomainBlockNumber>>,
+}
+
 sp_api::decl_runtime_apis! {
     /// APIs used to access the domains pallet.
     // When updating this version, document new APIs with "Only present in API versions" comments.
@@ -1077,6 +1121,20 @@ sp_api::decl_runtime_apis! {
 
         /// Returns genesis execution receipt for domains.
         fn genesis_execution_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
+
+        /// Returns the complete nominator position for a given operator and account.
+        ///
+        /// This calculates the total position including:
+        /// - Current stake value (converted from shares using current share price)
+        /// - Total storage fee deposits (known + pending)
+        /// - Pending deposits (not yet converted to shares)
+        /// - Pending withdrawals (with unlock timing)
+        ///
+        /// Only present in API versions 5 and later.
+        fn nominator_position(
+            operator_id: OperatorId,
+            nominator_account: sp_runtime::AccountId32,
+        ) -> Option<NominatorPosition<Balance, HeaderNumberFor<DomainHeader>, Balance>>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

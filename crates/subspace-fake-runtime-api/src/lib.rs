@@ -12,7 +12,7 @@ use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::execution_receipt::{ExecutionReceiptFor, SealedSingletonReceipt};
 use sp_domains::{
     BundleAndExecutionReceiptVersion, DomainAllowlistUpdates, DomainId, DomainInstanceData,
-    OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
+    NominatorPosition, OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
@@ -297,6 +297,13 @@ sp_api::impl_runtime_apis! {
         }
 
         fn genesis_execution_receipt(_domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
+            unreachable!()
+        }
+
+        fn nominator_position(
+            _operator_id: OperatorId,
+            _nominator_account: sp_runtime::AccountId32,
+        ) -> Option<NominatorPosition<Balance, DomainNumber, Balance>> {
             unreachable!()
         }
     }

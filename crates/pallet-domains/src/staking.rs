@@ -5,6 +5,7 @@ extern crate alloc;
 
 use crate::block_tree::invalid_bundle_authors_for_receipt;
 use crate::bundle_storage_fund::{self, deposit_reserve_for_storage_fund};
+use crate::migrations::OperatorEpochSharePriceV0;
 use crate::pallet::{
     Deposits, DomainRegistry, DomainStakingSummary, HeadDomainNumber, NextOperatorId,
     OperatorIdOwner, Operators, PendingSlashes, PendingStakingOperationCount, Withdrawals,
@@ -24,7 +25,7 @@ use scale_info::TypeInfo;
 use sp_core::{Get, sr25519};
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey, OperatorRewardSource};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
-use sp_runtime::{Perbill, Percent, Perquintill, Saturating};
+use sp_runtime::{PerThing, Percent, Perquintill, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::collections::vec_deque::VecDeque;
@@ -38,52 +39,65 @@ pub(crate) struct Deposit<Share: Copy, Balance: Copy> {
 }
 
 /// A share price is parts per billion of shares/ai3.
-/// Note: Shares must always be equal to or lower than ai3.
+/// Note: Shares must always be equal to or lower than ai3, and both shares and ai3 can't be zero.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Default)]
-pub struct SharePrice(Option<Perbill>);
+pub struct SharePrice(pub Perquintill);
 
 impl SharePrice {
     /// Creates a new instance of share price from shares and stake.
-    /// Returns an error if there are more shares than stake. If either value is zero, the share
-    /// price is marked as missing internally.
-    pub(crate) fn new<T: Config>(shares: T::Share, stake: BalanceOf<T>) -> Result<Self, Error> {
-        if shares > stake.into() {
+    /// Returns an error if there are more shares than stake or either value is zero.
+    pub(crate) fn new<T: Config>(
+        total_shares: T::Share,
+        total_stake: BalanceOf<T>,
+    ) -> Result<Self, Error> {
+        if total_shares > total_stake.into() {
             // Invalid share price, can't be greater than one.
             Err(Error::ShareOverflow)
-        } else if stake.is_zero() || shares.is_zero() {
-            // If there are no shares or no stake, it is valid, but there is no share price.
-            Ok(SharePrice(None))
+        } else if total_stake.is_zero() || total_shares.is_zero() {
+            // If there are no shares or no stake, we can't construct a zero share price.
+            Err(Error::ZeroSharePrice)
         } else {
-            Ok(SharePrice(Some(Perbill::from_rational(
-                shares,
-                stake.into(),
-            ))))
+            Ok(SharePrice(Perquintill::from_rational(
+                total_shares.into(),
+                total_stake,
+            )))
         }
     }
 
     /// Converts stake to shares based on the share price.
-    /// Returns the full stake if there were no shares or stake when calculating the price.
+    /// Always rounding down i.e. may return less share due to arithmetic dust.
     pub(crate) fn stake_to_shares<T: Config>(&self, stake: BalanceOf<T>) -> T::Share {
-        if let Some(share_price) = self.0 {
-            share_price.mul_floor(stake).into()
-        } else {
-            // If the share price is missing, there are no shares, so the only valid stake is the
-            // full stake.
-            stake.into()
-        }
+        self.0.mul_floor(stake).into()
     }
 
     /// Converts shares to stake based on the share price.
-    /// Returns the full shares if there were no shares or stake when calculating the price.
+    /// Always rounding down i.e. may return less stake due to arithmetic dust.
     pub(crate) fn shares_to_stake<T: Config>(&self, shares: T::Share) -> BalanceOf<T> {
-        if let Some(share_price) = self.0 {
-            share_price.saturating_reciprocal_mul_floor(shares.into())
-        } else {
-            // If the share price is missing, there are no shares, so the only valid result is the
-            // full set of shares.
-            shares.into()
-        }
+        // NOTE: `stakes = shares / share_price = shares / (total_shares / total_stake)`
+        // every `div` operation come with an arithmetic dust, to return a rounding down stakes,
+        // we want the first `div` rounding down (i.e. `saturating_reciprocal_mul_floor`) and
+        // the second `div` rounding up (i.e. `plus_epsilon`).
+        self.0
+            // Within the `SharePrice::new`, `Perquintill::from_rational` is internally rouding down,
+            // `plus_epsilon` essentially return a rounding up share price.
+            .plus_epsilon()
+            .saturating_reciprocal_mul_floor(shares.into())
     }
+
+    /// Return a 1:1 share price
+    pub(crate) fn one() -> Self {
+        Self(Perquintill::one())
+    }
+}
+
+// TODO: this is only needed for migration of the share price structure change in Taurus
+// remove once Taurus is deprecated
+pub(crate) fn get_share_price<T: Config>(
+    operator_id: OperatorId,
+    domain_epoch: DomainEpoch,
+) -> Option<SharePrice> {
+    OperatorEpochSharePrice::<T>::get(operator_id, domain_epoch)
+        .or_else(|| OperatorEpochSharePriceV0::<T>::get(operator_id, domain_epoch).map(Into::into))
 }
 
 /// Unique epoch identifier across all domains. A combination of Domain and its epoch.
@@ -238,31 +252,6 @@ impl<Balance, Share, DomainBlockNumber, ReceiptHash>
     }
 }
 
-#[cfg(test)]
-impl<Balance: Zero, Share: Zero, DomainBlockNumber, ReceiptHash>
-    Operator<Balance, Share, DomainBlockNumber, ReceiptHash>
-{
-    pub(crate) fn dummy(
-        domain_id: DomainId,
-        signing_key: OperatorPublicKey,
-        minimum_nominator_stake: Balance,
-    ) -> Self {
-        Operator {
-            signing_key,
-            current_domain_id: domain_id,
-            next_domain_id: domain_id,
-            minimum_nominator_stake,
-            nomination_tax: Default::default(),
-            current_total_stake: Zero::zero(),
-            current_total_shares: Zero::zero(),
-            partial_status: OperatorStatus::Registered,
-            deposits_in_epoch: Zero::zero(),
-            withdrawals_in_epoch: Zero::zero(),
-            total_storage_fee_deposit: Zero::zero(),
-        }
-    }
-}
-
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct StakingSummary<OperatorId, Balance> {
     /// Current epoch index for the domain.
@@ -320,6 +309,7 @@ pub enum Error {
     UnconfirmedER,
     TooManyWithdrawals,
     ZeroDeposit,
+    ZeroSharePrice,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -393,21 +383,36 @@ pub fn do_register_operator<T: Config>(
             nomination_tax,
         } = config;
 
+        // When the operator just registered, the operator owner is the first and only nominator
+        // thus it is safe to finalize the operator owner's deposit here by:
+        // - Adding the first share price, which is 1:1 since there is no reward
+        // - Adding this deposit to the operator's `current_total_shares` and `current_total_shares`
+        //
+        // NOTE: this is needed so we can ensure the operator's `current_total_shares` and `current_total_shares`
+        // will never be zero after it is registered and before all nominators is unlocked, thus we
+        // will never construct a zero share price.
+        let first_share_price = SharePrice::one();
         let operator = Operator {
             signing_key: signing_key.clone(),
             current_domain_id: domain_id,
             next_domain_id: domain_id,
             minimum_nominator_stake,
             nomination_tax,
-            current_total_stake: Zero::zero(),
-            current_total_shares: Zero::zero(),
+            current_total_stake: new_deposit.staking,
+            current_total_shares: first_share_price.stake_to_shares::<T>(new_deposit.staking),
             partial_status: OperatorStatus::Registered,
             // sum total deposits added during this epoch.
-            deposits_in_epoch: new_deposit.staking,
+            deposits_in_epoch: Zero::zero(),
             withdrawals_in_epoch: Zero::zero(),
             total_storage_fee_deposit: new_deposit.storage_fee_deposit,
         };
         Operators::<T>::insert(operator_id, operator);
+        OperatorEpochSharePrice::<T>::insert(
+            operator_id,
+            DomainEpoch::from((domain_id, domain_stake_summary.current_epoch_index)),
+            first_share_price,
+        );
+
         // update stake summary to include new operator for next epoch
         domain_stake_summary.next_operators.insert(operator_id);
         // update pending transfers
@@ -483,10 +488,7 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
     let epoch_share_price = match deposit.pending {
         None => return Ok(()),
         Some(pending_deposit) => {
-            match OperatorEpochSharePrice::<T>::get(
-                operator_id,
-                pending_deposit.effective_domain_epoch,
-            ) {
+            match get_share_price::<T>(operator_id, pending_deposit.effective_domain_epoch) {
                 Some(p) => p,
                 None => {
                     ensure!(
@@ -539,7 +541,7 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
                 return Ok(());
             }
 
-            match OperatorEpochSharePrice::<T>::get(operator_id, withdraw.domain_epoch) {
+            match get_share_price::<T>(operator_id, withdraw.domain_epoch) {
                 Some(p) => p,
                 None => return Err(Error::MissingOperatorEpochSharePrice),
             }
@@ -703,8 +705,8 @@ pub(crate) fn do_deregister_operator<T: Config>(
 }
 
 /// A helper function used to calculate the share price at this instant
-/// Returns `None` if there are more shares than stake, or if either value is zero.
-fn current_share_price<T: Config>(
+/// Returns an error if there are more shares than stake, or if either value is zero.
+pub(crate) fn current_share_price<T: Config>(
     operator_id: OperatorId,
     operator: &Operator<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
     domain_stake_summary: &StakingSummary<OperatorId, BalanceOf<T>>,
@@ -814,7 +816,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                         current_share_price::<T>(operator_id, operator, &domain_stake_summary)?;
 
                     let remaining_storage_fee =
-                        Perbill::from_rational(remaining_shares, known_shares)
+                        Perquintill::from_rational(remaining_shares.into(), known_shares.into())
                             .mul_floor(deposit.known.storage_fee_deposit);
 
                     let remaining_stake = share_price
@@ -839,8 +841,9 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 
             // Withdraw storage fund, the `withdraw_storage_fee` amount of fund will be transfered
             // and hold on the nominator account
-            let storage_fee_to_withdraw = Perbill::from_rational(shares_withdrew, known_shares)
-                .mul_floor(deposit.known.storage_fee_deposit);
+            let storage_fee_to_withdraw =
+                Perquintill::from_rational(shares_withdrew.into(), known_shares.into())
+                    .mul_floor(deposit.known.storage_fee_deposit);
 
             let withdraw_storage_fee = {
                 let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
@@ -1175,9 +1178,15 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             .shares
             .checked_add(&shares_withdrew_in_current_epoch)
             .ok_or(Error::ShareOverflow)?;
+        total_shares = total_shares
+            .checked_sub(&nominator_shares)
+            .ok_or(Error::ShareOverflow)?;
 
         // current staked amount
         let nominator_staked_amount = share_price.shares_to_stake::<T>(nominator_shares);
+        total_stake = total_stake
+            .checked_sub(&nominator_staked_amount)
+            .ok_or(Error::BalanceOverflow)?;
 
         // amount deposited by this nominator before operator de-registered.
         let amount_deposited_in_epoch = deposit
@@ -1211,9 +1220,6 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             nominator_id: nominator_id.clone(),
             unlocked_amount: total_amount_to_unlock,
         });
-
-        total_stake = total_stake.saturating_sub(nominator_staked_amount);
-        total_shares = total_shares.saturating_sub(nominator_shares);
 
         // Withdraw all storage fee for the nominator
         let nominator_total_storage_fee_deposit = deposit
@@ -1553,7 +1559,7 @@ pub(crate) mod tests {
         NextOperatorId, OperatorIdOwner, Operators, PendingSlashes, Withdrawals,
     };
     use crate::staking::{
-        DomainEpoch, Error as StakingError, Operator, OperatorConfig, OperatorStatus,
+        DomainEpoch, Error as StakingError, Operator, OperatorConfig, OperatorStatus, SharePrice,
         StakingSummary, do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed,
         do_nominate_operator, do_reward_operators, do_unlock_funds, do_withdraw_stake,
     };
@@ -1567,21 +1573,24 @@ pub(crate) mod tests {
     use frame_support::traits::fungible::Mutate;
     use frame_support::weights::Weight;
     use frame_support::{assert_err, assert_ok};
+    use prop_test::prelude::*;
+    use prop_test::proptest::test_runner::TestCaseResult;
     use sp_core::{Pair, sr25519};
     use sp_domains::{
         DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
         OperatorRewardSource,
     };
     use sp_runtime::traits::Zero;
-    use sp_runtime::{PerThing, Perbill};
+    use sp_runtime::{PerThing, Perquintill};
     use std::collections::{BTreeMap, BTreeSet};
+    use std::ops::RangeInclusive;
     use std::vec;
     use subspace_runtime_primitives::AI3;
 
     type Balances = pallet_balances::Pallet<Test>;
     type Domains = crate::Pallet<Test>;
 
-    const STORAGE_FEE_RESERVE: Perbill = Perbill::from_percent(20);
+    const STORAGE_FEE_RESERVE: Perquintill = Perquintill::from_percent(20);
 
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn register_operator(
@@ -2013,18 +2022,40 @@ pub(crate) mod tests {
     pub(crate) type Share = <Test as Config>::Share;
 
     struct WithdrawParams {
+        /// The minimum valid nominator stake.
         minimum_nominator_stake: BalanceOf<Test>,
+        /// The nominator IDs and their stakes.
+        /// Account 0 is the operator and its stake.
         nominators: Vec<(NominatorId<Test>, BalanceOf<Test>)>,
+        /// The operator reward.
         operator_reward: BalanceOf<Test>,
+        /// The nominator ID to withdraw from.
         nominator_id: NominatorId<Test>,
+        /// The withdraw attempts to be made, in order, with their expected results.
         withdraws: WithdrawWithResult,
+        /// The deposit to be made when nominating the operator, if any.
         maybe_deposit: Option<BalanceOf<Test>>,
+        /// The expected withdraw amount for `nominator_id`.
+        /// Includes the existential deposit if `true`.
         expected_withdraw: ExpectedWithdrawAmount,
+        /// The expected reduction in the number of nominators.
         expected_nominator_count_reduced_by: u32,
+        /// The storage fund change, increase if `true`.
         storage_fund_change: StorageFundChange,
     }
 
+    /// Withdraw stake in a non-proptest.
     fn withdraw_stake(params: WithdrawParams) {
+        withdraw_stake_inner(params, false).expect("always panics rather than returning an error");
+    }
+
+    /// Withdraw stake in a proptest.
+    fn withdraw_stake_prop(params: WithdrawParams) -> TestCaseResult {
+        withdraw_stake_inner(params, true)
+    }
+
+    /// Inner function for withdrawing stake.
+    fn withdraw_stake_inner(params: WithdrawParams, is_proptest: bool) -> TestCaseResult {
         let WithdrawParams {
             minimum_nominator_stake,
             nominators,
@@ -2121,10 +2152,19 @@ pub(crate) mod tests {
                     operator_id,
                     withdraw_share_amount,
                 );
-                assert_eq!(
-                    res,
-                    expected_result.map_err(|err| Error::<Test>::Staking(err).into())
-                );
+                if is_proptest {
+                    prop_assert_eq!(
+                        res,
+                        expected_result.map_err(|err| Error::<Test>::Staking(err).into()),
+                        "unexpected withdraw_stake result",
+                    );
+                } else {
+                    assert_eq!(
+                        res,
+                        expected_result.map_err(|err| Error::<Test>::Staking(err).into()),
+                        "unexpected withdraw_stake result",
+                    );
+                }
             }
 
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
@@ -2147,30 +2187,549 @@ pub(crate) mod tests {
                     previous_usable_balance + withdraw
                 };
 
-                assert_eq!(Balances::usable_balance(nominator_id), expected_balance);
+                if is_proptest {
+                    prop_assert_approx!(Balances::usable_balance(nominator_id), expected_balance);
+                } else {
+                    assert_eq!(
+                        Balances::usable_balance(nominator_id),
+                        expected_balance,
+                        "usable balance is not equal to expected balance:\n{} !=\n{}",
+                        Balances::usable_balance(nominator_id),
+                        expected_balance,
+                    );
+                }
 
                 // ensure there are no withdrawals left
                 assert!(Withdrawals::<Test>::get(operator_id, nominator_id).is_none());
             }
 
             // if the nominator count reduced, then there should be no storage for deposits as well
+            // TODO: assert this matches the change in the number of nominators
             if expected_nominator_count_reduced_by > 0 {
-                assert!(Deposits::<Test>::get(operator_id, nominator_id).is_none());
-                assert!(!DepositOnHold::<Test>::contains_key((
-                    operator_id,
-                    nominator_id
-                )))
+                if is_proptest {
+                    prop_assert!(
+                        Deposits::<Test>::get(operator_id, nominator_id).is_none(),
+                        "deposit exists for nominator: {nominator_id}",
+                    );
+                    prop_assert!(
+                        !DepositOnHold::<Test>::contains_key((operator_id, nominator_id)),
+                        "deposit on hold exists for nominator: {nominator_id}",
+                    );
+                } else {
+                    assert!(
+                        Deposits::<Test>::get(operator_id, nominator_id).is_none(),
+                        "deposit exists for nominator: {nominator_id}",
+                    );
+                    assert!(
+                        !DepositOnHold::<Test>::contains_key((operator_id, nominator_id)),
+                        "deposit on hold exists for nominator: {nominator_id}",
+                    );
+                }
             }
 
-            // The total balance is distributed in different places but never changed
+            // The total balance is distributed in different places but never changed.
             let operator = Operators::<Test>::get(operator_id).unwrap();
-            assert_eq!(
-                total_balance,
-                Balances::usable_balance(nominator_id)
-                    + operator.current_total_stake
-                    + bundle_storage_fund::total_balance::<Test>(operator_id)
-            );
+            if is_proptest {
+                prop_assert_approx!(
+                    Balances::usable_balance(nominator_id)
+                        + operator.current_total_stake
+                        + bundle_storage_fund::total_balance::<Test>(operator_id),
+                    total_balance,
+                    "\n{} + {} + {} =",
+                    Balances::usable_balance(nominator_id),
+                    operator.current_total_stake,
+                    bundle_storage_fund::total_balance::<Test>(operator_id),
+                );
+            } else {
+                assert_eq!(
+                    Balances::usable_balance(nominator_id)
+                        + operator.current_total_stake
+                        + bundle_storage_fund::total_balance::<Test>(operator_id),
+                    total_balance,
+                    "initial total balance is not equal to final total balance:\n\
+                    {} + {} + {} =\n{} !=\n{}",
+                    Balances::usable_balance(nominator_id),
+                    operator.current_total_stake,
+                    bundle_storage_fund::total_balance::<Test>(operator_id),
+                    Balances::usable_balance(nominator_id)
+                        + operator.current_total_stake
+                        + bundle_storage_fund::total_balance::<Test>(operator_id),
+                    total_balance,
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    /// Do an approximate amount comparison in a proptest.
+    /// Takes actual and expected amounts, and an optional extra format string and arguments.
+    ///
+    /// The user should never get more, and they shouldn't get significantly less.
+    /// Accounts for both absolute and relative rounding errors.
+    macro_rules! prop_assert_approx {
+            ($actual:expr, $expected:expr $(,)?) => {
+                prop_assert_approx!($actual, $expected, "");
+            };
+
+            ($actual:expr, $expected:expr, $fmt:expr) => {
+                prop_assert_approx!($actual, $expected, $fmt,);
+            };
+
+            ($actual:expr, $expected:expr, $fmt:expr, $($args:tt)*) => {{
+                let actual = $actual;
+                let expected = $expected;
+                let extra = format!($fmt, $($args)*);
+                prop_test::proptest::prop_assert!(
+                    actual <= expected,
+                    "extra minting: actual amount is greater than expected amount:{}{}\
+                    \n{} >\
+                    \n{}",
+                    if extra.is_empty() { "" } else { "\n" },
+                    extra,
+                    actual,
+                    expected,
+                );
+                let expected_rounded_down = $crate::staking::tests::PROP_ROUNDING_DOWN_FACTOR
+                    .mul_floor(expected)
+                    .saturating_sub($crate::staking::tests::PROP_ABSOLUTE_ROUNDING_ERROR);
+                prop_test::proptest::prop_assert!(
+                    actual >= expected_rounded_down,
+                    "excess rounding losses: actual amount is less than expected amount \
+                    rounded down:{}{}\
+                    \n{} <\
+                    \n{} (from\
+                    \n{})",
+                    if extra.is_empty() { "" } else { "\n" },
+                    extra,
+                    actual,
+                    expected_rounded_down,
+                    expected,
+                );
+            }};
+        }
+
+    // Export the macro for use in other modules (and earlier in this file).
+    pub(crate) use prop_assert_approx;
+
+    /// Rounding down factor for property tests to account for arithmetic precision errors.
+    /// This factor is used to allow for small rounding errors in calculations.
+    // Perquintill::from_parts(...).left_from_one(), as a constant.
+    pub(crate) const PROP_ROUNDING_DOWN_FACTOR: Perquintill =
+        Perquintill::from_parts(1_000_000_000_000_000_000 - 1_000_000_000);
+
+    /// Absolute rounding error tolerance for property tests.
+    /// This constant defines the maximum acceptable absolute rounding error in calculations.
+    pub(crate) const PROP_ABSOLUTE_ROUNDING_ERROR: u128 = 1000;
+
+    /// The maximum balance we test for in property tests.
+    /// This balance should be just below the maximum possible issuance.
+    ///
+    /// Limiting the balances avoids arithmetic errors in the withdraw_stake test function, and
+    /// RemoveLock (likely converted from BalanceOverflow) in the staking functions.
+    //
+    // TODO: fix the code so we can get closer to 2^128
+    pub(crate) const MAX_PROP_BALANCE: u128 = 2u128.pow(122);
+
+    /// The minimum operator stake we test for in property tests.
+    // TODO: edit the test harness so we can go as low as MinOperatorStake + 1
+    pub(crate) const MIN_PROP_OPERATOR_STAKE: u128 = 3 * <Test as Config>::MinOperatorStake::get();
+
+    /// The minimum nominator stake we test for in property tests.
+    pub(crate) const MIN_PROP_NOMINATOR_STAKE: u128 =
+        <Test as Config>::MinNominatorStake::get() + 1;
+
+    /// The range of operator stakes we test for in property tests.
+    pub(crate) const PROP_OPERATOR_STAKE_RANGE: RangeInclusive<u128> =
+        MIN_PROP_OPERATOR_STAKE..=MAX_PROP_BALANCE;
+
+    /// The range of nominator stakes we test for in property tests.
+    pub(crate) const PROP_NOMINATOR_STAKE_RANGE: RangeInclusive<u128> =
+        MIN_PROP_NOMINATOR_STAKE..=MAX_PROP_BALANCE;
+
+    /// The range of operator or nominator deposits we test for in property tests.
+    // TODO: edit the test harness so we can go as low as zero
+    pub(crate) const PROP_DEPOSIT_RANGE: RangeInclusive<u128> =
+        MIN_PROP_NOMINATOR_STAKE..=MAX_PROP_BALANCE;
+
+    /// The range of operator rewards we test for in property tests.
+    pub(crate) const PROP_REWARD_RANGE: RangeInclusive<u128> = 0..=MAX_PROP_BALANCE;
+
+    /// The range of operator free balances we test for in property tests.
+    #[expect(dead_code)]
+    pub(crate) const PROP_FREE_BALANCE_RANGE: RangeInclusive<u128> =
+        MIN_PROP_NOMINATOR_STAKE..=MAX_PROP_BALANCE;
+
+    // Using too many random parameters and prop_assume()s can reduce test coverage.
+    // Try to limit the number of parameters to 3.
+
+    /// Property test for withdrawing an operator's excess stake.
+    /// Their balance should be almost the same before and after.
+    #[test]
+    fn prop_withdraw_excess_operator_stake() {
+        prop_test!(&PROP_OPERATOR_STAKE_RANGE, |operator_stake| {
+            let mut excess_stake =
+                operator_stake.saturating_sub(<Test as Config>::MinOperatorStake::get());
+
+            // Account for both absolute and relative rounding errors.
+            excess_stake = Perquintill::from_parts(1)
+                .left_from_one()
+                .mul_ceil(excess_stake);
+            excess_stake -= 1;
+
+            prop_assert!(excess_stake > 0, "would cause ZeroWithdraw error");
+
+            let expected_withdraw = (excess_stake, false);
+
+            withdraw_stake_prop(WithdrawParams {
+                minimum_nominator_stake: <Test as Config>::MinOperatorStake::get(),
+                nominators: vec![(0, operator_stake)],
+                operator_reward: 0,
+                nominator_id: 0,
+                withdraws: vec![(excess_stake, Ok(()))],
+                maybe_deposit: None,
+                expected_withdraw: Some(expected_withdraw),
+                expected_nominator_count_reduced_by: 0,
+                storage_fund_change: (true, 0),
+            })
         });
+    }
+
+    /// Property test for withdrawing all a nominator's excess stake.
+    /// Their balance should be almost the same before and after.
+    #[test]
+    fn prop_withdraw_excess_operator_stake_with_nominator() {
+        prop_test!(
+            &(PROP_OPERATOR_STAKE_RANGE, PROP_NOMINATOR_STAKE_RANGE,),
+            |(operator_stake, nominator_stake)| {
+                // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
+                prop_assert!(
+                    [operator_stake, nominator_stake]
+                        .into_iter()
+                        .try_fold(0_u128, |acc, value| acc.checked_add(value))
+                        .is_some()
+                );
+
+                let expected_withdraw = (nominator_stake, true);
+
+                let excess_stake = expected_withdraw
+                    .0
+                    .saturating_sub(<Test as Config>::MinNominatorStake::get());
+
+                prop_assert!(excess_stake > 0, "would cause ZeroWithdraw error");
+
+                withdraw_stake_prop(WithdrawParams {
+                    minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+                    nominators: vec![(0, operator_stake), (1, nominator_stake)],
+                    operator_reward: 0,
+                    nominator_id: 1,
+                    withdraws: vec![(excess_stake, Ok(()))],
+                    maybe_deposit: None,
+                    expected_withdraw: Some(expected_withdraw),
+                    expected_nominator_count_reduced_by: 1,
+                    storage_fund_change: (true, 0),
+                })
+            }
+        );
+    }
+
+    /// Property test for withdrawing an operator's excess stake with a deposit.
+    /// Their balance should be almost the same before and after.
+    #[test]
+    fn prop_withdraw_excess_operator_stake_with_deposit() {
+        prop_test!(
+            &(PROP_OPERATOR_STAKE_RANGE, PROP_DEPOSIT_RANGE,),
+            |(mut operator_stake, maybe_deposit)| {
+                operator_stake = operator_stake.saturating_add(maybe_deposit);
+
+                prop_assert!(
+                    operator_stake.saturating_sub(maybe_deposit)
+                        >= <Test as Config>::MinOperatorStake::get(),
+                    "would cause MinimumOperatorStake error"
+                );
+
+                // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
+                prop_assert!(
+                    [operator_stake, maybe_deposit]
+                        .into_iter()
+                        .try_fold(0_u128, |acc, value| acc.checked_add(value))
+                        .is_some()
+                );
+
+                let expected_withdraw = (
+                    // TODO: work out how to avoid this multiplication on WithdrawParams.withdraws
+                    STORAGE_FEE_RESERVE
+                        .left_from_one()
+                        .mul_ceil(operator_stake)
+                        .saturating_sub(maybe_deposit),
+                    true,
+                );
+
+                let excess_stake = expected_withdraw
+                    .0
+                    .saturating_sub(<Test as Config>::MinOperatorStake::get());
+
+                prop_assume!(excess_stake > 0, "would cause ZeroWithdraw error");
+
+                // Avoid ZeroDeposit errors
+                let maybe_deposit = if maybe_deposit == 0 {
+                    None
+                } else {
+                    Some(maybe_deposit)
+                };
+
+                withdraw_stake_prop(WithdrawParams {
+                    minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+                    nominators: vec![(0, operator_stake)],
+                    operator_reward: 0,
+                    nominator_id: 0,
+                    withdraws: vec![(excess_stake, Ok(()))],
+                    maybe_deposit,
+                    expected_withdraw: Some(expected_withdraw),
+                    expected_nominator_count_reduced_by: 0,
+                    storage_fund_change: (true, 0),
+                })
+            }
+        );
+    }
+
+    /// Property test for withdrawing an operator's excess stake with a deposit and fixed
+    /// operator stake.
+    /// Their balance should be almost the same before and after.
+    #[test]
+    fn prop_withdraw_excess_nominator_stake_with_deposit_and_fixed_operator_stake() {
+        prop_test!(
+            &(PROP_NOMINATOR_STAKE_RANGE, PROP_DEPOSIT_RANGE,),
+            |(mut nominator_stake, maybe_deposit)| {
+                nominator_stake = nominator_stake.saturating_add(maybe_deposit);
+
+                prop_assert!(
+                    nominator_stake.saturating_sub(maybe_deposit)
+                        >= <Test as Config>::MinNominatorStake::get(),
+                    "would cause MinimumNominatorStake error"
+                );
+
+                // MinimumOperatorStake error
+                let operator_stake = <Test as Config>::MinOperatorStake::get();
+
+                // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
+                prop_assert!(
+                    [operator_stake, nominator_stake, maybe_deposit]
+                        .into_iter()
+                        .try_fold(0_u128, |acc, value| acc.checked_add(value))
+                        .is_some()
+                );
+
+                let expected_withdraw = (
+                    STORAGE_FEE_RESERVE
+                        .left_from_one()
+                        .mul_ceil(nominator_stake)
+                        .saturating_sub(maybe_deposit),
+                    true,
+                );
+
+                let excess_stake = expected_withdraw
+                    .0
+                    .saturating_sub(<Test as Config>::MinNominatorStake::get());
+
+                prop_assume!(excess_stake > 0, "would cause ZeroWithdraw error");
+
+                // Avoid ZeroDeposit errors
+                let maybe_deposit = if maybe_deposit == 0 {
+                    None
+                } else {
+                    Some(maybe_deposit)
+                };
+
+                withdraw_stake_prop(WithdrawParams {
+                    minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+                    nominators: vec![(0, operator_stake), (1, nominator_stake)],
+                    operator_reward: 0,
+                    nominator_id: 1,
+                    withdraws: vec![(excess_stake, Ok(()))],
+                    maybe_deposit,
+                    expected_withdraw: Some(expected_withdraw),
+                    expected_nominator_count_reduced_by: 0,
+                    storage_fund_change: (true, 0),
+                })
+            }
+        );
+    }
+
+    /// Property test for withdrawing a nominator's excess stake with a deposit.
+    /// Their balance should be almost the same before and after.
+    #[test]
+    fn prop_withdraw_excess_nominator_stake_with_deposit() {
+        prop_test!(
+            &(
+                PROP_OPERATOR_STAKE_RANGE,
+                PROP_NOMINATOR_STAKE_RANGE,
+                PROP_DEPOSIT_RANGE,
+            ),
+            |(operator_stake, mut nominator_stake, maybe_deposit)| {
+                nominator_stake = nominator_stake.saturating_add(maybe_deposit);
+
+                prop_assert!(
+                    nominator_stake.saturating_sub(maybe_deposit)
+                        >= <Test as Config>::MinNominatorStake::get(),
+                    "would cause MinimumNominatorStake error"
+                );
+
+                // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
+                prop_assert!(
+                    [operator_stake, nominator_stake, maybe_deposit]
+                        .into_iter()
+                        .try_fold(0_u128, |acc, value| acc.checked_add(value))
+                        .is_some()
+                );
+
+                // Some deposit gets left as storage fees.
+                let expected_withdraw = (
+                    STORAGE_FEE_RESERVE
+                        .left_from_one()
+                        .mul_ceil(nominator_stake)
+                        .saturating_sub(maybe_deposit),
+                    true,
+                );
+
+                let excess_stake = expected_withdraw
+                    .0
+                    .saturating_sub(<Test as Config>::MinNominatorStake::get());
+
+                prop_assume!(excess_stake > 0, "would cause ZeroWithdraw error");
+
+                // Avoid ZeroDeposit errors
+                let maybe_deposit = if maybe_deposit == 0 {
+                    None
+                } else {
+                    Some(maybe_deposit)
+                };
+
+                withdraw_stake_prop(WithdrawParams {
+                    minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+                    nominators: vec![(0, operator_stake), (1, nominator_stake)],
+                    operator_reward: 0,
+                    nominator_id: 1,
+                    withdraws: vec![(excess_stake, Ok(()))],
+                    maybe_deposit,
+                    expected_withdraw: Some(expected_withdraw),
+                    expected_nominator_count_reduced_by: 0,
+                    storage_fund_change: (true, 0),
+                })
+            }
+        );
+    }
+
+    /// Property test for withdrawing an operator's excess stake with a nominator and a reward.
+    /// The total balance should be increased by part of the reward afterwards.
+    #[test]
+    fn prop_withdraw_excess_operator_stake_with_nominator_and_reward() {
+        prop_test!(
+            &(
+                PROP_OPERATOR_STAKE_RANGE,
+                PROP_NOMINATOR_STAKE_RANGE,
+                PROP_REWARD_RANGE,
+            ),
+            |(operator_stake, nominator_stake, operator_reward)| {
+                // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
+                prop_assert!(
+                    [operator_stake, nominator_stake, operator_reward]
+                        .into_iter()
+                        .try_fold(0_u128, |acc, value| acc.checked_add(value))
+                        .is_some()
+                );
+
+                // Withdraw is stake plus reward split.
+                let total_stake = operator_stake.saturating_add(nominator_stake);
+                let operator_reward_split = Perquintill::from_rational(operator_stake, total_stake)
+                    .mul_floor(operator_reward);
+
+                // Shares are approximately equal to the original stake.
+                // TODO: fix the tests so we can go as low as MinOperatorStake
+                let excess_stake =
+                    operator_stake.saturating_sub(2 * <Test as Config>::MinOperatorStake::get());
+
+                let expected_withdraw = (excess_stake.saturating_add(operator_reward_split), true);
+
+                prop_assert!(excess_stake > 0, "would cause ZeroWithdraw error");
+
+                withdraw_stake_prop(WithdrawParams {
+                    minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+                    nominators: vec![(0, operator_stake), (1, nominator_stake)],
+                    operator_reward,
+                    nominator_id: 0,
+                    withdraws: vec![(excess_stake, Ok(()))],
+                    maybe_deposit: None,
+                    expected_withdraw: Some(expected_withdraw),
+                    expected_nominator_count_reduced_by: 0,
+                    storage_fund_change: (true, 0),
+                })
+            }
+        );
+    }
+
+    /// Property test for withdrawing an operator's excess stake with a deposit and a reward.
+    /// Their balance should be almost the same before and after.
+    #[test]
+    fn prop_withdraw_excess_operator_stake_with_deposit_and_reward() {
+        prop_test!(
+            &(
+                PROP_OPERATOR_STAKE_RANGE,
+                PROP_DEPOSIT_RANGE,
+                PROP_REWARD_RANGE,
+            ),
+            |(mut operator_stake, maybe_deposit, operator_reward)| {
+                operator_stake = operator_stake.saturating_add(maybe_deposit);
+
+                prop_assert!(
+                    operator_stake.saturating_sub(maybe_deposit)
+                        >= <Test as Config>::MinOperatorStake::get(),
+                    "would cause MinimumOperatorStake error"
+                );
+
+                // Total balances can't overflow: arithmetic overflow error in withdraw_stake test function
+                prop_assert!(
+                    [operator_stake, maybe_deposit, operator_reward]
+                        .into_iter()
+                        .try_fold(0_u128, |acc, value| acc.checked_add(value))
+                        .is_some()
+                );
+
+                // Shares are approximately equal to the original stake.
+                // TODO: fix the tests so we can go as low as MinOperatorStake
+                let reserve = 2 * <Test as Config>::MinOperatorStake::get();
+                let excess_stake = operator_stake.saturating_sub(reserve);
+
+                // Withdraw is stake plus reward, but some deposit gets left as storage fees.
+                let expected_withdraw = (
+                    operator_stake
+                        .saturating_add(operator_reward)
+                        .saturating_sub(reserve),
+                    true,
+                );
+
+                prop_assume!(excess_stake > 0, "would cause ZeroWithdraw error");
+
+                // Avoid ZeroDeposit errors
+                let maybe_deposit = if maybe_deposit == 0 {
+                    None
+                } else {
+                    Some(maybe_deposit)
+                };
+
+                withdraw_stake_prop(WithdrawParams {
+                    minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+                    nominators: vec![(0, operator_stake)],
+                    operator_reward,
+                    nominator_id: 0,
+                    withdraws: vec![(excess_stake, Ok(()))],
+                    maybe_deposit,
+                    expected_withdraw: Some(expected_withdraw),
+                    expected_nominator_count_reduced_by: 0,
+                    storage_fund_change: (true, 0),
+                })
+            }
+        );
     }
 
     #[test]
@@ -2229,7 +2788,7 @@ pub(crate) mod tests {
             // given the reward, operator will get 164.28 AI3
             // taking 58 shares will give this following approximate amount.
             maybe_deposit: None,
-            expected_withdraw: Some((63523809519881179143, false)),
+            expected_withdraw: Some((63523809523809523770, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2247,7 +2806,7 @@ pub(crate) mod tests {
                 (5 * AI3, Err(StakingError::MinimumOperatorStake)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((63523809519881179143, false)),
+            expected_withdraw: Some((63523809523809523770, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2262,7 +2821,7 @@ pub(crate) mod tests {
             nominator_id: 0,
             withdraws: vec![(53 * AI3, Ok(())), (5 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((63523809515796643053, false)),
+            expected_withdraw: Some((63523809523809523769, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2277,7 +2836,7 @@ pub(crate) mod tests {
             nominator_id: 0,
             withdraws: vec![(49 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((48999999980000000000, false)),
+            expected_withdraw: Some((48999999999999999980, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2292,7 +2851,7 @@ pub(crate) mod tests {
             nominator_id: 0,
             withdraws: vec![(29 * AI3, Ok(())), (20 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((48999999986852892560, false)),
+            expected_withdraw: Some((48999999999999999981, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2311,7 +2870,7 @@ pub(crate) mod tests {
                 (20 * AI3, Err(StakingError::MinimumOperatorStake)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((48999999986852892560, false)),
+            expected_withdraw: Some((48999999999999999981, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2329,7 +2888,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: None,
-            expected_withdraw: Some((54761904775759637192, true)),
+            expected_withdraw: Some((54761904761904761888, true)),
             expected_nominator_count_reduced_by: 1,
             storage_fund_change: (true, 0),
         })
@@ -2347,7 +2906,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: None,
-            expected_withdraw: Some((54761904775759637192, true)),
+            expected_withdraw: Some((54761904761904761888, true)),
             expected_nominator_count_reduced_by: 1,
             storage_fund_change: (true, 0),
         })
@@ -2369,7 +2928,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: None,
-            expected_withdraw: Some((54761904775759637192, true)),
+            expected_withdraw: Some((54761904761904761888, true)),
             expected_nominator_count_reduced_by: 1,
             storage_fund_change: (true, 0),
         })
@@ -2433,7 +2992,7 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![(40 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523820607709753, false)),
+            expected_withdraw: Some((43809523809523809511, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2448,7 +3007,7 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![(35 * AI3, Ok(())), (5 * AI3, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523819607709753, false)),
+            expected_withdraw: Some((43809523809523809510, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2467,7 +3026,7 @@ pub(crate) mod tests {
                 (15 * AI3, Err(StakingError::InsufficientShares)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523819607709753, false)),
+            expected_withdraw: Some((43809523809523809510, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2497,7 +3056,7 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![(35 * AI3, Ok(())), (5 * AI3 - 100000000000, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((39999999898000000000, false)),
+            expected_withdraw: Some((39999999899999999998, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2516,7 +3075,7 @@ pub(crate) mod tests {
                 (15 * AI3, Err(StakingError::InsufficientShares)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((39999999898000000000, false)),
+            expected_withdraw: Some((39999999899999999998, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2535,7 +3094,7 @@ pub(crate) mod tests {
                 (10 * AI3, Err(StakingError::MinimumNominatorStake)),
             ],
             maybe_deposit: Some(2 * AI3),
-            expected_withdraw: Some((39999999898000000000, false)),
+            expected_withdraw: Some((39999999899999999998, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2557,7 +3116,7 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: Some(2 * AI3),
-            expected_withdraw: Some((43809523819607709753, false)),
+            expected_withdraw: Some((43809523809523809510, false)),
             expected_nominator_count_reduced_by: 0,
             storage_fund_change: (true, 0),
         })
@@ -2590,7 +3149,7 @@ pub(crate) mod tests {
             // The storage fund increased 50% (i.e. 21 * AI3) thus the nominator make 50%
             // storage fee profit i.e. 5 * AI3 with rounding dust deducted
             storage_fund_change: (true, 21),
-            expected_withdraw: Some((54999999994000000000, true)),
+            expected_withdraw: Some((54999999999999999985, true)),
             expected_nominator_count_reduced_by: 1,
         })
     }
@@ -2607,7 +3166,7 @@ pub(crate) mod tests {
             // The storage fund decreased 50% (i.e. 21 * AI3) thus the nominator loss 50%
             // storage fee deposit i.e. 5 * AI3 with rounding dust deducted
             storage_fund_change: (false, 21),
-            expected_withdraw: Some((44999999998000000000, true)),
+            expected_withdraw: Some((44999999999999999995, true)),
             expected_nominator_count_reduced_by: 1,
         })
     }
@@ -2642,7 +3201,7 @@ pub(crate) mod tests {
             // storage fee profit i.e. 5 * AI3 with rounding dust deducted, withdraw 60% of
             // the stake and the storage fee profit
             storage_fund_change: (true, 21),
-            expected_withdraw: Some((30 * AI3 + 2999999855527204374, false)),
+            expected_withdraw: Some((30 * AI3 + 2999999999999999863, false)),
             expected_nominator_count_reduced_by: 0,
         })
     }
@@ -2660,7 +3219,7 @@ pub(crate) mod tests {
             // storage fee i.e. 5 * AI3 with rounding dust deducted, withdraw 40% of
             // the stake and 40% of the storage fee loss are deducted
             storage_fund_change: (false, 21),
-            expected_withdraw: Some((20 * AI3 - 2 * AI3 - 33331097576, false)),
+            expected_withdraw: Some((20 * AI3 - 2 * AI3 - 39, false)),
             expected_nominator_count_reduced_by: 0,
         })
     }
@@ -2760,7 +3319,7 @@ pub(crate) mod tests {
             let total_balance = Balances::usable_balance(nominator_account);
             assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));
             assert_eq!(
-                Balances::usable_balance(nominator_account) + 60246126106, // `60246126106` is a minor rounding dust
+                Balances::usable_balance(nominator_account) + 74, // `74` is a minor rounding dust
                 total_balance
                     + (<Test as crate::Config>::WithdrawalLimit::get() as u128 - 1) * total_deposit
                         / 100
@@ -2778,7 +3337,7 @@ pub(crate) mod tests {
             let total_balance = Balances::usable_balance(nominator_account);
             assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));
             assert_eq!(
-                Balances::usable_balance(nominator_account) + 18473897451, // `18473897451` is a minor rounding dust
+                Balances::usable_balance(nominator_account) - 2, // `2` is a minor rounding dust
                 total_balance + 5 * total_deposit / 100
             );
             assert!(Withdrawals::<Test>::get(operator_id, nominator_account).is_none());
@@ -2879,8 +3438,8 @@ pub(crate) mod tests {
             let total_storage_fee_withdrawal = operator_withdrawal.withdrawals[0]
                 .storage_fee_refund
                 + nominator_withdrawal.withdrawals[0].storage_fee_refund;
-            assert_eq!(293333333331527777778, total_deposit,);
-            assert_eq!(21666666668472222222, total_stake_withdrawal);
+            assert_eq!(293333333333333333336, total_deposit,);
+            assert_eq!(21666666666666666664, total_stake_withdrawal);
             assert_eq!(5000000000000000000, total_storage_fee_withdrawal);
             assert_eq!(
                 320 * AI3,
@@ -3045,8 +3604,8 @@ pub(crate) mod tests {
             let total_storage_fee_withdrawal = operator_withdrawal.withdrawals[0]
                 .storage_fee_refund
                 + nominator_withdrawal.withdrawals[0].storage_fee_refund;
-            assert_eq!(2194772727253419421470, total_deposit,);
-            assert_eq!(20227272746580578530, total_stake_withdrawal);
+            assert_eq!(2194772727272727272734, total_deposit,);
+            assert_eq!(20227272727272727266, total_stake_withdrawal);
             assert_eq!(5000000000000000000, total_storage_fee_withdrawal);
             assert_eq!(
                 2220 * AI3,
@@ -3118,7 +3677,10 @@ pub(crate) mod tests {
                 );
             }
 
-            assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 2220 * AI3);
+            assert_eq!(
+                Balances::total_balance(&crate::tests::TreasuryAccount::get()),
+                2220 * AI3
+            );
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
         });
     }
@@ -3454,5 +4016,138 @@ pub(crate) mod tests {
                 StakingError::MissingOperatorEpochSharePrice
             );
         });
+    }
+
+    #[test]
+    fn test_share_price_deposit() {
+        let total_shares = 45 * AI3;
+        let total_stake = 45 * AI3 + 37;
+        let sp = SharePrice::new::<Test>(total_shares, total_stake).unwrap();
+
+        // Each item in this list represents an individual deposit requested by a nominator
+        let to_deposit_stakes = [
+            5,
+            7,
+            9,
+            11,
+            17,
+            23,
+            934,
+            24931,
+            349083467,
+            2 * AI3 + 32,
+            52 * AI3 - 4729034,
+            2732 * AI3 - 1720,
+            1117 * AI3 + 1839832,
+            31232 * AI3 - 987654321,
+        ];
+
+        let mut deposited_share = 0;
+        let mut deposited_stake = 0;
+        for to_deposit_stake in to_deposit_stakes {
+            let to_deposit_share = sp.stake_to_shares::<Test>(to_deposit_stake);
+
+            // `deposited_stake` is sum of the stake deposited so far.
+            deposited_stake += to_deposit_stake;
+            // `deposited_share` is sum of the share that converted from `deposited_stake` so far,
+            // this is also the share the nominator entitled to withdraw.
+            deposited_share += to_deposit_share;
+
+            // Assuming an epoch transition happened
+            //
+            // `total_deposited_share` is the share converted from `operator.deposits_in_epoch`
+            // and will be added to the `operator.current_total_shares`.
+            let total_deposited_share = sp.stake_to_shares::<Test>(deposited_stake);
+
+            // `total_deposited_share` must larger or equal to `deposited_share`, meaning the
+            // arithmetic dust generated during stake-to-share convertion are leave to the pool
+            // and can't withdraw/unlock, otherwise, `ShareOverflow` error will happen on `current_total_shares`
+            // during withdraw/unlock.
+            assert!(total_deposited_share >= deposited_share);
+
+            // `total_stake` must remains large than `total_shares`, otherwise, it means the reward are
+            // lost during stake-to-share convertion.
+            assert!(total_stake + deposited_stake > total_shares + total_deposited_share);
+        }
+    }
+
+    #[test]
+    fn test_share_price_withdraw() {
+        let total_shares = 123 * AI3;
+        let total_stake = 123 * AI3 + 13;
+        let sp = SharePrice::new::<Test>(total_shares, total_stake).unwrap();
+
+        // Each item in this list represents an individual withdrawal requested by a nominator
+        let to_withdraw_shares = [
+            1,
+            3,
+            7,
+            13,
+            17,
+            123,
+            43553,
+            546393039,
+            15 * AI3 + 1342,
+            2 * AI3 - 423,
+            31 * AI3 - 1321,
+            42 * AI3 + 4564234,
+            7 * AI3 - 987654321,
+            3 * AI3 + 987654321123879,
+        ];
+
+        let mut withdrawn_share = 0;
+        let mut withdrawn_stake = 0;
+        for to_withdraw_share in to_withdraw_shares {
+            let to_withdraw_stake = sp.shares_to_stake::<Test>(to_withdraw_share);
+
+            // `withdrawn_share` is sum of the share withdrawn so far.
+            withdrawn_share += to_withdraw_share;
+            // `withdrawn_stake` is sum of the stake that converted from `withdrawn_share` so far,
+            // this is also the stake the nominator entitled to release/mint during unlock.
+            withdrawn_stake += to_withdraw_stake;
+
+            // Assuming an epoch transition happened
+            //
+            // `total_withdrawn_stake` is the stake converted from `operator.withdrawals_in_epoch`
+            // and will be removed to the `operator.current_total_stake`.
+            let total_withdrawn_stake = sp.shares_to_stake::<Test>(withdrawn_share);
+
+            // `total_withdrawn_stake` must larger or equal to `withdrawn_stake`, meaning the
+            // arithmetic dust generated during share-to-stake convertion are leave to the pool,
+            // otherwise, the nominator will be able to mint reward out of thin air during unlock.
+            assert!(total_withdrawn_stake >= withdrawn_stake);
+
+            // `total_stake` must remains large than `total_shares`, otherwise, it means the reward are
+            // lost during share-to-stake convertion.
+            assert!(total_stake - withdrawn_stake >= total_shares - withdrawn_share);
+        }
+    }
+
+    #[test]
+    fn test_share_price_unlock() {
+        let mut total_shares = 20 * AI3;
+        let mut total_stake = 20 * AI3 + 12;
+
+        // Each item in this list represents a nominator unlock after the operator de-registered.
+        //
+        // The following is simulating how `do_unlock_nominator` work, `shares-to-stake` must return a
+        // rouding down result, otherwise, `BalanceOverflow` error will happen on `current_total_stake`
+        // during `do_unlock_nominator`.
+        for to_unlock_share in [
+            AI3 + 123,
+            2 * AI3 - 456,
+            3 * AI3 - 789,
+            4 * AI3 - 123 + 456,
+            7 * AI3 + 789 - 987654321,
+            3 * AI3 + 987654321,
+        ] {
+            let sp = SharePrice::new::<Test>(total_shares, total_stake).unwrap();
+
+            let to_unlock_stake = sp.shares_to_stake::<Test>(to_unlock_share);
+
+            total_shares = total_shares.checked_sub(to_unlock_share).unwrap();
+            total_stake = total_stake.checked_sub(to_unlock_stake).unwrap();
+        }
+        assert_eq!(total_shares, 0);
     }
 }

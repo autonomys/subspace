@@ -10,13 +10,13 @@ use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_domains::OperatorId;
-use sp_runtime::Perbill;
+use sp_runtime::Perquintill;
 use sp_runtime::traits::{AccountIdConversion, CheckedSub, Zero};
 use sp_std::collections::btree_map::BTreeMap;
 use subspace_runtime_primitives::StorageFee;
 
 /// The proportion of staking fund reserved for the bundle storage fee
-pub const STORAGE_FEE_RESERVE: Perbill = Perbill::from_percent(20);
+pub const STORAGE_FEE_RESERVE: Perquintill = Perquintill::from_percent(20);
 
 /// Bundle storage fund specific errors
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -55,7 +55,7 @@ impl<T: Config> StorageFundRedeemPrice<T> {
         if total_balance == total_deposit {
             deposit
         } else {
-            Perbill::from_rational(deposit, total_deposit).mul_floor(total_balance)
+            Perquintill::from_rational(deposit, total_deposit).mul_floor(total_balance)
         }
     }
 }
@@ -118,7 +118,8 @@ pub fn refund_storage_fee<T: Config>(
         }
 
         let refund_amount = {
-            let paid_storage_percentage = Perbill::from_rational(paid_storage, total_paid_storage);
+            let paid_storage_percentage =
+                Perquintill::from_rational::<u64>(paid_storage.into(), total_paid_storage.into());
             paid_storage_percentage.mul_floor(total_storage_fee)
         };
         let storage_fund_acc = storage_fund_account::<T>(operator_id);

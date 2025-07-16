@@ -30,19 +30,15 @@ use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::segments::SegmentIndex;
 use subspace_core_primitives::{BlockNumber, PublicKey};
-use subspace_data_retrieval::segment_downloading::download_segment_pieces;
+use subspace_data_retrieval::segment_downloading::{
+    SEGMENT_DOWNLOAD_RETRIES, SEGMENT_DOWNLOAD_RETRY_DELAY, download_segment_pieces,
+};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
 use tokio::sync::broadcast::Receiver;
 use tokio::task;
 use tokio::time::sleep;
 use tracing::{debug, error, trace, warn};
-
-/// The number of times we try to download a segment before giving up.
-const SEGMENT_DOWNLOAD_RETRIES: usize = 3;
-
-/// The amount of time we wait between segment download retries.
-const SEGMENT_DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(10);
 
 /// Error type for snap sync.
 #[derive(thiserror::Error, Debug)]
@@ -304,7 +300,9 @@ where
                 Some(SEGMENT_DOWNLOAD_RETRY_DELAY),
             )
             .await
-            .map_err(|error| format!("Failed to download segment pieces: {error}"))?;
+            .map_err(|error| {
+                format!("Failed to download segment pieces during snap sync: {error}")
+            })?;
 
             // CPU-intensive piece and segment reconstruction code can block the async executor.
             let segment_contents_fut = task::spawn_blocking({
