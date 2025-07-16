@@ -25,7 +25,6 @@ mod benchmarking;
 pub mod extensions;
 mod fees;
 mod messages;
-pub mod migrations;
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
@@ -1399,11 +1398,28 @@ mod pallet {
         }
 
         pub fn channels_and_states() -> Vec<(ChainId, ChannelId, ChannelStateWithNonce)> {
-            crate::migrations::get_channels_and_states::<T>()
+            let keys: Vec<(ChainId, ChannelId)> = Channels::<T>::iter_keys().collect();
+            keys.into_iter()
+                .filter_map(|(chain_id, channel_id)| {
+                    Channels::<T>::get(chain_id, channel_id).map(|channel| {
+                        let state = channel.state;
+                        let state_with_nonce = match state {
+                            ChannelState::Initiated => ChannelStateWithNonce::Initiated,
+                            ChannelState::Open => ChannelStateWithNonce::Open,
+                            ChannelState::Closed => ChannelStateWithNonce::Closed {
+                                next_outbox_nonce: channel.next_outbox_nonce,
+                                next_inbox_nonce: channel.next_inbox_nonce,
+                            },
+                        };
+
+                        (chain_id, channel_id, state_with_nonce)
+                    })
+                })
+                .collect()
         }
 
         pub fn channel_nonce(chain_id: ChainId, channel_id: ChannelId) -> Option<ChannelNonce> {
-            crate::migrations::get_channel::<T>(chain_id, channel_id).map(|channel| {
+            Channels::<T>::get(chain_id, channel_id).map(|channel| {
                 let last_inbox_nonce = channel.next_inbox_nonce.checked_sub(U256::one());
                 ChannelNonce {
                     relay_msg_nonce: last_inbox_nonce,
