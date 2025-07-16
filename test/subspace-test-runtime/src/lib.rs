@@ -51,7 +51,7 @@ use frame_support::traits::fungible::Mutate;
 use frame_support::traits::tokens::WithdrawConsequence;
 use frame_support::traits::{
     ConstU8, ConstU16, ConstU32, ConstU64, ConstU128, Currency, Everything, ExistenceRequirement,
-    Get, Imbalance, Time, VariantCount, WithdrawReasons,
+    Get, Imbalance, VariantCount, WithdrawReasons,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, Weight};
@@ -76,9 +76,8 @@ use sp_domains::execution_receipt::{
     ExecutionReceiptFor, ExecutionReceiptVersion, SealedSingletonReceipt,
 };
 use sp_domains::{
-    BundleAndExecutionReceiptVersion, DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates,
-    DomainId, DomainInstanceData, INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey,
-    PermissionedActionAllowedBy,
+    BundleAndExecutionReceiptVersion, DomainAllowlistUpdates, DomainId, DomainInstanceData,
+    INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -86,8 +85,8 @@ use sp_domains_fraud_proof::storage_proof::{
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelId, ChannelStateWithNonce,
-    CrossDomainMessage, MessageId, MessageKey, MessagesWithStorageKey, Nonce as XdmNonce,
+    BlockMessagesQuery, ChainId, ChannelId, ChannelStateWithNonce, CrossDomainMessage, MessageId,
+    MessageKey, MessagesWithStorageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{StorageKeyRequest, get_storage_key};
@@ -1562,16 +1561,8 @@ impl_runtime_apis! {
             Domains::timestamp()
         }
 
-        fn timestamp() -> Moment {
-            Timestamp::now()
-        }
-
         fn consensus_transaction_byte_fee() -> Balance {
             Domains::consensus_transaction_byte_fee()
-        }
-
-        fn consensus_chain_byte_fee() -> Balance {
-            DOMAIN_STORAGE_FEE_MULTIPLIER * TransactionFees::transaction_byte_fee()
         }
 
         fn domain_tx_range(_: DomainId) -> U256 {
@@ -1779,24 +1770,12 @@ impl_runtime_apis! {
     }
 
     impl sp_messenger::RelayerApi<Block, BlockNumber, BlockNumber, BlockHashFor<Block>> for Runtime {
-        fn block_messages() -> BlockMessagesWithStorageKey {
-            BlockMessagesWithStorageKey::default()
-        }
-
         fn outbox_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             Messenger::outbox_message_unsigned(msg)
         }
 
         fn inbox_response_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             Messenger::inbox_response_message_unsigned(msg)
-        }
-
-        fn should_relay_outbox_message(_: ChainId, _: MessageId) -> bool {
-            false
-        }
-
-        fn should_relay_inbox_message_response(_: ChainId, _: MessageId) -> bool {
-            false
         }
 
         fn updated_channels() -> BTreeSet<(ChainId, ChannelId)> {

@@ -45,8 +45,8 @@ use sp_domains::execution_receipt::Transfers;
 use sp_domains::{ChannelId, DomainAllowlistUpdates, DomainId};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelStateWithNonce,
-    CrossDomainMessage, MessageId, MessageKey, MessagesWithStorageKey, Nonce as XdmNonce,
+    BlockMessagesQuery, ChainId, ChannelStateWithNonce, CrossDomainMessage, MessageId, MessageKey,
+    MessagesWithStorageKey, Nonce as XdmNonce,
 };
 use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{StorageKeyRequest, get_storage_key};
@@ -1136,24 +1136,12 @@ impl_runtime_apis! {
     }
 
     impl sp_messenger::RelayerApi<Block, BlockNumber, ConsensusBlockNumber, ConsensusBlockHash> for Runtime {
-        fn block_messages() -> BlockMessagesWithStorageKey {
-            BlockMessagesWithStorageKey::default()
-        }
-
         fn outbox_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             Messenger::outbox_message_unsigned(msg)
         }
 
         fn inbox_response_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, BlockHashFor<Block>, BlockHashFor<Block>>) -> Option<ExtrinsicFor<Block>> {
             Messenger::inbox_response_message_unsigned(msg)
-        }
-
-        fn should_relay_outbox_message(_: ChainId, _: MessageId) -> bool {
-            false
-        }
-
-        fn should_relay_inbox_message_response(_: ChainId, _: MessageId) -> bool {
-            false
         }
 
         fn updated_channels() -> BTreeSet<(ChainId, ChannelId)> {

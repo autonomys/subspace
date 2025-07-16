@@ -37,9 +37,7 @@ use frame_support::inherent::{InherentIdentifier, IsFatalError};
 use frame_support::storage::storage_prefix;
 #[cfg(feature = "runtime-benchmarks")]
 use frame_support::{Identity, StorageHasher};
-use messages::{
-    BlockMessagesQuery, BlockMessagesWithStorageKey, ChannelId, CrossDomainMessage, MessageId,
-};
+use messages::{BlockMessagesQuery, ChannelId, CrossDomainMessage};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
@@ -275,10 +273,6 @@ sp_api::decl_runtime_apis! {
         CNumber: Encode + Decode,
         CHash: Encode + Decode,
     {
-        /// Returns all the outbox and inbox responses to deliver.
-        /// Storage key is used to generate the storage proof for the message.
-        fn block_messages() -> BlockMessagesWithStorageKey;
-
         /// Constructs an outbox message to the dst_chain as an unsigned extrinsic.
         fn outbox_message_unsigned(
             msg: CrossDomainMessage<CNumber, CHash, sp_core::H256>,
@@ -288,12 +282,6 @@ sp_api::decl_runtime_apis! {
         fn inbox_response_message_unsigned(
             msg: CrossDomainMessage<CNumber, CHash, sp_core::H256>,
         ) -> Option<Block::Extrinsic>;
-
-        /// Returns true if the outbox message is ready to be relayed to dst_chain.
-        fn should_relay_outbox_message(dst_chain_id: ChainId, msg_id: MessageId) -> bool;
-
-        /// Returns true if the inbox message response is ready to be relayed to dst_chain.
-        fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool;
 
         /// Returns the list of channels updated in the given block.
         fn updated_channels() -> BTreeSet<(ChainId, ChannelId)>;
