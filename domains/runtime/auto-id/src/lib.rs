@@ -478,7 +478,6 @@ impl pallet_transporter::Config for Runtime {
     type Sender = Messenger;
     type AccountIdConverter = domain_runtime_primitives::AccountIdConverter;
     type WeightInfo = weights::pallet_transporter::WeightInfo<Runtime>;
-    type SkipBalanceTransferChecks = ();
     type MinimumTransfer = MinimumTransfer;
 }
 

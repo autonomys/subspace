@@ -950,16 +950,6 @@ pub enum OperatorRewardSource<Number> {
     Dummy,
 }
 
-pub trait SkipBalanceChecks {
-    fn should_skip_balance_check(chain_id: ChainId) -> bool;
-}
-
-impl SkipBalanceChecks for () {
-    fn should_skip_balance_check(_chain_id: ChainId) -> bool {
-        false
-    }
-}
-
 /// Bundle and Execution Versions.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
 pub struct BundleAndExecutionReceiptVersion {

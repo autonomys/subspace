@@ -35,7 +35,6 @@ use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use core::marker::PhantomData;
 use domain_runtime_primitives::EthereumAccountId;
 use frame_support::dispatch::DispatchResult;
 use frame_support::ensure;
@@ -58,9 +57,9 @@ use sp_domains::execution_receipt::{
     ExecutionReceipt, ExecutionReceiptRef, ExecutionReceiptVersion, SealedSingletonReceipt,
 };
 use sp_domains::{
-    ChainId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, DomainBundleLimit, DomainId,
-    DomainInstanceData, EMPTY_EXTRINSIC_ROOT, OperatorId, OperatorPublicKey, OperatorSignature,
-    ProofOfElection, RuntimeId,
+    DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, DomainBundleLimit, DomainId, DomainInstanceData,
+    EMPTY_EXTRINSIC_ROOT, OperatorId, OperatorPublicKey, OperatorSignature, ProofOfElection,
+    RuntimeId,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
@@ -183,19 +182,6 @@ impl<O: Into<Result<RawOrigin, O>> + From<RawOrigin>> EnsureOrigin<O> for Ensure
     #[cfg(feature = "runtime-benchmarks")]
     fn try_successful_origin() -> Result<O, ()> {
         Ok(O::from(RawOrigin::ValidatedUnsigned))
-    }
-}
-
-/// Impl the sp_domains::SkipBalanceChecks for Domains.
-#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub struct DomainsSkipBalanceChecks<T>(PhantomData<T>);
-
-impl<T: Config> sp_domains::SkipBalanceChecks for DomainsSkipBalanceChecks<T> {
-    fn should_skip_balance_check(chain_id: ChainId) -> bool {
-        match chain_id {
-            ChainId::Consensus => false,
-            ChainId::Domain(domain_id) => SkipBalanceChecks::<T>::get().contains(&domain_id),
-        }
     }
 }
 
@@ -772,11 +758,6 @@ mod pallet {
     #[pallet::storage]
     pub type EvmDomainContractCreationAllowedByCalls<T: Config> =
         StorageMap<_, Identity, DomainId, EvmDomainContractCreationAllowedByCall, ValueQuery>;
-
-    /// TODO: remove once https://github.com/autonomys/subspace/issues/3466 is resolved
-    /// Storage that hold a list of all domains for which balance checks are ignored.
-    #[pallet::storage]
-    pub type SkipBalanceChecks<T> = StorageValue<_, BTreeSet<DomainId>, ValueQuery>;
 
     /// Storage for chain rewards specific to each domain.
     /// These rewards to equally distributed to active operators during epoch migration.
