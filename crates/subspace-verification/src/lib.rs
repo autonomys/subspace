@@ -18,6 +18,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::mem;
 #[cfg(feature = "kzg")]
+use core::num::NonZeroU64;
+#[cfg(feature = "kzg")]
 use core::simd::Simd;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use schnorrkel::SignatureError;
@@ -53,6 +55,14 @@ pub enum Error {
         piece_offset: u16,
         /// How many pieces one sector is supposed to contain (max)
         max_pieces_in_sector: u16,
+    },
+    /// History size is in the future
+    #[error("History size {solution} is in the future, current is {current}")]
+    FutureHistorySize {
+        /// Current history size
+        current: HistorySize,
+        /// History size solution was created for
+        solution: HistorySize,
     },
     /// Sector expired
     #[error("Sector expired")]
@@ -255,12 +265,25 @@ where
         sector_expiration_check_segment_commitment,
     }) = piece_check_params
     {
+        // `+1` here is due to the possibility of plotting a sector that was just archived and whose
+        // segment root is just being included in this very block we're checking (parent block,
+        // which is where `current_history_size` comes from doesn't know about this block yet)
+        if NonZeroU64::from(solution.history_size).get()
+            > NonZeroU64::from(*current_history_size).get() + 1
+        {
+            return Err(Error::FutureHistorySize {
+                current: *current_history_size,
+                solution: solution.history_size,
+            });
+        }
+
         if u16::from(solution.piece_offset) >= *max_pieces_in_sector {
             return Err(Error::InvalidPieceOffset {
                 piece_offset: u16::from(solution.piece_offset),
                 max_pieces_in_sector: *max_pieces_in_sector,
             });
         }
+
         if let Some(sector_expiration_check_segment_commitment) =
             sector_expiration_check_segment_commitment
         {

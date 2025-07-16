@@ -1,4 +1,6 @@
+# Exclude everything
 *
+# Then just include only the files required for builds
 !/crates
 !/domains
 !/shared

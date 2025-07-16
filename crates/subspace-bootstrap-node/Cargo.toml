@@ -1,0 +1,33 @@
+[package]
+name = "subspace-bootstrap-node"
+version = "0.1.1"
+authors = [
+    "Nazar Mokrynskyi <nazar@mokrynskyi.com>",
+    "Shamil Gadelshin <shamilgadelshin@gmail.com>"
+]
+description = "A Bootstrap node for the Subspace Network Blockchain"
+edition.workspace = true
+license = "0BSD"
+homepage = "https://subspace.network"
+repository = "https://github.com/autonomys/subspace"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+clap = { workspace = true, features = ["color", "derive"] }
+futures.workspace = true
+hex.workspace = true
+libp2p = { workspace = true, features = ["kad"] }
+prometheus-client.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+subspace-logging.workspace = true
+subspace-metrics.workspace = true
+subspace-networking.workspace = true
+tokio = { workspace = true, features = ["macros", "parking_lot", "rt-multi-thread"] }
+tracing.workspace = true
