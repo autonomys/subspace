@@ -1000,7 +1000,7 @@ fn is_xdm_mmr_proof_valid(ext: &ExtrinsicFor<Block>) -> Option<bool> {
     }
 }
 
-/// Returns `true`` if this is a validly encoded Sudo call.
+/// Returns `true` if this is a validly encoded Sudo call.
 fn is_valid_sudo_call(encoded_ext: Vec<u8>) -> bool {
     UncheckedExtrinsic::decode_all_with_depth_limit(
         MAX_CALL_RECURSION_DEPTH,
