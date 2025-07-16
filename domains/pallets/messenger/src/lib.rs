@@ -370,18 +370,6 @@ mod pallet {
     #[pallet::storage]
     pub(super) type OutboxFeesOnHold<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
-    /// `InboxFeesOnHoldStartAt` and `OutboxFeesOnHoldStartAt` are used to record when the inbox/outbox fee
-    /// is started to be tracked in `InboxFeesOnHold` and `OutboxFeesOnHold`. This is needed as migration on
-    /// Taurus.
-    ///
-    /// TODO: remove once the XDM V1 format is enabled on Taurus and all the untracked pending XDM is processed.
-    #[pallet::storage]
-    pub(super) type InboxFeesOnHoldStartAt<T: Config> =
-        StorageMap<_, Identity, ChannelId, Nonce, OptionQuery>;
-    #[pallet::storage]
-    pub(super) type OutboxFeesOnHoldStartAt<T: Config> =
-        StorageMap<_, Identity, ChannelId, Nonce, OptionQuery>;
-
     #[pallet::origin]
     pub type Origin = RawOrigin;
 
@@ -1429,9 +1417,6 @@ mod pallet {
             message_id: MessageId,
             inbox_fees: BalanceOf<T>,
         ) -> DispatchResult {
-            if !InboxFeesOnHoldStartAt::<T>::contains_key(message_id.0) {
-                InboxFeesOnHoldStartAt::<T>::insert(message_id.0, message_id.1);
-            }
             InboxFeesOnHold::<T>::mutate(|inbox_fees_on_hold| {
                 *inbox_fees_on_hold = inbox_fees_on_hold
                     .checked_add(&inbox_fees)
@@ -1461,9 +1446,6 @@ mod pallet {
             outbox_fees: BalanceOf<T>,
             inbox_fees: BalanceOf<T>,
         ) -> DispatchResult {
-            if !OutboxFeesOnHoldStartAt::<T>::contains_key(message_id.0) {
-                OutboxFeesOnHoldStartAt::<T>::insert(message_id.0, message_id.1);
-            }
             OutboxFeesOnHold::<T>::mutate(|outbox_fees_on_hold| {
                 *outbox_fees_on_hold = outbox_fees_on_hold
                     .checked_add(&outbox_fees)
