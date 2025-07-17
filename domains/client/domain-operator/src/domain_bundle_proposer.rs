@@ -359,7 +359,7 @@ where
         );
 
         let header = match bundle_version {
-            BundleVersion::V0 => BundleHeaderFor::V1(BundleHeaderV0 {
+            BundleVersion::V0 => BundleHeaderFor::V0(BundleHeaderV0 {
                 proof_of_election,
                 receipt,
                 estimated_bundle_weight,

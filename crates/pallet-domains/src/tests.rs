@@ -20,22 +20,28 @@ use frame_support::weights::{IdentityFee, Weight};
 use frame_support::{PalletId, assert_err, assert_ok, derive_impl, parameter_types};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
+use hex_literal::hex;
 use pallet_subspace::NormalEraChange;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
+use sp_consensus_slots::Slot;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256};
 use sp_domains::bundle::bundle_v0::{BundleHeaderV0, BundleV0, SealedBundleHeaderV0};
 use sp_domains::bundle::{BundleVersion, InboxedBundle, OpaqueBundle};
+use sp_domains::bundle_producer_election::make_transcript;
 use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
-use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptVersion};
+use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptVersion, SingletonReceipt};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleAndExecutionReceiptVersion, ChainId, DomainId, OperatorAllowList, OperatorId,
-    OperatorPair, ProofOfElection, RuntimeId, RuntimeType,
+    BundleAndExecutionReceiptVersion, ChainId, DomainId, EMPTY_EXTRINSIC_ROOT, OperatorAllowList,
+    OperatorId, OperatorPair, OperatorSignature, ProofOfElection, RuntimeId, RuntimeType,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_keystore::Keystore;
+use sp_keystore::testing::MemoryKeystore;
+use sp_runtime::app_crypto::AppCrypto;
 use sp_runtime::generic::{EXTRINSIC_FORMAT_VERSION, Preamble};
 use sp_runtime::traits::{
     AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, ConstU16, Hash as HashT,
@@ -47,11 +53,12 @@ use sp_runtime::{BuildStorage, OpaqueExtrinsic};
 use sp_version::{ApiId, RuntimeVersion, create_apis_vec};
 use std::num::NonZeroU64;
 use subspace_core_primitives::pieces::Piece;
+use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::segments::HistorySize;
 use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{SlotNumber, U256 as P256};
 use subspace_runtime_primitives::{
-    AI3, ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee,
+    AI3, BlockHashFor, ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -1472,4 +1479,104 @@ fn test_version_store_and_get() {
             assert_eq!(expected_version, got_version);
         }
     })
+}
+
+/// Test to generate fixtures for the benchmarks
+/// - validate_submit_bundle
+/// - validate_singleton_receipt
+///
+/// Run the test, replace old signatures with new ones
+/// - proof of election vrf signatures
+/// - bundle signature
+/// - singleton receipt signature
+#[test]
+fn generate_fixtures_for_benchmarking() {
+    let domain_id = DomainId::new(0);
+    let operator_id = 0;
+    let keystore = MemoryKeystore::new();
+    let signing_key = keystore
+        .sr25519_generate_new(OperatorPair::ID, Some("//Alice"))
+        .unwrap();
+    let (proof_of_time, slot) = (PotOutput::default(), Slot::from(1));
+    let global_challenge = proof_of_time
+        .derive_global_randomness()
+        .derive_global_challenge(slot.into());
+    let vrf_sign_data = make_transcript(DomainId::new(0), &global_challenge).into_sign_data();
+    let poe_signature = keystore
+        .sr25519_vrf_sign(OperatorPair::ID, &signing_key, &vrf_sign_data)
+        .unwrap()
+        .unwrap();
+
+    let poe = ProofOfElection {
+        domain_id,
+        slot_number: slot.into(),
+        proof_of_time,
+        vrf_signature: poe_signature.clone(),
+        operator_id,
+    };
+
+    let mock_genesis_er_hash = H256::from_slice(
+        hex!("5207cc85cfd1f53e11f4b9e85bf2d0a4f33e24d0f0f18b818b935a6aa47d3930").as_slice(),
+    );
+
+    let trace: Vec<<Test as Config>::DomainHash> = vec![
+        H256::repeat_byte(1),
+        H256::repeat_byte(2),
+        H256::repeat_byte(3),
+    ];
+    let execution_trace_root = {
+        let trace: Vec<_> = trace
+            .iter()
+            .map(|t| t.encode().try_into().unwrap())
+            .collect();
+        MerkleTree::from_leaves(trace.as_slice())
+            .root()
+            .unwrap()
+            .into()
+    };
+    let er = ExecutionReceipt::V0(ExecutionReceiptV0::<u32, H256, u32, H256, u128> {
+        domain_block_number: One::one(),
+        domain_block_hash: H256::repeat_byte(7),
+        domain_block_extrinsic_root: EMPTY_EXTRINSIC_ROOT,
+        parent_domain_block_receipt_hash: mock_genesis_er_hash,
+        consensus_block_number: One::one(),
+        consensus_block_hash: H256::repeat_byte(9),
+        inboxed_bundles: vec![],
+        final_state_root: trace[2],
+        execution_trace: trace,
+        execution_trace_root,
+        block_fees: Default::default(),
+        transfers: Default::default(),
+    });
+
+    let header = BundleHeaderV0::<u32, H256, DomainHeader, Balance> {
+        proof_of_election: poe.clone(),
+        receipt: er.clone(),
+        estimated_bundle_weight: Default::default(),
+        bundle_extrinsics_root: EMPTY_EXTRINSIC_ROOT,
+    };
+
+    let to_sign: H256 = header.hash();
+    let signature = keystore
+        .sr25519_sign(OperatorPair::ID, &signing_key, to_sign.as_ref())
+        .unwrap()
+        .unwrap();
+
+    let bundle_signature = OperatorSignature::decode(&mut signature.as_ref()).unwrap();
+
+    // generate signatures for singleton ER
+    let singleton_receipt = SingletonReceipt::<u32, H256, DomainHeader, Balance> {
+        proof_of_election: poe,
+        receipt: er,
+    };
+
+    let to_sign: BlockHashFor<Block> = singleton_receipt.hash();
+    let signature = keystore
+        .sr25519_sign(OperatorPair::ID, &signing_key, to_sign.as_ref())
+        .unwrap()
+        .unwrap();
+
+    let er_signature = OperatorSignature::decode(&mut signature.as_ref()).unwrap();
+
+    _ = (poe_signature, bundle_signature, er_signature);
 }
