@@ -59,9 +59,9 @@ use sp_domains::execution_receipt::{
     ExecutionReceipt, ExecutionReceiptRef, ExecutionReceiptVersion, SealedSingletonReceipt,
 };
 use sp_domains::{
-    ChainId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, DomainBundleLimit, DomainId,
-    DomainInstanceData, EMPTY_EXTRINSIC_ROOT, OperatorId, OperatorPublicKey, OperatorSignature,
-    ProofOfElection, RuntimeId,
+    BundleAndExecutionReceiptVersion, ChainId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT,
+    DomainBundleLimit, DomainId, DomainInstanceData, EMPTY_EXTRINSIC_ROOT, OperatorId,
+    OperatorPublicKey, OperatorSignature, ProofOfElection, RuntimeId,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
@@ -3290,6 +3290,26 @@ impl<T: Config> Pallet<T> {
         }
 
         set_version(versions);
+    }
+
+    /// Returns the current bundle and execution receipt versions.
+    ///
+    /// When there is a substrate upgrade at block #x, and if the client
+    /// uses any runtime apis at that particular block, the new runtime is used
+    /// instead of previous runtime even though previous runtime was used for execution.
+    /// This is an unfortunate side-effect of substrate pulling the runtime from :code: key
+    /// which was replaced with new one in that block #x.
+    /// Since we store the version before runtime upgrade, if there exists a key in the stored version
+    /// for that specific block, we return the that version instead of currently defined version on new runtime.
+    pub fn current_bundle_and_execution_receipt_version() -> BundleAndExecutionReceiptVersion {
+        let block_number = frame_system::Pallet::<T>::block_number();
+        let versions = PreviousBundleAndExecutionReceiptVersions::<T>::get();
+        match versions.get(&block_number) {
+            // no upgrade happened at this number, so safe to return the current version
+            None => T::CurrentBundleAndExecutionReceiptVersion::get(),
+            // upgrade did happen at this block, so return the version stored at this number.
+            Some(version) => *version,
+        }
     }
 
     /// Returns the complete nominator position for a given operator and account at the current block.
