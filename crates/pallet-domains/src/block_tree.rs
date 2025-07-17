@@ -1035,7 +1035,7 @@ mod tests {
                 Error::NewBranchReceipt
             );
 
-            // Submit the new branch receipt will will be rejected
+            // Submit the new branch receipt will be rejected
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
                 operator_id2,

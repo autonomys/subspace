@@ -234,7 +234,7 @@ where
                     None => return Ok(()),
                 }
             }
-            // NOTE: Not need to modify the bundle `extrinsics_root` or the lenght of `inboxed_bundles`
+            // NOTE: Not need to modify the bundle `extrinsics_root` or the length of `inboxed_bundles`
             // since the consensus runtime will perform the these checks and reject the bundle directly
             BadReceiptType::InboxedBundle => {
                 let mismatch_index = random_seed as usize % receipt.inboxed_bundles.len();
@@ -352,7 +352,7 @@ where
                 )?
                 .expect("The malicious operator's key pair must exist");
             OperatorSignature::decode(&mut s.as_ref())
-                .expect("Deconde as OperatorSignature must succeed")
+                .expect("Decode as OperatorSignature must succeed")
         });
         Ok(())
     }

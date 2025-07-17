@@ -233,9 +233,16 @@ pub fn nominator_position<T: Config>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::staking::tests::{
+        PROP_FREE_BALANCE_RANGE, PROP_NOMINATOR_STAKE_RANGE, PROP_OPERATOR_STAKE_RANGE,
+        prop_assert_approx,
+    };
     use crate::tests::*;
     use frame_support::assert_ok;
     use frame_support::traits::Currency;
+    use prop_test::prop_test;
+    use prop_test::proptest::prelude::*;
+    use prop_test::proptest::test_runner::TestCaseResult;
     use sp_core::Pair;
     use sp_domains::{DomainId, OperatorPair};
     use std::collections::BTreeMap;
@@ -250,9 +257,11 @@ mod tests {
     const DEFAULT_NOMINATOR_FREE_BALANCE: u128 = 600 * AI3;
     const DEFAULT_NOMINATOR_STAKE: u128 = 500 * AI3;
     const DEFAULT_MIN_NOMINATOR_STAKE: u128 = 100 * AI3;
-    const STAKING_PORTION_PERCENT: u128 = 80;
-    const STORAGE_FEE_PERCENT: u128 = 20;
-    const TOLERANCE: u128 = AI3 / 1_000_000_000; // 0.000000001 AI3 tolerance for precision differences
+    // 80% of the stake is staked, 20% is used for storage fees, but per ten to avoid overflows in
+    // proptests. The staking portion is calculated using the storage fee portion.
+    const STORAGE_FEE_PER_TEN: u128 = 2;
+    // 0.000000001 AI3 tolerance for precision differences
+    const TOLERANCE: u128 = AI3 / 1_000_000_000;
 
     /// Test setup configuration
     #[derive(Clone, Copy)]
@@ -319,12 +328,13 @@ mod tests {
 
     /// Helper function to calculate expected staking portion
     fn expected_staking_portion(nominator_stake: u128) -> u128 {
-        nominator_stake * STAKING_PORTION_PERCENT / 100
+        // The storage fee gets rounded down, so the remainder goes to staking (rounded up).
+        nominator_stake - expected_storage_fee(nominator_stake)
     }
 
     /// Helper function to calculate expected storage fee
     fn expected_storage_fee(nominator_stake: u128) -> u128 {
-        nominator_stake * STORAGE_FEE_PERCENT / 100
+        nominator_stake * STORAGE_FEE_PER_TEN / 10
     }
 
     /// Helper function to make additional nomination
@@ -386,6 +396,35 @@ mod tests {
         );
     }
 
+    /// Helper function to assert position invariants in proptests
+    fn prop_assert_position_invariants(
+        position: &sp_domains::NominatorPosition<u128, u32, u128>,
+        expected_staked_value: u128,
+        expected_storage_fee: u128,
+        expected_pending_deposits: usize,
+        expected_pending_withdrawals: usize,
+    ) -> TestCaseResult {
+        prop_assert_approx!(position.current_staked_value, expected_staked_value);
+        prop_assert_approx!(
+            position.storage_fee_deposit.current_value,
+            expected_storage_fee
+        );
+        prop_assert_eq!(
+            if position.pending_deposit.is_some() {
+                1
+            } else {
+                0
+            },
+            expected_pending_deposits
+        );
+        prop_assert_eq!(
+            position.pending_withdrawals.len(),
+            expected_pending_withdrawals
+        );
+
+        Ok(())
+    }
+
     #[test]
     fn test_nominator_position_no_position() {
         let mut ext = new_test_ext_with_extensions();
@@ -445,6 +484,74 @@ mod tests {
                 position.storage_fee_deposit.current_value
             );
         });
+    }
+
+    #[test]
+    fn prop_test_nominator_position_basic_staking() {
+        prop_test!(
+            &(
+                PROP_OPERATOR_STAKE_RANGE,
+                PROP_FREE_BALANCE_RANGE,
+                PROP_NOMINATOR_STAKE_RANGE,
+                PROP_FREE_BALANCE_RANGE,
+            ),
+            |(operator_stake, operator_free_balance, nominator_stake, nominator_free_balance)| {
+                let mut ext = new_test_ext_with_extensions();
+                ext.execute_with(|| {
+                    let setup = TestSetup {
+                        operator_stake,
+                        operator_free_balance: operator_free_balance.saturating_add(operator_stake),
+                        nominator_stake,
+                        nominator_free_balance: nominator_free_balance
+                            .saturating_add(nominator_stake),
+                        ..TestSetup::default()
+                    };
+
+                    let (operator_id, domain_id) = setup_operator_with_nominator(setup);
+
+                    // Test 1: Position with pending deposit (before epoch transition)
+                    let position =
+                        nominator_position::<Test>(operator_id, setup.nominator_account).unwrap();
+                    assert_position_invariants(
+                        &position,
+                        0, // No shares yet, all pending
+                        expected_storage_fee(setup.nominator_stake),
+                        1, // One pending deposit
+                        0, // No withdrawals
+                    );
+                    // Only the staking portion goes to pending deposit
+                    let pending_deposit = position.pending_deposit.as_ref().unwrap();
+                    prop_assert_approx!(
+                        pending_deposit.amount,
+                        expected_staking_portion(setup.nominator_stake)
+                    );
+                    prop_assert_eq!(pending_deposit.effective_epoch, 1);
+                    prop_assert_approx!(
+                        position.storage_fee_deposit.total_deposited,
+                        position.storage_fee_deposit.current_value
+                    );
+
+                    // Test 2: Position after epoch transition (pending becomes active)
+                    advance_epoch(domain_id);
+
+                    let position =
+                        nominator_position::<Test>(operator_id, setup.nominator_account).unwrap();
+                    prop_assert_position_invariants(
+                        &position,
+                        expected_staking_portion(setup.nominator_stake),
+                        expected_storage_fee(setup.nominator_stake),
+                        0, // No more pending deposits
+                        0, // No withdrawals
+                    )?;
+                    prop_assert_approx!(
+                        position.storage_fee_deposit.total_deposited,
+                        position.storage_fee_deposit.current_value
+                    );
+
+                    Ok(())
+                })
+            }
+        );
     }
 
     #[test]
