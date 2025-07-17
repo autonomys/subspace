@@ -1316,6 +1316,10 @@ fn get_mock_upgrades() -> Vec<(u32, MockBundleAndExecutionReceiptVersion, bool)>
     ]
 }
 
+/// Returns mock version queries.
+/// (block_number, current_version)
+/// block_number: Consensus block at which ER is derived
+/// current_version: Version defined at the consensus block number.
 fn get_mock_version_queries() -> Vec<(u32, MockBundleAndExecutionReceiptVersion)> {
     vec![
         // version from 0..100

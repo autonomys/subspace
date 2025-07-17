@@ -372,16 +372,15 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 // Collect the paid bundle storage fees and the invalid bundle author
                 let mut paid_bundle_storage_fees = BTreeMap::new();
                 let mut invalid_bundle_authors = Vec::new();
-                let bundle_digests = ExecutionInbox::<T>::get((
-                    domain_id,
-                    to_prune,
-                    execution_receipt.consensus_block_number(),
-                ));
+                let consensus_block_number = *execution_receipt.consensus_block_number();
+                let bundle_digests =
+                    ExecutionInbox::<T>::get((domain_id, to_prune, consensus_block_number));
+                let inboxed_bundles = execution_receipt.inboxed_bundles();
                 for (index, bd) in bundle_digests.into_iter().enumerate() {
                     if let Some(bundle_author) = InboxedBundleAuthor::<T>::take(bd.header_hash) {
                         // It is okay to index `ER::bundles` here since `verify_execution_receipt` have checked
                         // the `ER::bundles` have the same length of `ExecutionInbox`
-                        if execution_receipt.inboxed_bundles()[index].is_invalid() {
+                        if inboxed_bundles[index].is_invalid() {
                             invalid_bundle_authors.push(bundle_author);
                         } else {
                             paid_bundle_storage_fees
@@ -401,10 +400,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     execution_receipt.clone(),
                 );
 
-                ConsensusBlockHash::<T>::remove(
-                    domain_id,
-                    execution_receipt.consensus_block_number(),
-                );
+                ConsensusBlockHash::<T>::remove(domain_id, consensus_block_number);
 
                 let block_fees = execution_receipt
                     .block_fees()
@@ -430,10 +426,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     .map_err(|_| Error::DomainTransfersTracking)?;
                 }
 
-                update_domain_runtime_upgrade_records::<T>(
-                    domain_id,
-                    *execution_receipt.consensus_block_number(),
-                )?;
+                update_domain_runtime_upgrade_records::<T>(domain_id, consensus_block_number)?;
 
                 // handle chain rewards from the domain
                 execution_receipt
@@ -445,7 +438,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     });
 
                 return Ok(Some(ConfirmedDomainBlockInfo {
-                    consensus_block_number: *execution_receipt.consensus_block_number(),
+                    consensus_block_number,
                     domain_block_number: to_prune,
                     operator_ids,
                     rewards: execution_receipt.block_fees().domain_execution_fee,

@@ -63,7 +63,7 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
     }
 }
 
-/// Domain bundle v1.
+/// Domain bundle v0.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleV0<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Sealed bundle header.

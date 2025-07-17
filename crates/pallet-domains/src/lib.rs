@@ -2403,6 +2403,8 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    /// Verifies if the submitted ER version matches with the version
+    /// defined at the block number ER is derived from.
     fn check_execution_receipt_version(
         er_derived_consensus_number: BlockNumberFor<T>,
         receipt_version: ExecutionReceiptVersion,
