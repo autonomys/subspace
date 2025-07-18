@@ -3271,22 +3271,22 @@ impl<T: Config> Pallet<T> {
     {
         let mut versions = previous_versions();
         // first storage, so nothing much to do
-        if versions.len().is_zero() {
+        if versions.is_empty() {
             versions.insert(block_number, current_version);
         } else {
             // if there is a previous version stored, and
             // previous version matches the current one,
             // then we can replace the same version with latest upgraded block number.
-            let (prev_number, prev_versions) = versions
+            let (prev_number, prev_version) = versions
                 .pop_last()
                 .expect("at least one version is available due to check above");
 
             // versions matched, so insert the version with latest block number.
-            if prev_versions == current_version {
+            if prev_version == current_version {
                 versions.insert(block_number, current_version);
             } else {
                 // versions did not match, so add both
-                versions.insert(prev_number, prev_versions);
+                versions.insert(prev_number, prev_version);
                 versions.insert(block_number, current_version);
             }
         }
