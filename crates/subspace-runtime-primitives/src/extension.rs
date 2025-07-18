@@ -72,10 +72,18 @@ where
 
         // Disable normal balance transfers.
         let (contains_balance_call, calls) = Self::contains_balance_transfer(call);
-        if contains_balance_call {
+
+        let res = if contains_balance_call {
             Err(InvalidTransaction::Call.into())
         } else {
             Ok((ValidTransaction::default(), calls))
+        };
+
+        // For benchmarks, always return success, so benchmarks run transfers.
+        if cfg!(feature = "runtime-benchmarks") {
+            Ok((ValidTransaction::default(), calls))
+        } else {
+            res
         }
     }
 
