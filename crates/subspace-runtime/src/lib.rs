@@ -432,9 +432,10 @@ impl MaybeBalancesCall<Runtime> for RuntimeCall {
 impl BalanceTransferChecks for Runtime {
     fn is_balance_transferable() -> bool {
         let enabled = RuntimeConfigs::enable_balance_transfers();
-        // for benchmarks, always return enabled.
+        // For benchmarks, always return disabled, so the extension runs its checks.
+        // But in the extension, we always return success, so benchmarks run transfers as well.
         if cfg!(feature = "runtime-benchmarks") {
-            true
+            false
         } else {
             enabled
         }
