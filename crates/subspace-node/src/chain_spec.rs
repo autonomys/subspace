@@ -68,7 +68,7 @@ pub fn mainnet_compiled() -> Result<GenericChainSpec, String> {
     .with_name("Autonomys Mainnet")
     // ID
     .with_id("autonomys_mainnet")
-    .with_chain_type(ChainType::Custom("Autonomys Mainnet".to_string()))
+    .with_chain_type(ChainType::Live)
     .with_telemetry_endpoints(
         TelemetryEndpoints::new(vec![(SUBSPACE_TELEMETRY_URL.into(), 1)])
             .map_err(|error| error.to_string())?,

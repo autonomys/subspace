@@ -15,7 +15,7 @@ use domain_service::providers::DefaultProvider;
 use domain_service::{FullBackend, FullClient};
 use evm_domain_runtime::AccountId as AccountId20;
 use futures::StreamExt;
-use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension, Properties};
+use sc_chain_spec::{GenericChainSpec, NoExtension, Properties};
 use sc_cli::{
     Cors, KeystoreParams, RPC_DEFAULT_PORT, RpcMethods, RuntimeParams, TransactionPoolParams,
 };
@@ -266,7 +266,7 @@ pub(super) fn create_domain_configuration(
             consensus_chain_configuration.chain_spec.id(),
             domain_id
         ))
-        .with_chain_type(ChainType::Custom("SubspaceDomain".to_string()))
+        .with_chain_type(consensus_chain_configuration.chain_spec.chain_type())
         .with_boot_nodes(
             consensus_chain_configuration
                 .chain_spec

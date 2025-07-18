@@ -17,6 +17,7 @@ use sc_client_api::{
     ProofProvider,
 };
 use sc_consensus::{BasicQueue, BoxBlockImport};
+use sc_domains::spec_wrapper::ChainSpecTypeOverride;
 use sc_domains::{ExtensionsFactory, RuntimeExecutor};
 use sc_network::service::traits::NetworkService;
 use sc_network::{NetworkPeers, NetworkWorker, NotificationMetrics};
@@ -466,6 +467,11 @@ where
         })
     };
 
+    // Override the RPC chain type to Live for production domains.
+    // We don't use the chain spec for anything else, so this only impacts RPC responses.
+    domain_config.chain_spec = ChainSpecTypeOverride::wrap(domain_config.chain_spec);
+
+    // spawn_tasks only passes the chain spec to the RPC server, so it is safe to override it here.
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         rpc_builder,
         client: client.clone(),

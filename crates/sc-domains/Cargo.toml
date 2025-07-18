@@ -22,10 +22,12 @@ domain-runtime-primitives.workspace = true
 frame-benchmarking = { workspace = true, optional = true }
 futures.workspace = true
 parity-scale-codec.workspace = true
+sc-chain-spec.workspace = true
 sc-client-api.workspace = true
 sc-executor.workspace = true
 sc-network.workspace = true
 sc-network-sync.workspace = true
+sc-telemetry.workspace = true
 sp-api.workspace = true
 sp-auto-id = { workspace = true, features = ["std"] }
 sp-blockchain.workspace = true

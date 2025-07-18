@@ -1,7 +1,5 @@
 //! Domain specific Host functions and Extension factory
 
-pub mod domain_block_er;
-
 use sc_client_api::execution_extensions::ExtensionsFactory as ExtensionsFactoryT;
 use sc_executor::RuntimeVersionOf;
 use sp_api::ProvideRuntimeApi;
@@ -20,6 +18,9 @@ use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_subspace_mmr::host_functions::{MmrApi, SubspaceMmrExtension, SubspaceMmrHostFunctionsImpl};
 use std::marker::PhantomData;
 use std::sync::Arc;
+
+pub mod domain_block_er;
+pub mod spec_wrapper;
 
 /// Host functions required for Subspace domain
 #[cfg(not(feature = "runtime-benchmarks"))]

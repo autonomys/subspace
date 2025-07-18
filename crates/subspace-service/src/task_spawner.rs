@@ -17,6 +17,7 @@
 use sc_client_api::{
     BlockBackend, BlockchainEvents, ExecutorProvider, ProofProvider, StorageProvider, UsageProvider,
 };
+use sc_domains::spec_wrapper::ChainSpecTypeOverride;
 use sc_network::Multiaddr;
 use sc_network::multiaddr::Protocol;
 use sc_rpc_api::DenyUnsafe;
@@ -134,6 +135,10 @@ where
     );
 
     let rpc_id_provider = config.rpc.id_provider.take();
+
+    // Override the RPC chain type to Live for Mainnet.
+    // We don't use the chain spec for anything else, so this only impacts RPC responses.
+    config.chain_spec = ChainSpecTypeOverride::wrap(config.chain_spec);
 
     // jsonrpsee RPC
     let gen_rpc_module = || {
