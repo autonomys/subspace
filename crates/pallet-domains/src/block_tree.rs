@@ -6,9 +6,10 @@ extern crate alloc;
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, Config, ConsensusBlockHash,
     DomainBlockNumberFor, DomainGenesisBlockExecutionReceipt, DomainHashingFor,
-    DomainRuntimeUpgradeRecords, ExecutionInbox, ExecutionReceiptOf, HeadDomainNumber,
-    HeadReceiptNumber, InboxedBundleAuthor, LatestConfirmedDomainExecutionReceipt,
-    LatestSubmittedER, NewAddedHeadReceipt, Pallet, ReceiptHashFor, SkipBalanceChecks,
+    DomainRuntimeUpgradeRecords, ExecutionInbox, ExecutionReceiptOf, ExecutionReceiptRefOf,
+    HeadDomainNumber, HeadReceiptNumber, InboxedBundleAuthor,
+    LatestConfirmedDomainExecutionReceipt, LatestSubmittedER, NewAddedHeadReceipt, Pallet,
+    ReceiptHashFor, SkipBalanceChecks,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -17,11 +18,10 @@ use frame_system::pallet_prelude::BlockNumberFor;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
+use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
+use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptRef, Transfers};
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{
-    ChainId, DomainId, DomainsTransfersTracker, ExecutionReceipt, OnChainRewards, OperatorId,
-    Transfers,
-};
+use sp_domains::{ChainId, DomainId, DomainsTransfersTracker, OnChainRewards, OperatorId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
@@ -119,9 +119,13 @@ pub(crate) fn does_receipt_exists<T: Config>(
 /// Get the receipt type of the given receipt based on the current block tree state
 pub(crate) fn execution_receipt_type<T: Config>(
     domain_id: DomainId,
-    execution_receipt: &ExecutionReceiptOf<T>,
+    execution_receipt: &ExecutionReceiptRefOf<T>,
 ) -> ReceiptType {
-    let receipt_number = execution_receipt.domain_block_number;
+    let ExecutionReceiptRef::V0(ExecutionReceiptV0 {
+        domain_block_number,
+        ..
+    }) = execution_receipt;
+    let receipt_number = *domain_block_number;
     let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
     let head_receipt_extended = NewAddedHeadReceipt::<T>::get(domain_id).is_some();
     let next_receipt_number = head_receipt_number.saturating_add(One::one());
@@ -177,9 +181,9 @@ pub(crate) fn execution_receipt_type<T: Config>(
 /// Verify the execution receipt
 pub(crate) fn verify_execution_receipt<T: Config>(
     domain_id: DomainId,
-    execution_receipt: &ExecutionReceiptOf<T>,
+    execution_receipt: &ExecutionReceiptRefOf<T>,
 ) -> Result<(), Error> {
-    let ExecutionReceipt {
+    let ExecutionReceiptRef::V0(ExecutionReceiptV0 {
         consensus_block_number,
         consensus_block_hash,
         domain_block_number,
@@ -189,7 +193,7 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         execution_trace_root,
         final_state_root,
         ..
-    } = execution_receipt;
+    }) = execution_receipt;
 
     // Checking if the incoming ER is expected regarding to its `domain_block_number` or freshness
     if let ReceiptType::Rejected(rejected_receipt_type) =
@@ -342,7 +346,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
     receipt_type: AcceptedReceiptType,
 ) -> ProcessExecutionReceiptResult<T> {
     let er_hash = execution_receipt.hash::<DomainHashingFor<T>>();
-    let receipt_block_number = execution_receipt.domain_block_number;
+    let receipt_block_number = *execution_receipt.domain_block_number();
     match receipt_type {
         AcceptedReceiptType::NewHead => {
             add_new_receipt_to_block_tree::<T>(domain_id, submitter, execution_receipt)?;
@@ -368,16 +372,15 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 // Collect the paid bundle storage fees and the invalid bundle author
                 let mut paid_bundle_storage_fees = BTreeMap::new();
                 let mut invalid_bundle_authors = Vec::new();
-                let bundle_digests = ExecutionInbox::<T>::get((
-                    domain_id,
-                    to_prune,
-                    execution_receipt.consensus_block_number,
-                ));
+                let consensus_block_number = *execution_receipt.consensus_block_number();
+                let bundle_digests =
+                    ExecutionInbox::<T>::get((domain_id, to_prune, consensus_block_number));
+                let inboxed_bundles = execution_receipt.inboxed_bundles();
                 for (index, bd) in bundle_digests.into_iter().enumerate() {
                     if let Some(bundle_author) = InboxedBundleAuthor::<T>::take(bd.header_hash) {
                         // It is okay to index `ER::bundles` here since `verify_execution_receipt` have checked
                         // the `ER::bundles` have the same length of `ExecutionInbox`
-                        if execution_receipt.inboxed_bundles[index].is_invalid() {
+                        if inboxed_bundles[index].is_invalid() {
                             invalid_bundle_authors.push(bundle_author);
                         } else {
                             paid_bundle_storage_fees
@@ -397,19 +400,16 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     execution_receipt.clone(),
                 );
 
-                ConsensusBlockHash::<T>::remove(
-                    domain_id,
-                    execution_receipt.consensus_block_number,
-                );
+                ConsensusBlockHash::<T>::remove(domain_id, consensus_block_number);
 
                 let block_fees = execution_receipt
-                    .block_fees
+                    .block_fees()
                     .total_fees()
                     .ok_or(Error::BalanceOverflow)?;
 
                 ensure!(
                     execution_receipt
-                        .transfers
+                        .transfers()
                         .is_valid(ChainId::Domain(domain_id)),
                     Error::InvalidDomainTransfers
                 );
@@ -420,33 +420,30 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 if !SkipBalanceChecks::<T>::get().contains(&domain_id) {
                     update_domain_transfers::<T>(
                         domain_id,
-                        &execution_receipt.transfers,
+                        execution_receipt.transfers(),
                         block_fees,
                     )
                     .map_err(|_| Error::DomainTransfersTracking)?;
                 }
 
-                update_domain_runtime_upgrade_records::<T>(
-                    domain_id,
-                    execution_receipt.consensus_block_number,
-                )?;
+                update_domain_runtime_upgrade_records::<T>(domain_id, consensus_block_number)?;
 
                 // handle chain rewards from the domain
                 execution_receipt
-                    .block_fees
+                    .block_fees()
                     .chain_rewards
-                    .into_iter()
+                    .iter()
                     .for_each(|(chain_id, reward)| {
-                        T::OnChainRewards::on_chain_rewards(chain_id, reward)
+                        T::OnChainRewards::on_chain_rewards(*chain_id, *reward)
                     });
 
                 return Ok(Some(ConfirmedDomainBlockInfo {
-                    consensus_block_number: execution_receipt.consensus_block_number,
+                    consensus_block_number,
                     domain_block_number: to_prune,
                     operator_ids,
-                    rewards: execution_receipt.block_fees.domain_execution_fee,
+                    rewards: execution_receipt.block_fees().domain_execution_fee,
                     invalid_bundle_authors,
-                    total_storage_fee: execution_receipt.block_fees.consensus_storage_fee,
+                    total_storage_fee: execution_receipt.block_fees().consensus_storage_fee,
                     paid_bundle_storage_fees,
                 }));
             }
@@ -557,7 +554,7 @@ fn add_new_receipt_to_block_tree<T: Config>(
 ) -> Result<(), Error> {
     // Construct and add a new domain block to the block tree
     let er_hash = execution_receipt.hash::<DomainHashingFor<T>>();
-    let domain_block_number = execution_receipt.domain_block_number;
+    let domain_block_number = execution_receipt.domain_block_number();
 
     ensure!(
         !BlockTree::<T>::contains_key(domain_id, domain_block_number),
@@ -580,7 +577,7 @@ pub(crate) fn import_genesis_receipt<T: Config>(
     genesis_receipt: ExecutionReceiptOf<T>,
 ) {
     let er_hash = genesis_receipt.hash::<DomainHashingFor<T>>();
-    let domain_block_number = genesis_receipt.domain_block_number;
+    let domain_block_number = *genesis_receipt.domain_block_number();
 
     LatestConfirmedDomainExecutionReceipt::<T>::insert(domain_id, genesis_receipt.clone());
     DomainGenesisBlockExecutionReceipt::<T>::insert(domain_id, genesis_receipt.clone());
@@ -617,7 +614,7 @@ pub(crate) fn prune_receipt<T: Config>(
     for operator_id in block_tree_node.operator_ids.iter() {
         let key = (domain_id, operator_id);
         let latest_submitted_er = Pallet::<T>::latest_submitted_er(key);
-        if block_tree_node.execution_receipt.domain_block_number == latest_submitted_er {
+        if *block_tree_node.execution_receipt.domain_block_number() == latest_submitted_er {
             LatestSubmittedER::<T>::remove(key);
         }
     }
@@ -629,14 +626,17 @@ pub(crate) fn invalid_bundle_authors_for_receipt<T: Config>(
     domain_id: DomainId,
     er: &ExecutionReceiptOf<T>,
 ) -> Vec<OperatorId> {
-    let bundle_digests =
-        ExecutionInbox::<T>::get((domain_id, er.domain_block_number, er.consensus_block_number));
+    let bundle_digests = ExecutionInbox::<T>::get((
+        domain_id,
+        er.domain_block_number(),
+        er.consensus_block_number(),
+    ));
     bundle_digests
         .into_iter()
         .enumerate()
         .filter_map(|(index, digest)| {
             let bundle_author = InboxedBundleAuthor::<T>::get(digest.header_hash)?;
-            if er.inboxed_bundles[index].is_invalid() {
+            if er.inboxed_bundles()[index].is_invalid() {
                 Some(bundle_author)
             } else {
                 None
@@ -659,7 +659,7 @@ mod tests {
     use frame_support::{assert_err, assert_ok};
     use frame_system::Origin;
     use sp_core::H256;
-    use sp_domains::{BundleDigest, InboxedBundle, InvalidBundleType};
+    use sp_domains::bundle::{BundleDigest, InboxedBundle, InvalidBundleType};
 
     #[test]
     fn test_genesis_receipt() {
@@ -678,17 +678,20 @@ mod tests {
             let genesis_receipt = genesis_node.execution_receipt;
             let invalid_genesis_receipt = {
                 let mut receipt = genesis_receipt.clone();
-                receipt.final_state_root = H256::random();
+                receipt.set_final_state_root(H256::random());
                 receipt
             };
             assert_ok!(verify_execution_receipt::<Test>(
                 domain_id,
-                &genesis_receipt
+                &genesis_receipt.as_execution_receipt_ref()
             ));
             // Submitting an invalid genesis ER will result in `NewBranchReceipt` because the operator
             // need to submit fraud proof to pruned a ER first before submitting an ER at the same height
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &invalid_genesis_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &invalid_genesis_receipt.as_execution_receipt_ref()
+                ),
                 Error::NewBranchReceipt
             );
         });
@@ -708,14 +711,14 @@ mod tests {
             let genesis_node = get_block_tree_node_at::<Test>(domain_id, 0).unwrap();
             let mut receipt = genesis_node.execution_receipt;
             assert_eq!(
-                receipt.consensus_block_number,
+                *receipt.consensus_block_number(),
                 frame_system::Pallet::<Test>::current_block_number()
             );
             let mut receipt_of_block_1 = None;
             let mut bundle_header_hash_of_block_1 = None;
             for block_number in 1..=(block_tree_pruning_depth + 3) {
                 // Finilize parent block and initialize block at `block_number`
-                run_to_block::<Test>(block_number, receipt.consensus_block_hash);
+                run_to_block::<Test>(block_number, *receipt.consensus_block_hash());
 
                 if block_number != 1 {
                     // `ConsensusBlockHash` should be set to `Some` since last consensus block contains bundle
@@ -725,10 +728,16 @@ mod tests {
                     );
                     // ER point to last consensus block should have `NewHead` type
                     assert_eq!(
-                        execution_receipt_type::<Test>(domain_id, &receipt),
+                        execution_receipt_type::<Test>(
+                            domain_id,
+                            &receipt.as_execution_receipt_ref()
+                        ),
                         ReceiptType::Accepted(AcceptedReceiptType::NewHead)
                     );
-                    assert_ok!(verify_execution_receipt::<Test>(domain_id, &receipt));
+                    assert_ok!(verify_execution_receipt::<Test>(
+                        domain_id,
+                        &receipt.as_execution_receipt_ref()
+                    ));
                 }
 
                 // Submit a bundle with the receipt of the last block
@@ -739,7 +748,7 @@ mod tests {
                     bundle_extrinsics_root,
                     receipt,
                 );
-                let bundle_header_hash = bundle.sealed_header.pre_hash();
+                let bundle_header_hash = bundle.sealed_header().pre_hash();
                 let bundle_size = bundle.size();
                 assert_ok!(crate::Pallet::<Test>::submit_bundle(
                     DomainOrigin::ValidatedUnsigned.into(),
@@ -795,15 +804,21 @@ mod tests {
             assert!(ExecutionInbox::<Test>::get((domain_id, 1, 1)).is_empty());
             assert!(!InboxedBundleAuthor::<Test>::contains_key(pruned_bundle));
             assert_eq!(
-                execution_receipt_type::<Test>(domain_id, &pruned_receipt),
+                execution_receipt_type::<Test>(
+                    domain_id,
+                    &pruned_receipt.as_execution_receipt_ref()
+                ),
                 ReceiptType::Rejected(RejectedReceiptType::Pruned)
             );
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &pruned_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &pruned_receipt.as_execution_receipt_ref()
+                ),
                 Error::PrunedReceipt
             );
             assert!(
-                ConsensusBlockHash::<Test>::get(domain_id, pruned_receipt.consensus_block_number,)
+                ConsensusBlockHash::<Test>::get(domain_id, pruned_receipt.consensus_block_number(),)
                     .is_none()
             );
         });
@@ -821,12 +836,15 @@ mod tests {
 
             // Submit the new head receipt
             assert_eq!(
-                execution_receipt_type::<Test>(domain_id, &next_head_receipt),
+                execution_receipt_type::<Test>(
+                    domain_id,
+                    &next_head_receipt.as_execution_receipt_ref()
+                ),
                 ReceiptType::Accepted(AcceptedReceiptType::NewHead)
             );
             assert_ok!(verify_execution_receipt::<Test>(
                 domain_id,
-                &next_head_receipt
+                &next_head_receipt.as_execution_receipt_ref()
             ));
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
@@ -850,12 +868,15 @@ mod tests {
 
             // Head receipt added in the current block is consider valid
             assert_eq!(
-                execution_receipt_type::<Test>(domain_id, &current_head_receipt),
+                execution_receipt_type::<Test>(
+                    domain_id,
+                    &current_head_receipt.as_execution_receipt_ref()
+                ),
                 ReceiptType::Accepted(AcceptedReceiptType::CurrentHead)
             );
             assert_ok!(verify_execution_receipt::<Test>(
                 domain_id,
-                &current_head_receipt
+                &current_head_receipt.as_execution_receipt_ref()
             ));
 
             // Re-submit the head receipt by a different operator is okay
@@ -894,11 +915,17 @@ mod tests {
 
             // Stale receipt can pass the verification
             assert_eq!(
-                execution_receipt_type::<Test>(domain_id, &stale_receipt),
+                execution_receipt_type::<Test>(
+                    domain_id,
+                    &stale_receipt.as_execution_receipt_ref()
+                ),
                 ReceiptType::Rejected(RejectedReceiptType::Stale)
             );
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &stale_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &stale_receipt.as_execution_receipt_ref()
+                ),
                 Error::StaleReceipt
             );
 
@@ -942,11 +969,17 @@ mod tests {
 
             // Stale receipt can not pass the verification
             assert_eq!(
-                execution_receipt_type::<Test>(domain_id, &previous_head_receipt),
+                execution_receipt_type::<Test>(
+                    domain_id,
+                    &previous_head_receipt.as_execution_receipt_ref()
+                ),
                 ReceiptType::Rejected(RejectedReceiptType::Stale)
             );
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &previous_head_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &previous_head_receipt.as_execution_receipt_ref()
+                ),
                 Error::StaleReceipt
             );
 
@@ -981,18 +1014,24 @@ mod tests {
                     get_block_tree_node_at::<Test>(domain_id, head_receipt_number)
                         .unwrap()
                         .execution_receipt;
-                head_receipt.final_state_root = H256::random();
+                head_receipt.set_final_state_root(H256::random());
                 head_receipt
             };
             let new_branch_receipt_hash = new_branch_receipt.hash::<DomainHashingFor<Test>>();
 
             // New branch receipt can pass the verification
             assert_eq!(
-                execution_receipt_type::<Test>(domain_id, &new_branch_receipt),
+                execution_receipt_type::<Test>(
+                    domain_id,
+                    &new_branch_receipt.as_execution_receipt_ref()
+                ),
                 ReceiptType::Rejected(RejectedReceiptType::NewBranch)
             );
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &new_branch_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &new_branch_receipt.as_execution_receipt_ref()
+                ),
                 Error::NewBranchReceipt
             );
 
@@ -1054,18 +1093,17 @@ mod tests {
 
             // Construct a future receipt
             let mut future_receipt = next_receipt.clone();
-            future_receipt.domain_block_number = head_receipt_number + 2;
-            future_receipt.consensus_block_number = head_receipt_number as u32 + 2;
+            future_receipt.set_domain_block_number(head_receipt_number + 2);
+            future_receipt.set_consensus_block_number(head_receipt_number as u32 + 2);
             ExecutionInbox::<Test>::insert(
                 (
                     domain_id,
-                    future_receipt.domain_block_number,
-                    future_receipt.consensus_block_number,
+                    future_receipt.domain_block_number(),
+                    future_receipt.consensus_block_number(),
                 ),
                 future_receipt
-                    .inboxed_bundles
-                    .clone()
-                    .into_iter()
+                    .inboxed_bundles()
+                    .iter()
                     .map(|b| BundleDigest {
                         header_hash: H256::random(),
                         extrinsics_root: b.extrinsics_root,
@@ -1074,36 +1112,51 @@ mod tests {
                     .collect::<Vec<_>>(),
             );
             assert_eq!(
-                execution_receipt_type::<Test>(domain_id, &future_receipt),
+                execution_receipt_type::<Test>(
+                    domain_id,
+                    &future_receipt.as_execution_receipt_ref()
+                ),
                 ReceiptType::Rejected(RejectedReceiptType::InFuture)
             );
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &future_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &future_receipt.as_execution_receipt_ref()
+                ),
                 Error::InFutureReceipt
             );
 
             // Receipt with unknown extrinsics roots
             let mut unknown_extrinsics_roots_receipt = next_receipt.clone();
-            unknown_extrinsics_roots_receipt.inboxed_bundles =
-                vec![InboxedBundle::valid(H256::random(), H256::random())];
+            unknown_extrinsics_roots_receipt
+                .set_inboxed_bundles(vec![InboxedBundle::valid(H256::random(), H256::random())]);
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &unknown_extrinsics_roots_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &unknown_extrinsics_roots_receipt.as_execution_receipt_ref()
+                ),
                 Error::InvalidExtrinsicsRoots
             );
 
             // Receipt with unknown consensus block hash
             let mut unknown_consensus_block_receipt = next_receipt.clone();
-            unknown_consensus_block_receipt.consensus_block_hash = H256::random();
+            unknown_consensus_block_receipt.set_consensus_block_hash(H256::random());
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &unknown_consensus_block_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &unknown_consensus_block_receipt.as_execution_receipt_ref()
+                ),
                 Error::BuiltOnUnknownConsensusBlock
             );
 
             // Receipt with unknown parent receipt
             let mut unknown_parent_receipt = next_receipt.clone();
-            unknown_parent_receipt.parent_domain_block_receipt_hash = H256::random();
+            unknown_parent_receipt.set_parent_receipt_hash(H256::random());
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &unknown_parent_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &unknown_parent_receipt.as_execution_receipt_ref()
+                ),
                 Error::UnknownParentBlockReceipt
             );
 
@@ -1111,22 +1164,28 @@ mod tests {
             let mut invalid_execution_trace_receipt = next_receipt;
 
             // Receipt with only one element in execution trace vector
-            invalid_execution_trace_receipt.execution_trace = vec![
+            invalid_execution_trace_receipt.set_execution_traces(vec![
                 invalid_execution_trace_receipt
-                    .execution_trace
+                    .execution_traces()
                     .first()
                     .cloned()
                     .expect("First element should be there; qed"),
-            ];
+            ]);
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &invalid_execution_trace_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &invalid_execution_trace_receipt.as_execution_receipt_ref()
+                ),
                 Error::InvalidExecutionTrace
             );
 
             // Receipt with zero element in execution trace vector
-            invalid_execution_trace_receipt.execution_trace = vec![];
+            invalid_execution_trace_receipt.set_execution_traces(vec![]);
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &invalid_execution_trace_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &invalid_execution_trace_receipt.as_execution_receipt_ref()
+                ),
                 Error::InvalidExecutionTrace
             );
         });
@@ -1148,19 +1207,18 @@ mod tests {
 
             // Construct a future receipt
             let mut future_receipt = next_receipt.clone();
-            future_receipt.domain_block_number = head_receipt_number + 1;
-            future_receipt.consensus_block_number = head_receipt_number as u32 + 1;
+            future_receipt.set_domain_block_number(head_receipt_number + 1);
+            future_receipt.set_consensus_block_number(head_receipt_number as u32 + 1);
 
             ExecutionInbox::<Test>::insert(
                 (
                     domain_id,
-                    future_receipt.domain_block_number,
-                    future_receipt.consensus_block_number,
+                    future_receipt.domain_block_number(),
+                    future_receipt.consensus_block_number(),
                 ),
                 future_receipt
-                    .inboxed_bundles
-                    .clone()
-                    .into_iter()
+                    .inboxed_bundles()
+                    .iter()
                     .map(|b| BundleDigest {
                         header_hash: H256::random(),
                         extrinsics_root: b.extrinsics_root,
@@ -1169,11 +1227,17 @@ mod tests {
                     .collect::<Vec<_>>(),
             );
             assert_eq!(
-                execution_receipt_type::<Test>(domain_id, &future_receipt),
+                execution_receipt_type::<Test>(
+                    domain_id,
+                    &future_receipt.as_execution_receipt_ref()
+                ),
                 ReceiptType::Rejected(RejectedReceiptType::InFuture)
             );
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &future_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &future_receipt.as_execution_receipt_ref()
+                ),
                 Error::InFutureReceipt
             );
         });
@@ -1187,11 +1251,13 @@ mod tests {
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, 2);
             let mut next_receipt = extend_block_tree_from_zero(domain_id, operator_id1, 3);
-            next_receipt.execution_trace.push(H256::random());
-            next_receipt.final_state_root = *next_receipt.execution_trace.last().unwrap();
+            let mut traces = next_receipt.execution_traces().to_vec();
+            traces.push(H256::random());
+            next_receipt.set_execution_traces(traces);
+            next_receipt.set_final_state_root(*next_receipt.execution_traces().last().unwrap());
 
-            let mut trace = Vec::with_capacity(next_receipt.execution_trace.len());
-            for root in &next_receipt.execution_trace {
+            let mut trace = Vec::with_capacity(next_receipt.execution_traces().len());
+            for root in next_receipt.execution_traces() {
                 trace.push(
                     root.encode()
                         .try_into()
@@ -1203,38 +1269,59 @@ mod tests {
                 .root()
                 .expect("Compute merkle root of trace should success")
                 .into();
-            next_receipt.execution_trace_root = new_execution_trace_root;
-            assert_ok!(verify_execution_receipt::<Test>(domain_id, &next_receipt));
+            next_receipt.set_execution_trace_root(new_execution_trace_root);
+            assert_ok!(verify_execution_receipt::<Test>(
+                domain_id,
+                &next_receipt.as_execution_receipt_ref()
+            ));
 
             // Receipt with wrong value of `execution_trace_root`
             let mut invalid_receipt = next_receipt.clone();
-            invalid_receipt.execution_trace_root = H256::random();
+            invalid_receipt.set_execution_trace_root(H256::random());
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &invalid_receipt.as_execution_receipt_ref()
+                ),
                 Error::InvalidTraceRoot
             );
 
             // Receipt with wrong value of trace
             let mut invalid_receipt = next_receipt.clone();
-            invalid_receipt.execution_trace[0] = H256::random();
+            let mut traces = invalid_receipt.execution_traces().to_vec();
+            traces[0] = H256::random();
+            invalid_receipt.set_execution_traces(traces);
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &invalid_receipt.as_execution_receipt_ref()
+                ),
                 Error::InvalidTraceRoot
             );
 
             // Receipt with additional trace
             let mut invalid_receipt = next_receipt.clone();
-            invalid_receipt.execution_trace.push(H256::random());
+            let mut traces = invalid_receipt.execution_traces().to_vec();
+            traces.push(H256::random());
+            invalid_receipt.set_execution_traces(traces);
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &invalid_receipt.as_execution_receipt_ref()
+                ),
                 Error::InvalidTraceRoot
             );
 
             // Receipt with missing trace
             let mut invalid_receipt = next_receipt;
-            invalid_receipt.execution_trace.pop();
+            let mut traces = invalid_receipt.execution_traces().to_vec();
+            traces.pop();
+            invalid_receipt.set_execution_traces(traces);
             assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
+                verify_execution_receipt::<Test>(
+                    domain_id,
+                    &invalid_receipt.as_execution_receipt_ref()
+                ),
                 Error::InvalidTraceRoot
             );
         });
@@ -1304,7 +1391,7 @@ mod tests {
                 next_receipt.hash::<DomainHashingFor<Test>>(),
                 vec![],
             );
-            target_receipt.inboxed_bundles = bundles;
+            target_receipt.set_inboxed_bundles(bundles);
 
             // Extend the block tree by `challenge_period + 1` blocks
             let next_receipt = extend_block_tree(

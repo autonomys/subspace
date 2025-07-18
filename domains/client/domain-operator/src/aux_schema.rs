@@ -4,7 +4,7 @@ use crate::ExecutionReceiptFor;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, HeaderBackend, Result as ClientResult};
-use sp_domains::InvalidBundleType;
+use sp_domains::bundle::InvalidBundleType;
 use sp_runtime::Saturating;
 use sp_runtime::traits::{
     Block as BlockT, CheckedMul, CheckedSub, NumberFor, One, SaturatedConversion, Zero,
@@ -75,8 +75,8 @@ where
     Block: BlockT,
     CBlock: BlockT,
 {
-    let block_number = execution_receipt.consensus_block_number;
-    let consensus_hash = execution_receipt.consensus_block_hash;
+    let block_number = execution_receipt.consensus_block_number();
+    let consensus_hash = *execution_receipt.consensus_block_hash();
 
     let block_number_key = (EXECUTION_RECEIPT_BLOCK_NUMBER, block_number).encode();
     let mut hashes_at_block_number =
@@ -332,17 +332,23 @@ mod tests {
     use domain_test_service::evm_domain_test_runtime::Block;
     use parking_lot::Mutex;
     use sp_core::hash::H256;
+    use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
     use std::collections::HashMap;
     use subspace_runtime_primitives::{Balance, Hash};
     use subspace_test_runtime::Block as CBlock;
 
     const PRUNING_DEPTH: BlockNumber = 1000;
 
-    type ExecutionReceipt =
-        sp_domains::ExecutionReceipt<BlockNumber, Hash, BlockNumber, Hash, Balance>;
+    type ExecutionReceipt = sp_domains::execution_receipt::ExecutionReceipt<
+        BlockNumber,
+        Hash,
+        BlockNumber,
+        Hash,
+        Balance,
+    >;
 
     fn create_execution_receipt(consensus_block_number: BlockNumber) -> ExecutionReceipt {
-        ExecutionReceipt {
+        ExecutionReceipt::V0(ExecutionReceiptV0 {
             domain_block_number: consensus_block_number,
             domain_block_hash: H256::random(),
             domain_block_extrinsic_root: H256::random(),
@@ -355,7 +361,7 @@ mod tests {
             execution_trace_root: Default::default(),
             block_fees: Default::default(),
             transfers: Default::default(),
-        }
+        })
     }
 
     #[derive(Default)]
@@ -431,7 +437,7 @@ mod tests {
         let block_hash_list = (1..=receipt_count)
             .map(|block_number| {
                 let receipt = create_execution_receipt(block_number);
-                let consensus_block_hash = receipt.consensus_block_hash;
+                let consensus_block_hash = *receipt.consensus_block_hash();
                 let oldest_unconfirmed_receipt_number = block_number
                     .checked_sub(block_tree_pruning_depth)
                     .map(|n| n + 1);
@@ -449,15 +455,15 @@ mod tests {
 
         // Create `receipt_count + 1` receipt, `oldest_unconfirmed_receipt_number` is `PRUNING_DEPTH + 1`.
         let receipt = create_execution_receipt(receipt_count + 1);
-        assert!(receipt_at(receipt.consensus_block_hash).is_none());
+        assert!(receipt_at(*receipt.consensus_block_hash()).is_none());
         write_receipt_at(Some(PRUNING_DEPTH + 1), &receipt);
-        assert!(receipt_at(receipt.consensus_block_hash).is_some());
+        assert!(receipt_at(*receipt.consensus_block_hash()).is_some());
         assert_eq!(receipt_start(), Some(1));
 
         // Create `receipt_count + 2` receipt, `oldest_unconfirmed_receipt_number` is `PRUNING_DEPTH + 2`.
         let receipt = create_execution_receipt(receipt_count + 2);
         write_receipt_at(Some(PRUNING_DEPTH + 2), &receipt);
-        assert!(receipt_at(receipt.consensus_block_hash).is_some());
+        assert!(receipt_at(*receipt.consensus_block_hash()).is_some());
 
         // ER of block #1 should be pruned, its block number mapping should be pruned as well.
         assert!(receipt_at(block_hash_list[0]).is_none());
@@ -467,7 +473,7 @@ mod tests {
 
         // Create `receipt_count + 3` receipt, `oldest_unconfirmed_receipt_number` is `PRUNING_DEPTH + 3`.
         let receipt = create_execution_receipt(receipt_count + 3);
-        let consensus_block_hash1 = receipt.consensus_block_hash;
+        let consensus_block_hash1 = *receipt.consensus_block_hash();
         write_receipt_at(Some(PRUNING_DEPTH + 3), &receipt);
         assert!(receipt_at(consensus_block_hash1).is_some());
         // ER of block #2 should be pruned.
@@ -478,7 +484,7 @@ mod tests {
 
         // Multiple hashes attached to the block #`receipt_count + 3`
         let receipt = create_execution_receipt(receipt_count + 3);
-        let consensus_block_hash2 = receipt.consensus_block_hash;
+        let consensus_block_hash2 = *receipt.consensus_block_hash();
         write_receipt_at(Some(PRUNING_DEPTH + 3), &receipt);
         assert!(receipt_at(consensus_block_hash2).is_some());
         assert_eq!(
@@ -535,7 +541,7 @@ mod tests {
         let block_hash_list = (1..=receipt_count)
             .map(|block_number| {
                 let receipt = create_execution_receipt(block_number);
-                let consensus_block_hash = receipt.consensus_block_hash;
+                let consensus_block_hash = *receipt.consensus_block_hash();
                 write_receipt_at(Some(One::one()), &receipt);
                 assert_eq!(receipt_at(consensus_block_hash), Some(receipt));
                 assert_eq!(hashes_at(block_number), Some(vec![consensus_block_hash]));
@@ -550,7 +556,7 @@ mod tests {
 
         // Create `receipt_count + 1` receipt, `oldest_unconfirmed_receipt_number` is `Some(1)`.
         let receipt = create_execution_receipt(receipt_count + 1);
-        assert!(receipt_at(receipt.consensus_block_hash).is_none());
+        assert!(receipt_at(*receipt.consensus_block_hash()).is_none());
         write_receipt_at(Some(One::one()), &receipt);
 
         // Create `receipt_count + 2` receipt, `oldest_unconfirmed_receipt_number` is `Some(1)`.

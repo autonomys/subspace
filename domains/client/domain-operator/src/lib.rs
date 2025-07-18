@@ -101,7 +101,9 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_domain_digests::AsPredigest;
-use sp_domains::{Bundle, DomainId, ExecutionReceiptFor as ExecutionReceipt, OperatorId};
+use sp_domains::bundle::Bundle;
+use sp_domains::execution_receipt::ExecutionReceiptFor as ExecutionReceipt;
+use sp_domains::{DomainId, OperatorId};
 use sp_keystore::KeystorePtr;
 use sp_runtime::DigestItem;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
@@ -256,14 +258,12 @@ where
         })?;
 
     // Get receipt by consensus block hash
-    crate::aux_schema::load_execution_receipt::<_, Block, CBlock>(
-        domain_client,
-        consensus_block_hash,
-    )?
-    .ok_or_else(|| {
-        sp_blockchain::Error::Backend(format!(
-            "Receipt for consensus block {consensus_block_hash} and domain block \
+    load_execution_receipt::<_, Block, CBlock>(domain_client, consensus_block_hash)?.ok_or_else(
+        || {
+            sp_blockchain::Error::Backend(format!(
+                "Receipt for consensus block {consensus_block_hash} and domain block \
                 {domain_hash}#{domain_number} not found"
-        ))
-    })
+            ))
+        },
+    )
 }

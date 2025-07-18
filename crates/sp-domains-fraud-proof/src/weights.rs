@@ -1,5 +1,5 @@
 use crate::fraud_proof::{FraudProof, FraudProofVariant};
-use sp_domains::InvalidBundleType;
+use sp_domains::bundle::InvalidBundleType;
 use sp_runtime::traits::Header as HeaderT;
 use sp_weights::Weight;
 
@@ -17,7 +17,7 @@ pub fn fraud_proof_verification_weights<Number, Hash, DomainHeader: HeaderT, Mmr
         }
         FraudProofVariant::InvalidBlockFees(_) => invalid_block_fees_fraud_proof_verification(),
         FraudProofVariant::InvalidTransfers(_) => invalid_transfers_fraud_proof_verification(),
-        FraudProofVariant::InvalidBundles(p) => match p.invalid_bundle_type {
+        FraudProofVariant::InvalidBundles(p) => match p.invalid_bundle_type() {
             InvalidBundleType::UndecodableTx(_) => {
                 invalid_bundle_undecodable_tx_fraud_proof_verification()
             }

@@ -70,11 +70,15 @@ use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionRanges, Vote};
 use sp_core::crypto::KeyTypeId;
 use sp_core::{H256, OpaqueMetadata};
+use sp_domains::bundle::{BundleVersion, OpaqueBundle, OpaqueBundles};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
+use sp_domains::execution_receipt::{
+    ExecutionReceiptFor, ExecutionReceiptVersion, SealedSingletonReceipt,
+};
 use sp_domains::{
-    DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates, DomainId, DomainInstanceData,
-    ExecutionReceiptFor, INITIAL_DOMAIN_TX_RANGE, OpaqueBundle, OpaqueBundles, OperatorId,
-    OperatorPublicKey, PermissionedActionAllowedBy,
+    BundleAndExecutionReceiptVersion, DOMAIN_STORAGE_FEE_MULTIPLIER, DomainAllowlistUpdates,
+    DomainId, DomainInstanceData, INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey,
+    PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -274,8 +278,8 @@ impl frame_system::Config for Runtime {
     type SystemWeightInfo = frame_system::weights::SubstrateWeight<Runtime>;
     /// This is used as an identifier of the chain.
     type SS58Prefix = SS58Prefix;
-    /// The set code logic, just the default since we're not a parachain.
-    type OnSetCode = ();
+    /// The set code logic.
+    type OnSetCode = subspace_runtime_primitives::SetCode<Runtime, Domains>;
     type SingleBlockMigrations = ();
     type MultiBlockMigrator = ();
     type PreInherents = ();
@@ -817,6 +821,10 @@ parameter_types! {
     pub const MinInitialDomainAccountBalance: Balance = AI3;
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 32;
+    pub const CurrentBundleAndExecutionReceiptVersion: BundleAndExecutionReceiptVersion = BundleAndExecutionReceiptVersion {
+        bundle_version: BundleVersion::V0,
+        execution_receipt_version: ExecutionReceiptVersion::V0,
+    };
 }
 
 // `BlockSlotCount` must at least keep the slot for the current and the parent block, it also need to
@@ -907,6 +915,7 @@ impl pallet_domains::Config for Runtime {
     type FraudProofStorageKeyProvider = StorageKeyProvider;
     type OnChainRewards = OnChainRewards;
     type WithdrawalLimit = WithdrawalLimit;
+    type CurrentBundleAndExecutionReceiptVersion = CurrentBundleAndExecutionReceiptVersion;
 }
 
 parameter_types! {
@@ -1517,7 +1526,7 @@ impl_runtime_apis! {
         }
 
         fn submit_receipt_unsigned(
-            singleton_receipt: sp_domains::SealedSingletonReceipt<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
+            singleton_receipt: SealedSingletonReceipt<NumberFor<Block>, BlockHashFor<Block>, DomainHeader, Balance>,
         ) {
             Domains::submit_receipt_unsigned(singleton_receipt)
         }
@@ -1570,7 +1579,8 @@ impl_runtime_apis! {
         }
 
         fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
-            Domains::genesis_state_root(domain_id)
+            Domains::domain_genesis_block_execution_receipt(domain_id)
+                .map(|er| *er.final_state_root())
         }
 
         fn head_receipt_number(domain_id: DomainId) -> DomainNumber {
@@ -1614,7 +1624,7 @@ impl_runtime_apis! {
 
         fn is_bad_er_pending_to_prune(domain_id: DomainId, receipt_hash: DomainHash) -> bool {
             Domains::execution_receipt(receipt_hash).map(
-                |er| Domains::is_bad_er_pending_to_prune(domain_id, er.domain_block_number)
+                |er| Domains::is_bad_er_pending_to_prune(domain_id, *er.domain_block_number())
             )
             .unwrap_or(false)
         }
@@ -1637,6 +1647,14 @@ impl_runtime_apis! {
 
         fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>{
             Domains::latest_confirmed_domain_execution_receipt(domain_id)
+        }
+
+        fn current_bundle_and_execution_receipt_version() -> BundleAndExecutionReceiptVersion {
+            Domains::current_bundle_and_execution_receipt_version()
+        }
+
+        fn genesis_execution_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
+            Domains::domain_genesis_block_execution_receipt(domain_id)
         }
 
         fn nominator_position(

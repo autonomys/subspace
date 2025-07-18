@@ -1132,7 +1132,9 @@ mod benchmark_fixtures_gen {
     use frame_support::assert_ok;
     use frame_support::pallet_prelude::{Decode, Encode};
     use sp_core::H256;
-    use sp_domains::{BlockFees, ChannelId, ExecutionReceipt, Transfers};
+    use sp_domains::ChannelId;
+    use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
+    use sp_domains::execution_receipt::{BlockFees, ExecutionReceipt, Transfers};
     use sp_messenger::messages::{CrossDomainMessage, MessageWeightTag, Nonce, Proof};
     use sp_mmr_primitives::EncodableOpaqueLeaf;
     use sp_subspace_mmr::ConsensusChainMmrLeafProof;
@@ -1403,7 +1405,7 @@ mod benchmark_fixtures_gen {
             nonce,
         );
 
-        let er = ExecutionReceipt {
+        let er = ExecutionReceipt::V0(ExecutionReceiptV0 {
             domain_block_number: Default::default(),
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),
@@ -1416,7 +1418,7 @@ mod benchmark_fixtures_gen {
             execution_trace_root: Default::default(),
             block_fees: BlockFees::default(),
             transfers: Transfers::default(),
-        };
+        });
 
         let mut consensus_chain_ext = consensus_chain::new_test_ext();
         consensus_chain_ext.execute_with(|| {
@@ -1499,7 +1501,7 @@ mod benchmark_fixtures_gen {
             nonce,
         );
 
-        let er = ExecutionReceipt {
+        let er = ExecutionReceipt::V0(ExecutionReceiptV0 {
             domain_block_number: Default::default(),
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),
@@ -1512,7 +1514,7 @@ mod benchmark_fixtures_gen {
             execution_trace_root: Default::default(),
             block_fees: BlockFees::default(),
             transfers: Transfers::default(),
-        };
+        });
 
         let mut consensus_chain_ext = consensus_chain::new_test_ext();
         consensus_chain_ext.execute_with(|| {
@@ -1640,7 +1642,7 @@ mod benchmark_fixtures_gen {
                 nonce,
             );
 
-        let er = ExecutionReceipt {
+        let er = ExecutionReceipt::V0(ExecutionReceiptV0 {
             domain_block_number: Default::default(),
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),
@@ -1653,7 +1655,7 @@ mod benchmark_fixtures_gen {
             execution_trace_root: Default::default(),
             block_fees: BlockFees::default(),
             transfers: Transfers::default(),
-        };
+        });
 
         chain_consensus_test_ext.execute_with(|| {
             crate::mock::pallet_domains::LatestConfirmedDomainExecutionReceipt::<

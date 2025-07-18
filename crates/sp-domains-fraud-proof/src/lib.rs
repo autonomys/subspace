@@ -21,11 +21,11 @@ pub mod weights;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::fraud_proof::FraudProof;
 use crate::storage_proof::FraudProofStorageKeyRequest;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use domain_runtime_primitives::EthereumAccountId;
+use fraud_proof::FraudProof;
 #[cfg(feature = "std")]
 pub use host_functions::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofHostFunctionsImpl,
@@ -150,6 +150,7 @@ impl PassBy for StatelessDomainRuntimeCall {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for fraud proof.
+    #[api_version(2)]
     pub trait FraudProofApi<DomainHeader: HeaderT> {
         /// Submit the fraud proof via an unsigned extrinsic.
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash, DomainHeader, H256>);

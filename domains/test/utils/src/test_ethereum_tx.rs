@@ -1,5 +1,5 @@
 //! Code in this file is copied from the frontier repository. Full path is:
-//! https://github.com/subspace/frontier/blob/1c667eb43c3d087ac66dc9ed0aa44128373f5b0a/frame/ethereum/src/mock.rs
+//! <https://github.com/subspace/frontier/blob/1c667eb43c3d087ac66dc9ed0aa44128373f5b0a/frame/ethereum/src/mock.rs>
 //! If monorepo points to new commit, this file need to be in sync.
 //!
 //! Minor changes were made to comments, derives, visibility, and the address_build() seed size.
