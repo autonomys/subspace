@@ -1640,7 +1640,7 @@ impl_runtime_apis! {
         }
 
         fn current_bundle_and_execution_receipt_version() -> BundleAndExecutionReceiptVersion {
-            CurrentBundleAndExecutionReceiptVersion::get()
+            Domains::current_bundle_and_execution_receipt_version()
         }
 
         fn genesis_execution_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {

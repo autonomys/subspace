@@ -384,56 +384,6 @@ where
     Ok(())
 }
 
-/// Verifies invalid transfers fraud proof.
-pub fn verify_invalid_transfers_fraud_proof<
-    CBlock,
-    DomainNumber,
-    DomainHash,
-    Balance,
-    DomainHashing,
->(
-    bad_receipt: ExecutionReceipt<
-        NumberFor<CBlock>,
-        CBlock::Hash,
-        DomainNumber,
-        DomainHash,
-        Balance,
-    >,
-    storage_proof: &StorageProof,
-    domain_runtime_code: Vec<u8>,
-) -> Result<(), VerificationError<DomainHash>>
-where
-    CBlock: BlockT,
-    Balance: PartialEq + Decode + Encode + Zero + Default,
-    DomainNumber: Encode + Zero,
-    DomainHash: Clone + Encode + Default + Copy,
-    DomainHashing: Hasher<Out = DomainHash>,
-{
-    let storage_key = fraud_proof_runtime_interface::domain_storage_key(
-        domain_runtime_code,
-        DomainStorageKeyRequest::Transfers,
-    )
-    .ok_or(VerificationError::FailedToGetDomainStorageKey)?;
-
-    let transfers = StorageProofVerifier::<DomainHashing>::get_decoded_value::<Transfers<Balance>>(
-        bad_receipt.final_state_root(),
-        storage_proof.clone(),
-        StorageKey(storage_key),
-    )
-    .map_err(|err| {
-        VerificationError::StorageProof(storage_proof::VerificationError::TransfersStorageProof(
-            err,
-        ))
-    })?;
-
-    // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
-    if bad_receipt.transfers() == &transfers {
-        return Err(VerificationError::InvalidProof);
-    }
-
-    Ok(())
-}
-
 /// Verifies invalid block fees fraud proof.
 pub fn verify_invalid_block_fees_fraud_proof<
     CBlock,
@@ -479,6 +429,56 @@ where
 
     // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
     if bad_receipt.block_fees() == &block_fees {
+        return Err(VerificationError::InvalidProof);
+    }
+
+    Ok(())
+}
+
+/// Verifies invalid transfers fraud proof.
+pub fn verify_invalid_transfers_fraud_proof<
+    CBlock,
+    DomainNumber,
+    DomainHash,
+    Balance,
+    DomainHashing,
+>(
+    bad_receipt: ExecutionReceipt<
+        NumberFor<CBlock>,
+        CBlock::Hash,
+        DomainNumber,
+        DomainHash,
+        Balance,
+    >,
+    storage_proof: &StorageProof,
+    domain_runtime_code: Vec<u8>,
+) -> Result<(), VerificationError<DomainHash>>
+where
+    CBlock: BlockT,
+    Balance: PartialEq + Decode + Encode + Zero + Default,
+    DomainNumber: Encode + Zero,
+    DomainHash: Clone + Encode + Default + Copy,
+    DomainHashing: Hasher<Out = DomainHash>,
+{
+    let storage_key = fraud_proof_runtime_interface::domain_storage_key(
+        domain_runtime_code,
+        DomainStorageKeyRequest::Transfers,
+    )
+    .ok_or(VerificationError::FailedToGetDomainStorageKey)?;
+
+    let transfers = StorageProofVerifier::<DomainHashing>::get_decoded_value::<Transfers<Balance>>(
+        bad_receipt.final_state_root(),
+        storage_proof.clone(),
+        StorageKey(storage_key),
+    )
+    .map_err(|err| {
+        VerificationError::StorageProof(storage_proof::VerificationError::TransfersStorageProof(
+            err,
+        ))
+    })?;
+
+    // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
+    if bad_receipt.transfers() == &transfers {
         return Err(VerificationError::InvalidProof);
     }
 

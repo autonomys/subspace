@@ -11,14 +11,14 @@ use sp_runtime::traits::Dispatchable;
 pub struct Pallet<T: Config>(Messenger<T>);
 
 // From domain relay message channel open data.
-const FDRMCO: &[u8; 1196] =
+const FDRMCO: &[u8; 1197] =
     include_bytes!("./fixtures/from_domains_relay_message_channel_open.data");
 
 // From domain relay message data.
-const FDRM: &[u8; 1264] = include_bytes!("./fixtures/from_domains_relay_message.data");
+const FDRM: &[u8; 1265] = include_bytes!("./fixtures/from_domains_relay_message.data");
 
 // From domain relay message response.
-const FDRMR: &[u8; 1188] = include_bytes!("./fixtures/from_domains_relay_message_response.data");
+const FDRMR: &[u8; 1189] = include_bytes!("./fixtures/from_domains_relay_message_response.data");
 
 #[allow(clippy::multiple_bound_locations)]
 #[benchmarks(where

@@ -315,18 +315,6 @@ impl<DomainHash> From<storage_proof::VerificationError> for VerificationError<Do
     }
 }
 
-/// Represents a valid bundle index and all the extrinsics within that bundle.
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct ValidBundleDigest {
-    /// Index of this bundle in the original list of bundles in the consensus block.
-    pub bundle_index: u32,
-    /// `Vec<(tx_signer, tx_hash)>` of all extrinsics
-    pub bundle_digest: Vec<(
-        Option<domain_runtime_primitives::opaque::AccountId>,
-        ExtrinsicDigest,
-    )>,
-}
-
 /// Fraud proof for domains.
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct FraudProof<Number, Hash, DomainHeader: HeaderT, MmrHash> {
@@ -465,6 +453,18 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT> fmt::Debug
             }
         }
     }
+}
+
+/// Represents a valid bundle index and all the extrinsics within that bundle.
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct ValidBundleDigest {
+    /// Index of this bundle in the original list of bundles in the consensus block.
+    pub bundle_index: u32,
+    /// `Vec<(tx_signer, tx_hash)>` of all extrinsics
+    pub bundle_digest: Vec<(
+        Option<domain_runtime_primitives::opaque::AccountId>,
+        ExtrinsicDigest,
+    )>,
 }
 
 // Domain runtime code at a specific block

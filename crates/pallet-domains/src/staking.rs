@@ -2348,7 +2348,6 @@ pub(crate) mod tests {
     pub(crate) const PROP_REWARD_RANGE: RangeInclusive<u128> = 0..=MAX_PROP_BALANCE;
 
     /// The range of operator free balances we test for in property tests.
-    #[expect(dead_code)]
     pub(crate) const PROP_FREE_BALANCE_RANGE: RangeInclusive<u128> =
         MIN_PROP_NOMINATOR_STAKE..=MAX_PROP_BALANCE;
 

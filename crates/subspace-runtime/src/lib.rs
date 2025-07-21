@@ -432,9 +432,10 @@ impl MaybeBalancesCall<Runtime> for RuntimeCall {
 impl BalanceTransferChecks for Runtime {
     fn is_balance_transferable() -> bool {
         let enabled = RuntimeConfigs::enable_balance_transfers();
-        // for benchmarks, always return enabled.
+        // For benchmarks, always return disabled, so the extension runs its checks.
+        // But in the extension, we always return success, so benchmarks run transfers as well.
         if cfg!(feature = "runtime-benchmarks") {
-            true
+            false
         } else {
             enabled
         }
@@ -1595,7 +1596,7 @@ impl_runtime_apis! {
         }
 
         fn current_bundle_and_execution_receipt_version() -> BundleAndExecutionReceiptVersion {
-            CurrentBundleAndExecutionReceiptVersion::get()
+            Domains::current_bundle_and_execution_receipt_version()
         }
 
         fn genesis_execution_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {

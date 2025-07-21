@@ -27,13 +27,13 @@ use std::sync::Arc;
 use subspace_runtime_primitives::{Balance, BlockHashFor, ExtrinsicFor, HeaderFor};
 use tracing::info;
 
-/// Type alias for bundle header V0.
+/// Type alias for bundle header.
 pub enum BundleHeaderFor<Block: BlockT, CBlock: BlockT> {
-    V1(BundleHeaderV0<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>),
+    V0(BundleHeaderV0<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>),
 }
 
-/// Type alias for bundle header V1.
-pub type BundleHeaderV1For<Block, CBlock> =
+/// Type alias for bundle header V0.
+pub type BundleHeaderV0For<Block, CBlock> =
     BundleHeaderV0<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
 type OpaqueBundle<Block, CBlock> = sp_domains::bundle::OpaqueBundle<
@@ -360,7 +360,7 @@ where
         extrinsics: Vec<ExtrinsicFor<Block>>,
     ) -> sp_blockchain::Result<DomainProposal<Block, CBlock>> {
         let bundle = match bundle_header {
-            BundleHeaderFor::V1(header) => {
+            BundleHeaderFor::V0(header) => {
                 let to_sign = header.hash();
                 let signature = self.sign(operator_signing_key, to_sign.as_ref())?;
                 BundleV0 {
