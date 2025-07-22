@@ -1,10 +1,16 @@
 runners:
   self-hosted-ubuntu-22.04-x86-64:
-    cpu: [16, 32, 64]
-    ram: [64, 128, 192]
+    # A range from lowest to highest
+    cpu: [16, 64]
+    ram: [64, 192]
     disk: default
-    family: ["c7a", "c7i", "m7a", "m7i"]
+    # Don't allow ARM machines, because they are slower (and switching architectures randomly could be confusing)
+    # Also don't use older processor generations, because they are slower
+    family: ["c7a", "c7i", "m7a", "m7i", "r7a", "r7i"]
+    # Don't allow runner interruption
     spot: false
+    # Prefer instances with high capacity (low interruption risk), then low cost
+    #spot: capacity-optimized
     image: ubuntu22-full-x64
 # Give runner SSH access to the GitHub SSH keys of these accounts
 admins:
