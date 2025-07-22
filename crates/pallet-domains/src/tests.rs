@@ -1440,11 +1440,12 @@ fn test_version_store_and_get() {
     let upgrades = get_mock_upgrades();
     ext.execute_with(|| {
         for (upgraded_at, current_version, _) in upgrades.clone() {
-            Domains::set_previous_bundle_and_execution_receipt_version(
-                upgraded_at,
-                MockPreviousBundleAndExecutionReceiptVersions::<Test>::set,
-                MockPreviousBundleAndExecutionReceiptVersions::<Test>::get,
-                current_version,
+            MockPreviousBundleAndExecutionReceiptVersions::<Test>::set(
+                Domains::calculate_previous_bundle_and_execution_receipt_versions(
+                    upgraded_at,
+                    MockPreviousBundleAndExecutionReceiptVersions::<Test>::get(),
+                    current_version,
+                ),
             );
         }
 
@@ -1476,7 +1477,7 @@ fn test_version_store_and_get() {
         for (number, expected_version) in get_mock_version_queries() {
             let got_version = Domains::bundle_and_execution_receipt_version_for_consensus_number(
                 number,
-                MockPreviousBundleAndExecutionReceiptVersions::<Test>::get,
+                MockPreviousBundleAndExecutionReceiptVersions::<Test>::get(),
                 current_version,
             )
             .unwrap();
