@@ -100,7 +100,7 @@ pub fn devnet_config(
     )
     .with_name("Subspace Devnet EVM Domain")
     .with_id("subspace_devnet_evm_domain")
-    .with_chain_type(ChainType::Custom("Testnet".to_string()))
+    .with_chain_type(ChainType::Custom("Devnet".to_string()))
     .with_genesis_config(
         serde_json::to_value(runtime_genesis_config)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
@@ -191,7 +191,7 @@ fn get_operator_params(
         SpecId::DevNet => GenesisOperatorParams {
             operator_allow_list: OperatorAllowList::Anyone,
             operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
-                "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
+                "701184b4a34873117e075768adfbff7ce798f89108203e211d7d4b5ad8164e20"
             )),
         },
         // mainnet should never be called for genesis domain instantiation since

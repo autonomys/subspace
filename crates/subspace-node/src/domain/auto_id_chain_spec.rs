@@ -93,7 +93,7 @@ pub fn devnet_config(
     )
     .with_name("Subspace Devnet AutoId Domain")
     .with_id("subspace_devnet_auto_id_domain")
-    .with_chain_type(ChainType::Custom("Testnet".to_string()))
+    .with_chain_type(ChainType::Custom("Devnet".to_string()))
     .with_genesis_config(
         serde_json::to_value(runtime_genesis_config)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
@@ -172,6 +172,9 @@ fn get_operator_params(
     }
 }
 
+/// Returns AutoId genesis domain.
+/// Note: Currently unused since dev or devnet uses EVM domain and not AutoId
+#[allow(dead_code)]
 pub fn get_genesis_domain(
     spec_id: SpecId,
     sudo_account: subspace_runtime_primitives::AccountId,

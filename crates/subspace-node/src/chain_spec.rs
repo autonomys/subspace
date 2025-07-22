@@ -1,7 +1,6 @@
 //! Subspace chain configurations.
 
 use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
-use crate::domain::auto_id_chain_spec;
 use crate::domain::cli::{GenesisDomain, SpecId};
 use crate::domain::evm_chain_spec::{self};
 use sc_chain_spec::GenericChainSpec;
@@ -269,9 +268,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
         properties
     })
     .with_genesis_config({
-        let sudo_account =
-            AccountId::from_ss58check("5H6ai5VAt6Sw2qZGkEVGvLvNqTCPv6fZRN2KN2kp5qMQKBUD")
-                .expect("Wrong root account address");
+        let sudo_account = get_account_id_from_seed("Alice");
 
         let balances = vec![(sudo_account.clone(), Balance::MAX / 2)];
         serde_json::to_value(subspace_genesis_config(
@@ -297,9 +294,10 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                 permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
                     sudo_account.clone(),
                 ]),
-                genesis_domains: vec![auto_id_chain_spec::get_genesis_domain(
+                genesis_domains: vec![evm_chain_spec::get_genesis_domain(
                     SpecId::DevNet,
                     sudo_account.clone(),
+                    EvmType::Public,
                 )?],
             },
             CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
