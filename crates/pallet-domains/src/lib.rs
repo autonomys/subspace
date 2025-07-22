@@ -2948,28 +2948,28 @@ impl<T: Config> Pallet<T> {
     where
         BEV: Copy + Clone,
     {
-        // short circuit if the er version can be latest
+        // short circuit if the er version should be the latest version
         match previous_versions.last_key_value() {
-            // if there are no versions, means latest version.
+            // if there are no versions, all ERs should be the latest version.
             None => {
                 return Some(current_version);
             }
             Some((number, version)) => {
-                // if er derived number of greater than last stored version,
-                // then er version should be of latest version.
+                // if er derived number is greater than the last stored version,
+                // then er version should be the latest version.
                 if er_derived_number > *number {
                     return Some(current_version);
                 }
 
-                // if the er derived number is equal to last stored version,
-                // then er version should be previous er version
+                // if the er derived number is equal to the last stored version,
+                // then the er version should be the previous er version
                 if er_derived_number == *number {
                     return Some(*version);
                 }
             }
         }
 
-        // if we are here, it means er version can be either last version or version before last
+        // if we are here, it means the er version should be the version before a previous upgrade.
         // loop through to find the correct version.
         for (upgraded_number, version) in previous_versions.into_iter() {
             if er_derived_number <= upgraded_number {
@@ -2977,7 +2977,7 @@ impl<T: Config> Pallet<T> {
             }
         }
 
-        // should not reach here since above loop always find the oldest version
+        // should not reach here since above loop always finds the oldest version
         None
     }
 
@@ -3256,6 +3256,8 @@ impl<T: Config> Pallet<T> {
         EvmDomainContractCreationAllowedByCalls::<T>::get(domain_id).maybe_call
     }
 
+    /// Updates `previous_versions` with the latest bundle and execution receipt version, and
+    /// returns the updated map.
     #[must_use = "set PreviousBundleAndExecutionReceiptVersions to the value returned by this function"]
     pub(crate) fn calculate_previous_bundle_and_execution_receipt_versions<BEV>(
         block_number: BlockNumberFor<T>,
@@ -3265,13 +3267,13 @@ impl<T: Config> Pallet<T> {
     where
         BEV: PartialEq,
     {
-        // first storage, so nothing much to do
+        // First version change, just add it to the map (no replacements possible)
         if previous_versions.is_empty() {
             previous_versions.insert(block_number, current_version);
         } else {
             // if there is a previous version stored, and
-            // previous version matches the current one,
-            // then we can replace the same version with latest upgraded block number.
+            // the last previous version matches the current version,
+            // then we can mark that version with the latest upgraded block number.
             let (prev_number, prev_version) = previous_versions
                 .pop_last()
                 .expect("at least one version is available due to check above");
@@ -3280,7 +3282,8 @@ impl<T: Config> Pallet<T> {
             if prev_version == current_version {
                 previous_versions.insert(block_number, current_version);
             } else {
-                // versions did not match, so add both
+                // versions did not match, so keep the last previous version at its original block
+                // number, and add the current version at the latest block number.
                 previous_versions.insert(prev_number, prev_version);
                 previous_versions.insert(block_number, current_version);
             }
