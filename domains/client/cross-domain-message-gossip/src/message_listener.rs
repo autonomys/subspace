@@ -366,7 +366,7 @@ where
                 .execution_receipt(consensus_best_hash, receipt_hash)?
                 .ok_or(Error::MissingDomainReceipt)?;
 
-            Ok((receipt.domain_block_hash, receipt.final_state_root))
+            Ok((*receipt.domain_block_hash(), *receipt.final_state_root()))
         };
 
     // check if the domain block number is valid

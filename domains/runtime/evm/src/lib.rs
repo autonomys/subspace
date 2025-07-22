@@ -57,9 +57,8 @@ use parity_scale_codec::{Decode, DecodeLimit, Encode, MaxEncodedLen};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, H160, H256, OpaqueMetadata, U256};
-use sp_domains::{
-    ChannelId, DomainAllowlistUpdates, DomainId, PermissionedActionAllowedBy, Transfers,
-};
+use sp_domains::execution_receipt::Transfers;
+use sp_domains::{ChannelId, DomainAllowlistUpdates, DomainId, PermissionedActionAllowedBy};
 use sp_evm_tracker::{
     BlockGasLimit, GasLimitPovSizeRatio, GasPerByte, StorageFeeRatio, WeightPerGas,
 };
@@ -1493,7 +1492,7 @@ impl_runtime_apis! {
             total_weight
         }
 
-        fn block_fees() -> sp_domains::BlockFees<Balance> {
+        fn block_fees() -> sp_domains::execution_receipt::BlockFees<Balance> {
             BlockFees::collected_block_fees()
         }
 

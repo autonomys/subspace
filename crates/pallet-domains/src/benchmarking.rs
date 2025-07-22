@@ -34,12 +34,15 @@ use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::sr25519::vrf::{VrfPreOutput, VrfProof, VrfSignature};
+use sp_domains::bundle::bundle_v0::{BundleHeaderV0, BundleV0, SealedBundleHeaderV0};
+use sp_domains::bundle::dummy_opaque_bundle;
+use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
+use sp_domains::execution_receipt::{ExecutionReceipt, SealedSingletonReceipt, SingletonReceipt};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    BundleHeader, DomainId, EMPTY_EXTRINSIC_ROOT, ExecutionReceipt, OpaqueBundle,
-    OperatorAllowList, OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature,
-    PermissionedActionAllowedBy, ProofOfElection, RuntimeType, SealedBundleHeader,
-    SealedSingletonReceipt, SingletonReceipt, dummy_opaque_bundle,
+    DomainId, EMPTY_EXTRINSIC_ROOT, OperatorAllowList, OperatorId, OperatorPublicKey,
+    OperatorRewardSource, OperatorSignature, PermissionedActionAllowedBy, ProofOfElection,
+    RuntimeType,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{CheckedAdd, One, Zero};
@@ -908,7 +911,7 @@ mod benchmarks {
                 .and_then(BlockTreeNodes::<T>::get)
                 .expect("genesis receipt must exist")
                 .execution_receipt;
-            er.domain_block_number = One::one();
+            er.set_domain_block_number(One::one());
             er
         };
         let sealed_singleton_receipt = SealedSingletonReceipt {
@@ -951,16 +954,16 @@ mod benchmarks {
             Domains::<T>::runtime_id(domain_id).unwrap(),
             |upgrade_record| {
                 upgrade_record.insert(
-                    receipt.consensus_block_number,
+                    *receipt.consensus_block_number(),
                     DomainRuntimeUpgradeEntry {
-                        at_hash: receipt.consensus_block_hash,
+                        at_hash: *receipt.consensus_block_hash(),
                         reference_count: 1,
                     },
                 )
             },
         );
 
-        let header = BundleHeader {
+        let header = BundleHeaderV0 {
             proof_of_election,
             receipt,
             estimated_bundle_weight: Default::default(),
@@ -970,16 +973,16 @@ mod benchmarks {
         // Hardcoded signature of the constant bundle header, signed by `Alice`
         // NOTE: we can't sign in no-std because it requires randomness
         let signature = OperatorSignature::unchecked_from([
-            212, 250, 46, 171, 239, 93, 105, 105, 36, 78, 32, 229, 166, 253, 168, 142, 109, 123,
-            213, 159, 210, 106, 192, 62, 54, 82, 64, 64, 19, 27, 136, 33, 19, 241, 58, 116, 252,
-            133, 147, 129, 32, 182, 201, 18, 47, 80, 117, 124, 136, 186, 168, 15, 193, 71, 236,
-            201, 155, 176, 188, 254, 114, 173, 96, 134,
+            168, 241, 162, 68, 240, 78, 91, 203, 48, 180, 221, 149, 217, 114, 128, 177, 118, 2, 75,
+            236, 205, 167, 228, 158, 185, 158, 178, 53, 176, 10, 180, 68, 12, 210, 254, 134, 66,
+            28, 59, 10, 224, 223, 86, 64, 118, 46, 182, 94, 180, 65, 107, 165, 24, 144, 191, 179,
+            3, 139, 113, 145, 97, 8, 202, 129,
         ]);
 
-        let opaque_bundle = OpaqueBundle {
-            sealed_header: SealedBundleHeader::new(header, signature),
+        let opaque_bundle = OpaqueBundle::V0(BundleV0 {
+            sealed_header: SealedBundleHeaderV0::new(header, signature),
             extrinsics: Vec::new(),
-        };
+        });
 
         #[block]
         {
@@ -1013,9 +1016,9 @@ mod benchmarks {
             Domains::<T>::runtime_id(domain_id).unwrap(),
             |upgrade_record| {
                 upgrade_record.insert(
-                    receipt.consensus_block_number,
+                    *receipt.consensus_block_number(),
                     DomainRuntimeUpgradeEntry {
-                        at_hash: receipt.consensus_block_hash,
+                        at_hash: *receipt.consensus_block_hash(),
                         reference_count: 1,
                     },
                 )
@@ -1030,10 +1033,10 @@ mod benchmarks {
         // Hardcoded signature of the constant singleton receipt, signed by `Alice`
         // NOTE: we can't sign in no-std because it requires randomness
         let signature = OperatorSignature::unchecked_from([
-            10, 180, 139, 94, 205, 225, 15, 19, 141, 141, 133, 23, 32, 66, 177, 60, 131, 89, 91,
-            110, 161, 218, 6, 228, 214, 118, 106, 108, 217, 36, 108, 40, 85, 150, 165, 177, 40, 9,
-            98, 82, 203, 27, 32, 98, 122, 123, 78, 221, 229, 50, 118, 153, 61, 111, 95, 51, 130,
-            195, 94, 212, 225, 14, 184, 141,
+            38, 220, 204, 241, 14, 156, 109, 213, 182, 160, 81, 141, 157, 126, 93, 234, 52, 139,
+            134, 209, 140, 46, 103, 215, 178, 137, 31, 197, 162, 218, 32, 70, 104, 33, 9, 244, 247,
+            11, 198, 66, 1, 161, 238, 7, 74, 221, 175, 147, 49, 251, 80, 53, 228, 83, 73, 193, 30,
+            87, 232, 153, 91, 148, 183, 140,
         ]);
 
         let sealed_singleton_receipt = SealedSingletonReceipt {
@@ -1248,10 +1251,10 @@ mod benchmarks {
             ),
             proof: VrfProof(
                 schnorrkel::vrf::VRFProof::from_bytes(&[
-                    28, 138, 214, 43, 79, 128, 75, 106, 98, 232, 188, 139, 101, 206, 174, 146, 138,
-                    210, 101, 72, 184, 227, 115, 72, 37, 246, 182, 247, 102, 34, 11, 3, 22, 106,
-                    116, 209, 34, 220, 216, 20, 93, 101, 182, 130, 15, 71, 73, 27, 51, 126, 100,
-                    43, 80, 253, 101, 132, 222, 234, 196, 167, 19, 126, 16, 8,
+                    2, 40, 173, 221, 185, 220, 137, 53, 85, 221, 114, 100, 163, 168, 37, 10, 26,
+                    142, 16, 4, 197, 99, 223, 60, 41, 106, 125, 228, 83, 68, 50, 2, 134, 139, 255,
+                    175, 113, 127, 207, 119, 52, 90, 9, 5, 15, 133, 1, 46, 121, 164, 13, 141, 134,
+                    196, 169, 56, 121, 207, 174, 163, 13, 46, 210, 4,
                 ])
                 .unwrap(),
             ),
@@ -1294,7 +1297,7 @@ mod benchmarks {
                 .unwrap()
                 .into()
         };
-        ExecutionReceipt {
+        ExecutionReceipt::V0(ExecutionReceiptV0 {
             domain_block_number: One::one(),
             domain_block_hash: H256::repeat_byte(7).into(),
             domain_block_extrinsic_root: EMPTY_EXTRINSIC_ROOT.into(),
@@ -1307,7 +1310,7 @@ mod benchmarks {
             execution_trace_root,
             block_fees: Default::default(),
             transfers: Default::default(),
-        }
+        })
     }
 
     fn run_to_block<T: Config + pallet_subspace::Config>(

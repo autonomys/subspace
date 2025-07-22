@@ -9,11 +9,14 @@ use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
+use sp_domains::bundle::bundle_v0::{BundleHeaderV0, BundleV0, SealedBundleHeaderV0};
 use sp_domains::core_api::DomainCoreApi;
+use sp_domains::execution_receipt::{
+    ExecutionReceiptVersion, SealedSingletonReceipt, SingletonReceipt,
+};
 use sp_domains::{
-    Bundle, BundleHeader, BundleProducerElectionApi, DomainId, DomainsApi, OperatorId,
-    OperatorPublicKey, OperatorSignature, ProofOfElection, SealedBundleHeader,
-    SealedSingletonReceipt, SingletonReceipt,
+    BundleAndExecutionReceiptVersion, BundleProducerElectionApi, DomainId, DomainsApi, OperatorId,
+    OperatorPublicKey, OperatorSignature, ProofOfElection,
 };
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
@@ -25,13 +28,22 @@ use subspace_runtime_primitives::{Balance, BlockHashFor, ExtrinsicFor, HeaderFor
 use tracing::info;
 
 /// Type alias for bundle header.
-pub type BundleHeaderFor<Block, CBlock> =
-    BundleHeader<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
+pub enum BundleHeaderFor<Block: BlockT, CBlock: BlockT> {
+    V0(BundleHeaderV0<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>),
+}
 
-type OpaqueBundle<Block, CBlock> =
-    sp_domains::OpaqueBundle<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
+/// Type alias for bundle header V0.
+pub type BundleHeaderV0For<Block, CBlock> =
+    BundleHeaderV0<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
-type SealedSingletonReceiptFor<Block, CBlock> =
+type OpaqueBundle<Block, CBlock> = sp_domains::bundle::OpaqueBundle<
+    NumberFor<CBlock>,
+    BlockHashFor<CBlock>,
+    HeaderFor<Block>,
+    Balance,
+>;
+
+pub type SealedSingletonReceiptFor<Block, CBlock> =
     SealedSingletonReceipt<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>;
 
 pub enum DomainProposal<Block: BlockT, CBlock: BlockT> {
@@ -241,6 +253,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn prepare_receipt(
         &self,
         slot_info: &OperatorSlotInfo,
@@ -248,6 +261,7 @@ where
         head_receipt_number: NumberFor<Block>,
         proof_of_election: &ProofOfElection,
         operator_signing_key: &OperatorPublicKey,
+        execution_receipt_version: ExecutionReceiptVersion,
     ) -> sp_blockchain::Result<Option<DomainProposal<Block, CBlock>>> {
         // When the receipt gap is greater than one, the operator needs to produce a receipt
         // instead of a bundle
@@ -259,9 +273,11 @@ where
                 slot_info.slot
             );
 
-            let receipt = self
-                .domain_bundle_proposer
-                .load_next_receipt(domain_best_number_onchain, head_receipt_number)?;
+            let receipt = self.domain_bundle_proposer.load_next_receipt(
+                domain_best_number_onchain,
+                head_receipt_number,
+                execution_receipt_version,
+            )?;
 
             let singleton_receipt = SingletonReceipt {
                 proof_of_election: proof_of_election.clone(),
@@ -273,11 +289,10 @@ where
                 self.sign(operator_signing_key, to_sign.as_ref())?
             };
 
-            let sealed_singleton_receipt: SealedSingletonReceiptFor<Block, CBlock> =
-                SealedSingletonReceipt {
-                    singleton_receipt,
-                    signature,
-                };
+            let sealed_singleton_receipt = SealedSingletonReceipt {
+                singleton_receipt,
+                signature,
+            };
 
             Ok(Some(DomainProposal::Receipt(sealed_singleton_receipt)))
         } else {
@@ -292,6 +307,7 @@ where
         domain_best_number_onchain: NumberFor<Block>,
         head_receipt_number: NumberFor<Block>,
         proof_of_election: ProofOfElection,
+        bundle_and_execution_receipt_version: BundleAndExecutionReceiptVersion,
     ) -> sp_blockchain::Result<(BundleHeaderFor<Block, CBlock>, Vec<ExtrinsicFor<Block>>)> {
         let tx_range = self
             .consensus_client
@@ -303,13 +319,21 @@ where
                 )))
             })?;
 
-        let receipt = self
-            .domain_bundle_proposer
-            .load_next_receipt(domain_best_number_onchain, head_receipt_number)?;
+        let receipt = self.domain_bundle_proposer.load_next_receipt(
+            domain_best_number_onchain,
+            head_receipt_number,
+            bundle_and_execution_receipt_version.execution_receipt_version,
+        )?;
 
         let (bundle_header, extrinsics) = self
             .domain_bundle_proposer
-            .propose_bundle_at(proof_of_election.clone(), tx_range, operator_id, receipt)
+            .propose_bundle_at(
+                proof_of_election.clone(),
+                tx_range,
+                operator_id,
+                receipt,
+                bundle_and_execution_receipt_version.bundle_version,
+            )
             .await?;
 
         Ok((bundle_header, extrinsics))
@@ -335,14 +359,16 @@ where
         operator_signing_key: &OperatorPublicKey,
         extrinsics: Vec<ExtrinsicFor<Block>>,
     ) -> sp_blockchain::Result<DomainProposal<Block, CBlock>> {
-        let signature = {
-            let to_sign = bundle_header.hash();
-            self.sign(operator_signing_key, to_sign.as_ref())?
-        };
-
-        let bundle = Bundle {
-            sealed_header: SealedBundleHeader::new(bundle_header, signature),
-            extrinsics,
+        let bundle = match bundle_header {
+            BundleHeaderFor::V0(header) => {
+                let to_sign = header.hash();
+                let signature = self.sign(operator_signing_key, to_sign.as_ref())?;
+                BundleV0 {
+                    sealed_header: SealedBundleHeaderV0::new(header, signature),
+                    extrinsics,
+                }
+                .into_opaque_bundle()
+            }
         };
 
         // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
@@ -350,7 +376,19 @@ where
         // tracing::error!(error = ?e, "Failed to send transaction bundle");
         // }
 
-        Ok(DomainProposal::Bundle(bundle.into_opaque_bundle()))
+        Ok(DomainProposal::Bundle(bundle))
+    }
+
+    /// Returns current bundle and execution receipt version and the DomainApi version.
+    fn current_bundle_and_execution_receipt_version(
+        &self,
+        consensus_chain_best_hash: CBlock::Hash,
+    ) -> sp_blockchain::Result<BundleAndExecutionReceiptVersion> {
+        let runtime_api = self.consensus_client.runtime_api();
+
+        runtime_api
+            .current_bundle_and_execution_receipt_version(consensus_chain_best_hash)
+            .map_err(sp_blockchain::Error::RuntimeApiError)
     }
 }
 
@@ -379,6 +417,9 @@ where
         let domain_best_number = self.client.info().best_number;
         let consensus_chain_best_hash = self.consensus_client.info().best_hash;
 
+        let bundle_and_execution_receipt_version =
+            self.current_bundle_and_execution_receipt_version(consensus_chain_best_hash)?;
+
         let Some((
             domain_best_number_onchain,
             head_receipt_number,
@@ -400,6 +441,7 @@ where
             head_receipt_number,
             &proof_of_election,
             &operator_signing_key,
+            bundle_and_execution_receipt_version.execution_receipt_version,
         )? {
             return Ok(Some(receipt));
         }
@@ -411,6 +453,7 @@ where
                 domain_best_number_onchain,
                 head_receipt_number,
                 proof_of_election,
+                bundle_and_execution_receipt_version,
             )
             .await?;
 
@@ -546,6 +589,10 @@ where
         let domain_best_number = self.inner.client.info().best_number;
         let consensus_chain_best_hash = self.inner.consensus_client.info().best_hash;
 
+        let bundle_and_execution_receipt_version = self
+            .inner
+            .current_bundle_and_execution_receipt_version(consensus_chain_best_hash)?;
+
         // Test-only behaviour: skip slot if configured to do so
         let skip_out_of_order_slot = self.skip_out_of_order_slot
             && self
@@ -583,6 +630,7 @@ where
             head_receipt_number,
             &proof_of_election,
             &operator_signing_key,
+            bundle_and_execution_receipt_version.execution_receipt_version,
         )? {
             return Ok(Some(receipt));
         }
@@ -595,6 +643,7 @@ where
                 domain_best_number_onchain,
                 head_receipt_number,
                 proof_of_election,
+                bundle_and_execution_receipt_version,
             )
             .await?;
 

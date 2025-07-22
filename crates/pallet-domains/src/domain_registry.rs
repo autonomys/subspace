@@ -317,6 +317,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
             state_root,
             sp_domains::EMPTY_EXTRINSIC_ROOT.into(),
             genesis_block_hash,
+            T::CurrentBundleAndExecutionReceiptVersion::get().execution_receipt_version,
         )
     };
     let genesis_receipt_hash = genesis_receipt.hash::<DomainHashingFor<T>>();

@@ -356,7 +356,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
                                 // unblock consensus snap sync
                                 snap_sync_orchestrator.unblock_consensus_snap_sync(
-                                    last_confirmed_er.consensus_block_number,
+                                    *last_confirmed_er.consensus_block_number(),
                                 );
 
                                 Some((snap_sync_orchestrator, last_confirmed_er))

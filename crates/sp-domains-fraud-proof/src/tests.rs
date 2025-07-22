@@ -690,7 +690,7 @@ async fn test_evm_domain_block_fee() {
 
     // Produce a bundle that contains the just sent extrinsic
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(bundle.extrinsics.len(), 3);
+    assert_eq!(bundle.extrinsics().len(), 3);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
@@ -699,13 +699,13 @@ async fn test_evm_domain_block_fee() {
     // Produce one more bundle, this bundle should contain the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.into_receipt();
-    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
 
     // All the transaction fee is collected as operator reward
     let domain_block_fees = alice
         .client
         .runtime_api()
-        .block_fees(receipt.domain_block_hash)
+        .block_fees(*receipt.domain_block_hash())
         .unwrap();
     let free_balance_changes = pre_free_balance
         - account_infos
@@ -718,7 +718,7 @@ async fn test_evm_domain_block_fee() {
         domain_block_fees.domain_execution_fee + domain_block_fees.consensus_storage_fee
     );
     assert!(!domain_block_fees.consensus_storage_fee.is_zero());
-    assert_eq!(domain_block_fees, receipt.block_fees);
+    assert_eq!(domain_block_fees, receipt.block_fees().clone());
 }
 
 // #[tokio::test(flavor = "multi_thread")]

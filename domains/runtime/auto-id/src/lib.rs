@@ -41,7 +41,8 @@ use parity_scale_codec::{Decode, DecodeLimit, Encode, MaxEncodedLen};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata};
-use sp_domains::{ChannelId, DomainAllowlistUpdates, DomainId, Transfers};
+use sp_domains::execution_receipt::Transfers;
+use sp_domains::{ChannelId, DomainAllowlistUpdates, DomainId};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockMessagesQuery, BlockMessagesWithStorageKey, ChainId, ChannelStateWithNonce,
@@ -1031,7 +1032,7 @@ impl_runtime_apis! {
             total_weight
         }
 
-        fn block_fees() -> sp_domains::BlockFees<Balance> {
+        fn block_fees() -> sp_domains::execution_receipt::BlockFees<Balance> {
             BlockFees::collected_block_fees()
         }
 

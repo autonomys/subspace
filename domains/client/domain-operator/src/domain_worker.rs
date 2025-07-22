@@ -31,8 +31,9 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::H256;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
+use sp_domains::bundle::OpaqueBundle;
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::{BundleProducerElectionApi, DomainsApi, OpaqueBundle, OperatorId};
+use sp_domains::{BundleProducerElectionApi, DomainsApi, OperatorId};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
@@ -155,7 +156,6 @@ pub(super) async fn start_worker<
                             let best_hash = consensus_client.info().best_hash;
                             let mut runtime_api = consensus_client.runtime_api();
                             runtime_api.register_extension(consensus_offchain_tx_pool_factory.offchain_transaction_pool(best_hash));
-
                             match domain_proposal {
                                 DomainProposal::Bundle(opaque_bundle) => {
                                     if let Err(err) = runtime_api.submit_bundle_unsigned(best_hash, opaque_bundle) {

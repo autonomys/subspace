@@ -3,12 +3,13 @@ use parity_scale_codec::{Decode, Encode};
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_domain_digests::AsPredigest;
+use sp_domains::bundle::{BundleValidity, InvalidBundleType};
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{
-    BlockFees, BundleValidity, ChainId, HeaderHashingFor, InvalidBundleType, OperatorPublicKey,
-    OperatorSignature,
+use sp_domains::execution_receipt::{
+    BlockFees, ExecutionReceipt, ExecutionReceiptMutRef, ExecutionReceiptRef,
 };
+use sp_domains::merkle_tree::MerkleTree;
+use sp_domains::{ChainId, HeaderHashingFor, OperatorPublicKey, OperatorSignature};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::{DigestItem, OpaqueExtrinsic, RuntimeAppPublic};
@@ -16,6 +17,7 @@ use sp_weights::Weight;
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::sync::Arc;
+use subspace_runtime_primitives::{Balance, BlockHashFor};
 
 const MAX_BAD_RECEIPT_CACHE: u32 = 128;
 
@@ -60,6 +62,15 @@ where
         BTreeMap<NumberFor<Block>, HashMap<CBlock::Hash, ExecutionReceiptFor<Block, CBlock>>>,
 }
 
+pub type ExecutionReceiptMutRefFor<'a, Block, CBlock> = ExecutionReceiptMutRef<
+    'a,
+    NumberFor<CBlock>,
+    BlockHashFor<CBlock>,
+    NumberFor<Block>,
+    BlockHashFor<Block>,
+    Balance,
+>;
+
 impl<Block, CBlock, Client> MaliciousBundleTamper<Block, CBlock, Client>
 where
     Block: BlockT,
@@ -82,9 +93,10 @@ where
         operator_signing_key: &OperatorPublicKey,
     ) -> Result<(), Box<dyn Error>> {
         if Random::probability(0.2) {
-            self.make_receipt_fraudulent(&mut opaque_bundle.sealed_header.header.receipt)?;
+            self.make_receipt_fraudulent(opaque_bundle.execution_receipt_as_mut())?;
             self.reseal_bundle(opaque_bundle, operator_signing_key)?;
         }
+
         if Random::probability(0.1) {
             self.make_bundle_invalid(opaque_bundle)?;
             self.reseal_bundle(opaque_bundle, operator_signing_key)?;
@@ -94,15 +106,17 @@ where
 
     fn make_receipt_fraudulent(
         &mut self,
-        receipt: &mut ExecutionReceiptFor<Block, CBlock>,
+        receipt: ExecutionReceiptMutRefFor<Block, CBlock>,
     ) -> Result<(), Box<dyn Error>> {
+        let ExecutionReceiptMutRef::V0(receipt) = receipt;
         // We can't make the genesis receipt into a bad ER
         if receipt.domain_block_number.is_zero() {
             return Ok(());
         }
         // If a bad receipt is already made for the same domain block, reuse it
         if let Some(bad_receipts_at) = self.bad_receipts_cache.get(&receipt.domain_block_number)
-            && let Some(previous_bad_receipt) = bad_receipts_at.get(&receipt.consensus_block_hash)
+            && let Some(ExecutionReceipt::V0(previous_bad_receipt)) =
+                bad_receipts_at.get(&receipt.consensus_block_hash)
         {
             *receipt = previous_bad_receipt.clone();
             return Ok(());
@@ -245,7 +259,10 @@ where
         self.bad_receipts_cache
             .entry(receipt.domain_block_number)
             .or_default()
-            .insert(receipt.consensus_block_hash, receipt.clone());
+            .insert(
+                receipt.consensus_block_hash,
+                ExecutionReceipt::V0(receipt.clone()),
+            );
         if self.bad_receipts_cache.len() as u32 > MAX_BAD_RECEIPT_CACHE {
             self.bad_receipts_cache.pop_first();
         }
@@ -269,18 +286,19 @@ where
             // 1 => InvalidBundleType::OutOfRangeTx(0),
             _ => unreachable!(),
         };
+        let ExecutionReceiptRef::V0(receipt) = opaque_bundle.receipt();
         tracing::info!(
             ?invalid_bundle_type,
             "Generate invalid bundle, receipt domain block {}#{}",
-            opaque_bundle.receipt().domain_block_number,
-            opaque_bundle.receipt().domain_block_hash,
+            receipt.domain_block_number,
+            receipt.domain_block_hash,
         );
 
         let invalid_tx = match invalid_bundle_type {
             InvalidBundleType::UndecodableTx(_) => OpaqueExtrinsic::default(),
             // The duplicated extrinsic will be illegal due to `Nonce` if it is a signed extrinsic
-            InvalidBundleType::IllegalTx(_) if !opaque_bundle.extrinsics.is_empty() => {
-                opaque_bundle.extrinsics[0].clone()
+            InvalidBundleType::IllegalTx(_) if !opaque_bundle.extrinsics().is_empty() => {
+                opaque_bundle.extrinsics()[0].clone()
             }
             InvalidBundleType::InherentExtrinsic(_) => {
                 let inherent_tx = self
@@ -294,14 +312,15 @@ where
                     .expect("We have just encoded a valid extrinsic; qed")
             }
             InvalidBundleType::InvalidBundleWeight => {
-                opaque_bundle.sealed_header.header.estimated_bundle_weight =
-                    Weight::from_all(123456);
+                opaque_bundle.set_estimated_bundle_weight(Weight::from_all(123456));
                 return Ok(());
             }
             _ => return Ok(()),
         };
 
-        opaque_bundle.extrinsics.push(invalid_tx);
+        let mut exts = opaque_bundle.extrinsics().to_vec();
+        exts.push(invalid_tx);
+        opaque_bundle.set_extrinsics(exts);
 
         Ok(())
     }
@@ -311,18 +330,19 @@ where
         opaque_bundle: &mut OpaqueBundleFor<Block, CBlock>,
         operator_signing_key: &OperatorPublicKey,
     ) -> Result<(), Box<dyn Error>> {
-        opaque_bundle.sealed_header.header.bundle_extrinsics_root =
+        opaque_bundle.set_bundle_extrinsics_root(
             HeaderHashingFor::<Block::Header>::ordered_trie_root(
                 opaque_bundle
-                    .extrinsics
+                    .extrinsics()
                     .iter()
                     .map(|xt| xt.encode())
                     .collect(),
                 sp_core::storage::StateVersion::V1,
-            );
+            ),
+        );
 
-        let pre_hash = opaque_bundle.sealed_header.pre_hash();
-        opaque_bundle.sealed_header.signature = {
+        let pre_hash = opaque_bundle.sealed_header().pre_hash();
+        opaque_bundle.set_signature({
             let s = self
                 .keystore
                 .sr25519_sign(
@@ -333,7 +353,7 @@ where
                 .expect("The malicious operator's key pair must exist");
             OperatorSignature::decode(&mut s.as_ref())
                 .expect("Decode as OperatorSignature must succeed")
-        };
+        });
         Ok(())
     }
 }

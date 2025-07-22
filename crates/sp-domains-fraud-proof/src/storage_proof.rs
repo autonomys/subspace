@@ -3,14 +3,15 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_core::storage::StorageKey;
+use sp_domains::bundle::OpaqueBundle;
 use sp_domains::proof_provider_and_verifier::{
     StorageProofVerifier, VerificationError as StorageProofVerificationError,
 };
 use sp_domains::{
     DomainAllowlistUpdates, DomainId, DomainSudoCall, EvmDomainContractCreationAllowedByCall,
-    OpaqueBundle, RuntimeId, RuntimeObject,
+    RuntimeId, RuntimeObject,
 };
-use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor, Zero};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::marker::PhantomData;
@@ -242,6 +243,7 @@ impl<Block: BlockT> BasicStorageProof<Block> for DomainRuntimeCodeProof {
     }
 }
 
+/// Bundle with proof data for fraud proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct OpaqueBundleWithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
     pub bundle: OpaqueBundle<Number, Hash, DomainHeader, Balance>,
@@ -251,10 +253,10 @@ pub struct OpaqueBundleWithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
 
 impl<Number, Hash, DomainHeader, Balance> OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>
 where
-    Number: Encode,
-    Hash: Encode,
+    Number: Encode + Zero,
+    Hash: Encode + Default,
     DomainHeader: HeaderT,
-    Balance: Encode,
+    Balance: Encode + Zero + Default,
 {
     #[cfg(feature = "std")]
     #[allow(clippy::let_and_return)]

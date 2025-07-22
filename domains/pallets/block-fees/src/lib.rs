@@ -34,7 +34,8 @@ mod pallet {
     use parity_scale_codec::{Codec, MaxEncodedLen};
     use scale_info::TypeInfo;
     use sp_block_fees::{INHERENT_IDENTIFIER, InherentError, InherentType};
-    use sp_domains::{BlockFees, ChainId};
+    use sp_domains::ChainId;
+    use sp_domains::execution_receipt::BlockFees;
     use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Saturating};
     use sp_runtime::{FixedPointOperand, SaturatedConversion};
     use sp_std::fmt::Debug;

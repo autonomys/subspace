@@ -24,12 +24,11 @@ use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode};
+use sp_domains::bundle::{InboxedBundle, InvalidBundleType, OpaqueBundle, OpaqueBundles};
 use sp_domains::core_api::DomainCoreApi;
+use sp_domains::execution_receipt::ExecutionReceipt;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
-use sp_domains::{
-    DomainId, DomainsApi, ExecutionReceipt, ExtrinsicDigest, HeaderHashingFor, InboxedBundle,
-    InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity,
-};
+use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, ReceiptValidity};
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, NumberFor};
@@ -178,10 +177,13 @@ where
             consensus_block_hash,
         )?;
 
-        let bundles = self
-            .consensus_client
-            .runtime_api()
-            .extract_successful_bundles(consensus_block_hash, self.domain_id, primary_extrinsics)?;
+        let runtime_api = self.consensus_client.runtime_api();
+
+        let bundles = runtime_api.extract_successful_bundles(
+            consensus_block_hash,
+            self.domain_id,
+            primary_extrinsics,
+        )?;
 
         if bundles.is_empty()
             && !is_runtime_upgraded::<_, _, Block>(
@@ -266,7 +268,7 @@ where
             // NOTE: The receipt's `domain_block_number` is verified by the consensus runtime while
             // the `domain_block_hash` is not (which is take care of by the fraud proof) so we can't
             // check the parent domain block hash here.
-            if bundle.receipt().domain_block_number != parent_domain_number {
+            if *bundle.receipt_domain_block_number() != parent_domain_number {
                 return Err(sp_blockchain::Error::RuntimeApiError(
                     ApiError::Application(
                         format!(
@@ -287,7 +289,7 @@ where
                 )?
             } else {
                 self.check_bundle_validity(
-                    &bundle,
+                    bundle,
                     &tx_range,
                     (parent_domain_hash, parent_domain_number),
                     at_consensus_hash,
@@ -371,15 +373,14 @@ where
 
     fn check_bundle_validity(
         &self,
-        bundle: &OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
+        bundle: OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
         tx_range: &U256,
         (parent_domain_hash, parent_domain_number): (Block::Hash, NumberFor<Block>),
         at_consensus_hash: CBlock::Hash,
     ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic>> {
-        let bundle_vrf_hash =
-            U256::from_be_bytes(*bundle.sealed_header.header.proof_of_election.vrf_hash());
+        let bundle_vrf_hash = U256::from_be_bytes(*bundle.proof_of_election().vrf_hash());
 
-        let mut extrinsics = Vec::with_capacity(bundle.extrinsics.len());
+        let mut extrinsics = Vec::with_capacity(bundle.body_length());
         let mut estimated_bundle_weight = Weight::default();
         let mut maybe_invalid_bundle_type = None;
 
@@ -389,7 +390,9 @@ where
         // Check the validity of each extrinsic
         //
         // NOTE: for each extrinsic the checking order must follow `InvalidBundleType::checking_order`
-        for (index, opaque_extrinsic) in bundle.extrinsics.iter().enumerate() {
+        let bundle_hash = bundle.hash();
+        let bundle_weight = bundle.estimated_weight();
+        for (index, opaque_extrinsic) in bundle.into_extrinsics().iter().enumerate() {
             let decode_result = stateless_runtime_api.decode_extrinsic(opaque_extrinsic.clone())?;
             let extrinsic = match decode_result {
                 Ok(extrinsic) => extrinsic,
@@ -398,7 +401,7 @@ where
                         ?opaque_extrinsic,
                         ?err,
                         "Undecodable extrinsic in bundle({})",
-                        bundle.hash()
+                        bundle_hash
                     );
                     maybe_invalid_bundle_type
                         .replace(InvalidBundleType::UndecodableTx(index as u32));
@@ -477,7 +480,7 @@ where
             return Ok(BundleValidity::Invalid(invalid_bundle_type));
         }
 
-        if estimated_bundle_weight != bundle.estimated_weight() {
+        if estimated_bundle_weight != bundle_weight {
             return Ok(BundleValidity::Invalid(
                 InvalidBundleType::InvalidBundleWeight,
             ));
@@ -493,9 +496,8 @@ where
         (parent_domain_hash, parent_domain_number): (Block::Hash, NumberFor<Block>),
         at_consensus_hash: CBlock::Hash,
     ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic>> {
-        let bundle_vrf_hash =
-            U256::from_be_bytes(*bundle.sealed_header.header.proof_of_election.vrf_hash());
-        let bundle_length = bundle.extrinsics.len();
+        let bundle_vrf_hash = U256::from_be_bytes(*bundle.proof_of_election().vrf_hash());
+        let bundle_length = bundle.body_length();
         let bundle_estimated_weight = bundle.estimated_weight();
         let mut maybe_invalid_bundle_type = None;
 
@@ -514,7 +516,8 @@ where
         //
         // NOTE: the checking order must follow `InvalidBundleType::checking_order`
 
-        let mut extrinsics = stateless_runtime_api.decode_extrinsics_prefix(bundle.extrinsics)?;
+        let mut extrinsics =
+            stateless_runtime_api.decode_extrinsics_prefix(bundle.into_extrinsics())?;
         if extrinsics.len() != bundle_length {
             // If the length changed meaning there is undecodable tx at index `extrinsics.len()`
             maybe_invalid_bundle_type

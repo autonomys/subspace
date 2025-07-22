@@ -64,9 +64,8 @@ use sp_core::H256;
 use sp_core::offchain::OffchainDbExt;
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_domains::{
-    BundleProducerElectionApi, ChainId, DomainId, DomainsApi, OpaqueBundle, OperatorId,
-};
+use sp_domains::bundle::OpaqueBundle;
+use sp_domains::{BundleProducerElectionApi, ChainId, DomainId, DomainsApi, OperatorId};
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
@@ -717,7 +716,7 @@ impl MockConsensusNode {
         loop {
             let slot = self.produce_slot();
             if let Some(bundle) = self.notify_new_slot_and_wait_for_bundle(slot).await
-                && bundle.sealed_header.header.proof_of_election.operator_id == operator_id
+                && bundle.sealed_header().proof_of_election().operator_id == operator_id
             {
                 return (slot, bundle);
             }
@@ -805,7 +804,7 @@ impl MockConsensusNode {
                 .expect("should be able to decode");
             if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) =
                 ext.function
-                && opaque_bundle.sealed_header.slot_number() == *new_slot.0
+                && opaque_bundle.sealed_header().slot_number() == *new_slot.0
             {
                 return Some(opaque_bundle);
             }

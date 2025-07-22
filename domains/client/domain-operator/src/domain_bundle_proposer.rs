@@ -1,4 +1,5 @@
 use crate::ExecutionReceiptFor;
+use crate::domain_bundle_producer::BundleHeaderFor;
 use domain_runtime_primitives::CheckExtrinsicsValidityError;
 use futures::{FutureExt, select};
 use parity_scale_codec::Encode;
@@ -7,11 +8,11 @@ use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
+use sp_domains::bundle::BundleVersion;
+use sp_domains::bundle::bundle_v0::BundleHeaderV0;
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::{
-    BundleHeader, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, OperatorId,
-    ProofOfElection,
-};
+use sp_domains::execution_receipt::ExecutionReceiptVersion;
+use sp_domains::{DomainId, DomainsApi, HeaderHashingFor, OperatorId, ProofOfElection};
 use sp_messenger::MessengerApi;
 use sp_runtime::Percent;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
@@ -22,7 +23,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::U256;
-use subspace_runtime_primitives::{Balance, BlockHashFor, ExtrinsicFor, HeaderFor};
+use subspace_runtime_primitives::ExtrinsicFor;
 
 /// If the bundle utilization is below `BUNDLE_UTILIZATION_THRESHOLD` we will attempt to push
 /// at most `MAX_SKIPPED_TRANSACTIONS` number of transactions before quitting for real.
@@ -85,10 +86,8 @@ impl<Block: BlockT, Client, CBlock: BlockT, CClient, TransactionPool> Clone
     }
 }
 
-pub(super) type ProposeBundleOutput<Block, CBlock> = (
-    BundleHeader<NumberFor<CBlock>, BlockHashFor<CBlock>, HeaderFor<Block>, Balance>,
-    Vec<ExtrinsicFor<Block>>,
-);
+pub(super) type ProposeBundleOutput<Block, CBlock> =
+    (BundleHeaderFor<Block, CBlock>, Vec<ExtrinsicFor<Block>>);
 
 impl<Block, Client, CBlock, CClient, TransactionPool>
     DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>
@@ -127,10 +126,12 @@ where
         tx_range: U256,
         operator_id: OperatorId,
         receipt: ExecutionReceiptFor<Block, CBlock>,
+        bundle_version: BundleVersion,
     ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>> {
         // NOTE: use the domain block that derive the ER to validate the extrinsic to be included
         // in the bundle, so the validity of the extrinsic is committed to the ER that submited together.
-        let (parent_number, parent_hash) = (receipt.domain_block_number, receipt.domain_block_hash);
+        let (parent_number, parent_hash) =
+            (*receipt.domain_block_number(), *receipt.domain_block_hash());
         let consensus_best_hash = self.consensus_client.info().best_hash;
 
         let mut t1 = self.transaction_pool.ready_at(parent_hash).fuse();
@@ -357,11 +358,13 @@ where
             sp_core::storage::StateVersion::V1,
         );
 
-        let header = BundleHeader {
-            proof_of_election,
-            receipt,
-            estimated_bundle_weight,
-            bundle_extrinsics_root: extrinsics_root,
+        let header = match bundle_version {
+            BundleVersion::V0 => BundleHeaderFor::V0(BundleHeaderV0 {
+                proof_of_election,
+                receipt,
+                estimated_bundle_weight,
+                bundle_extrinsics_root: extrinsics_root,
+            }),
         };
 
         Ok((header, extrinsics))
@@ -372,6 +375,7 @@ where
         &self,
         domain_best_number_onchain: NumberFor<Block>,
         head_receipt_number: NumberFor<Block>,
+        execution_receipt_version: ExecutionReceiptVersion,
     ) -> sp_blockchain::Result<ExecutionReceiptFor<Block, CBlock>> {
         tracing::trace!(
             ?domain_best_number_onchain,
@@ -389,10 +393,11 @@ where
                 ))
             })?;
 
-            return Ok(ExecutionReceipt::genesis(
+            return Ok(ExecutionReceiptFor::<Block, CBlock>::genesis(
                 *genesis_header.state_root(),
                 *genesis_header.extrinsics_root(),
                 genesis_hash,
+                execution_receipt_version,
             ));
         }
 

@@ -1340,8 +1340,8 @@ mod pallet {
                     T::StorageKeys::confirmed_domain_block_storage_key(domain_id)
                         .ok_or(UnknownTransaction::CannotLookup)?;
 
-                StorageProofVerifier::<T::Hashing>::get_decoded_value::<
-                    sp_domains::ExecutionReceipt<
+                *StorageProofVerifier::<T::Hashing>::get_decoded_value::<
+                    sp_domains::execution_receipt::ExecutionReceipt<
                         BlockNumberFor<T>,
                         T::Hash,
                         BlockNumberFor<T>,
@@ -1360,7 +1360,7 @@ mod pallet {
                     );
                     TransactionValidityError::Invalid(InvalidTransaction::BadProof)
                 })?
-                .final_state_root
+                .final_state_root()
             } else {
                 consensus_state_root
             };

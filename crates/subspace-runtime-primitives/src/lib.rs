@@ -13,6 +13,7 @@ use crate::time::{BLOCKS_IN_A_DAY, BLOCKS_IN_AN_MINUTE};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::marker::PhantomData;
+use frame_support::dispatch::DispatchResult;
 use frame_support::pallet_prelude::Weight;
 use frame_support::traits::tokens;
 use frame_support::weights::WeightToFee;
@@ -20,6 +21,7 @@ use frame_support::weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use frame_support::{Deserialize, Serialize};
 use frame_system::limits::BlockLength;
 use frame_system::offchain::CreateTransactionBase;
+use frame_system::pallet_prelude::BlockNumberFor;
 use pallet_transaction_payment::{
     Multiplier, NextFeeMultiplier, OnChargeTransaction, TargetedFeeAdjustment,
 };
@@ -313,6 +315,27 @@ pub enum HoldIdentifier {
 pub trait CreateUnsigned<LocalCall>: CreateTransactionBase<LocalCall> {
     /// Create an unsigned extrinsic.
     fn create_unsigned(call: Self::RuntimeCall) -> Self::Extrinsic;
+}
+
+/// Callback to do something before setting code.
+pub trait OnSetCode<Number> {
+    /// Do something before setting code at the block number.
+    fn set_code(block_number: Number) -> DispatchResult;
+}
+
+/// Implements [frame_system::SetCode]
+pub struct SetCode<Runtime, OSC>(PhantomData<(Runtime, OSC)>);
+impl<Runtime, OSC> frame_system::SetCode<Runtime> for SetCode<Runtime, OSC>
+where
+    Runtime: frame_system::Config,
+    OSC: OnSetCode<BlockNumberFor<Runtime>>,
+{
+    fn set_code(code: Vec<u8>) -> DispatchResult {
+        let current_block_number = frame_system::Pallet::<Runtime>::block_number();
+        OSC::set_code(current_block_number)?;
+        frame_system::Pallet::<Runtime>::update_code_in_storage(&code);
+        Ok(())
+    }
 }
 
 #[cfg(feature = "testing")]

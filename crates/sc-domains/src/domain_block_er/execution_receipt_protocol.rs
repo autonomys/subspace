@@ -23,7 +23,8 @@ use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::{NetworkBackend, PeerId};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, DomainsApi, ExecutionReceiptFor};
+use sp_domains::execution_receipt::ExecutionReceiptFor;
+use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{Block as BlockT, Header};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -191,11 +192,11 @@ where
     ) -> Result<ExecutionReceiptFor<Block::Header, CBlock, Balance>, HandleRequestError> {
         let best_consensus_hash = self.consensus_client.info().best_hash;
 
+        let runtime_api = self.consensus_client.runtime_api();
+
         // Get the last confirmed block receipt
-        let last_confirmed_block_receipt = self
-            .consensus_client
-            .runtime_api()
-            .last_confirmed_domain_block_receipt(best_consensus_hash, domain_id);
+        let last_confirmed_block_receipt =
+            runtime_api.last_confirmed_domain_block_receipt(best_consensus_hash, domain_id);
 
         let last_confirmed_block_receipt = match last_confirmed_block_receipt {
             Ok(Some(last_confirmed_block_receipt)) => last_confirmed_block_receipt,

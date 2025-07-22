@@ -2,6 +2,7 @@ use crate::block_tree::{BlockTreeNode, verify_execution_receipt};
 use crate::domain_registry::{DomainConfig, DomainConfigParams, DomainObject};
 use crate::runtime_registry::ScheduledRuntimeUpgrade;
 use crate::staking_epoch::do_finalize_domain_current_epoch;
+use crate::tests::pallet_mock_version_store::MockPreviousBundleAndExecutionReceiptVersions;
 use crate::{
     self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
     ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry,
@@ -19,19 +20,28 @@ use frame_support::weights::{IdentityFee, Weight};
 use frame_support::{PalletId, assert_err, assert_ok, derive_impl, parameter_types};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
+use hex_literal::hex;
 use pallet_subspace::NormalEraChange;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
+use sp_consensus_slots::Slot;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256};
+use sp_domains::bundle::bundle_v0::{BundleHeaderV0, BundleV0, SealedBundleHeaderV0};
+use sp_domains::bundle::{BundleVersion, InboxedBundle, OpaqueBundle};
+use sp_domains::bundle_producer_election::make_transcript;
+use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
+use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptVersion, SingletonReceipt};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, ChainId, DomainId, ExecutionReceipt, InboxedBundle, OpaqueBundle,
-    OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeId, RuntimeType,
-    SealedBundleHeader,
+    BundleAndExecutionReceiptVersion, ChainId, DomainId, EMPTY_EXTRINSIC_ROOT, OperatorAllowList,
+    OperatorId, OperatorPair, OperatorSignature, ProofOfElection, RuntimeId, RuntimeType,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_keystore::Keystore;
+use sp_keystore::testing::MemoryKeystore;
+use sp_runtime::app_crypto::AppCrypto;
 use sp_runtime::generic::{EXTRINSIC_FORMAT_VERSION, Preamble};
 use sp_runtime::traits::{
     AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, ConstU16, Hash as HashT,
@@ -43,11 +53,12 @@ use sp_runtime::{BuildStorage, OpaqueExtrinsic};
 use sp_version::{ApiId, RuntimeVersion, create_apis_vec};
 use std::num::NonZeroU64;
 use subspace_core_primitives::pieces::Piece;
+use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::segments::HistorySize;
 use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{SlotNumber, U256 as P256};
 use subspace_runtime_primitives::{
-    AI3, ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee,
+    AI3, BlockHashFor, ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -79,6 +90,7 @@ frame_support::construct_runtime!(
         Domains: pallet_domains,
         DomainExecutive: domain_pallet_executive,
         BlockFees: pallet_block_fees,
+        MockVersionStore: pallet_mock_version_store,
     }
 );
 
@@ -167,6 +179,10 @@ parameter_types! {
     pub const MinInitialDomainAccountBalance: Balance = AI3;
     pub const BundleLongevity: u32 = 5;
     pub const WithdrawalLimit: u32 = 10;
+    pub const CurrentBundleAndExecutionReceiptVersion: BundleAndExecutionReceiptVersion = BundleAndExecutionReceiptVersion {
+        bundle_version: BundleVersion::V0,
+        execution_receipt_version: ExecutionReceiptVersion::V0,
+    };
 }
 
 pub struct MockRandomness;
@@ -298,6 +314,7 @@ impl pallet_domains::Config for Test {
     type OnChainRewards = ();
     type WithdrawalLimit = WithdrawalLimit;
     type DomainOrigin = crate::EnsureDomainOrigin;
+    type CurrentBundleAndExecutionReceiptVersion = CurrentBundleAndExecutionReceiptVersion;
 }
 
 pub struct ExtrinsicStorageFees;
@@ -376,6 +393,52 @@ impl pallet_subspace::Config for Test {
     type ExtensionWeightInfo = pallet_subspace::extensions::weights::SubstrateWeight<Self>;
 }
 
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
+pub enum MockBundleVersion {
+    V0,
+    V1,
+    V2,
+    V3,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
+pub enum MockExecutionReceiptVersion {
+    V0,
+    V1,
+    V2,
+    V3,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
+pub struct MockBundleAndExecutionReceiptVersion {
+    pub bundle_version: MockBundleVersion,
+    pub execution_receipt_version: MockExecutionReceiptVersion,
+}
+
+#[frame_support::pallet]
+pub(crate) mod pallet_mock_version_store {
+    use super::{BlockNumberFor, MockBundleAndExecutionReceiptVersion};
+    use frame_support::pallet_prelude::*;
+    use std::collections::BTreeMap;
+
+    #[pallet::config]
+    pub trait Config: frame_system::Config {}
+
+    /// Pallet domain-id to store self domain id.
+    #[pallet::pallet]
+    #[pallet::without_storage_info]
+    pub struct Pallet<T>(_);
+
+    #[pallet::storage]
+    pub type MockPreviousBundleAndExecutionReceiptVersions<T: Config> = StorageValue<
+        _,
+        BTreeMap<BlockNumberFor<T>, MockBundleAndExecutionReceiptVersion>,
+        ValueQuery,
+    >;
+}
+
+impl pallet_mock_version_store::Config for Test {}
+
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
     let t = frame_system::GenesisConfig::<Test>::default()
         .build_storage()
@@ -427,7 +490,7 @@ pub(crate) fn create_dummy_receipt(
         .into_iter()
         .map(InboxedBundle::dummy)
         .collect();
-    ExecutionReceipt {
+    ExecutionReceipt::V0(ExecutionReceiptV0 {
         domain_block_number: block_number as DomainBlockNumber,
         domain_block_hash: H256::random(),
         domain_block_extrinsic_root: Default::default(),
@@ -440,7 +503,7 @@ pub(crate) fn create_dummy_receipt(
         execution_trace_root,
         block_fees: Default::default(),
         transfers: Default::default(),
-    }
+    })
 }
 
 fn create_dummy_bundle(
@@ -470,7 +533,7 @@ pub(crate) fn create_dummy_bundle_with_receipts(
 ) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
     let pair = OperatorPair::from_seed(&[0; 32]);
 
-    let header = BundleHeader::<_, _, DomainHeader, _> {
+    let header = BundleHeaderV0::<_, _, DomainHeader, _> {
         proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
         estimated_bundle_weight: Default::default(),
@@ -479,10 +542,10 @@ pub(crate) fn create_dummy_bundle_with_receipts(
 
     let signature = pair.sign(header.hash().as_ref());
 
-    OpaqueBundle {
-        sealed_header: SealedBundleHeader::new(header, signature),
+    OpaqueBundle::V0(BundleV0 {
+        sealed_header: SealedBundleHeaderV0::new(header, signature),
         extrinsics: Vec::new(),
-    }
+    })
 }
 
 pub(crate) struct ReadRuntimeVersion(pub Vec<u8>);
@@ -591,7 +654,7 @@ pub(crate) fn extend_block_tree(
 
     for block_number in (current_block_number + 1)..to {
         // Finilize parent block and initialize block at `block_number`
-        run_to_block::<Test>(block_number, latest_receipt.consensus_block_hash);
+        run_to_block::<Test>(block_number, *latest_receipt.consensus_block_hash());
 
         // Submit a bundle with the receipt of the last block
         let bundle_extrinsics_root = H256::random();
@@ -621,7 +684,7 @@ pub(crate) fn extend_block_tree(
     }
 
     // Finilize parent block and initialize block at `to`
-    run_to_block::<Test>(to, latest_receipt.consensus_block_hash);
+    run_to_block::<Test>(to, *latest_receipt.consensus_block_hash());
 
     latest_receipt
 }
@@ -725,35 +788,34 @@ fn test_bundle_format_verification() {
         DomainRegistry::<Test>::insert(domain_id, domain_obj);
 
         let mut valid_bundle = create_dummy_bundle(DOMAIN_ID, 0, System::parent_hash());
-        valid_bundle.extrinsics.push(opaque_extrinsic(1, 1));
-        valid_bundle.extrinsics.push(opaque_extrinsic(2, 2));
-        valid_bundle.sealed_header.header.bundle_extrinsics_root = BlakeTwo256::ordered_trie_root(
+        let mut extrinsics = valid_bundle.extrinsics().to_vec();
+        extrinsics.push(opaque_extrinsic(1, 1));
+        extrinsics.push(opaque_extrinsic(2, 2));
+        valid_bundle.set_extrinsics(extrinsics);
+        valid_bundle.set_bundle_extrinsics_root(BlakeTwo256::ordered_trie_root(
             valid_bundle
-                .extrinsics
+                .extrinsics()
                 .iter()
                 .map(|xt| xt.encode())
                 .collect(),
             sp_core::storage::StateVersion::V1,
-        );
+        ));
         assert_ok!(pallet_domains::Pallet::<Test>::check_extrinsics_root(
             &valid_bundle
         ));
 
         // Bundle exceed max size
         let mut too_large_bundle = valid_bundle.clone();
+        let mut extrinsics = too_large_bundle.extrinsics().to_vec();
         for i in 0..max_extrinsics_count {
-            too_large_bundle
-                .extrinsics
-                .push(opaque_extrinsic(i as u128, i as u128));
+            extrinsics.push(opaque_extrinsic(i as u128, i as u128));
         }
+        too_large_bundle.set_extrinsics(extrinsics);
         assert!(too_large_bundle.size() > max_bundle_size);
 
         // Bundle with wrong value of `bundle_extrinsics_root`
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
-        invalid_extrinsic_root_bundle
-            .sealed_header
-            .header
-            .bundle_extrinsics_root = H256::random();
+        invalid_extrinsic_root_bundle.set_bundle_extrinsics_root(H256::random());
         assert_err!(
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
@@ -761,7 +823,9 @@ fn test_bundle_format_verification() {
 
         // Bundle with wrong value of `extrinsics`
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
-        invalid_extrinsic_root_bundle.extrinsics[0] = opaque_extrinsic(3, 3);
+        let mut extrinsics = valid_bundle.extrinsics().to_vec();
+        extrinsics[0] = opaque_extrinsic(3, 3);
+        invalid_extrinsic_root_bundle.set_extrinsics(extrinsics);
         assert_err!(
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
@@ -769,9 +833,9 @@ fn test_bundle_format_verification() {
 
         // Bundle with addtional extrinsic
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
-        invalid_extrinsic_root_bundle
-            .extrinsics
-            .push(opaque_extrinsic(4, 4));
+        let mut extrinsics = valid_bundle.extrinsics().to_vec();
+        extrinsics.push(opaque_extrinsic(4, 4));
+        invalid_extrinsic_root_bundle.set_extrinsics(extrinsics);
         assert_err!(
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
@@ -779,7 +843,9 @@ fn test_bundle_format_verification() {
 
         // Bundle with missing extrinsic
         let mut invalid_extrinsic_root_bundle = valid_bundle;
-        invalid_extrinsic_root_bundle.extrinsics.pop();
+        let mut extrinsics = invalid_extrinsic_root_bundle.extrinsics().to_vec();
+        extrinsics.pop().unwrap();
+        invalid_extrinsic_root_bundle.set_extrinsics(extrinsics);
         assert_err!(
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
@@ -914,7 +980,7 @@ fn test_basic_fraud_proof_processing() {
                 let mut receipt = BlockTreeNodes::<Test>::get(receipt_hash)
                     .unwrap()
                     .execution_receipt;
-                receipt.final_state_root = H256::random();
+                receipt.set_final_state_root(H256::random());
                 let bundle = create_dummy_bundle_with_receipts(
                     domain_id,
                     honest_operator,
@@ -933,7 +999,7 @@ fn test_basic_fraud_proof_processing() {
                 assert!(BlockTreeNodes::<Test>::get(receipt_hash).is_none());
                 assert!(!Domains::is_bad_er_pending_to_prune(
                     domain_id,
-                    receipt.domain_block_number
+                    *receipt.domain_block_number()
                 ));
             }
         });
@@ -1042,7 +1108,10 @@ fn test_domain_runtime_upgrade_with_bundle() {
                 vec![],
             );
             // These receipt must able to pass `verify_execution_receipt`
-            assert_ok!(verify_execution_receipt::<Test>(domain_id, &next_receipt));
+            assert_ok!(verify_execution_receipt::<Test>(
+                domain_id,
+                &next_receipt.as_execution_receipt_ref()
+            ));
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
                 operator_id,
@@ -1072,7 +1141,10 @@ fn test_domain_runtime_upgrade_with_bundle() {
             parent_receipt.hash::<DomainHashingFor<Test>>(),
             vec![bundle_extrinsics_root],
         );
-        assert_ok!(verify_execution_receipt::<Test>(domain_id, &next_receipt));
+        assert_ok!(verify_execution_receipt::<Test>(
+            domain_id,
+            &next_receipt.as_execution_receipt_ref()
+        ));
         let bundle =
             create_dummy_bundle_with_receipts(domain_id, operator_id, H256::random(), next_receipt);
         assert_ok!(crate::Pallet::<Test>::submit_bundle(
@@ -1123,4 +1195,392 @@ fn test_type_with_default_nonce_encode() {
     let encode_1 = nonce_1.encode();
     let encode_2 = nonce_2.encode();
     assert_eq!(encode_1, encode_2);
+}
+
+/// Returns mock upgrades.
+/// (block_number, current_version)
+/// block_number: Consensus block at which `set_code` is executed
+/// current_version: Version at the time `set_code` is executed.
+/// Code is upgraded from block_number + 1 and any new version from new runtime is considered
+/// from that point which is block_number + 1
+/// until block_number, previous runtime's version is valid.
+fn get_mock_upgrades() -> Vec<(u32, MockBundleAndExecutionReceiptVersion, bool)> {
+    vec![
+        // version from 0..100
+        (
+            100u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V0,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+            // this version at this block must exist due to the change in version
+            // in the next upgrade
+            true,
+        ),
+        // version change
+        // version from 101..121
+        (
+            121u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+            // this version at this block will not exist since next upgrade
+            // carries same version
+            false,
+        ),
+        // same version as previous
+        // version from 122..130
+        (
+            130u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+            // this version at this block must exist due to the change in version
+            // in the next upgrade
+            true,
+        ),
+        // version change
+        // version from 131..150
+        (
+            150u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+            // this version at this block will not exist since next upgrade
+            // carries same version
+            false,
+        ),
+        // same version as previous
+        // version from 151..155
+        (
+            155u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+            // this version at this block must exist due to the change in version
+            // in the next upgrade
+            true,
+        ),
+        // version change
+        // version from 156..160
+        (
+            160u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+            // this version at this block must exist due to the change in version
+            // in the next upgrade
+            true,
+        ),
+        // version change
+        // version from 161..200
+        (
+            200u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V2,
+            },
+            // this version at this block will not exist since next upgrade
+            // carries same version
+            false,
+        ),
+        // same version
+        // version from 201..250
+        (
+            250u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V2,
+            },
+            // this version at this block will not exist since next upgrade
+            // carries same version
+            false,
+        ),
+        // same version
+        // version from 251..300
+        (
+            300u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V2,
+            },
+            // this version at this block must exist due to the change in version
+            // in the next upgrade
+            true,
+        ),
+    ]
+}
+
+/// Returns mock version queries.
+/// (block_number, current_version)
+/// block_number: Consensus block at which ER is derived
+/// current_version: Version defined at the consensus block number.
+fn get_mock_version_queries() -> Vec<(u32, MockBundleAndExecutionReceiptVersion)> {
+    vec![
+        // version from 0..100
+        (
+            90u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V0,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+        ),
+        (
+            100u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V0,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+        ),
+        // version change
+        // version from 101..130
+        (
+            101u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+        ),
+        (
+            121u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+        ),
+        (
+            130u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V0,
+            },
+        ),
+        // version change
+        // version from 131..155
+        (
+            131u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+        ),
+        (
+            155u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V1,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+        ),
+        // version change
+        // version from 156..160
+        (
+            156u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+        ),
+        (
+            160u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V1,
+            },
+        ),
+        // version change
+        // version from 161..300
+        (
+            161u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V2,
+            },
+        ),
+        (
+            250u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V2,
+            },
+        ),
+        (
+            300u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V2,
+                execution_receipt_version: MockExecutionReceiptVersion::V2,
+            },
+        ),
+        // version from >= 301
+        (
+            301u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V3,
+                execution_receipt_version: MockExecutionReceiptVersion::V3,
+            },
+        ),
+        (
+            500u32,
+            MockBundleAndExecutionReceiptVersion {
+                bundle_version: MockBundleVersion::V3,
+                execution_receipt_version: MockExecutionReceiptVersion::V3,
+            },
+        ),
+    ]
+}
+
+#[test]
+fn test_version_store_and_get() {
+    let mut ext = new_test_ext_with_extensions();
+
+    let upgrades = get_mock_upgrades();
+    ext.execute_with(|| {
+        for (upgraded_at, current_version, _) in upgrades.clone() {
+            Domains::set_previous_bundle_and_execution_receipt_version(
+                upgraded_at,
+                MockPreviousBundleAndExecutionReceiptVersions::<Test>::set,
+                MockPreviousBundleAndExecutionReceiptVersions::<Test>::get,
+                current_version,
+            );
+        }
+
+        let versions = MockPreviousBundleAndExecutionReceiptVersions::<Test>::get();
+        // There should be a total of 5 entries in the set
+        assert_eq!(versions.len(), 5);
+
+        for (upgraded_at, version, exists) in upgrades {
+            match versions.get(&upgraded_at) {
+                None => assert!(!exists),
+                Some(stored_version) => {
+                    assert!(exists);
+                    assert_eq!(version, stored_version.clone());
+                }
+            }
+        }
+
+        // now to test queries for version at any block
+        // 0..100 should have (V0, V0)
+        // 101..130 should have (V1, V0)
+        // 131..155 should have (V1, V1)
+        // 156..160 should have (V2, V1)
+        // 161..300 should have (V2, V2)
+        // >= 301 should have (V3, V3)
+        let current_version = MockBundleAndExecutionReceiptVersion {
+            bundle_version: MockBundleVersion::V3,
+            execution_receipt_version: MockExecutionReceiptVersion::V3,
+        };
+        for (number, expected_version) in get_mock_version_queries() {
+            let got_version = Domains::bundle_and_execution_receipt_version_for_consensus_number(
+                number,
+                MockPreviousBundleAndExecutionReceiptVersions::<Test>::get,
+                current_version,
+            )
+            .unwrap();
+            assert_eq!(expected_version, got_version);
+        }
+    })
+}
+
+/// Test to generate fixtures for the benchmarks
+/// - validate_submit_bundle
+/// - validate_singleton_receipt
+///
+/// Run the test, replace old signatures with new ones
+/// - proof of election vrf signatures
+/// - bundle signature
+/// - singleton receipt signature
+#[test]
+fn generate_fixtures_for_benchmarking() {
+    let domain_id = DomainId::new(0);
+    let operator_id = 0;
+    let keystore = MemoryKeystore::new();
+    let signing_key = keystore
+        .sr25519_generate_new(OperatorPair::ID, Some("//Alice"))
+        .unwrap();
+    let (proof_of_time, slot) = (PotOutput::default(), Slot::from(1));
+    let global_challenge = proof_of_time
+        .derive_global_randomness()
+        .derive_global_challenge(slot.into());
+    let vrf_sign_data = make_transcript(DomainId::new(0), &global_challenge).into_sign_data();
+    let poe_signature = keystore
+        .sr25519_vrf_sign(OperatorPair::ID, &signing_key, &vrf_sign_data)
+        .unwrap()
+        .unwrap();
+
+    let poe = ProofOfElection {
+        domain_id,
+        slot_number: slot.into(),
+        proof_of_time,
+        vrf_signature: poe_signature.clone(),
+        operator_id,
+    };
+
+    let mock_genesis_er_hash = H256::from_slice(
+        hex!("5207cc85cfd1f53e11f4b9e85bf2d0a4f33e24d0f0f18b818b935a6aa47d3930").as_slice(),
+    );
+
+    let trace: Vec<<Test as Config>::DomainHash> = vec![
+        H256::repeat_byte(1),
+        H256::repeat_byte(2),
+        H256::repeat_byte(3),
+    ];
+    let execution_trace_root = {
+        let trace: Vec<_> = trace
+            .iter()
+            .map(|t| t.encode().try_into().unwrap())
+            .collect();
+        MerkleTree::from_leaves(trace.as_slice())
+            .root()
+            .unwrap()
+            .into()
+    };
+    let er = ExecutionReceipt::V0(ExecutionReceiptV0::<u32, H256, u32, H256, u128> {
+        domain_block_number: One::one(),
+        domain_block_hash: H256::repeat_byte(7),
+        domain_block_extrinsic_root: EMPTY_EXTRINSIC_ROOT,
+        parent_domain_block_receipt_hash: mock_genesis_er_hash,
+        consensus_block_number: One::one(),
+        consensus_block_hash: H256::repeat_byte(9),
+        inboxed_bundles: vec![],
+        final_state_root: trace[2],
+        execution_trace: trace,
+        execution_trace_root,
+        block_fees: Default::default(),
+        transfers: Default::default(),
+    });
+
+    let header = BundleHeaderV0::<u32, H256, DomainHeader, Balance> {
+        proof_of_election: poe.clone(),
+        receipt: er.clone(),
+        estimated_bundle_weight: Default::default(),
+        bundle_extrinsics_root: EMPTY_EXTRINSIC_ROOT,
+    };
+
+    let to_sign: H256 = header.hash();
+    let signature = keystore
+        .sr25519_sign(OperatorPair::ID, &signing_key, to_sign.as_ref())
+        .unwrap()
+        .unwrap();
+
+    let bundle_signature = OperatorSignature::decode(&mut signature.as_ref()).unwrap();
+
+    // generate signatures for singleton ER
+    let singleton_receipt = SingletonReceipt::<u32, H256, DomainHeader, Balance> {
+        proof_of_election: poe,
+        receipt: er,
+    };
+
+    let to_sign: BlockHashFor<Block> = singleton_receipt.hash();
+    let signature = keystore
+        .sr25519_sign(OperatorPair::ID, &signing_key, to_sign.as_ref())
+        .unwrap()
+        .unwrap();
+
+    let er_signature = OperatorSignature::decode(&mut signature.as_ref()).unwrap();
+
+    _ = (poe_signature, bundle_signature, er_signature);
 }
