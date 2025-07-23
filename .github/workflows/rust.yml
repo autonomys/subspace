@@ -58,6 +58,14 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      # Enable the sccache runs-on S3 backend for Linux runners, to cache C/C++/CUDA and Rust.
+      # On GitHub-hosted or fork runners, the runs-on action is ignored.
+      - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+        with:
+          sccache: ${{ runner.os == 'Linux' && 's3' || '' }}
+      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+        if: runner.os == 'Linux' && github.repository_owner == 'autonomys'
+
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
@@ -166,6 +174,12 @@ jobs:
       '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
 
     steps:
+      - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+        with:
+          sccache: 's3'
+      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+        if: github.repository_owner == 'autonomys'
+
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
@@ -211,6 +225,12 @@ jobs:
     timeout-minutes: 120
 
     steps:
+      - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+        with:
+          sccache: ${{ runner.os == 'Linux' && 's3' || '' }}
+      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+        if: runner.os == 'Linux' && github.repository_owner == 'autonomys'
+
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
@@ -272,6 +292,12 @@ jobs:
     timeout-minutes: 120
 
     steps:
+      - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+        with:
+          sccache: 's3'
+      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+        if: github.repository_owner == 'autonomys'
+
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
@@ -303,6 +329,12 @@ jobs:
       '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
 
     steps:
+      - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+        with:
+          sccache: 's3'
+      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+        if: github.repository_owner == 'autonomys'
+
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
@@ -332,6 +364,12 @@ jobs:
       '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
 
     steps:
+      - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+        with:
+          sccache: 's3'
+      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+        if: github.repository_owner == 'autonomys'
+
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
