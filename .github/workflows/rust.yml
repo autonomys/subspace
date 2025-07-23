@@ -44,6 +44,7 @@ jobs:
         run: cargo fmt --all -- --check
 
   cargo-clippy:
+    name: cargo-clippy (${{ strategy.job-index == 0 && 'Linux' || (strategy.job-index == 1 && 'Windows' || 'macOS') }})
     strategy:
       matrix:
         # Disable spot instances in the GitHub merge queue, and disable runs-on entirely for forks
@@ -268,6 +269,7 @@ jobs:
           cargo -Zgitoxide -Zgit build --locked --package auto-id-domain-runtime
 
   cargo-test:
+    name: cargo-test (${{ strategy.job-index == 0 && 'Linux' || (strategy.job-index == 1 && 'Windows' || 'macOS') }})
     strategy:
       matrix:
         os: ${{ fromJson(github.repository_owner == 'autonomys' &&
