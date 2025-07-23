@@ -26,6 +26,10 @@ env:
   # For slow tests, this can be reduced using `#[property_test(config = "ProptestConfig { .. }")]`.
   PROPTEST_CASES: 10000
   PROPTEST_MAX_GLOBAL_REJECTS: 100000
+  # Disable spot instances in the GitHub merge queue. Otherwise, inherit the spot setting from the
+  # runner config. This environment variable helps us avoid nested strings inside complex actions
+  # expressions.
+  SPOT: ${{ contains(github.ref, 'gh-readonly-queue') && '/spot=false' || '' }}
 
 jobs:
   cargo-fmt:
@@ -59,7 +63,7 @@ jobs:
       matrix:
         os: ${{ fromJson(github.repository_owner == 'autonomys' &&
           '[
-            "runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64",
+            "runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}",
             ["self-hosted", "windows-server-2022-x86-64"],
             ["self-hosted", "macos-14-arm64"]
           ]' ||
@@ -173,7 +177,7 @@ jobs:
   cargo-runtime-build:
     # If clippy and tests pass on all OSes, it is unlikely that a runtime build will pass on Linux, but fail on other OSes.
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
-      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64"' || '"ubuntu-22.04"') }}
+      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
 
     steps:
       - name: Checkout
@@ -211,7 +215,7 @@ jobs:
       matrix:
         os: ${{ fromJson(github.repository_owner == 'autonomys' &&
           '[
-            "runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64",
+            "runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64${{ env.SPOT }}",
             ["self-hosted", "windows-server-2022-x86-64"],
             ["self-hosted", "macos-14-arm64"]
           ]' ||
@@ -276,7 +280,7 @@ jobs:
   check-runtime-benchmarks:
     # We always run benchmarks on our Linux reference machine
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
-      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64"' || '"ubuntu-22.04"') }}
+      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
 
     # Don't use the full 6 hours if a benchmark hangs
     timeout-minutes: 120
@@ -310,7 +314,7 @@ jobs:
   cargo-check-individually:
     # If clippy and tests pass on all OSes, it is unlikely that a crate build will pass on Linux but fail on other OSes.
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
-      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64"' || '"ubuntu-22.04"') }}
+      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
 
     steps:
       - name: Checkout
@@ -339,7 +343,7 @@ jobs:
   cargo-unused-deps:
     # We need to use Linux to check GPU dependencies (or Windows, but it's slow)
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
-      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64"' || '"ubuntu-22.04"') }}
+      '"runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
 
     steps:
       - name: Checkout
