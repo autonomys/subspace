@@ -654,7 +654,17 @@ where
                                 let mut piece_caches = self.piece_caches.write().await;
                                 piece_caches.clone_from(&caches.lock());
 
-                                info!("Piece cache sync {progress:.2}% complete");
+                                info!(
+                                    "Piece cache sync {progress:.2}% complete ({} / {})",
+                                    bytesize::to_string(
+                                        (prev_downloaded_pieces_count * Piece::SIZE) as u64,
+                                        true,
+                                    ),
+                                    bytesize::to_string(
+                                        (pieces_to_download_total * Piece::SIZE) as u64,
+                                        true,
+                                    ),
+                                );
                             }
 
                             self.handlers.progress.call_simple(&progress);
