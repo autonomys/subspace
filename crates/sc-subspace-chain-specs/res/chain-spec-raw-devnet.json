@@ -18,7 +18,7 @@
   "properties": {
     "domainsBootstrapNodes": {
       "0": [
-        "/dns/bootstrap-0.nova.devnet.subspace.network/tcp/30334/p2p/12D3KooWH1erywk3TmZZL1bUmt4kmfbc6yx7whPjsVkt9mdjm2sg"
+        "/dns/bootstrap-0.auto-evm.devnet.subspace.network/tcp/30334/p2p/12D3KooWH1erywk3TmZZL1bUmt4kmfbc6yx7whPjsVkt9mdjm2sg"
       ]
     },
     "dsnBootstrapNodes": [
