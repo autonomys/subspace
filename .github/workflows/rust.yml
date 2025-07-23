@@ -46,6 +46,7 @@ jobs:
   cargo-clippy:
     strategy:
       matrix:
+        # Disable spot instances in the GitHub merge queue, and disable runs-on entirely for forks
         os: ${{ fromJson(github.repository_owner == 'autonomys' &&
           '[
             "runs-on=${{ github.run_id }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}",
