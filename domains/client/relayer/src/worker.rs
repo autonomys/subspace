@@ -2,7 +2,7 @@ use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer};
 use cross_domain_message_gossip::{ChannelUpdate, Message as GossipMessage, MessageData};
 use futures::StreamExt;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_consensus::SyncOracle;
 use sp_domains::{DomainId, DomainsApi};
 use sp_messenger::messages::ChainId;
@@ -102,17 +102,8 @@ where
     let channels_status_to_broadcast = {
         let updated_channels = api.updated_channels(block_hash)?;
 
-        // TODO: remove version check before next network
-        let relayer_api_version = api
-            .api_version::<dyn RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>>(block_hash)?
-            // It is safe to return a default version of 1, since there will always be version 1.
-            .unwrap_or(1);
-
         // if there are no channel updates, broadcast channel's status for every 300 blocks
-        if updated_channels.is_empty()
-            && relayer_api_version >= 2
-            && block_number % 300u32.into() == Zero::zero()
-        {
+        if updated_channels.is_empty() && block_number % 300u32.into() == Zero::zero() {
             api.open_channels(block_hash)?
         } else {
             updated_channels

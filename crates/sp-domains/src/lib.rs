@@ -950,16 +950,6 @@ pub enum OperatorRewardSource<Number> {
     Dummy,
 }
 
-pub trait SkipBalanceChecks {
-    fn should_skip_balance_check(chain_id: ChainId) -> bool;
-}
-
-impl SkipBalanceChecks for () {
-    fn should_skip_balance_check(_chain_id: ChainId) -> bool {
-        false
-    }
-}
-
 /// Bundle and Execution Versions.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
 pub struct BundleAndExecutionReceiptVersion {
@@ -1014,8 +1004,6 @@ pub struct NominatorPosition<Balance, DomainBlockNumber, Share> {
 sp_api::decl_runtime_apis! {
     /// APIs used to access the domains pallet.
     // When updating this version, document new APIs with "Only present in API versions" comments.
-    // TODO: when removing this version, also remove "Only present in API versions" comments and
-    // deprecated attributes.
     #[api_version(5)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
@@ -1040,7 +1028,6 @@ sp_api::decl_runtime_apis! {
         fn runtime_id(domain_id: DomainId) -> Option<RuntimeId>;
 
         /// Returns the list of runtime upgrades in the current block.
-        /// Only present in API versions 2 and later.
         fn runtime_upgrades() -> Vec<RuntimeId>;
 
         /// Returns the domain instance data for the given `domain_id`.
@@ -1049,20 +1036,9 @@ sp_api::decl_runtime_apis! {
         /// Returns the current timestamp at the current height.
         fn domain_timestamp() -> Moment;
 
-        /// Returns the current timestamp at the current height.
-        #[allow(clippy::deprecated_semver)]
-        #[deprecated(since = "3", note = "Use `domain_timestamp()` instead")]
-        fn timestamp() -> Moment;
-
         /// Returns the consensus transaction byte fee that will used to charge the domain
         /// transaction for consensus chain storage fees.
         fn consensus_transaction_byte_fee() -> Balance;
-
-        /// Returns the consensus chain byte fee that will used to charge the domain transaction
-        /// for consensus chain storage fees.
-        #[allow(clippy::deprecated_semver)]
-        #[deprecated(since = "3", note = "Use `consensus_transaction_byte_fee()` instead")]
-        fn consensus_chain_byte_fee() -> Balance;
 
         /// Returns the current Tx range for the given domain Id.
         fn domain_tx_range(domain_id: DomainId) -> U256;
@@ -1110,7 +1086,6 @@ sp_api::decl_runtime_apis! {
         fn domain_sudo_call(domain_id: DomainId) -> Option<Vec<u8>>;
 
         /// Returns the "set contract creation allowed by" call for the given EVM domain, if any.
-        /// Only present in API versions 4 and later.
         fn evm_domain_contract_creation_allowed_by_call(domain_id: DomainId) -> Option<PermissionedActionAllowedBy<EthereumAccountId>>;
 
         /// Returns the last confirmed domain block execution receipt.
@@ -1130,7 +1105,6 @@ sp_api::decl_runtime_apis! {
         /// - Pending deposits (not yet converted to shares)
         /// - Pending withdrawals (with unlock timing)
         ///
-        /// Only present in API versions 5 and later.
         fn nominator_position(
             operator_id: OperatorId,
             nominator_account: sp_runtime::AccountId32,

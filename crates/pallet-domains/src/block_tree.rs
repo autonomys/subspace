@@ -9,7 +9,7 @@ use crate::{
     DomainRuntimeUpgradeRecords, ExecutionInbox, ExecutionReceiptOf, ExecutionReceiptRefOf,
     HeadDomainNumber, HeadReceiptNumber, InboxedBundleAuthor,
     LatestConfirmedDomainExecutionReceipt, LatestSubmittedER, NewAddedHeadReceipt, Pallet,
-    ReceiptHashFor, SkipBalanceChecks,
+    ReceiptHashFor,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -414,17 +414,8 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     Error::InvalidDomainTransfers
                 );
 
-                // TODO: remove skipping domain balance checks for domain 0
-                //  once https://github.com/autonomys/subspace/issues/3466
-                //  is resolved. We need the issue to be resolved before phase 2 launch
-                if !SkipBalanceChecks::<T>::get().contains(&domain_id) {
-                    update_domain_transfers::<T>(
-                        domain_id,
-                        execution_receipt.transfers(),
-                        block_fees,
-                    )
+                update_domain_transfers::<T>(domain_id, execution_receipt.transfers(), block_fees)
                     .map_err(|_| Error::DomainTransfersTracking)?;
-                }
 
                 update_domain_runtime_upgrade_records::<T>(domain_id, consensus_block_number)?;
 
