@@ -266,6 +266,8 @@ pub(super) fn create_domain_configuration(
             consensus_chain_configuration.chain_spec.id(),
             domain_id
         ))
+        // Some domains are Live chains, but we use Custom here to display the "domain" chain type
+        // across a range of clients.
         .with_chain_type(ChainType::Custom("SubspaceDomain".to_string()))
         .with_boot_nodes(
             consensus_chain_configuration
