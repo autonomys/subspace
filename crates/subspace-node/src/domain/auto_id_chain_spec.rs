@@ -174,7 +174,7 @@ fn get_operator_params(
 
 /// Returns AutoId genesis domain.
 /// Note: Currently unused since dev or devnet uses EVM domain and not AutoId
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub fn get_genesis_domain(
     spec_id: SpecId,
     sudo_account: subspace_runtime_primitives::AccountId,
