@@ -33,6 +33,7 @@ env:
 
 jobs:
   cargo-fmt:
+    name: cargo-fmt (Linux x86-64)
     # Format checks do not require significant resources, so we use a free runner.
     runs-on: ubuntu-22.04
 
@@ -44,6 +45,7 @@ jobs:
         run: cargo fmt --all -- --check
 
   cargo-clippy:
+    name: cargo-clippy (${{ strategy.job-index == 0 && 'Linux x86-64' || (strategy.job-index == 1 && 'Windows x86-64' || 'macOS arm64') }})
     strategy:
       matrix:
         # Disable spot instances in the GitHub merge queue, and disable runs-on entirely for forks
@@ -197,6 +199,7 @@ jobs:
         if: runner.os == 'Windows'
 
   cargo-runtime-build:
+    name: cargo-runtime-build (Linux x86-64)
     # If clippy and tests pass on all OSes, it is unlikely that a runtime build will pass on Linux, but fail on other OSes.
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
       '"runs-on=${{ github.run_id }}-${{ github.run_attempt }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
@@ -245,6 +248,7 @@ jobs:
           cargo -Zgitoxide -Zgit build --locked --package auto-id-domain-runtime
 
   cargo-test:
+    name: cargo-test (${{ strategy.job-index == 0 && 'Linux x86-64' || (strategy.job-index == 1 && 'Windows x86-64' || 'macOS arm64') }})
     strategy:
       matrix:
         os: ${{ fromJson(github.repository_owner == 'autonomys' &&
@@ -325,6 +329,7 @@ jobs:
   # Checks benchmark code generation, and runs each benchmark once.
   # Fails if code generation fails, benchmarks panic, or generated weights are not valid Rust.
   check-runtime-benchmarks:
+    name: check-runtime-benchmarks (Linux x86-64)
     # We always run benchmarks on our Linux reference machine
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
       '"runs-on=${{ github.run_id }}-${{ github.run_attempt }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
@@ -371,6 +376,7 @@ jobs:
   # We need to check crates individually for missing features, because cargo does feature
   # unification, which hides missing features when crates are built together.
   cargo-check-individually:
+    name: cargo-check-individually (Linux x86-64)
     # If clippy and tests pass on all OSes, it is unlikely that a crate build will pass on Linux but fail on other OSes.
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
       '"runs-on=${{ github.run_id }}-${{ github.run_attempt }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
@@ -413,6 +419,7 @@ jobs:
 
   # This job checks for incorrectly added dependencies, or dependencies that were made unused by code changes.
   cargo-unused-deps:
+    name: cargo-unused-deps (Linux x86-64)
     # We need to use Linux to check GPU dependencies (or Windows, but it's slow)
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
       '"runs-on=${{ github.run_id }}-${{ github.run_attempt }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
