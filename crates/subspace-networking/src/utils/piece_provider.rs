@@ -90,18 +90,15 @@ where
     /// Get pieces with provided indices from cache.
     ///
     /// Number of elements in returned stream is the same as number of unique `piece_indices`.
-    pub async fn get_from_cache<'a, PieceIndices>(
+    pub async fn get_from_cache<'a>(
         &'a self,
-        piece_indices: PieceIndices,
-    ) -> impl Stream<Item = (PieceIndex, Option<Piece>)> + Unpin + 'a
-    where
-        PieceIndices: IntoIterator<Item = PieceIndex> + 'a,
-    {
+        piece_indices: Vec<PieceIndex>,
+    ) -> impl Stream<Item = (PieceIndex, Option<Piece>)> + Unpin + 'a {
         let download_id = random::<u64>();
         let (tx, mut rx) = mpsc::unbounded();
         let fut = async move {
             let not_downloaded_pieces = download_cached_pieces(
-                piece_indices.into_iter(),
+                &piece_indices,
                 &self.node,
                 &self.piece_validator,
                 &tx,
@@ -419,8 +416,8 @@ impl KademliaWrapper {
 
 /// Takes pieces to download as an input, sends results with pieces that were downloaded
 /// successfully and returns those that were not downloaded
-async fn download_cached_pieces<PV, PieceIndices>(
-    piece_indices: PieceIndices,
+async fn download_cached_pieces<PV>(
+    piece_indices: &[PieceIndex],
     node: &Node,
     piece_validator: &PV,
     results: &mpsc::UnboundedSender<(PieceIndex, Option<Piece>)>,
@@ -428,7 +425,6 @@ async fn download_cached_pieces<PV, PieceIndices>(
 ) -> impl ExactSizeIterator<Item = PieceIndex>
 where
     PV: PieceValidator,
-    PieceIndices: Iterator<Item = PieceIndex>,
 {
     // Make sure every piece index has an entry since this will be the primary container for
     // tracking pieces to download going forward.
@@ -436,6 +432,7 @@ where
     // At the end pieces that were not downloaded will remain with a collection of known closest
     // peers for them.
     let mut pieces_to_download = piece_indices
+        .iter()
         .map(|piece_index| async move {
             let mut kademlia = KademliaWrapper::new(node.id());
             let key = piece_index.to_multihash();
@@ -450,7 +447,7 @@ where
                 kademlia.add_peer(&peer_id, addresses);
             }
 
-            (piece_index, kademlia)
+            (*piece_index, kademlia)
         })
         .collect::<FuturesUnordered<_>>()
         .collect::<HashMap<_, _>>()
@@ -587,15 +584,12 @@ where
                 break;
             }
 
-            // Pick up more pieces to download from the closest peers
-            // Ideally we'd not allocate here, but it is hard to explain to the compiler that
-            // entries are not removed otherwise
-            let pieces_indices_to_download = pieces_to_download.keys().copied().collect::<Vec<_>>();
-            for piece_index in pieces_indices_to_download {
+            // Pick up more pieces to download from the closest peers.
+            for piece_index in piece_indices {
                 if additional_pieces_to_download == 0 {
                     break;
                 }
-                if downloading_stream.contains_key(&piece_index) {
+                if downloading_stream.contains_key(piece_index) {
                     continue;
                 }
                 let permit = if downloading_stream.is_empty() {
@@ -608,7 +602,7 @@ where
 
                 let kbucket_key = KBucketKey::from(piece_index.to_multihash());
                 let closest_peers_to_check = pieces_to_download
-                    .get_mut(&piece_index)
+                    .get_mut(piece_index)
                     .expect("Entries are not removed here; qed")
                     .closest_peers(&kbucket_key);
                 for (peer_id, addresses) in closest_peers_to_check {
@@ -622,7 +616,7 @@ where
                         pieces_to_download.keys(),
                         &HashSet::new(),
                         &HashSet::new(),
-                        piece_index,
+                        *piece_index,
                     );
                     let fut = download_cached_piece_from_peer(
                         node,
@@ -630,13 +624,13 @@ where
                         peer_id,
                         addresses,
                         Arc::new(check_cached_pieces),
-                        piece_index,
+                        *piece_index,
                         HashSet::new(),
                         HashSet::new(),
                         permit,
                     );
 
-                    downloading_stream.insert(piece_index, Box::pin(fut.into_stream()) as _);
+                    downloading_stream.insert(*piece_index, Box::pin(fut.into_stream()) as _);
                     additional_pieces_to_download -= 1;
                     break;
                 }

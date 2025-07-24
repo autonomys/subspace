@@ -35,7 +35,7 @@ where
 {
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         if let Some((got_piece_index, maybe_piece)) =
-            self.0.get_from_cache([piece_index]).await.next().await
+            self.0.get_from_cache(vec![piece_index]).await.next().await
         {
             assert_eq!(piece_index, got_piece_index);
 
