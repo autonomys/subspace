@@ -14,6 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 async-trait.workspace = true
+bytesize.workspace = true
 parity-scale-codec = { workspace = true, features = ["derive"] }
 futures.workspace = true
 parking_lot.workspace = true

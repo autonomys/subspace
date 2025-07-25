@@ -648,13 +648,47 @@ where
                             let progress = prev_downloaded_pieces_count as f32
                                 / pieces_to_download_total as f32
                                 * 100.0;
+                            let prev_downloaded_bytes = prev_downloaded_pieces_count * Piece::SIZE;
+                            let bytes_to_download = pieces_to_download_total * Piece::SIZE;
+
                             if prev_downloaded_pieces_count % INTERMEDIATE_CACHE_UPDATE_INTERVAL
                                 == 0
                             {
                                 let mut piece_caches = self.piece_caches.write().await;
                                 piece_caches.clone_from(&caches.lock());
 
-                                info!("Piece cache sync {progress:.2}% complete");
+                                let prev_downloaded_bytes =
+                                    bytesize::to_string(prev_downloaded_bytes as u64, true);
+                                let bytes_to_download =
+                                    bytesize::to_string(bytes_to_download as u64, true);
+
+                                // Simplify formatting by truncating units if they are the same
+                                // for both values, for example:
+                                // 23.01 / 25.70 GiB
+                                // 7.94 MiB / 25.70 GiB
+                                let (prev_downloaded_bytes, mut prev_downloaded_units) =
+                                    prev_downloaded_bytes
+                                        .split_once(' ')
+                                        .unwrap_or((&prev_downloaded_bytes, ""));
+                                let (bytes_to_download, bytes_to_download_units) =
+                                    bytes_to_download
+                                        .split_once(' ')
+                                        .unwrap_or((&bytes_to_download, ""));
+
+                                let mut prev_downloaded_separator = " ";
+                                if prev_downloaded_units == bytes_to_download_units {
+                                    prev_downloaded_separator = "";
+                                    prev_downloaded_units = "";
+                                }
+
+                                info!(
+                                    "Piece cache sync {progress:.2}% complete ({}{}{} / {} {})",
+                                    prev_downloaded_bytes,
+                                    prev_downloaded_separator,
+                                    prev_downloaded_units,
+                                    bytes_to_download,
+                                    bytes_to_download_units,
+                                );
                             }
 
                             self.handlers.progress.call_simple(&progress);

@@ -10548,6 +10548,7 @@ name = "sc-consensus-subspace"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bytesize",
  "futures",
  "parity-scale-codec",
  "parking_lot 0.12.3",
