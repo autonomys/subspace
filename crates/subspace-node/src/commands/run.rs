@@ -1,5 +1,5 @@
-mod consensus;
-mod domain;
+pub mod consensus;
+pub mod domain;
 mod shared;
 
 use crate::commands::run::consensus::{
@@ -57,7 +57,7 @@ pub struct RunOptions {
     domain_args: Vec<String>,
 }
 
-fn raise_fd_limit() {
+pub fn raise_fd_limit() {
     match fdlimit::raise_fd_limit() {
         Ok(fdlimit::Outcome::LimitRaised { from, to }) => {
             debug!(

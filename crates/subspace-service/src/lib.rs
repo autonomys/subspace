@@ -451,6 +451,8 @@ where
     pub sync_target_block_number: Arc<AtomicU32>,
     /// Telemetry
     pub telemetry: Option<Telemetry>,
+    /// Executor
+    pub executor: Arc<RuntimeExecutor>,
 }
 
 type PartialComponents<RuntimeApi> = sc_service::PartialComponents<
@@ -658,6 +660,7 @@ where
         pot_verifier,
         sync_target_block_number,
         telemetry,
+        executor: Arc::new(executor),
     };
 
     Ok(PartialComponents {
@@ -724,6 +727,8 @@ where
     pub network_starter: NetworkStarter,
     /// Transaction pool.
     pub transaction_pool: Arc<TransactionPoolHandle<Block, Client>>,
+    /// Executor
+    pub executor: Arc<RuntimeExecutor>,
 }
 
 type FullNode<RuntimeApi> = NewFull<FullClient<RuntimeApi>>;
@@ -772,6 +777,7 @@ where
         pot_verifier,
         sync_target_block_number,
         mut telemetry,
+        executor,
     } = other;
 
     let offchain_indexing_enabled = config.base.offchain_worker.indexing_enabled;
@@ -1360,6 +1366,7 @@ where
         archived_segment_notification_stream,
         network_starter,
         transaction_pool,
+        executor,
     })
 }
 
