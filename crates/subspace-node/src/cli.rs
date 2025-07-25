@@ -1,5 +1,5 @@
 use crate::chain_spec;
-use crate::commands::{RunOptions, WipeOptions};
+use crate::commands::{ForkOptions, RunOptions, WipeOptions};
 use clap::Parser;
 use sc_chain_spec::GenericChainSpec;
 use sc_cli::SubstrateCli;
@@ -12,6 +12,9 @@ use sc_service::ChainSpec;
 pub enum Cli {
     /// Run blockchain node
     Run(RunOptions),
+
+    /// Fork existing blockchain
+    Fork(ForkOptions),
 
     /// Build a chain specification.
     BuildSpec(sc_cli::BuildSpecCmd),

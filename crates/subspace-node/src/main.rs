@@ -124,6 +124,9 @@ fn main() -> Result<(), Error> {
         Cli::Run(run_options) => {
             commands::run(run_options)?;
         }
+        Cli::Fork(fork_options) => {
+            commands::fork(fork_options)?;
+        }
         Cli::BuildSpec(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             runner.sync_run(|config| cmd.run(config.chain_spec, config.network))?
