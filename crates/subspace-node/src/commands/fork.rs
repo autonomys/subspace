@@ -52,7 +52,11 @@ use tracing::{debug, error, info, info_span};
 
 /// Options for running a node
 #[derive(Debug, Parser)]
-pub struct RunOptions {
+pub struct ForkOptions {
+    /// ID of the fork chain
+    #[arg(long, default_value_t = 0)]
+    fork_chain_id: usize,
+
     /// Consensus chain options
     #[clap(flatten)]
     consensus: ConsensusChainOptions,
@@ -70,18 +74,23 @@ pub struct RunOptions {
 /// Default run command for node
 #[tokio::main]
 #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
-pub async fn run(run_options: RunOptions) -> Result<(), Error> {
+pub async fn fork(run_options: ForkOptions) -> Result<(), Error> {
     init_logger();
     raise_fd_limit();
     let signals = Signals::capture()?;
 
-    let RunOptions {
-        consensus,
+    let ForkOptions {
+        fork_chain_id,
+        mut consensus,
         domain_args,
     } = run_options;
 
     let domain_options = (!domain_args.is_empty())
         .then(|| DomainOptions::parse_from(env::args().take(1).chain(domain_args)));
+
+    // Init the fork chain storage
+    let need_init_fork_chain = init_fork_storage(&mut consensus, fork_chain_id)
+        .map_err(|error| Error::Other(format!("Failed to create fork dir: {error:?}")))?;
 
     let ConsensusChainConfiguration {
         maybe_tmp_dir: _maybe_tmp_dir,
@@ -91,6 +100,16 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         storage_monitor,
         mut prometheus_configuration,
     } = create_consensus_chain_configuration(consensus, domain_options.is_some())?;
+
+    // Remove peer so the node won't sync from other peers in the existing network
+    subspace_configuration.base.network.boot_nodes = vec![];
+    match subspace_configuration.subspace_networking {
+        SubspaceNetworking::Create { ref mut config } => config.bootstrap_nodes = vec![],
+        SubspaceNetworking::Reuse {
+            ref mut bootstrap_nodes,
+            ..
+        } => *bootstrap_nodes = vec![],
+    }
 
     let maybe_domain_configuration = domain_options
         .map(|domain_options| {
@@ -423,6 +442,17 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             );
         };
 
+        if need_init_fork_chain {
+            init_fork_chain::<_, _, _, _>(
+                consensus_chain_node.client.clone(),
+                consensus_chain_node.backend.clone(),
+                consensus_chain_node.executor.clone(),
+                fork_chain_id,
+            )
+            .await
+            .map_err(|error| Error::Other(format!("Failed to import mock block: {error:?}")))?;
+        }
+
         consensus_chain_node.task_manager
     };
 
@@ -430,4 +460,244 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         .run_until_signal(task_manager.future().fuse())
         .await
         .map_err(Into::into)
+}
+
+/// Initialize the fork chain storage by cloning the data directory of the local existing chain
+///
+/// TODO: support using snap sync to download state from existing network to initialize the fork storage
+pub fn init_fork_storage(
+    config: &mut ConsensusChainOptions,
+    fork_chain_id: usize,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let base_path = match &config.base_path {
+        Some(path) => path.clone(),
+        None => return Err("--base-path is required".to_string().into()),
+    };
+    let fork_path = base_path.join(format!("fork-{fork_chain_id}"));
+    let tmp_fork_path = base_path.join(format!("tmp_fork-{fork_chain_id}"));
+
+    // The fork directory exist means the storage is already initialized from the
+    // previous run
+    if fs::exists(&fork_path)? {
+        config.base_path = Some(fork_path);
+        info!(
+            ?fork_chain_id,
+            "Fork chain already initialized, reset `base_path` config to `fork-{fork_chain_id}` and skip initializing fork storage"
+        );
+        return Ok(false);
+    }
+
+    // The `fork` directory not exist but the `tmp_fork` directory does means the
+    // previous storage initialization is not completed, in this case, clean up all
+    // partial storage and retry again.
+    if fs::exists(&tmp_fork_path)? {
+        fs::remove_dir_all(&tmp_fork_path)?;
+    }
+
+    // Initialize storage for the fork chain
+    fs::create_dir_all(&tmp_fork_path)?;
+    for dir in ["db", "domain"] {
+        let base_data_dir = base_path.join(dir);
+        let fork_data_dir = tmp_fork_path.join(dir);
+        if !fs::exists(&base_data_dir)? {
+            continue;
+        }
+        info!(
+            from = ?base_data_dir,
+            to = ?fork_data_dir,
+            "Cloning data for the fork..."
+        );
+        copy_dir_all(&base_data_dir, &fork_data_dir)?;
+    }
+
+    // Rename the `tmp_fork` dir to `fork` to mark the storage initialization completed.
+    info!(
+        from = ?tmp_fork_path,
+        to = ?fork_path,
+        "Rename the data base path of the fork"
+    );
+    fs::rename(&tmp_fork_path, &fork_path)?;
+
+    config.base_path = Some(fork_path);
+
+    Ok(true)
+}
+
+fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> {
+    if !fs::exists(&dst)? {
+        fs::create_dir_all(&dst)?;
+    }
+    for entry in fs::read_dir(&src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        } else {
+            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        }
+    }
+    Ok(())
+}
+
+/// Initialize the fork chain
+///
+/// This is done by modifying the best block of the existing chain with changes:
+///
+/// - Reset sudo key to `Alice` and set initial balance for `Alice` (needed for tx fee), so
+///   we can do all kind of test/experiment on the fork chain with the sudo key
+///
+/// - Reset solution range and enable `AllowAuthoringByAnyone`, so local farmer can win slot
+///   and produce block regardless of the pledged storage of the existing chain
+///
+/// and then force import this block and make it the new best block, any new block produced by
+/// the local node will extend this block.
+async fn init_fork_chain<Block, Client, Backend, Exec>(
+    client: Arc<Client>,
+    backend: Arc<Backend>,
+    executor: Arc<Exec>,
+    fork_chain_id: usize,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>
+        + ExecutorProvider<Block>
+        + BlockImport<Block>
+        + BlockBackend<Block>
+        + HeaderBackend<Block>
+        + CallApiAt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
+    Backend: sc_client_api::backend::Backend<Block>,
+    Exec: CodeExecutor,
+{
+    let chain_info = client.info();
+    let (best_hash, best_number) = (chain_info.best_hash, chain_info.best_number);
+
+    let best_header = client
+        .header(best_hash)?
+        .ok_or_else(|| ApiError::UnknownBlock(format!("Block header {best_hash} not found")))?;
+
+    let digest = best_header.digest().clone();
+    let block_body = client
+        .block_body(best_hash)?
+        .ok_or_else(|| ApiError::UnknownBlock(format!("Block body {best_hash} not found")))?;
+
+    let (parent_hash, parent_number) = (best_header.parent_hash(), best_number - One::one());
+
+    info!(
+        ?fork_chain_id,
+        "Fork chain from parent block {parent_number}@{parent_hash}, previous best block {best_number}@{best_hash}"
+    );
+
+    let mut api = TrieBackendApi::new(
+        *parent_hash,
+        parent_number,
+        client.clone(),
+        backend.clone(),
+        executor.clone(),
+    )?;
+
+    api.execute_in_transaction(
+        |api: &TrieBackendApi<Client, Block, Backend, Exec>,
+         backend: &TrieDeltaBackendFor<Backend::State, Block>,
+         overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>| {
+            // TODO: maybe make it configurable
+            let sudo_account = Sr25519Keyring::Alice.to_account_id();
+
+            // Reset sudo key
+            let sudo_storage_key =
+                frame_support::storage::storage_prefix("Sudo".as_bytes(), "Key".as_bytes())
+                    .to_vec();
+            overlayed_changes.set_storage(sudo_storage_key, Some(sudo_account.encode()));
+
+            // Set initial balance for the sudo account (needed for tx fee)
+            let account_info: AccountInfo<Nonce, _> = {
+                let account_data = AccountData {
+                    free: 1000 * AI3,
+                    ..Default::default()
+                };
+                AccountInfo {
+                    providers: 1,
+                    data: account_data,
+                    ..Default::default()
+                }
+            };
+            let account_storage_key = {
+                let mut storage_key = frame_support::storage::storage_prefix(
+                    "System".as_bytes(),
+                    "Account".as_bytes(),
+                )
+                .to_vec();
+                storage_key.extend_from_slice(&sudo_account.using_encoded(Blake2_128Concat::hash));
+                storage_key
+            };
+            overlayed_changes.set_storage(account_storage_key, Some(account_info.encode()));
+
+            // Reset solution range
+            let solution_range_storage_key = frame_support::storage::storage_prefix(
+                "Subspace".as_bytes(),
+                "SolutionRanges".as_bytes(),
+            )
+            .to_vec();
+            overlayed_changes.set_storage(solution_range_storage_key, None);
+
+            // Reset `AllowAuthoringByAnyone`
+            let allow_authoring_by_storage_key = frame_support::storage::storage_prefix(
+                "Subspace".as_bytes(),
+                "AllowAuthoringByAnyone".as_bytes(),
+            )
+            .to_vec();
+            overlayed_changes.set_storage(allow_authoring_by_storage_key, Some(true.encode()));
+
+            let header = <Block as BlockT>::Header::new(
+                parent_number + One::one(),
+                Default::default(),
+                Default::default(),
+                *parent_hash,
+                digest,
+            );
+            match api.initialize_block(header, backend, overlayed_changes) {
+                Ok(_) => TransactionOutcome::Commit(Ok(())),
+                Err(e) => TransactionOutcome::Rollback(Err(e)),
+            }
+        },
+    )?;
+
+    for tx in &block_body {
+        api.execute_in_transaction(
+            |api: &TrieBackendApi<Client, Block, Backend, Exec>,
+             backend: &TrieDeltaBackendFor<Backend::State, Block>,
+             overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>| {
+                match api.apply_extrinsic(tx.clone(), backend, overlayed_changes) {
+                    Ok(Ok(_)) => TransactionOutcome::Commit(Ok(())),
+                    Ok(Err(tx_validity)) => TransactionOutcome::Rollback(Err(
+                        ApplyExtrinsicFailed::Validity(tx_validity).into(),
+                    )),
+                    Err(e) => TransactionOutcome::Rollback(Err(e)),
+                }
+            },
+        )?;
+    }
+    let header = api.execute_in_transaction(
+        |api: &TrieBackendApi<Client, Block, Backend, Exec>,
+         backend: &TrieDeltaBackendFor<Backend::State, Block>,
+         overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>| {
+            match api.finalize_block(backend, overlayed_changes) {
+                Ok(header) => TransactionOutcome::Commit(Ok(header)),
+                Err(e) => TransactionOutcome::Rollback(Err(e)),
+            }
+        },
+    )?;
+    let state_changes = api.collect_storage_changes().unwrap().storage_changes;
+
+    let block_import_params = {
+        let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
+        import_block.body = Some(block_body);
+        import_block.state_action =
+            StateAction::ApplyChanges(StorageChanges::Changes(state_changes));
+        import_block.fork_choice = Some(ForkChoiceStrategy::Custom(true));
+        import_block
+    };
+    client.import_block(block_import_params).await?;
+
+    Ok(())
 }
