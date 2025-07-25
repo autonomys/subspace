@@ -171,8 +171,7 @@ where
 
     let mut pieces_iter = segment_index
         .segment_piece_indexes_source_first()
-        .into_iter()
-        .peekable();
+        .into_iter();
 
     // Download in batches until we get enough or exhaust available pieces
     while !pieces_iter.is_empty() && downloaded_pieces != required_pieces_number {
