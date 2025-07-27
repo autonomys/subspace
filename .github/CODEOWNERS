@@ -1,12 +1,12 @@
 # Order matters: entries that are further down override any entries above them
 
 /.github/workflows                @nazar-pc @teor2345
-/crates/pallet-*                  @NingLin-P @vedhavyas
-/crates/pallet-subspace           @NingLin-P @vedhavyas @nazar-pc
+/crates/pallet-*                  @vedhavyas
+/crates/pallet-subspace           @vedhavyas @nazar-pc
 /crates/sc-consensus-*            @nazar-pc @teor2345
 /crates/sc-proof-of-time          @nazar-pc
-/crates/sp-*                      @NingLin-P @vedhavyas
-/crates/sp-consensus-subspace     @NingLin-P @vedhavyas @nazar-pc
+/crates/sp-*                      @vedhavyas
+/crates/sp-consensus-subspace     @vedhavyas @nazar-pc
 /crates/subspace-archiving        @nazar-pc @teor2345
 /crates/subspace-core-primitives  @nazar-pc
 /crates/subspace-erasure-coding   @nazar-pc
@@ -17,10 +17,10 @@
 /crates/subspace-rpc-primitives   @nazar-pc @teor2345
 /crates/subspace-runtime*         @vedhavyas @nazar-pc
 /crates/subspace-service          @nazar-pc
-/crates/subspace-node             @NingLin-P @vedhavyas @nazar-pc
+/crates/subspace-node             @vedhavyas @nazar-pc
 /crates/subspace-verification     @nazar-pc
 /docker                           @nazar-pc
-/domains                          @NingLin-P @vedhavyas
+/domains                          @vedhavyas
 /shared/subspace-kzg              @nazar-pc
 /shared/subspace-proof-*          @nazar-pc
 /shared/subspace-data-retrieval   @nazar-pc @teor2345
