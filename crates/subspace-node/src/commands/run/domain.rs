@@ -91,7 +91,7 @@ struct SubstrateNetworkOptions {
 
 /// Options for running a domain
 #[derive(Debug, Parser)]
-pub(super) struct DomainOptions {
+pub(crate) struct DomainOptions {
     /// ID of the domain to run
     #[clap(long)]
     domain_id: Option<DomainId>,
@@ -181,15 +181,15 @@ struct PruningOptions {
 }
 
 #[derive(Debug)]
-pub(super) struct DomainConfiguration {
-    pub(super) domain_config: Configuration,
-    pub(super) domain_id: DomainId,
-    pub(super) operator_id: Option<OperatorId>,
-    pub(super) domain_type_args: Vec<String>,
+pub(crate) struct DomainConfiguration {
+    pub(crate) domain_config: Configuration,
+    pub(crate) domain_id: DomainId,
+    pub(crate) operator_id: Option<OperatorId>,
+    pub(crate) domain_type_args: Vec<String>,
 }
 
 #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
-pub(super) fn create_domain_configuration(
+pub(crate) fn create_domain_configuration(
     consensus_chain_configuration: &Configuration,
     dev: bool,
     domain_options: DomainOptions,
@@ -442,21 +442,21 @@ pub(super) fn create_domain_configuration(
     })
 }
 
-pub(super) struct DomainStartOptions {
-    pub(super) consensus_client: Arc<CFullClient<CRuntimeApi>>,
-    pub(super) consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
-    pub(super) consensus_network: Arc<dyn NetworkPeers + Send + Sync>,
-    pub(super) block_importing_notification_stream:
+pub(crate) struct DomainStartOptions {
+    pub(crate) consensus_client: Arc<CFullClient<CRuntimeApi>>,
+    pub(crate) consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
+    pub(crate) consensus_network: Arc<dyn NetworkPeers + Send + Sync>,
+    pub(crate) block_importing_notification_stream:
         SubspaceNotificationStream<BlockImportingNotification<CBlock>>,
-    pub(super) pot_slot_info_stream: Receiver<PotSlotInfo>,
-    pub(super) consensus_network_sync_oracle: Arc<sc_network_sync::SyncingService<CBlock>>,
-    pub(super) domain_message_receiver:
+    pub(crate) pot_slot_info_stream: Receiver<PotSlotInfo>,
+    pub(crate) consensus_network_sync_oracle: Arc<sc_network_sync::SyncingService<CBlock>>,
+    pub(crate) domain_message_receiver:
         TracingUnboundedReceiver<cross_domain_message_gossip::ChainMsg>,
-    pub(super) gossip_message_sink: TracingUnboundedSender<cross_domain_message_gossip::Message>,
-    pub(super) domain_backend: Arc<FullBackend<DomainBlock>>,
+    pub(crate) gossip_message_sink: TracingUnboundedSender<cross_domain_message_gossip::Message>,
+    pub(crate) domain_backend: Arc<FullBackend<DomainBlock>>,
 }
 
-pub(super) async fn run_domain(
+pub(crate) async fn run_domain(
     bootstrap_result: BootstrapResult<CBlock>,
     domain_configuration: DomainConfiguration,
     domain_start_options: DomainStartOptions,

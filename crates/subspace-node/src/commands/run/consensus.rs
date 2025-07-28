@@ -365,12 +365,12 @@ impl fmt::Display for CreateObjectMappingConfig {
 
 /// Options for running a node
 #[derive(Debug, Parser)]
-pub(super) struct ConsensusChainOptions {
+pub(crate) struct ConsensusChainOptions {
     /// Base path to store node files.
     ///
     /// Required unless --dev mode is used.
     #[arg(long)]
-    base_path: Option<PathBuf>,
+    pub base_path: Option<PathBuf>,
 
     /// The chain specification.
     ///
@@ -491,24 +491,24 @@ pub(super) struct ConsensusChainOptions {
     pub trie_cache_params: TrieCacheParams,
 }
 
-pub(super) struct PrometheusConfiguration {
-    pub(super) listen_on: SocketAddr,
-    pub(super) prometheus_registry: Registry,
-    pub(super) substrate_registry: substrate_prometheus_endpoint::Registry,
+pub(crate) struct PrometheusConfiguration {
+    pub(crate) listen_on: SocketAddr,
+    pub(crate) prometheus_registry: Registry,
+    pub(crate) substrate_registry: substrate_prometheus_endpoint::Registry,
 }
 
-pub(super) struct ConsensusChainConfiguration {
-    pub(super) maybe_tmp_dir: Option<TempDir>,
-    pub(super) subspace_configuration: SubspaceConfiguration,
-    pub(super) dev: bool,
+pub(crate) struct ConsensusChainConfiguration {
+    pub(crate) maybe_tmp_dir: Option<TempDir>,
+    pub(crate) subspace_configuration: SubspaceConfiguration,
+    pub(crate) dev: bool,
     /// External entropy, used initially when PoT chain starts to derive the first seed
-    pub(super) pot_external_entropy: Vec<u8>,
-    pub(super) storage_monitor: StorageMonitorParams,
-    pub(super) prometheus_configuration: Option<PrometheusConfiguration>,
+    pub(crate) pot_external_entropy: Vec<u8>,
+    pub(crate) storage_monitor: StorageMonitorParams,
+    pub(crate) prometheus_configuration: Option<PrometheusConfiguration>,
 }
 
 #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
-pub(super) fn create_consensus_chain_configuration(
+pub(crate) fn create_consensus_chain_configuration(
     consensus_node_options: ConsensusChainOptions,
     domains_enabled: bool,
 ) -> Result<ConsensusChainConfiguration, Error> {

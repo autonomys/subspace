@@ -22,7 +22,7 @@ use subspace_runtime_primitives::ExtrinsicFor;
 type TrieBackendStorageFor<State, Block> =
     <State as StateBackend<HashingFor<Block>>>::TrieBackendStorage;
 
-pub(crate) type TrieDeltaBackendFor<'a, State, Block> = TrieBackend<
+pub type TrieDeltaBackendFor<'a, State, Block> = TrieBackend<
     DeltaBackend<'a, TrieBackendStorageFor<State, Block>, HashingFor<Block>>,
     HashingFor<Block>,
 >;
@@ -201,7 +201,7 @@ where
     }
 }
 
-pub(crate) struct TrieBackendApi<Client, Block: BlockT, Backend: backend::Backend<Block>, Exec> {
+pub struct TrieBackendApi<Client, Block: BlockT, Backend: backend::Backend<Block>, Exec> {
     parent_hash: Block::Hash,
     parent_number: NumberFor<Block>,
     client: Arc<Client>,
@@ -229,7 +229,7 @@ where
     Client: ExecutorProvider<Block>,
     Exec: CodeExecutor,
 {
-    pub(crate) fn new(
+    pub fn new(
         parent_hash: Block::Hash,
         parent_number: NumberFor<Block>,
         client: Arc<Client>,
@@ -316,7 +316,7 @@ where
         self.maybe_storage_changes = Some(changes)
     }
 
-    pub(crate) fn initialize_block(
+    pub fn initialize_block(
         &self,
         header: Block::Header,
         backend: &TrieDeltaBackendFor<Backend::State, Block>,
@@ -331,7 +331,7 @@ where
         )
     }
 
-    pub(crate) fn apply_extrinsic(
+    pub fn apply_extrinsic(
         &self,
         extrinsic: ExtrinsicFor<Block>,
         backend: &TrieDeltaBackendFor<Backend::State, Block>,
@@ -346,7 +346,7 @@ where
         )
     }
 
-    pub(crate) fn finalize_block(
+    pub fn finalize_block(
         &self,
         backend: &TrieDeltaBackendFor<Backend::State, Block>,
         overlayed_changes: &mut OverlayedChanges<HashingFor<Block>>,
@@ -359,7 +359,7 @@ where
         )
     }
 
-    pub(crate) fn inherent_extrinsics(
+    pub fn inherent_extrinsics(
         &self,
         inherent: InherentData,
         backend: &TrieDeltaBackendFor<Backend::State, Block>,
@@ -377,7 +377,7 @@ where
     /// Collect storage changes returns the storage changes and intermediate roots collected so far.
     /// The changes are reset after this call.
     /// Could return None if there were no execution done.
-    pub(crate) fn collect_storage_changes(
+    pub fn collect_storage_changes(
         &mut self,
     ) -> Option<CollectedStorageChanges<HashingFor<Block>>> {
         let mut intermediate_roots = self.intermediate_roots.drain(..).collect::<Vec<_>>();
@@ -395,10 +395,7 @@ where
         }
     }
 
-    pub(crate) fn execute_in_transaction<F, R>(
-        &mut self,
-        call: F,
-    ) -> Result<R, sp_blockchain::Error>
+    pub fn execute_in_transaction<F, R>(&mut self, call: F) -> Result<R, sp_blockchain::Error>
     where
         F: FnOnce(
             &Self,

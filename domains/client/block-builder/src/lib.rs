@@ -24,12 +24,12 @@
 //! The block builder utility is used in the node as an abstraction over the runtime api to
 //! initialize a block, to push extrinsics and to finalize a block.
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
 
 mod custom_api;
 mod genesis_block_builder;
 
-use crate::custom_api::{TrieBackendApi, TrieDeltaBackendFor};
+pub use crate::custom_api::{TrieBackendApi, TrieDeltaBackendFor};
 pub use custom_api::{CollectedStorageChanges, DeltaBackend, create_delta_backend};
 pub use genesis_block_builder::CustomGenesisBlockBuilder;
 use parity_scale_codec::Encode;
