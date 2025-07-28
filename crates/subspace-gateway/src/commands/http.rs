@@ -44,27 +44,38 @@ pub async fn run(run_options: HttpCommandOptions) -> anyhow::Result<()> {
         indexer_endpoint,
         http_endpoint: http_listen_on,
     };
-    let http_server_fut = start_server(server_params);
+    let http_server_handle = actix_web::rt::spawn(start_server(server_params));
 
-    // This defines order in which things are dropped
-    let dsn_fut = dsn_fut;
-    let http_server_fut = http_server_fut;
+    // If a spawned future is running for a long time, it can block receiving exit signals.
+    // Rather than hunting down every possible blocking future, we give the exit signal itself a
+    // dedicated thread to run on.
+    let exit_signal_select_fut = run_future_in_dedicated_thread(
+        move || async move {
+            // This defines order in which things are dropped
+            let dsn_fut = dsn_fut;
+            let http_server_handle = http_server_handle;
 
-    // TODO: make http_server_fut Send, and run this select in a dedicated thread
-    select! {
-        // Signal future
-        () = signal.fuse() => {},
+            select! {
+                // Signal future
+                () = signal.fuse() => {},
 
-        // Networking future
-        _ = dsn_fut.fuse() => {
-            info!("DSN network runner exited.");
+                // Networking future
+                _ = dsn_fut.fuse() => {
+                    info!("DSN network runner exited.");
+                },
+
+                // HTTP service future
+                _ = http_server_handle.fuse() => {
+                    info!("HTTP server exited.");
+                },
+            }
+
+            anyhow::Ok(())
         },
+        "gateway-exit-signal-select".to_string(),
+    )?;
 
-        // HTTP service future
-        _ = http_server_fut.fuse() => {
-            info!("HTTP server exited.");
-        },
-    }
+    exit_signal_select_fut.await??;
 
     anyhow::Ok(())
 }
