@@ -18,6 +18,7 @@ use std::sync::Arc;
 use subspace_logging::init_logger;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_networking::utils::{raise_fd_limit, run_future_in_dedicated_thread, shutdown_signal};
 use subspace_networking::{Config, KademliaMode, peer_id};
 use tracing::{debug, info};
 
@@ -119,6 +120,9 @@ fn set_exit_on_panic() {
 async fn main() -> Result<(), Box<dyn Error>> {
     set_exit_on_panic();
     init_logger();
+    raise_fd_limit();
+
+    let signal = shutdown_signal("bootstrap node");
     let command: Command = Command::parse();
 
     match command {
@@ -179,6 +183,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }))
             .detach();
 
+            let node_runner_fut = run_future_in_dedicated_thread(
+                move || async move { node_runner.run().await },
+                "bootstrap-node-networking".to_string(),
+            )?;
+
             info!("Subspace Bootstrap Node started");
 
             let prometheus_task = should_start_prometheus_server
@@ -189,14 +198,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     )
                 })
                 .transpose()?;
-            if let Some(prometheus_task) = prometheus_task {
-                select! {
-                   _ = node_runner.run().fuse() => {},
-                   _ = prometheus_task.fuse() => {},
-                }
-            } else {
-                node_runner.run().await
-            }
+
+            // If a spawned future is running for a long time, it can block receiving exit signals.
+            // Rather than hunting down every possible blocking future, we give the exit signal itself a
+            // dedicated thread to run on.
+            let exit_signal_select_fut = run_future_in_dedicated_thread(
+                move || async move {
+                    if let Some(prometheus_task) = prometheus_task {
+                        select! {
+                            // Signal future
+                            () = signal.fuse() => {},
+                            _ = node_runner_fut.fuse() => {
+                                info!("DSN network runner exited.");
+                            },
+                            _ = prometheus_task.fuse() => {
+                                info!("Prometheus server exited.");
+                            },
+                        }
+                    } else {
+                        select! {
+                            // Signal future
+                            () = signal.fuse() => {},
+                            _ = node_runner_fut.fuse() => {
+                                info!("DSN network runner exited.");
+                            },
+                        }
+                    }
+                },
+                "bootstrap-node-exit-signal-select".to_string(),
+            )?;
+
+            exit_signal_select_fut.await?;
         }
         Command::GenerateKeypair { json } => {
             let output = KeypairOutput::new(Keypair::generate());
