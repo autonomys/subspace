@@ -101,7 +101,7 @@ where
         let (tx, mut rx) = mpsc::unbounded();
         let fut = async move {
             let not_downloaded_pieces = download_cached_pieces(
-                piece_indices.into_iter(),
+                piece_indices,
                 &self.node,
                 &self.piece_validator,
                 &tx,
@@ -428,7 +428,7 @@ async fn download_cached_pieces<PV, PieceIndices>(
 ) -> impl ExactSizeIterator<Item = PieceIndex>
 where
     PV: PieceValidator,
-    PieceIndices: Iterator<Item = PieceIndex>,
+    PieceIndices: IntoIterator<Item = PieceIndex>,
 {
     // Make sure every piece index has an entry since this will be the primary container for
     // tracking pieces to download going forward.
@@ -436,6 +436,7 @@ where
     // At the end pieces that were not downloaded will remain with a collection of known closest
     // peers for them.
     let mut pieces_to_download = piece_indices
+        .into_iter()
         .map(|piece_index| async move {
             let mut kademlia = KademliaWrapper::new(node.id());
             let key = piece_index.to_multihash();
