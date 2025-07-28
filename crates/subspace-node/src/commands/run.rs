@@ -420,8 +420,31 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     // If a spawned future is running for a long time, it can block receiving exit signals.
     // Rather than hunting down every possible blocking future, we give the exit signal itself a
     // dedicated thread to run on.
+    //
+    // TODO: if the node is slow to exit, or node tasks respond slowly at runtime, spawn each task
+    // above in a dedicated thread. This will likely require a custom task manager.
     let exit_signal_select_fut = run_future_in_dedicated_thread(
-        move || async move { signals.run_until_signal(task_manager.future().fuse()).await },
+        move || async move {
+            let result = signals.run_until_signal(task_manager.future().fuse()).await;
+
+            let running_tasks = task_manager
+                .into_task_registry()
+                .running_tasks()
+                .into_iter()
+                .map(|(task_kind, task_count)| {
+                    (
+                        format!("{}-{}", task_kind.group, task_kind.name),
+                        task_count,
+                    )
+                })
+                .collect::<Vec<_>>();
+            debug!(
+                ?running_tasks,
+                "Tasks running after task manager was dropped",
+            );
+
+            result
+        },
         "node-exit-signal-select".to_string(),
     )
     .map_err(|error| Error::Other(format!("Failed to spawn dedicated thread: {error:?}")))?;
