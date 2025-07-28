@@ -5,150 +5,19 @@ pub mod ss58;
 mod tests;
 
 use crate::thread_pool_manager::{PlottingThreadPoolManager, PlottingThreadPoolPair};
-use futures::channel::oneshot;
-use futures::channel::oneshot::Canceled;
-use futures::future::Either;
 use rayon::{
     ThreadBuilder, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder, current_thread_index,
 };
-use std::future::Future;
 use std::num::NonZeroUsize;
-use std::ops::Deref;
-use std::pin::{Pin, pin};
 use std::process::exit;
-use std::task::{Context, Poll};
 use std::{fmt, io, iter, thread};
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::runtime::Handle;
 use tokio::task;
-use tracing::{debug, warn};
+use tracing::warn;
 
 /// It doesn't make a lot of sense to have a huge number of farming threads, 32 is plenty
 const MAX_DEFAULT_FARMING_THREADS: usize = 32;
-
-/// Joins async join handle on drop
-#[derive(Debug)]
-pub struct AsyncJoinOnDrop<T> {
-    handle: Option<task::JoinHandle<T>>,
-    abort_on_drop: bool,
-}
-
-impl<T> Drop for AsyncJoinOnDrop<T> {
-    #[inline]
-    fn drop(&mut self) {
-        if let Some(handle) = self.handle.take() {
-            if self.abort_on_drop {
-                handle.abort();
-            }
-
-            if !handle.is_finished() {
-                task::block_in_place(move || {
-                    let _ = Handle::current().block_on(handle);
-                });
-            }
-        }
-    }
-}
-
-impl<T> AsyncJoinOnDrop<T> {
-    /// Create new instance.
-    #[inline]
-    pub fn new(handle: task::JoinHandle<T>, abort_on_drop: bool) -> Self {
-        Self {
-            handle: Some(handle),
-            abort_on_drop,
-        }
-    }
-}
-
-impl<T> Future for AsyncJoinOnDrop<T> {
-    type Output = Result<T, task::JoinError>;
-
-    #[inline]
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(
-            self.handle
-                .as_mut()
-                .expect("Only dropped in Drop impl; qed"),
-        )
-        .poll(cx)
-    }
-}
-
-/// Joins synchronous join handle on drop
-pub(crate) struct JoinOnDrop(Option<thread::JoinHandle<()>>);
-
-impl Drop for JoinOnDrop {
-    #[inline]
-    fn drop(&mut self) {
-        self.0
-            .take()
-            .expect("Always called exactly once; qed")
-            .join()
-            .expect("Panic if background thread panicked");
-    }
-}
-
-impl JoinOnDrop {
-    // Create new instance
-    #[inline]
-    pub(crate) fn new(handle: thread::JoinHandle<()>) -> Self {
-        Self(Some(handle))
-    }
-}
-
-impl Deref for JoinOnDrop {
-    type Target = thread::JoinHandle<()>;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref().expect("Only dropped in Drop impl; qed")
-    }
-}
-
-/// Runs future on a dedicated thread with the specified name, will block on drop until background
-/// thread with future is stopped too, ensuring nothing is left in memory
-pub fn run_future_in_dedicated_thread<CreateFut, Fut, T>(
-    create_future: CreateFut,
-    thread_name: String,
-) -> io::Result<impl Future<Output = Result<T, Canceled>> + Send>
-where
-    CreateFut: (FnOnce() -> Fut) + Send + 'static,
-    Fut: Future<Output = T> + 'static,
-    T: Send + 'static,
-{
-    let (drop_tx, drop_rx) = oneshot::channel::<()>();
-    let (result_tx, result_rx) = oneshot::channel();
-    let handle = Handle::current();
-    let join_handle = thread::Builder::new().name(thread_name).spawn(move || {
-        let _tokio_handle_guard = handle.enter();
-
-        let future = pin!(create_future());
-
-        let result = match handle.block_on(futures::future::select(future, drop_rx)) {
-            Either::Left((result, _)) => result,
-            Either::Right(_) => {
-                // Outer future was dropped, nothing left to do
-                return;
-            }
-        };
-        if let Err(_error) = result_tx.send(result) {
-            debug!(
-                thread_name = ?thread::current().name(),
-                "Future finished, but receiver was already dropped",
-            );
-        }
-    })?;
-    // Ensure thread will not be left hanging forever
-    let join_on_drop = JoinOnDrop::new(join_handle);
-
-    Ok(async move {
-        let result = result_rx.await;
-        drop(drop_tx);
-        drop(join_on_drop);
-        result
-    })
-}
 
 /// Abstraction for CPU core set
 #[derive(Clone)]

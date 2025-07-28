@@ -1,9 +1,7 @@
-use crate::utils::{
-    CpuCoreSet, parse_cpu_cores_sets, run_future_in_dedicated_thread,
-    thread_pool_core_indices_internal,
-};
+use crate::utils::{CpuCoreSet, parse_cpu_cores_sets, thread_pool_core_indices_internal};
 use std::future;
 use std::num::NonZeroUsize;
+use subspace_networking::utils::run_future_in_dedicated_thread;
 use tokio::sync::oneshot;
 
 #[tokio::test]

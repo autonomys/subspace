@@ -13,7 +13,6 @@
 //! * notifications (typically targeting a particular instance of an app) and corresponding subscriptions (for example solution notification)
 //! * broadcasts and corresponding subscriptions (for example slot info broadcast)
 
-use crate::utils::AsyncJoinOnDrop;
 use anyhow::anyhow;
 use async_nats::{
     Client, ConnectOptions, HeaderMap, HeaderValue, Message, PublishError, RequestError,
@@ -35,6 +34,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use std::{fmt, mem};
+use subspace_networking::utils::AsyncJoinOnDrop;
 use thiserror::Error;
 use tracing::{Instrument, debug, error, trace, warn};
 use ulid::Ulid;

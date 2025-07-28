@@ -45,14 +45,14 @@ use subspace_farmer::single_disk_farm::{
 };
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
-    AsyncJoinOnDrop, create_plotting_thread_pool_manager, parse_cpu_cores_sets,
-    recommended_number_of_farming_threads, run_future_in_dedicated_thread,
-    thread_pool_core_indices,
+    create_plotting_thread_pool_manager, parse_cpu_cores_sets,
+    recommended_number_of_farming_threads, thread_pool_core_indices,
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_kzg::Kzg;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::utils::piece_provider::PieceProvider;
+use subspace_networking::utils::{AsyncJoinOnDrop, run_future_in_dedicated_thread};
 use subspace_proof_of_space::Table;
 use tracing::{Instrument, error, info, info_span, warn};
 

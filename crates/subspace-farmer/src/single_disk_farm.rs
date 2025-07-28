@@ -38,7 +38,7 @@ use crate::single_disk_farm::plotting::{
     PlottingOptions, PlottingSchedulerOptions, SectorPlottingOptions, plotting, plotting_scheduler,
 };
 use crate::single_disk_farm::reward_signing::reward_signing;
-use crate::utils::{AsyncJoinOnDrop, tokio_rayon_spawn_handler};
+use crate::utils::tokio_rayon_spawn_handler;
 use crate::{KNOWN_PEERS_CACHE_SIZE, farm};
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
@@ -77,6 +77,7 @@ use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{SectorMetadata, SectorMetadataChecksummed, sector_size};
 use subspace_kzg::Kzg;
 use subspace_networking::KnownPeersManager;
+use subspace_networking::utils::AsyncJoinOnDrop;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;

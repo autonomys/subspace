@@ -10,7 +10,6 @@ pub mod rocm;
 use crate::plotter::gpu::gpu_encoders_manager::GpuRecordsEncoderManager;
 use crate::plotter::gpu::metrics::GpuPlotterMetrics;
 use crate::plotter::{Plotter, SectorPlottingProgress};
-use crate::utils::AsyncJoinOnDrop;
 use async_lock::{Mutex as AsyncMutex, Semaphore, SemaphoreGuardArc};
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -38,6 +37,7 @@ use subspace_farmer_components::plotting::{
     encode_sector, write_sector,
 };
 use subspace_kzg::Kzg;
+use subspace_networking::utils::AsyncJoinOnDrop;
 use tokio::task::yield_now;
 use tracing::{Instrument, warn};
 

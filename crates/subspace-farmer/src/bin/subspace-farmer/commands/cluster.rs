@@ -21,8 +21,8 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::time::Duration;
 use subspace_farmer::cluster::nats_client::NatsClient;
-use subspace_farmer::utils::{AsyncJoinOnDrop, run_future_in_dedicated_thread};
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
+use subspace_networking::utils::{AsyncJoinOnDrop, run_future_in_dedicated_thread};
 use subspace_proof_of_space::Table;
 
 const REQUEST_RETRY_MAX_ELAPSED_TIME: Duration = Duration::from_mins(1);
