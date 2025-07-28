@@ -788,9 +788,9 @@ where
                 let encoded_block = encode_block(signed_block);
 
                 debug!(
-                    "Encoded block {} has size of {:.2} kiB",
+                    "Encoded block {} has size of {}",
                     block_number_to_archive,
-                    encoded_block.len() as f32 / 1024.0
+                    bytesize::to_string(encoded_block.len() as u64, true),
                 );
 
                 let block_outcome = archiver.add_block(encoded_block, block_object_mappings, false);
@@ -1190,9 +1190,9 @@ where
 
     let encoded_block = encode_block(block);
     debug!(
-        "Encoded block {} has size of {:.2} kiB",
+        "Encoded block {} has size of {}",
         block_number_to_archive,
-        encoded_block.len() as f32 / 1024.0
+        bytesize::to_string(encoded_block.len() as u64, true),
     );
 
     let block_outcome = archiver.add_block(
