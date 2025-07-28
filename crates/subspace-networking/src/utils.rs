@@ -13,6 +13,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
+use std::fmt::Display;
 use std::future::Future;
 use std::ops::Deref;
 use std::pin::{Pin, pin};
@@ -20,8 +21,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{io, thread};
 use tokio::runtime::Handle;
-use tokio::task;
-use tracing::{debug, warn};
+use tokio::{signal, task};
+use tracing::{debug, info, warn};
 
 const NETWORKING_REGISTRY_PREFIX: &str = "subspace";
 
@@ -232,4 +233,36 @@ where
         drop(join_on_drop);
         result
     })
+}
+
+/// Wait for the process to receive a shutdown signal, and log the supplied process kind.
+#[cfg(unix)]
+pub async fn shutdown_signal(process_kind: impl Display) {
+    use futures::FutureExt;
+    use std::pin::pin;
+
+    let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
+        .expect("Setting signal handlers must never fail");
+    let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
+        .expect("Setting signal handlers must never fail");
+
+    futures::future::select(
+        pin!(sigint.recv().map(|_| {
+            info!("Received SIGINT, shutting down {process_kind}...");
+        }),),
+        pin!(sigterm.recv().map(|_| {
+            info!("Received SIGTERM, shutting down {process_kind}...");
+        }),),
+    )
+    .await;
+}
+
+/// Wait for the process to receive a shutdown signal, and log the supplied process kind.
+#[cfg(not(unix))]
+pub async fn shutdown_signal(process_kind: impl Display) {
+    signal::ctrl_c()
+        .await
+        .expect("Setting signal handlers must never fail");
+
+    info!("Received Ctrl+C, shutting down {process_kind}...");
 }

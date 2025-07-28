@@ -4,10 +4,10 @@
 pub(crate) mod server;
 
 use crate::commands::http::server::{ServerParameters, start_server};
-use crate::commands::{GatewayOptions, initialize_object_fetcher, shutdown_signal};
+use crate::commands::{GatewayOptions, initialize_object_fetcher};
 use clap::Parser;
 use futures::{FutureExt, select};
-use subspace_networking::utils::run_future_in_dedicated_thread;
+use subspace_networking::utils::{run_future_in_dedicated_thread, shutdown_signal};
 use tracing::info;
 
 /// Options for HTTP server.
@@ -25,7 +25,7 @@ pub(crate) struct HttpCommandOptions {
 
 /// Runs an HTTP server which fetches DSN objects based on object hashes.
 pub async fn run(run_options: HttpCommandOptions) -> anyhow::Result<()> {
-    let signal = shutdown_signal();
+    let signal = shutdown_signal("gateway");
 
     let HttpCommandOptions {
         gateway_options,

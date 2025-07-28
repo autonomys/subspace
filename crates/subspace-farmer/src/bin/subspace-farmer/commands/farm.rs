@@ -1,6 +1,5 @@
 use crate::commands::shared::network::{NetworkArgs, configure_network};
 use crate::commands::shared::{DiskFarm, PlottingThreadPriority, derive_libp2p_keypair};
-use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock, Semaphore};
 use backoff::ExponentialBackoff;
@@ -52,7 +51,9 @@ use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_kzg::Kzg;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::utils::piece_provider::PieceProvider;
-use subspace_networking::utils::{AsyncJoinOnDrop, run_future_in_dedicated_thread};
+use subspace_networking::utils::{
+    AsyncJoinOnDrop, run_future_in_dedicated_thread, shutdown_signal,
+};
 use subspace_proof_of_space::Table;
 use tracing::{Instrument, error, info, info_span, warn};
 
@@ -303,7 +304,7 @@ pub(crate) async fn farm<PosTable>(farming_args: FarmingArgs) -> anyhow::Result<
 where
     PosTable: Table,
 {
-    let signal = shutdown_signal();
+    let signal = shutdown_signal("farmer");
 
     let FarmingArgs {
         node_rpc_url,

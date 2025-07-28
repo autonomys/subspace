@@ -3,12 +3,12 @@
 pub(crate) mod server;
 
 use crate::commands::rpc::server::{RPC_DEFAULT_PORT, RpcOptions, launch_rpc_server};
-use crate::commands::{GatewayOptions, initialize_object_fetcher, shutdown_signal};
+use crate::commands::{GatewayOptions, initialize_object_fetcher};
 use clap::Parser;
 use futures::{FutureExt, select};
 use std::pin::pin;
 use subspace_gateway_rpc::{SubspaceGatewayRpc, SubspaceGatewayRpcConfig};
-use subspace_networking::utils::run_future_in_dedicated_thread;
+use subspace_networking::utils::{run_future_in_dedicated_thread, shutdown_signal};
 use tracing::info;
 
 /// Options for RPC server.
@@ -24,7 +24,7 @@ pub(crate) struct RpcCommandOptions {
 
 /// Runs an RPC server which fetches DSN objects based on mappings.
 pub async fn run(run_options: RpcCommandOptions) -> anyhow::Result<()> {
-    let signal = shutdown_signal();
+    let signal = shutdown_signal("gateway");
 
     let RpcCommandOptions {
         gateway_options,

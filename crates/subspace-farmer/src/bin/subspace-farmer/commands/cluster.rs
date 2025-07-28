@@ -7,7 +7,6 @@ use crate::commands::cluster::cache::{CacheArgs, cache};
 use crate::commands::cluster::controller::{ControllerArgs, controller};
 use crate::commands::cluster::farmer::{FarmerArgs, farmer};
 use crate::commands::cluster::plotter::{PlotterArgs, plotter};
-use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use async_nats::ServerAddr;
 use backoff::ExponentialBackoff;
@@ -22,7 +21,9 @@ use std::pin::Pin;
 use std::time::Duration;
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
-use subspace_networking::utils::{AsyncJoinOnDrop, run_future_in_dedicated_thread};
+use subspace_networking::utils::{
+    AsyncJoinOnDrop, run_future_in_dedicated_thread, shutdown_signal,
+};
 use subspace_proof_of_space::Table;
 
 const REQUEST_RETRY_MAX_ELAPSED_TIME: Duration = Duration::from_mins(1);
@@ -90,7 +91,7 @@ pub(crate) async fn cluster<PosTable>(cluster_args: ClusterArgs) -> anyhow::Resu
 where
     PosTable: Table,
 {
-    let signal = shutdown_signal();
+    let signal = shutdown_signal("farmer");
 
     let ClusterArgs {
         shared_args,

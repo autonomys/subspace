@@ -1,5 +1,3 @@
-use tokio::signal;
-
 pub(crate) fn raise_fd_limit() {
     match fdlimit::raise_fd_limit() {
         Ok(fdlimit::Outcome::LimitRaised { from, to }) => {
@@ -20,34 +18,4 @@ pub(crate) fn raise_fd_limit() {
             );
         }
     }
-}
-
-#[cfg(unix)]
-pub(crate) async fn shutdown_signal() {
-    use futures::FutureExt;
-    use std::pin::pin;
-
-    let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
-        .expect("Setting signal handlers must never fail");
-    let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
-        .expect("Setting signal handlers must never fail");
-
-    futures::future::select(
-        pin!(sigint.recv().map(|_| {
-            tracing::info!("Received SIGINT, shutting down farmer...");
-        }),),
-        pin!(sigterm.recv().map(|_| {
-            tracing::info!("Received SIGTERM, shutting down farmer...");
-        }),),
-    )
-    .await;
-}
-
-#[cfg(not(unix))]
-pub(crate) async fn shutdown_signal() {
-    signal::ctrl_c()
-        .await
-        .expect("Setting signal handlers must never fail");
-
-    tracing::info!("Received Ctrl+C, shutting down farmer...");
 }
