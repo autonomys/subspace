@@ -7,6 +7,7 @@ use crate::commands::http::server::{ServerParameters, start_server};
 use crate::commands::{GatewayOptions, initialize_object_fetcher, shutdown_signal};
 use clap::Parser;
 use futures::{FutureExt, select};
+use subspace_networking::utils::run_future_in_dedicated_thread;
 use tracing::info;
 
 /// Options for HTTP server.
@@ -33,7 +34,10 @@ pub async fn run(run_options: HttpCommandOptions) -> anyhow::Result<()> {
     } = run_options;
 
     let (object_fetcher, mut dsn_node_runner) = initialize_object_fetcher(gateway_options).await?;
-    let dsn_fut = dsn_node_runner.run();
+    let dsn_fut = run_future_in_dedicated_thread(
+        move || async move { dsn_node_runner.run().await },
+        "gateway-networking".to_string(),
+    )?;
 
     let server_params = ServerParameters {
         object_fetcher,
@@ -46,12 +50,13 @@ pub async fn run(run_options: HttpCommandOptions) -> anyhow::Result<()> {
     let dsn_fut = dsn_fut;
     let http_server_fut = http_server_fut;
 
+    // TODO: make http_server_fut Send, and run this select in a dedicated thread
     select! {
         // Signal future
         () = signal.fuse() => {},
 
         // Networking future
-        () = dsn_fut.fuse() => {
+        _ = dsn_fut.fuse() => {
             info!("DSN network runner exited.");
         },
 
