@@ -36,6 +36,7 @@ use std::env;
 use std::sync::Arc;
 use subspace_logging::init_logger;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
+use subspace_networking::utils::run_future_in_dedicated_thread;
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::ChainSyncMode;
 use tracing::{debug, error, info, info_span, warn};
@@ -437,10 +438,20 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         consensus_chain_node.task_manager
     };
 
-    signals
-        .run_until_signal(task_manager.future().fuse())
-        .await
-        .map_err(Into::into)
+    // If a spawned future is running for a long time, it can block receiving exit signals.
+    // Rather than hunting down every possible blocking future, we give the exit signal itself a
+    // dedicated thread to run on.
+    let exit_signal_select_fut = run_future_in_dedicated_thread(
+        move || async move { signals.run_until_signal(task_manager.future().fuse()).await },
+        "node-exit-signal-select".to_string(),
+    )
+    .map_err(|error| Error::Other(format!("Failed to spawn dedicated thread: {error:?}")))?;
+
+    exit_signal_select_fut.await.map_err(|_canceled_error| {
+        Error::Other("Task spawned in dedicated thread exited unexpectedly".to_string())
+    })??;
+
+    Ok(())
 }
 
 pub fn ensure_block_and_state_pruning_params(config: &mut Configuration, supress_warning: bool) {
