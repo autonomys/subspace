@@ -134,7 +134,7 @@ pub(super) async fn farmer<PosTable>(
     nats_client: NatsClient,
     registry: &mut Registry,
     farmer_args: FarmerArgs,
-) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>>
+) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>>
 where
     PosTable: Table,
 {

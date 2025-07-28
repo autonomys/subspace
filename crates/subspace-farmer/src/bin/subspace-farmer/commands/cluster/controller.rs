@@ -82,7 +82,7 @@ pub(super) async fn controller(
     nats_client: NatsClient,
     registry: &mut Registry,
     controller_args: ControllerArgs,
-) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>> {
+) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>> {
     let ControllerArgs {
         base_path,
         node_rpc_url,

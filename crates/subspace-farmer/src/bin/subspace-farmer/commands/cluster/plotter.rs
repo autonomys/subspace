@@ -145,7 +145,7 @@ pub(super) async fn plotter<PosTable>(
     nats_client: NatsClient,
     registry: &mut Registry,
     plotter_args: PlotterArgs,
-) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>>
+) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>>
 where
     PosTable: Table,
 {

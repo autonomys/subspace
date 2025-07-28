@@ -117,7 +117,7 @@ pub(super) async fn cache(
     nats_client: NatsClient,
     registry: &mut Registry,
     cache_args: CacheArgs,
-) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>> {
+) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>> {
     let CacheArgs {
         mut disk_caches,
         tmp,
