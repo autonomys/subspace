@@ -29,7 +29,6 @@ domain-eth-service.workspace = true
 domain-service.workspace = true
 domain-runtime-primitives.workspace = true
 evm-domain-runtime.workspace = true
-fdlimit.workspace = true
 fp-evm.workspace = true
 frame-benchmarking = { workspace = true, optional = true }
 frame-benchmarking-cli = { workspace = true, optional = true }

@@ -25,7 +25,6 @@ async-lock.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 clap = { workspace = true, features = ["derive"] }
-fdlimit.workspace = true
 futures.workspace = true
 hex.workspace = true
 jsonrpsee = { workspace = true, features = ["server", "ws-client"] }

@@ -266,3 +266,25 @@ pub async fn shutdown_signal(process_kind: impl Display) {
 
     info!("Received Ctrl+C, shutting down {process_kind}...");
 }
+
+/// Raise the file descriptor limit for the process to the maximum possible value.
+pub fn raise_fd_limit() {
+    match fdlimit::raise_fd_limit() {
+        Ok(fdlimit::Outcome::LimitRaised { from, to }) => {
+            debug!(
+                "Increased file descriptor limit from previous (most likely soft) limit {} to \
+                new (most likely hard) limit {}",
+                from, to
+            );
+        }
+        Ok(fdlimit::Outcome::Unsupported) => {
+            // Unsupported platform (a platform other than Linux or macOS)
+        }
+        Err(error) => {
+            warn!(
+                "Failed to increase file descriptor limit for the process due to an error: {}.",
+                error
+            );
+        }
+    }
+}

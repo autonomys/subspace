@@ -19,7 +19,6 @@ use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_kzg::Kzg;
 use subspace_networking::NodeRunner;
 use subspace_networking::utils::piece_provider::PieceProvider;
-use tracing::{debug, warn};
 
 /// The default size limit, based on the maximum consensus block size.
 pub const DEFAULT_MAX_SIZE: usize = 5 * 1024 * 1024;
@@ -64,27 +63,6 @@ pub(crate) fn set_exit_on_panic() {
         default_panic_hook(panic_info);
         exit(1);
     }));
-}
-
-pub(crate) fn raise_fd_limit() {
-    match fdlimit::raise_fd_limit() {
-        Ok(fdlimit::Outcome::LimitRaised { from, to }) => {
-            debug!(
-                "Increased file descriptor limit from previous (most likely soft) limit {} to \
-                new (most likely hard) limit {}",
-                from, to
-            );
-        }
-        Ok(fdlimit::Outcome::Unsupported) => {
-            // Unsupported platform (a platform other than Linux or macOS)
-        }
-        Err(error) => {
-            warn!(
-                "Failed to increase file descriptor limit for the process due to an error: {}.",
-                error
-            );
-        }
-    }
 }
 
 /// Configures and returns object fetcher and DSN node runner.

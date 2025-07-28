@@ -36,7 +36,7 @@ use std::env;
 use std::sync::Arc;
 use subspace_logging::init_logger;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
-use subspace_networking::utils::run_future_in_dedicated_thread;
+use subspace_networking::utils::{raise_fd_limit, run_future_in_dedicated_thread};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::ChainSyncMode;
 use tracing::{debug, error, info, info_span, warn};
@@ -56,27 +56,6 @@ pub struct RunOptions {
     /// subspace-node [consensus-chain-args] -- [domain-args]
     #[arg(raw = true)]
     domain_args: Vec<String>,
-}
-
-fn raise_fd_limit() {
-    match fdlimit::raise_fd_limit() {
-        Ok(fdlimit::Outcome::LimitRaised { from, to }) => {
-            debug!(
-                "Increased file descriptor limit from previous (most likely soft) limit {} to \
-                new (most likely hard) limit {}",
-                from, to
-            );
-        }
-        Ok(fdlimit::Outcome::Unsupported) => {
-            // Unsupported platform (a platform other than Linux or macOS)
-        }
-        Err(error) => {
-            warn!(
-                "Failed to increase file descriptor limit for the process due to an error: {}.",
-                error
-            );
-        }
-    }
 }
 
 /// Default run command for node

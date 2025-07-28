@@ -1,7 +1,6 @@
 #![feature(duration_constructors_lite, type_changing_struct_update)]
 
 mod commands;
-mod utils;
 
 use clap::Parser;
 use std::path::PathBuf;
@@ -9,6 +8,7 @@ use std::process::exit;
 use std::{fs, panic};
 use subspace_farmer::single_disk_farm::{ScrubTarget, SingleDiskFarm};
 use subspace_logging::init_logger;
+use subspace_networking::utils::raise_fd_limit;
 use subspace_proof_of_space::chia::ChiaTable;
 use tracing::info;
 
@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
     }));
 
     init_logger();
-    utils::raise_fd_limit();
+    raise_fd_limit();
 
     let command = Command::parse();
 
