@@ -23,6 +23,7 @@ bytes.workspace = true
 clap = { workspace = true, features = ["color", "derive"] }
 derive_more = { workspace = true, features = ["full"] }
 event-listener-primitives.workspace = true
+fdlimit.workspace = true
 fs2.workspace = true
 futures.workspace = true
 futures-timer.workspace = true

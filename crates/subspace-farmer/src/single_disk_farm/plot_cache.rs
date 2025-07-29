@@ -5,7 +5,6 @@ mod tests;
 
 use crate::farm::{FarmError, MaybePieceStoredResult, PlotCache};
 use crate::single_disk_farm::direct_io_file::DirectIoFile;
-use crate::utils::AsyncJoinOnDrop;
 use async_lock::RwLock as AsyncRwLock;
 use async_trait::async_trait;
 use bytes::BytesMut;
@@ -19,6 +18,7 @@ use subspace_core_primitives::sectors::SectorIndex;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_networking::libp2p::kad::RecordKey;
+use subspace_networking::utils::AsyncJoinOnDrop;
 use subspace_networking::utils::multihash::ToMultihash;
 use thiserror::Error;
 use tokio::task;

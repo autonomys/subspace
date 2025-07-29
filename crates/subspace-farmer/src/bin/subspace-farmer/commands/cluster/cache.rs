@@ -14,7 +14,7 @@ use std::time::Duration;
 use subspace_farmer::cluster::cache::cache_service;
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::disk_piece_cache::DiskPieceCache;
-use subspace_farmer::utils::AsyncJoinOnDrop;
+use subspace_networking::utils::AsyncJoinOnDrop;
 
 /// Interval between cache self-identification broadcast messages
 pub(super) const CACHE_IDENTIFICATION_BROADCAST_INTERVAL: Duration = Duration::from_secs(30);
@@ -117,7 +117,7 @@ pub(super) async fn cache(
     nats_client: NatsClient,
     registry: &mut Registry,
     cache_args: CacheArgs,
-) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>> {
+) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>> {
     let CacheArgs {
         mut disk_caches,
         tmp,

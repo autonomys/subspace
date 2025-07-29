@@ -2,7 +2,6 @@
 //! proxies other requests through
 
 use crate::node_client::{NodeClient, NodeClientExt};
-use crate::utils::AsyncJoinOnDrop;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
 use futures::{FutureExt, Stream, StreamExt, select};
@@ -11,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
+use subspace_networking::utils::AsyncJoinOnDrop;
 use subspace_rpc_primitives::{
     FarmerAppInfo, MAX_SEGMENT_HEADERS_PER_REQUEST, RewardSignatureResponse, RewardSigningInfo,
     SlotInfo, SolutionResponse,

@@ -27,9 +27,9 @@ use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeClient;
 use subspace_farmer::node_client::rpc_node_client::RpcNodeClient;
 use subspace_farmer::single_disk_farm::identity::Identity;
-use subspace_farmer::utils::{AsyncJoinOnDrop, run_future_in_dedicated_thread};
 use subspace_kzg::Kzg;
 use subspace_networking::utils::piece_provider::PieceProvider;
+use subspace_networking::utils::{AsyncJoinOnDrop, run_future_in_dedicated_thread};
 use tracing::{Instrument, info, info_span};
 
 /// Get piece retry attempts number.
@@ -82,7 +82,7 @@ pub(super) async fn controller(
     nats_client: NatsClient,
     registry: &mut Registry,
     controller_args: ControllerArgs,
-) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>> {
+) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>> {
     let ControllerArgs {
         base_path,
         node_rpc_url,

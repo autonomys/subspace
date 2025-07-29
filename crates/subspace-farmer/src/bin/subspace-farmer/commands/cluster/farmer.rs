@@ -29,12 +29,11 @@ use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeCli
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
+use subspace_farmer::utils::recommended_number_of_farming_threads;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
-use subspace_farmer::utils::{
-    AsyncJoinOnDrop, recommended_number_of_farming_threads, run_future_in_dedicated_thread,
-};
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_kzg::Kzg;
+use subspace_networking::utils::{AsyncJoinOnDrop, run_future_in_dedicated_thread};
 use subspace_proof_of_space::Table;
 use tracing::{Instrument, error, info, info_span, warn};
 
@@ -134,7 +133,7 @@ pub(super) async fn farmer<PosTable>(
     nats_client: NatsClient,
     registry: &mut Registry,
     farmer_args: FarmerArgs,
-) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>>
+) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>>
 where
     PosTable: Table,
 {

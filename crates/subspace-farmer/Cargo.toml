@@ -31,7 +31,6 @@ criterion = { workspace = true, features = ["rayon", "async"], optional = true }
 derive_more = { workspace = true, features = ["full"] }
 event-listener.workspace = true
 event-listener-primitives.workspace = true
-fdlimit = { workspace = true, optional = true }
 fs4.workspace = true
 futures.workspace = true
 hex = { workspace = true, features = ["serde"] }
@@ -96,7 +95,6 @@ default-library = ["cluster", "numa"]
 binary = [
     "dep:clap",
     "dep:criterion",
-    "dep:fdlimit",
     "dep:mimalloc",
     "dep:subspace-metrics",
     "dep:subspace-logging",

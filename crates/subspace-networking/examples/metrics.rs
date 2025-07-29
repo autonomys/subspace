@@ -9,8 +9,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_logging::init_logger;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
+use subspace_networking::utils::shutdown_signal;
 use subspace_networking::{Config, Node};
-use tokio::signal;
 use tokio::time::sleep;
 use tracing::{error, info};
 
@@ -92,7 +92,7 @@ async fn main() {
     loop {
         select! {
             _ = get_peer(node_1.id(), node_2.clone()).fuse() => {},
-            _ = shutdown_signal().fuse() => {
+            _ = shutdown_signal("metrics example").fuse() => {
                 info!("Exiting...");
                 return;
             }
@@ -111,33 +111,4 @@ async fn get_peer(peer_id: PeerId, node: Node) {
 
     info!("Got peer {}", peer_id);
     sleep(Duration::from_secs(2)).await;
-}
-
-#[cfg(unix)]
-pub(crate) async fn shutdown_signal() {
-    use std::pin::pin;
-
-    let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
-        .expect("Setting signal handlers must never fail");
-    let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
-        .expect("Setting signal handlers must never fail");
-
-    futures::future::select(
-        pin!(sigint.recv().map(|_| {
-            info!("Received SIGINT, shutting down farmer...");
-        }),),
-        pin!(sigterm.recv().map(|_| {
-            info!("Received SIGTERM, shutting down farmer...");
-        }),),
-    )
-    .await;
-}
-
-#[cfg(not(unix))]
-pub(crate) async fn shutdown_signal() {
-    signal::ctrl_c()
-        .await
-        .expect("Setting signal handlers must never fail");
-
-    info!("Received Ctrl+C, shutting down farmer...");
 }

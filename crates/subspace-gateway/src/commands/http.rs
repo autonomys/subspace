@@ -4,9 +4,10 @@
 pub(crate) mod server;
 
 use crate::commands::http::server::{ServerParameters, start_server};
-use crate::commands::{GatewayOptions, initialize_object_fetcher, shutdown_signal};
+use crate::commands::{GatewayOptions, initialize_object_fetcher};
 use clap::Parser;
 use futures::{FutureExt, select};
+use subspace_networking::utils::{run_future_in_dedicated_thread, shutdown_signal};
 use tracing::info;
 
 /// Options for HTTP server.
@@ -24,7 +25,7 @@ pub(crate) struct HttpCommandOptions {
 
 /// Runs an HTTP server which fetches DSN objects based on object hashes.
 pub async fn run(run_options: HttpCommandOptions) -> anyhow::Result<()> {
-    let signal = shutdown_signal();
+    let signal = shutdown_signal("gateway");
 
     let HttpCommandOptions {
         gateway_options,
@@ -33,33 +34,48 @@ pub async fn run(run_options: HttpCommandOptions) -> anyhow::Result<()> {
     } = run_options;
 
     let (object_fetcher, mut dsn_node_runner) = initialize_object_fetcher(gateway_options).await?;
-    let dsn_fut = dsn_node_runner.run();
+    let dsn_fut = run_future_in_dedicated_thread(
+        move || async move { dsn_node_runner.run().await },
+        "gateway-networking".to_string(),
+    )?;
 
     let server_params = ServerParameters {
         object_fetcher,
         indexer_endpoint,
         http_endpoint: http_listen_on,
     };
-    let http_server_fut = start_server(server_params);
+    let http_server_handle = actix_web::rt::spawn(start_server(server_params));
 
-    // This defines order in which things are dropped
-    let dsn_fut = dsn_fut;
-    let http_server_fut = http_server_fut;
+    // If a spawned future is running for a long time, it can block receiving exit signals.
+    // Rather than hunting down every possible blocking future, we give the exit signal itself a
+    // dedicated thread to run on.
+    let exit_signal_select_fut = run_future_in_dedicated_thread(
+        move || async move {
+            // This defines order in which things are dropped
+            let dsn_fut = dsn_fut;
+            let http_server_handle = http_server_handle;
 
-    select! {
-        // Signal future
-        () = signal.fuse() => {},
+            select! {
+                // Signal future
+                () = signal.fuse() => {},
 
-        // Networking future
-        () = dsn_fut.fuse() => {
-            info!("DSN network runner exited.");
+                // Networking future
+                _ = dsn_fut.fuse() => {
+                    info!("DSN network runner exited.");
+                },
+
+                // HTTP service future
+                _ = http_server_handle.fuse() => {
+                    info!("HTTP server exited.");
+                },
+            }
+
+            anyhow::Ok(())
         },
+        "gateway-exit-signal-select".to_string(),
+    )?;
 
-        // HTTP service future
-        _ = http_server_fut.fuse() => {
-            info!("HTTP server exited.");
-        },
-    }
+    exit_signal_select_fut.await??;
 
     anyhow::Ok(())
 }

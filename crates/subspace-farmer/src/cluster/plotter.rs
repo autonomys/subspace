@@ -8,7 +8,6 @@
 
 use crate::cluster::nats_client::{GenericRequest, GenericStreamRequest, NatsClient};
 use crate::plotter::{Plotter, SectorPlottingProgress};
-use crate::utils::AsyncJoinOnDrop;
 use anyhow::anyhow;
 use async_nats::RequestErrorKind;
 use async_trait::async_trait;
@@ -34,6 +33,7 @@ use subspace_core_primitives::sectors::SectorIndex;
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::sector::sector_size;
+use subspace_networking::utils::AsyncJoinOnDrop;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::MissedTickBehavior;
 use tracing::{Instrument, debug, info, info_span, trace, warn};

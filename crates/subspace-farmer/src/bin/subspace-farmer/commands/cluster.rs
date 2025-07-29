@@ -7,7 +7,6 @@ use crate::commands::cluster::cache::{CacheArgs, cache};
 use crate::commands::cluster::controller::{ControllerArgs, controller};
 use crate::commands::cluster::farmer::{FarmerArgs, farmer};
 use crate::commands::cluster::plotter::{PlotterArgs, plotter};
-use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use async_nats::ServerAddr;
 use backoff::ExponentialBackoff;
@@ -18,10 +17,13 @@ use prometheus_client::registry::Registry;
 use std::env::current_exe;
 use std::mem;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::time::Duration;
 use subspace_farmer::cluster::nats_client::NatsClient;
-use subspace_farmer::utils::AsyncJoinOnDrop;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
+use subspace_networking::utils::{
+    AsyncJoinOnDrop, run_future_in_dedicated_thread, shutdown_signal,
+};
 use subspace_proof_of_space::Table;
 
 const REQUEST_RETRY_MAX_ELAPSED_TIME: Duration = Duration::from_mins(1);
@@ -89,7 +91,7 @@ pub(crate) async fn cluster<PosTable>(cluster_args: ClusterArgs) -> anyhow::Resu
 where
     PosTable: Table,
 {
-    let signal = shutdown_signal();
+    let signal = shutdown_signal("farmer");
 
     let ClusterArgs {
         shared_args,
@@ -112,12 +114,14 @@ where
     .map_err(|error| anyhow!("Failed to connect to NATS server: {error}"))?;
     let mut registry = Registry::with_prefix("subspace_farmer");
 
-    let mut tasks = FuturesUnordered::new();
+    let mut tasks =
+        FuturesUnordered::<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>>::new();
 
     loop {
         let nats_client = nats_client.clone();
         let additional_components = subcommand.extract_additional_components();
 
+        // Most of these tasks are run in dedicated threads.
         tasks.push(match subcommand {
             ClusterSubcommand::Controller(controller_args) => {
                 controller(nats_client, &mut registry, controller_args).await?
@@ -161,15 +165,27 @@ where
         }));
     }
 
-    select! {
-        // Signal future
-        _ = signal.fuse() => {
-            Ok(())
-        },
+    // If a spawned future is running for a long time, it can block receiving exit signals.
+    // Rather than hunting down every possible blocking future, we give the exit signal itself a
+    // dedicated thread to run on.
+    let exit_signal_select_fut = run_future_in_dedicated_thread(
+        move || async move {
+            select! {
+                // Signal future
+                _ = signal.fuse() => {
+                    Ok(())
+                },
 
-        // Run future
-        result = tasks.next() => {
-            result.expect("List of tasks is not empty; qed")
+                // Run future
+                result = tasks.next() => {
+                    result.expect("List of tasks is not empty; qed")
+                },
+            }
         },
-    }
+        "farmer-cluster-exit-signal-select".to_string(),
+    )?;
+
+    exit_signal_select_fut.await??;
+
+    anyhow::Ok(())
 }

@@ -12,7 +12,6 @@ use crate::farm::{MaybePieceStoredResult, PieceCache, PieceCacheId, PieceCacheOf
 use crate::farmer_cache::metrics::FarmerCacheMetrics;
 use crate::farmer_cache::piece_cache_state::PieceCachesState;
 use crate::node_client::NodeClient;
-use crate::utils::run_future_in_dedicated_thread;
 use async_lock::RwLock as AsyncRwLock;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
@@ -38,6 +37,7 @@ use subspace_networking::KeyWithDistance;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
+use subspace_networking::utils::run_future_in_dedicated_thread;
 use tokio::sync::Semaphore;
 use tokio::task::yield_now;
 use tracing::{Instrument, debug, error, info, info_span, trace, warn};

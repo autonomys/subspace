@@ -1,6 +1,5 @@
 use crate::commands::shared::network::{NetworkArgs, configure_network};
 use crate::commands::shared::{DiskFarm, PlottingThreadPriority, derive_libp2p_keypair};
-use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock, Semaphore};
 use backoff::ExponentialBackoff;
@@ -45,14 +44,16 @@ use subspace_farmer::single_disk_farm::{
 };
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
-    AsyncJoinOnDrop, create_plotting_thread_pool_manager, parse_cpu_cores_sets,
-    recommended_number_of_farming_threads, run_future_in_dedicated_thread,
-    thread_pool_core_indices,
+    create_plotting_thread_pool_manager, parse_cpu_cores_sets,
+    recommended_number_of_farming_threads, thread_pool_core_indices,
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_kzg::Kzg;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::utils::piece_provider::PieceProvider;
+use subspace_networking::utils::{
+    AsyncJoinOnDrop, run_future_in_dedicated_thread, shutdown_signal,
+};
 use subspace_proof_of_space::Table;
 use tracing::{Instrument, error, info, info_span, warn};
 
@@ -303,7 +304,7 @@ pub(crate) async fn farm<PosTable>(farming_args: FarmingArgs) -> anyhow::Result<
 where
     PosTable: Table,
 {
-    let signal = shutdown_signal();
+    let signal = shutdown_signal("farmer");
 
     let FarmingArgs {
         node_rpc_url,
@@ -848,34 +849,46 @@ where
         "farmer-networking".to_string(),
     )?;
 
-    // This defines order in which things are dropped
-    let networking_fut = networking_fut;
-    let farm_fut = farm_fut;
-    let farmer_cache_worker_fut = farmer_cache_worker_fut;
+    // If a spawned future is running for a long time, it can block receiving exit signals.
+    // Rather than hunting down every possible blocking future, we give the exit signal itself a
+    // dedicated thread to run on.
+    let exit_signal_select_fut = run_future_in_dedicated_thread(
+        move || async move {
+            // This defines order in which things are dropped
+            let networking_fut = networking_fut;
+            let farm_fut = farm_fut;
+            let farmer_cache_worker_fut = farmer_cache_worker_fut;
 
-    let networking_fut = pin!(networking_fut);
-    let farm_fut = pin!(farm_fut);
-    let farmer_cache_worker_fut = pin!(farmer_cache_worker_fut);
+            let networking_fut = pin!(networking_fut);
+            let farm_fut = pin!(farm_fut);
+            let farmer_cache_worker_fut = pin!(farmer_cache_worker_fut);
 
-    select! {
-        // Signal future
-        _ = signal.fuse() => {},
+            select! {
+                // Signal future
+                _ = signal.fuse() => {}
 
-        // Networking future
-        _ = networking_fut.fuse() => {
-            info!("Node runner exited.")
+                // Networking future
+                _ = networking_fut.fuse() => {
+                    info!("Node runner exited.")
+                },
+
+                // Farm future
+                result = farm_fut.fuse() => {
+                    result??;
+                },
+
+                // Piece cache worker future
+                _ = farmer_cache_worker_fut.fuse() => {
+                    info!("Farmer cache worker exited.")
+                },
+            }
+
+            anyhow::Ok(())
         },
+        "farmer-exit-signal-select".to_string(),
+    )?;
 
-        // Farm future
-        result = farm_fut.fuse() => {
-            result??;
-        },
-
-        // Piece cache worker future
-        _ = farmer_cache_worker_fut.fuse() => {
-            info!("Farmer cache worker exited.")
-        },
-    }
+    exit_signal_select_fut.await??;
 
     anyhow::Ok(())
 }

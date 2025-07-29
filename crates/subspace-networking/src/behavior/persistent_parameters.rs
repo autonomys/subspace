@@ -664,12 +664,15 @@ impl KnownPeersRegistry for KnownPeersManager {
                 let known_peers =
                     EncodableKnownPeers::from_cache(&self.known_peers, self.config.cache_size);
                 let known_peers_slots = Arc::clone(known_peers_slots);
-                let write_known_peers_fut =
-                    AsyncJoinOnDrop::new(tokio::task::spawn_blocking(move || {
+                let write_known_peers_fut = AsyncJoinOnDrop::new(
+                    tokio::task::spawn_blocking(move || {
                         known_peers_slots
                             .lock()
                             .write_to_inactive_slot(&known_peers);
-                    }));
+                    }),
+                    // Abort has no effect on spawn_blocking tasks
+                    false,
+                );
 
                 if let Err(error) = write_known_peers_fut.await {
                     error!(%error, "Failed to write known peers");
