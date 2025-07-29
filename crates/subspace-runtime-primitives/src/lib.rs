@@ -57,9 +57,6 @@ pub const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 /// Pruning depth multiplier for state and blocks pruning.
 pub const DOMAINS_PRUNING_DEPTH_MULTIPLIER: u32 = 2;
 
-/// Domains Block pruning depth.
-pub const DOMAINS_BLOCK_PRUNING_DEPTH: u32 = 14_400;
-
 /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
 pub fn maximum_normal_block_length() -> BlockLength {
     BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO)

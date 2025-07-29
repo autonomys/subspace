@@ -32,7 +32,7 @@ use sp_blockchain::HashAndNumber;
 use sp_consensus_subspace::SubspaceApi;
 use sp_core::{Encode, H256};
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::{DomainId, OperatorId, PermissionedActionAllowedBy};
+use sp_domains::{DomainId, DomainsApi, OperatorId, PermissionedActionAllowedBy};
 use sp_messenger::messages::{ChainId, ChannelId};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
@@ -45,7 +45,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::{BlockHashFor, HeaderFor, Nonce};
-use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 use subspace_test_service::MockConsensusNode;
 use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{
@@ -221,10 +220,11 @@ where
             .then_some(maybe_operator_id.unwrap_or(if domain_id == EVM_DOMAIN_ID { 0 } else { 1 }));
 
         let consensus_best_hash = mock_consensus_node.client.info().best_hash;
-        let chain_constants = mock_consensus_node
-            .client
-            .runtime_api()
-            .chain_constants(consensus_best_hash)
+        let runtime_api = mock_consensus_node.client.runtime_api();
+        let chain_constants = runtime_api.chain_constants(consensus_best_hash).unwrap();
+
+        let domain_block_pruning_depth = runtime_api
+            .block_pruning_depth(consensus_best_hash)
             .unwrap();
 
         let domain_params = domain_service::DomainParams {
@@ -245,7 +245,7 @@ where
             skip_out_of_order_slot: true,
             maybe_operator_id,
             confirmation_depth_k: chain_constants.confirmation_depth_k(),
-            challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+            challenge_period: domain_block_pruning_depth,
             consensus_chain_sync_params: None::<ConsensusChainSyncParams<_, HeaderFor<Block>>>,
             domain_backend,
         };

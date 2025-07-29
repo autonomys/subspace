@@ -128,6 +128,11 @@ mod pallet {
                 "ConfirmationDepthK can not be zero"
             );
 
+            assert!(
+                staking_withdrawal_period >= domain_block_pruning_depth,
+                "Stake Withdrawal locking period must be >= Block tree pruning depth"
+            );
+
             <EnableDomains<T>>::put(enable_domains);
             <EnableDynamicCostOfStorage<T>>::put(enable_dynamic_cost_of_storage);
             <EnableBalanceTransfers<T>>::put(enable_balance_transfers);

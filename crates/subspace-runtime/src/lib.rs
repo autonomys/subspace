@@ -110,10 +110,10 @@ use subspace_runtime_primitives::utility::{
 };
 use subspace_runtime_primitives::{
     AI3, AccountId, BLOCK_WEIGHT_FOR_2_SEC, Balance, BlockHashFor, BlockNumber,
-    ConsensusEventSegmentSize, DOMAINS_BLOCK_PRUNING_DEPTH, ExtrinsicFor, FindBlockRewardAddress,
-    Hash, HeaderFor, HoldIdentifier, MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, Moment,
-    NORMAL_DISPATCH_RATIO, Nonce, SHANNON, SLOT_PROBABILITY, Signature, SlowAdjustingFeeUpdate,
-    TargetBlockFullness, XdmAdjustedWeightToFee, XdmFeeMultipler, maximum_normal_block_length,
+    ConsensusEventSegmentSize, ExtrinsicFor, FindBlockRewardAddress, Hash, HeaderFor,
+    HoldIdentifier, MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, Moment, NORMAL_DISPATCH_RATIO, Nonce,
+    SHANNON, SLOT_PROBABILITY, Signature, SlowAdjustingFeeUpdate, TargetBlockFullness,
+    XdmAdjustedWeightToFee, XdmFeeMultipler, maximum_normal_block_length,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -844,6 +844,20 @@ impl pallet_transporter::Config for Runtime {
     type MinimumTransfer = MinimumTransfer;
 }
 
+pub struct BlockTreePruningDepth;
+impl Get<BlockNumber> for BlockTreePruningDepth {
+    fn get() -> BlockNumber {
+        pallet_runtime_configs::DomainBlockPruningDepth::<Runtime>::get()
+    }
+}
+
+pub struct StakeWithdrawalLockingPeriod;
+impl Get<BlockNumber> for StakeWithdrawalLockingPeriod {
+    fn get() -> BlockNumber {
+        pallet_runtime_configs::StakingWithdrawalPeriod::<Runtime>::get()
+    }
+}
+
 parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
@@ -860,8 +874,6 @@ parameter_types! {
     pub MaxDomainBlockWeight: Weight = maximum_domain_block_weight();
     pub const DomainInstantiationDeposit: Balance = 100 * AI3;
     pub const MaxDomainNameLength: u32 = 32;
-    pub const BlockTreePruningDepth: u32 = DOMAINS_BLOCK_PRUNING_DEPTH;
-    pub const StakeWithdrawalLockingPeriod: DomainNumber = 14_400;
     // TODO: revisit these. For now epoch every 10 mins for a 6 second block and only 100 number of staking
     // operations allowed within each epoch.
     pub const StakeEpochDuration: DomainNumber = 100;
@@ -888,9 +900,6 @@ const_assert!(BlockHashCount::get() > BlockSlotCount::get());
 
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
 const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
-
-// Stake Withdrawal locking period must be >= Block tree pruning depth
-const_assert!(StakeWithdrawalLockingPeriod::get() >= BlockTreePruningDepth::get());
 
 pub struct BlockSlot;
 
@@ -1608,6 +1617,10 @@ impl_runtime_apis! {
             nominator_account: sp_runtime::AccountId32,
         ) -> Option<sp_domains::NominatorPosition<Balance, DomainNumber, Balance>> {
             Domains::nominator_position(operator_id, nominator_account)
+        }
+
+        fn block_pruning_depth() -> NumberFor<Block> {
+            BlockTreePruningDepth::get()
         }
     }
 
