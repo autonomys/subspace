@@ -6,12 +6,30 @@
 mod benchmarking;
 pub mod weights;
 
+use core::marker::PhantomData;
+use frame_system::pallet_prelude::BlockNumberFor;
 pub use pallet::*;
+use sp_runtime::traits::Get;
 pub use weights::WeightInfo;
+
+pub struct DefaultDomainBlockPruning<T>(PhantomData<T>);
+impl<T: Config> Get<BlockNumberFor<T>> for DefaultDomainBlockPruning<T> {
+    fn get() -> BlockNumberFor<T> {
+        BlockNumberFor::<T>::from(14_400u32)
+    }
+}
+
+pub struct DefaultDomainStakingWithdrawalPeriod<T>(PhantomData<T>);
+impl<T: Config> Get<BlockNumberFor<T>> for DefaultDomainStakingWithdrawalPeriod<T> {
+    fn get() -> BlockNumberFor<T> {
+        BlockNumberFor::<T>::from(14_400u32)
+    }
+}
 
 #[frame_support::pallet]
 mod pallet {
     use crate::weights::WeightInfo;
+    use crate::{DefaultDomainBlockPruning, DefaultDomainStakingWithdrawalPeriod};
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Zero;
@@ -42,6 +60,16 @@ mod pallet {
     pub type CouncilDemocracyConfig<T: Config> =
         StorageValue<_, CouncilDemocracyConfigParams<BlockNumberFor<T>>, ValueQuery>;
 
+    /// Domains block pruning depth.
+    #[pallet::storage]
+    pub type DomainBlockPruningDepth<T: Config> =
+        StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultDomainBlockPruning<T>>;
+
+    /// Domain nominator's staking withdrawal period
+    #[pallet::storage]
+    pub type StakingWithdrawalPeriod<T: Config> =
+        StorageValue<_, BlockNumberFor<T>, ValueQuery, DefaultDomainStakingWithdrawalPeriod<T>>;
+
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// Weight information for extrinsics in this pallet.
@@ -60,6 +88,10 @@ mod pallet {
         pub confirmation_depth_k: BlockNumberFor<T>,
         /// Council and democracy config params.
         pub council_democracy_config_params: CouncilDemocracyConfigParams<BlockNumberFor<T>>,
+        /// Domain block pruning depth.
+        pub domain_block_pruning_depth: BlockNumberFor<T>,
+        /// Domain nominator's staking withdrawal period.
+        pub staking_withdrawal_period: BlockNumberFor<T>,
     }
 
     impl<T: Config> Default for GenesisConfig<T> {
@@ -72,6 +104,8 @@ mod pallet {
                 confirmation_depth_k: BlockNumberFor::<T>::from(100u32),
                 council_democracy_config_params:
                     CouncilDemocracyConfigParams::<BlockNumberFor<T>>::default(),
+                domain_block_pruning_depth: BlockNumberFor::<T>::from(14_400u32),
+                staking_withdrawal_period: BlockNumberFor::<T>::from(14_400u32),
             }
         }
     }
@@ -85,6 +119,8 @@ mod pallet {
                 enable_balance_transfers,
                 confirmation_depth_k,
                 council_democracy_config_params,
+                domain_block_pruning_depth,
+                staking_withdrawal_period,
             } = self;
 
             assert!(
@@ -97,6 +133,8 @@ mod pallet {
             <EnableBalanceTransfers<T>>::put(enable_balance_transfers);
             <ConfirmationDepthK<T>>::put(confirmation_depth_k);
             CouncilDemocracyConfig::<T>::put(council_democracy_config_params);
+            DomainBlockPruningDepth::<T>::put(domain_block_pruning_depth);
+            StakingWithdrawalPeriod::<T>::put(staking_withdrawal_period);
         }
     }
 

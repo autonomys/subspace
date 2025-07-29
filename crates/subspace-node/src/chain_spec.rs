@@ -36,6 +36,8 @@ struct GenesisParams {
     enable_balance_transfers: bool,
     confirmation_depth_k: u32,
     rewards_config: RewardsConfig,
+    domain_block_pruning_depth: u32,
+    staking_withdrawal_period: u32,
 }
 
 struct GenesisDomainParams {
@@ -221,6 +223,8 @@ pub fn mainnet_compiled() -> Result<GenericChainSpec, String> {
                     ])
                     .expect("Number of elements is below configured MaxRewardPoints; qed"),
                 },
+                domain_block_pruning_depth: 14_400u32,
+                staking_withdrawal_period: 14_400u32,
             },
             GenesisDomainParams {
                 permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
@@ -283,14 +287,14 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                 enable_domains: true,
                 enable_dynamic_cost_of_storage: false,
                 enable_balance_transfers: true,
-                // TODO: Proper value here
-                confirmation_depth_k: 100,
-                // TODO: Proper value here
+                confirmation_depth_k: 5,
                 rewards_config: RewardsConfig {
                     remaining_issuance: 1_000_000_000 * AI3,
                     proposer_subsidy_points: Default::default(),
                     voter_subsidy_points: Default::default(),
                 },
+                domain_block_pruning_depth: 5,
+                staking_withdrawal_period: 5,
             },
             GenesisDomainParams {
                 permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
@@ -350,6 +354,8 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                         proposer_subsidy_points: Default::default(),
                         voter_subsidy_points: Default::default(),
                     },
+                    domain_block_pruning_depth: 5,
+                    staking_withdrawal_period: 5,
                 },
                 GenesisDomainParams {
                     permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
@@ -391,6 +397,8 @@ fn subspace_genesis_config(
         enable_balance_transfers,
         confirmation_depth_k,
         rewards_config,
+        domain_block_pruning_depth,
+        staking_withdrawal_period,
     } = genesis_params;
 
     let genesis_domains = if enable_domains {
@@ -444,6 +452,8 @@ fn subspace_genesis_config(
             enable_balance_transfers,
             confirmation_depth_k,
             council_democracy_config_params,
+            domain_block_pruning_depth,
+            staking_withdrawal_period,
         },
         domains: DomainsConfig {
             permissioned_action_allowed_by: enable_domains

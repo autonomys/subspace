@@ -241,6 +241,8 @@ fn subspace_genesis_config(
             confirmation_depth_k,
             council_democracy_config_params:
                 CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
+            domain_block_pruning_depth: 14_400u32,
+            staking_withdrawal_period: 14_400u32,
         },
         domains: DomainsConfig {
             permissioned_action_allowed_by: Some(

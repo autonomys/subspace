@@ -138,6 +138,8 @@ fn create_genesis_config(
             enable_balance_transfers: false,
             confirmation_depth_k: 100u32,
             council_democracy_config_params: CouncilDemocracyConfigParams::default(),
+            domain_block_pruning_depth: 14_400u32,
+            staking_withdrawal_period: 14_400u32,
         },
     })
 }
