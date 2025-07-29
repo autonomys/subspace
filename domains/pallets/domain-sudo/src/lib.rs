@@ -31,6 +31,7 @@ mod pallet {
     use frame_support::traits::UnfilteredDispatchable;
     use frame_system::ensure_none;
     use frame_system::pallet_prelude::OriginFor;
+    use log::info;
     use sp_domain_sudo::{INHERENT_IDENTIFIER, InherentError, InherentType, IntoRuntimeCall};
 
     #[pallet::config]
@@ -68,7 +69,9 @@ mod pallet {
         pub fn sudo(origin: OriginFor<T>, call: Box<<T as Config>::RuntimeCall>) -> DispatchResult {
             ensure_none(origin)?;
 
+            info!("domain sudo call: {:?}", call);
             let res = call.dispatch_bypass_filter(RawOrigin::Root.into());
+            info!("domain sudo call result: {:?}", res);
             Self::deposit_event(Event::Sudid {
                 sudo_result: res.map(|_| ()).map_err(|e| e.error),
             });
