@@ -298,6 +298,10 @@ sp_api::impl_runtime_apis! {
         ) -> Option<NominatorPosition<Balance, DomainNumber, Balance>> {
             unreachable!()
         }
+
+        fn block_pruning_depth() -> NumberFor<Block> {
+            unreachable!()
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

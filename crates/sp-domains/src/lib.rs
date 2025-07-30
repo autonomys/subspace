@@ -1004,7 +1004,7 @@ pub struct NominatorPosition<Balance, DomainBlockNumber, Share> {
 sp_api::decl_runtime_apis! {
     /// APIs used to access the domains pallet.
     // When updating this version, document new APIs with "Only present in API versions" comments.
-    #[api_version(5)]
+    #[api_version(6)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
@@ -1109,6 +1109,10 @@ sp_api::decl_runtime_apis! {
             operator_id: OperatorId,
             nominator_account: sp_runtime::AccountId32,
         ) -> Option<NominatorPosition<Balance, HeaderNumberFor<DomainHeader>, Balance>>;
+
+        /// Returns the block pruning depth for domains
+        /// Available from Api version 6.
+        fn block_pruning_depth() -> NumberFor<Block>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

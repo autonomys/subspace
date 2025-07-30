@@ -77,7 +77,7 @@ use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::{AI3, Balance, BlockHashFor, HeaderFor};
 use subspace_test_client::chain_spec::get_from_seed;
-use subspace_test_primitives::{DOMAINS_BLOCK_PRUNING_DEPTH, OnchainStateApi as _};
+use subspace_test_primitives::OnchainStateApi as _;
 use subspace_test_runtime::Runtime;
 use subspace_test_service::{
     MockConsensusNode, produce_block_with, produce_blocks, produce_blocks_until,
@@ -8382,7 +8382,8 @@ async fn test_invalid_chain_reward_receipt() {
     // Produce more bundles with bad ERs that use the previous bad ER as an ancestor,
     // also not include the FP in the consensus block to try confirm the bad ER
     let mut parent_bad_receipt_hash = first_bad_receipt_hash;
-    for i in 0..DOMAINS_BLOCK_PRUNING_DEPTH + 5 {
+    let domain_block_pruning_depth = ferdie.get_domain_block_pruning_depth().unwrap();
+    for i in 0..domain_block_pruning_depth + 5 {
         let slot = ferdie.produce_slot();
         let bundle = bundle_producer
             .produce_bundle(
@@ -8427,12 +8428,13 @@ async fn test_invalid_chain_reward_receipt() {
             pre_consensus_best_number + 1
         );
 
-        // The first bad ER supposed to be confirmed at `DOMAINS_BLOCK_PRUNING_DEPTH - 1` since
+        // The first bad ER supposed to be confirmed at `domain_block_pruning_depth - 1` since
         // there is no FP included by the consensus chain to prune it. But the domain balance
         // bookkeeping check will reject to confirm the first bad ER because the invalid `chain_rewards`
         // exceeds the domain's total balance thus the bundle will fail and derive no domain block
         // so the domain chain will stop progressing and the first bad ER is not confirmed.
-        let post_domain_best_number = if i < DOMAINS_BLOCK_PRUNING_DEPTH - 1 {
+        let domain_block_pruning_depth = ferdie.get_domain_block_pruning_depth().unwrap();
+        let post_domain_best_number = if i < domain_block_pruning_depth - 1 {
             pre_domain_best_number + 1
         } else {
             pre_domain_best_number

@@ -125,7 +125,6 @@ use subspace_runtime_primitives::{
     MAX_CALL_RECURSION_DEPTH, MIN_REPLICATION_FACTOR, Moment, Nonce, SHANNON, Signature,
     SlowAdjustingFeeUpdate, TargetBlockFullness, XdmAdjustedWeightToFee, XdmFeeMultipler,
 };
-use subspace_test_primitives::DOMAINS_BLOCK_PRUNING_DEPTH;
 
 sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
@@ -797,6 +796,20 @@ impl pallet_transporter::Config for Runtime {
     type MinimumTransfer = MinimumTransfer;
 }
 
+pub struct BlockTreePruningDepth;
+impl Get<BlockNumber> for BlockTreePruningDepth {
+    fn get() -> BlockNumber {
+        pallet_runtime_configs::DomainBlockPruningDepth::<Runtime>::get()
+    }
+}
+
+pub struct StakeWithdrawalLockingPeriod;
+impl Get<BlockNumber> for StakeWithdrawalLockingPeriod {
+    fn get() -> BlockNumber {
+        pallet_runtime_configs::StakingWithdrawalPeriod::<Runtime>::get()
+    }
+}
+
 parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 2;
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
@@ -809,8 +822,6 @@ parameter_types! {
     pub MaxDomainBlockWeight: Weight = NORMAL_DISPATCH_RATIO * BLOCK_WEIGHT_FOR_2_SEC;
     pub const DomainInstantiationDeposit: Balance = 100 * AI3;
     pub const MaxDomainNameLength: u32 = 32;
-    pub const BlockTreePruningDepth: u32 = DOMAINS_BLOCK_PRUNING_DEPTH;
-    pub const StakeWithdrawalLockingPeriod: BlockNumber = 20;
     pub const StakeEpochDuration: DomainNumber = 5;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 512;
@@ -1652,6 +1663,10 @@ impl_runtime_apis! {
             nominator_account: sp_runtime::AccountId32,
         ) -> Option<sp_domains::NominatorPosition<Balance, DomainNumber, Balance>> {
             Domains::nominator_position(operator_id, nominator_account)
+        }
+
+        fn block_pruning_depth() -> NumberFor<Block> {
+            BlockTreePruningDepth::get()
         }
     }
 

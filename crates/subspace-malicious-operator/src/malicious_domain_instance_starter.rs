@@ -22,12 +22,12 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::SubspaceApi;
 use sp_core::crypto::AccountId32;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_domains::{DomainInstanceData, RuntimeType};
+use sp_domains::{DomainInstanceData, DomainsApi, RuntimeType};
 use sp_keystore::KeystorePtr;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::{AccountId, DOMAINS_BLOCK_PRUNING_DEPTH, HeaderFor};
+use subspace_runtime_primitives::{AccountId, HeaderFor};
 use subspace_service::FullClient as CFullClient;
 
 /// `DomainInstanceStarter` used to start a domain instance node based on the given
@@ -117,10 +117,10 @@ impl DomainInstanceStarter {
         };
 
         let consensus_best_hash = consensus_client.info().best_hash;
-        let chain_constants = consensus_client
-            .runtime_api()
-            .chain_constants(consensus_best_hash)?;
+        let runtime_api = consensus_client.runtime_api();
+        let chain_constants = runtime_api.chain_constants(consensus_best_hash)?;
 
+        let domain_block_pruning_depth = runtime_api.block_pruning_depth(consensus_best_hash)?;
         match runtime_type {
             RuntimeType::Evm => {
                 let evm_base_path = domain_config
@@ -156,7 +156,7 @@ impl DomainInstanceStarter {
                     consensus_chain_sync_params: None::<
                         ConsensusChainSyncParams<_, HeaderFor<DomainBlock>>,
                     >,
-                    challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+                    challenge_period: domain_block_pruning_depth,
                     domain_backend,
                 };
 
@@ -219,7 +219,7 @@ impl DomainInstanceStarter {
                     consensus_chain_sync_params: None::<
                         ConsensusChainSyncParams<_, HeaderFor<DomainBlock>>,
                     >,
-                    challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+                    challenge_period: domain_block_pruning_depth,
                     domain_backend,
                 };
 

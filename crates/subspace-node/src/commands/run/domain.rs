@@ -28,24 +28,29 @@ use sc_service::Configuration;
 use sc_service::config::{ExecutorConfiguration, KeystoreConfig};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::SubspaceApi;
 use sp_core::crypto::{AccountId32, SecretString};
-use sp_domains::{DomainId, DomainInstanceData, OperatorId, RuntimeType};
+use sp_domains::{DomainId, DomainInstanceData, DomainsApi, OperatorId, RuntimeType};
+use sp_runtime::traits::Block as BlockT;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::{
-    DOMAINS_BLOCK_PRUNING_DEPTH, DOMAINS_PRUNING_DEPTH_MULTIPLIER, HeaderFor,
+    DOMAINS_PRUNING_DEPTH_MULTIPLIER, GenesisConfigParams, HeaderFor,
 };
 use subspace_service::FullClient as CFullClient;
 use tokio::sync::broadcast::Receiver;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tracing::log::info;
 use tracing::warn;
+
+/// Domains Block pruning depth.
+const DOMAINS_BLOCK_PRUNING_DEPTH: u32 =
+    GenesisConfigParams::production_params().domain_block_pruning_depth;
 
 /// Minimum Block and State pruning required for Domain
 pub(crate) const MIN_PRUNING: u32 = DOMAINS_BLOCK_PRUNING_DEPTH * DOMAINS_PRUNING_DEPTH_MULTIPLIER;
@@ -523,13 +528,34 @@ pub(super) async fn run_domain(
         },
     );
 
+    let consensus_best_hash = consensus_client.info().best_hash;
+    let runtime_api = consensus_client.runtime_api();
+    let chain_constants = runtime_api
+        .chain_constants(consensus_best_hash)
+        .map_err(|err| Error::Other(err.to_string()))?;
+
+    let domains_api_version = runtime_api
+        .api_version::<dyn DomainsApi<CBlock, <CBlock as BlockT>::Header>>(consensus_best_hash)
+        .ok()
+        .flatten()
+        // It is safe to return a default version of 1, since there will always be version 1.
+        .unwrap_or(1);
+    // if api version is 6 or above, use api else instead fallback to default value
+    let domains_block_pruning_depth = if domains_api_version >= 6 {
+        runtime_api
+            .block_pruning_depth(consensus_best_hash)
+            .map_err(|err| Error::Other(err.to_string()))?
+    } else {
+        DOMAINS_BLOCK_PRUNING_DEPTH
+    };
+
     let operator_streams = OperatorStreams {
         // Ensure Consensus does not import blocks faster than Domains
         // Since when running domains, consensus blocks and state pruning are set to
-        // 2 * DOMAINS_BLOCK_PRUNING_DEPTH by default and if cli is overridden, the
-        // minimum of 2 * DOMAINS_BLOCK_PRUNING_DEPTH is always guaranteed.
+        // 2 * domains_block_pruning_depth by default and if cli is overridden, the
+        // minimum of 2 * domains_block_pruning_depth is always guaranteed.
         // Hence, we do not need to throttle the consensus block imports at least until it reaches
-        // DOMAINS_BLOCK_PRUNING_DEPTH number of blocks.
+        // domains_block_pruning_depth number of blocks.
         consensus_block_import_throttling_buffer_size: MIN_PRUNING / 2,
         block_importing_notification_stream,
         imported_block_notification_stream,
@@ -537,12 +563,6 @@ pub(super) async fn run_domain(
         acknowledgement_sender_stream: futures::stream::empty(),
         _phantom: Default::default(),
     };
-
-    let consensus_best_hash = consensus_client.info().best_hash;
-    let chain_constants = consensus_client
-        .runtime_api()
-        .chain_constants(consensus_best_hash)
-        .map_err(|err| Error::Other(err.to_string()))?;
 
     let domain_sync_oracle = Arc::new(DomainChainSyncOracle::new(
         consensus_network_sync_oracle,
@@ -581,7 +601,7 @@ pub(super) async fn run_domain(
                 maybe_operator_id: operator_id,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 consensus_chain_sync_params,
-                challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+                challenge_period: domains_block_pruning_depth,
                 domain_backend,
             };
 
@@ -622,7 +642,7 @@ pub(super) async fn run_domain(
                 maybe_operator_id: operator_id,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 consensus_chain_sync_params,
-                challenge_period: DOMAINS_BLOCK_PRUNING_DEPTH,
+                challenge_period: domains_block_pruning_depth,
                 domain_backend,
             };
 

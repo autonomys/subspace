@@ -20,7 +20,7 @@ use subspace_runtime::{
     RewardsConfig, RuntimeConfigsConfig, SubspaceConfig,
 };
 use subspace_runtime_primitives::{
-    AI3, AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams,
+    AI3, AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, GenesisConfigParams,
 };
 
 fn endowed_accounts() -> Vec<(MultiAccountId, Balance)> {
@@ -130,6 +130,8 @@ struct GenesisParams {
     enable_balance_transfers: bool,
     confirmation_depth_k: u32,
     rewards_config: RewardsConfig,
+    domain_block_pruning_depth: u32,
+    staking_withdrawal_period: u32,
 }
 
 struct GenesisDomainParams {
@@ -155,6 +157,12 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
         raw_genesis.encode()
     };
 
+    let GenesisConfigParams {
+        confirmation_depth_k,
+        domain_block_pruning_depth,
+        staking_withdrawal_period,
+    } = GenesisConfigParams::dev_params();
+
     Ok(GenericChainSpec::builder(wasm_binary, None)
         .with_name("Subspace development")
         .with_id("subspace_dev")
@@ -177,12 +185,14 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     enable_domains: true,
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
-                    confirmation_depth_k: 5,
+                    confirmation_depth_k,
                     rewards_config: RewardsConfig {
                         remaining_issuance: 1_000_000 * AI3,
                         proposer_subsidy_points: Default::default(),
                         voter_subsidy_points: Default::default(),
                     },
+                    domain_block_pruning_depth,
+                    staking_withdrawal_period,
                 },
                 GenesisDomainParams {
                     domain_name: "evm-domain".to_owned(),
@@ -215,6 +225,8 @@ fn subspace_genesis_config(
         enable_balance_transfers,
         confirmation_depth_k,
         rewards_config,
+        domain_block_pruning_depth,
+        staking_withdrawal_period,
     } = genesis_params;
 
     subspace_runtime::RuntimeGenesisConfig {
@@ -241,6 +253,8 @@ fn subspace_genesis_config(
             confirmation_depth_k,
             council_democracy_config_params:
                 CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
+            domain_block_pruning_depth,
+            staking_withdrawal_period,
         },
         domains: DomainsConfig {
             permissioned_action_allowed_by: Some(

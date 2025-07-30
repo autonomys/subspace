@@ -887,6 +887,14 @@ impl MockConsensusNode {
             .domain_stake_summary(self.client.info().best_hash, domain_id)?)
     }
 
+    /// Returns the domain block pruning depth.
+    pub fn get_domain_block_pruning_depth(&self) -> Result<BlockNumber, Box<dyn Error>> {
+        Ok(self
+            .client
+            .runtime_api()
+            .block_pruning_depth(self.client.info().best_hash)?)
+    }
+
     /// Return a future that only resolve if a fraud proof that the given `fraud_proof_predicate`
     /// return true is submitted to the consensus tx pool
     pub fn wait_for_fraud_proof<FP>(

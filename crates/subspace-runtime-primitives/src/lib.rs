@@ -57,9 +57,6 @@ pub const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 /// Pruning depth multiplier for state and blocks pruning.
 pub const DOMAINS_PRUNING_DEPTH_MULTIPLIER: u32 = 2;
 
-/// Domains Block pruning depth.
-pub const DOMAINS_BLOCK_PRUNING_DEPTH: u32 = 14_400;
-
 /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
 pub fn maximum_normal_block_length() -> BlockLength {
     BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO)
@@ -205,6 +202,35 @@ impl<BlockNumber: From<u32>> CouncilDemocracyConfigParams<BlockNumber> {
             democracy_launch_period: (15 * BLOCKS_IN_AN_MINUTE).into(),
             democracy_vote_locking_period: BLOCKS_IN_AN_MINUTE.into(),
             democracy_voting_period: (15 * BLOCKS_IN_AN_MINUTE).into(),
+        }
+    }
+}
+/// Config parameters for genesis.
+pub struct GenesisConfigParams {
+    /// Confirmation depth K
+    pub confirmation_depth_k: BlockNumber,
+    /// Domain pruning depth.
+    pub domain_block_pruning_depth: BlockNumber,
+    /// Staking withdrawal period.
+    pub staking_withdrawal_period: BlockNumber,
+}
+
+impl GenesisConfigParams {
+    /// Production specific domain parameters.
+    pub const fn production_params() -> Self {
+        Self {
+            confirmation_depth_k: 100u32,
+            domain_block_pruning_depth: 14_400u32,
+            staking_withdrawal_period: 14_400u32,
+        }
+    }
+
+    /// Development specific domain parameters.
+    pub const fn dev_params() -> Self {
+        Self {
+            confirmation_depth_k: 5u32,
+            domain_block_pruning_depth: 5u32,
+            staking_withdrawal_period: 5u32,
         }
     }
 }

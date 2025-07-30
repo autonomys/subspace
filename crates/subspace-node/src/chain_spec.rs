@@ -21,7 +21,7 @@ use subspace_runtime::{
     SubspaceConfig, SudoConfig, SystemConfig, WASM_BINARY,
 };
 use subspace_runtime_primitives::{
-    AI3, AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams,
+    AI3, AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, GenesisConfigParams,
 };
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.foundation/submit/";
@@ -36,6 +36,8 @@ struct GenesisParams {
     enable_balance_transfers: bool,
     confirmation_depth_k: u32,
     rewards_config: RewardsConfig,
+    domain_block_pruning_depth: u32,
+    staking_withdrawal_period: u32,
 }
 
 struct GenesisDomainParams {
@@ -107,6 +109,12 @@ pub fn mainnet_compiled() -> Result<GenericChainSpec, String> {
         };
         let balances = get_genesis_allocations(GENESIS_ALLOCATIONS);
 
+        let GenesisConfigParams {
+            confirmation_depth_k,
+            domain_block_pruning_depth,
+            staking_withdrawal_period,
+        } = GenesisConfigParams::production_params();
+
         serde_json::to_value(subspace_genesis_config(
             sudo_account.clone(),
             balances,
@@ -123,7 +131,7 @@ pub fn mainnet_compiled() -> Result<GenericChainSpec, String> {
                 enable_domains: false,
                 enable_dynamic_cost_of_storage: false,
                 enable_balance_transfers: false,
-                confirmation_depth_k: 100,
+                confirmation_depth_k,
                 rewards_config: RewardsConfig {
                     remaining_issuance: 350_000_000 * AI3,
                     proposer_subsidy_points: BoundedVec::try_from(vec![
@@ -221,6 +229,8 @@ pub fn mainnet_compiled() -> Result<GenericChainSpec, String> {
                     ])
                     .expect("Number of elements is below configured MaxRewardPoints; qed"),
                 },
+                domain_block_pruning_depth,
+                staking_withdrawal_period,
             },
             GenesisDomainParams {
                 permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
@@ -273,6 +283,11 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
         let sudo_account = get_account_id_from_seed("Alice");
 
         let balances = vec![(sudo_account.clone(), Balance::MAX / 2)];
+        let GenesisConfigParams {
+            confirmation_depth_k,
+            domain_block_pruning_depth,
+            staking_withdrawal_period,
+        } = GenesisConfigParams::dev_params();
         serde_json::to_value(subspace_genesis_config(
             sudo_account.clone(),
             balances,
@@ -283,14 +298,14 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                 enable_domains: true,
                 enable_dynamic_cost_of_storage: false,
                 enable_balance_transfers: true,
-                // TODO: Proper value here
-                confirmation_depth_k: 100,
-                // TODO: Proper value here
+                confirmation_depth_k,
                 rewards_config: RewardsConfig {
                     remaining_issuance: 1_000_000_000 * AI3,
                     proposer_subsidy_points: Default::default(),
                     voter_subsidy_points: Default::default(),
                 },
+                domain_block_pruning_depth,
+                staking_withdrawal_period,
             },
             GenesisDomainParams {
                 permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
@@ -313,6 +328,11 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
 pub fn dev_config() -> Result<GenericChainSpec, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
     let sudo_account = get_account_id_from_seed("Alice");
+    let GenesisConfigParams {
+        confirmation_depth_k,
+        domain_block_pruning_depth,
+        staking_withdrawal_period,
+    } = GenesisConfigParams::dev_params();
 
     Ok(GenericChainSpec::builder(wasm_binary, None)
         .with_name("Subspace development")
@@ -344,12 +364,14 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     enable_domains: true,
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
-                    confirmation_depth_k: 5,
+                    confirmation_depth_k,
                     rewards_config: RewardsConfig {
                         remaining_issuance: 1_000_000 * AI3,
                         proposer_subsidy_points: Default::default(),
                         voter_subsidy_points: Default::default(),
                     },
+                    domain_block_pruning_depth,
+                    staking_withdrawal_period,
                 },
                 GenesisDomainParams {
                     permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
@@ -391,6 +413,8 @@ fn subspace_genesis_config(
         enable_balance_transfers,
         confirmation_depth_k,
         rewards_config,
+        domain_block_pruning_depth,
+        staking_withdrawal_period,
     } = genesis_params;
 
     let genesis_domains = if enable_domains {
@@ -444,6 +468,8 @@ fn subspace_genesis_config(
             enable_balance_transfers,
             confirmation_depth_k,
             council_democracy_config_params,
+            domain_block_pruning_depth,
+            staking_withdrawal_period,
         },
         domains: DomainsConfig {
             permissioned_action_allowed_by: enable_domains
