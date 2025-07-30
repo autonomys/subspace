@@ -515,7 +515,7 @@ where
 
         // Store whatever correct pieces are immediately available after restart
         self.piece_caches.write().await.clone_from(&caches);
-        let stored_count = caches.stored_pieces().len();
+        let stored_count = caches.stored_pieces_offsets().len();
 
         debug!(
             %stored_count,

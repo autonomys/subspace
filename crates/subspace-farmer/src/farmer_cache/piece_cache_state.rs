@@ -32,10 +32,6 @@ impl PieceCachesState {
             .fold(0usize, |acc, backend| acc + backend.total_capacity as usize)
     }
 
-    pub(super) fn stored_pieces(&self) -> impl ExactSizeIterator + '_ {
-        self.stored_pieces.iter()
-    }
-
     pub(super) fn pop_free_offset(&mut self) -> Option<FarmerCacheOffset> {
         match self.dangling_free_offsets.pop_front() {
             Some(free_offset) => {
