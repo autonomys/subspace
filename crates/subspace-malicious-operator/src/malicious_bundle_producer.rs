@@ -403,20 +403,23 @@ fn get_singed_extra(best_number: u64, immortal: bool, nonce: Nonce) -> SignedExt
         .map(|c| c / 2)
         .unwrap_or(2);
     (
-        frame_system::CheckNonZeroSender::<Runtime>::new(),
-        frame_system::CheckSpecVersion::<Runtime>::new(),
-        frame_system::CheckTxVersion::<Runtime>::new(),
-        frame_system::CheckGenesis::<Runtime>::new(),
-        frame_system::CheckMortality::<Runtime>::from(if immortal {
-            generic::Era::Immortal
-        } else {
-            generic::Era::mortal(period, best_number)
-        }),
-        frame_system::CheckNonce::<Runtime>::from(nonce.into()),
-        frame_system::CheckWeight::<Runtime>::new(),
+        (
+            frame_system::CheckNonZeroSender::<Runtime>::new(),
+            frame_system::CheckSpecVersion::<Runtime>::new(),
+            frame_system::CheckTxVersion::<Runtime>::new(),
+            frame_system::CheckGenesis::<Runtime>::new(),
+            frame_system::CheckMortality::<Runtime>::from(if immortal {
+                generic::Era::Immortal
+            } else {
+                generic::Era::mortal(period, best_number)
+            }),
+            frame_system::CheckNonce::<Runtime>::from(nonce.into()),
+            frame_system::CheckWeight::<Runtime>::new(),
+        ),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
         BalanceTransferCheckExtension::<Runtime>::default(),
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
+        pallet_subspace::extensions::CallMonitorExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
         pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
     )
@@ -434,12 +437,15 @@ pub fn construct_signed_extrinsic(
         call.clone(),
         extra.clone(),
         (
-            (),
-            subspace_runtime::VERSION.spec_version,
-            subspace_runtime::VERSION.transaction_version,
-            consensus_chain_info.genesis_hash,
-            consensus_chain_info.best_hash,
-            (),
+            (
+                (),
+                subspace_runtime::VERSION.spec_version,
+                subspace_runtime::VERSION.transaction_version,
+                consensus_chain_info.genesis_hash,
+                consensus_chain_info.best_hash,
+                (),
+                (),
+            ),
             (),
             (),
             (),

@@ -18,6 +18,7 @@ frame-benchmarking = { workspace = true, optional = true }
 frame-support.workspace = true
 frame-system.workspace = true
 log.workspace = true
+pallet-sudo.workspace = true
 scale-info = { workspace = true, features = ["derive"] }
 schnorrkel.workspace = true
 serde = { workspace = true, features = ["alloc", "derive"], optional = true }
@@ -54,6 +55,7 @@ std = [
     "frame-support/std",
     "frame-system/std",
     "log/std",
+    "pallet-sudo/std",
     "scale-info/std",
     "schnorrkel/std",
     "serde",
@@ -70,4 +72,5 @@ std = [
 runtime-benchmarks = [
     "frame-benchmarking",
     "frame-benchmarking/runtime-benchmarks",
+    "pallet-sudo/runtime-benchmarks",
 ]

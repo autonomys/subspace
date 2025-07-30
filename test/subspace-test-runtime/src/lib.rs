@@ -61,6 +61,7 @@ use frame_system::pallet_prelude::RuntimeCallFor;
 use pallet_balances::NegativeImbalance;
 use pallet_domains::staking::StakingSummary;
 pub use pallet_rewards::RewardPoint;
+use pallet_subspace::extensions::MaybeSudoCall;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
 use pallet_transporter::EndpointHandler;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
@@ -633,6 +634,15 @@ impl pallet_sudo::Config for Runtime {
     type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
 }
 
+impl MaybeSudoCall<Runtime> for RuntimeCall {
+    fn maybe_sudo_call(&self) -> Option<&pallet_sudo::Call<Runtime>> {
+        match self {
+            RuntimeCall::Sudo(call) => Some(call),
+            _ => None,
+        }
+    }
+}
+
 parameter_types! {
     pub SelfChainId: ChainId = ChainId::Consensus;
 }
@@ -1058,16 +1068,19 @@ pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
 /// The SignedExtension to the basic transaction logic.
 pub type SignedExtra = (
-    frame_system::CheckNonZeroSender<Runtime>,
-    frame_system::CheckSpecVersion<Runtime>,
-    frame_system::CheckTxVersion<Runtime>,
-    frame_system::CheckGenesis<Runtime>,
-    frame_system::CheckMortality<Runtime>,
-    frame_system::CheckNonce<Runtime>,
-    frame_system::CheckWeight<Runtime>,
+    (
+        frame_system::CheckNonZeroSender<Runtime>,
+        frame_system::CheckSpecVersion<Runtime>,
+        frame_system::CheckTxVersion<Runtime>,
+        frame_system::CheckGenesis<Runtime>,
+        frame_system::CheckMortality<Runtime>,
+        frame_system::CheckNonce<Runtime>,
+        frame_system::CheckWeight<Runtime>,
+    ),
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     BalanceTransferCheckExtension<Runtime>,
     pallet_subspace::extensions::SubspaceExtension<Runtime>,
+    pallet_subspace::extensions::CallMonitorExtension<Runtime>,
     pallet_domains::extensions::DomainsExtension<Runtime>,
     pallet_messenger::extensions::MessengerExtension<Runtime>,
 );
@@ -1292,20 +1305,23 @@ fn extract_successful_bundles(
 
 fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
     let extra: SignedExtra = (
-        frame_system::CheckNonZeroSender::<Runtime>::new(),
-        frame_system::CheckSpecVersion::<Runtime>::new(),
-        frame_system::CheckTxVersion::<Runtime>::new(),
-        frame_system::CheckGenesis::<Runtime>::new(),
-        frame_system::CheckMortality::<Runtime>::from(generic::Era::Immortal),
-        // for unsigned extrinsic, nonce check will be skipped
-        // so set a default value
-        frame_system::CheckNonce::<Runtime>::from(0u32.into()),
-        frame_system::CheckWeight::<Runtime>::new(),
+        (
+            frame_system::CheckNonZeroSender::<Runtime>::new(),
+            frame_system::CheckSpecVersion::<Runtime>::new(),
+            frame_system::CheckTxVersion::<Runtime>::new(),
+            frame_system::CheckGenesis::<Runtime>::new(),
+            frame_system::CheckMortality::<Runtime>::from(generic::Era::Immortal),
+            // for unsigned extrinsic, nonce check will be skipped
+            // so set a default value
+            frame_system::CheckNonce::<Runtime>::from(0u32.into()),
+            frame_system::CheckWeight::<Runtime>::new(),
+        ),
         // for unsigned extrinsic, transaction fee check will be skipped
         // so set a default value
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
         BalanceTransferCheckExtension::<Runtime>::default(),
         pallet_subspace::extensions::SubspaceExtension::<Runtime>::new(),
+        pallet_subspace::extensions::CallMonitorExtension::<Runtime>::new(),
         pallet_domains::extensions::DomainsExtension::<Runtime>::new(),
         pallet_messenger::extensions::MessengerExtension::<Runtime>::new(),
     );

@@ -8241,6 +8241,7 @@ dependencies = [
  "futures",
  "log",
  "pallet-balances",
+ "pallet-sudo",
  "parity-scale-codec",
  "rand 0.8.5",
  "scale-info",
