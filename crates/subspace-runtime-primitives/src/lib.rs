@@ -205,6 +205,35 @@ impl<BlockNumber: From<u32>> CouncilDemocracyConfigParams<BlockNumber> {
         }
     }
 }
+/// Config parameters for genesis.
+pub struct GenesisConfigParams {
+    /// Confirmation depth K
+    pub confirmation_depth_k: BlockNumber,
+    /// Domain pruning depth.
+    pub domain_block_pruning_depth: BlockNumber,
+    /// Staking withdrawal period.
+    pub staking_withdrawal_period: BlockNumber,
+}
+
+impl GenesisConfigParams {
+    /// Production specific domain parameters.
+    pub const fn production_params() -> Self {
+        Self {
+            confirmation_depth_k: 100u32,
+            domain_block_pruning_depth: 14_400u32,
+            staking_withdrawal_period: 14_400u32,
+        }
+    }
+
+    /// Development specific domain parameters.
+    pub const fn dev_params() -> Self {
+        Self {
+            confirmation_depth_k: 5u32,
+            domain_block_pruning_depth: 5u32,
+            staking_withdrawal_period: 5u32,
+        }
+    }
+}
 
 /// A trait for determining whether rewards are enabled or not
 pub trait RewardsEnabled {

@@ -39,7 +39,9 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::{DOMAINS_PRUNING_DEPTH_MULTIPLIER, HeaderFor};
+use subspace_runtime_primitives::{
+    DOMAINS_PRUNING_DEPTH_MULTIPLIER, GenesisConfigParams, HeaderFor,
+};
 use subspace_service::FullClient as CFullClient;
 use tokio::sync::broadcast::Receiver;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
@@ -47,9 +49,8 @@ use tracing::log::info;
 use tracing::warn;
 
 /// Domains Block pruning depth.
-/// This value is here because we this to set default state pruning and block pruning for clap arguments.
-/// Unfortunately clap does not support dynamic defaults.
-const DOMAINS_BLOCK_PRUNING_DEPTH: u32 = 14_400;
+const DOMAINS_BLOCK_PRUNING_DEPTH: u32 =
+    GenesisConfigParams::production_params().domain_block_pruning_depth;
 
 /// Minimum Block and State pruning required for Domain
 pub(crate) const MIN_PRUNING: u32 = DOMAINS_BLOCK_PRUNING_DEPTH * DOMAINS_PRUNING_DEPTH_MULTIPLIER;

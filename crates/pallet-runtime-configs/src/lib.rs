@@ -10,26 +10,31 @@ use core::marker::PhantomData;
 use frame_system::pallet_prelude::BlockNumberFor;
 pub use pallet::*;
 use sp_runtime::traits::Get;
+use subspace_runtime_primitives::GenesisConfigParams;
 pub use weights::WeightInfo;
+
+const DEFAULT_GENESIS_PARAMS: GenesisConfigParams = GenesisConfigParams::production_params();
 
 pub struct DefaultDomainBlockPruning<T>(PhantomData<T>);
 impl<T: Config> Get<BlockNumberFor<T>> for DefaultDomainBlockPruning<T> {
     fn get() -> BlockNumberFor<T> {
-        BlockNumberFor::<T>::from(14_400u32)
+        BlockNumberFor::<T>::from(DEFAULT_GENESIS_PARAMS.domain_block_pruning_depth)
     }
 }
 
 pub struct DefaultDomainStakingWithdrawalPeriod<T>(PhantomData<T>);
 impl<T: Config> Get<BlockNumberFor<T>> for DefaultDomainStakingWithdrawalPeriod<T> {
     fn get() -> BlockNumberFor<T> {
-        BlockNumberFor::<T>::from(14_400u32)
+        BlockNumberFor::<T>::from(DEFAULT_GENESIS_PARAMS.staking_withdrawal_period)
     }
 }
 
 #[frame_support::pallet]
 mod pallet {
     use crate::weights::WeightInfo;
-    use crate::{DefaultDomainBlockPruning, DefaultDomainStakingWithdrawalPeriod};
+    use crate::{
+        DEFAULT_GENESIS_PARAMS, DefaultDomainBlockPruning, DefaultDomainStakingWithdrawalPeriod,
+    };
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Zero;
@@ -101,11 +106,17 @@ mod pallet {
                 enable_domains: false,
                 enable_dynamic_cost_of_storage: false,
                 enable_balance_transfers: false,
-                confirmation_depth_k: BlockNumberFor::<T>::from(100u32),
+                confirmation_depth_k: BlockNumberFor::<T>::from(
+                    DEFAULT_GENESIS_PARAMS.confirmation_depth_k,
+                ),
                 council_democracy_config_params:
                     CouncilDemocracyConfigParams::<BlockNumberFor<T>>::default(),
-                domain_block_pruning_depth: BlockNumberFor::<T>::from(14_400u32),
-                staking_withdrawal_period: BlockNumberFor::<T>::from(14_400u32),
+                domain_block_pruning_depth: BlockNumberFor::<T>::from(
+                    DEFAULT_GENESIS_PARAMS.domain_block_pruning_depth,
+                ),
+                staking_withdrawal_period: BlockNumberFor::<T>::from(
+                    DEFAULT_GENESIS_PARAMS.staking_withdrawal_period,
+                ),
             }
         }
     }
