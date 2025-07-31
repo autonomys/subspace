@@ -391,3 +391,28 @@ jobs:
       - name: check for unused dependencies
         run: |
           ./scripts/find-unused-deps.sh
+
+  rust-all:
+    # Hack for buggy GitHub Actions behavior with skipped checks: https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks#handling-skipped-but-required-checks
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    needs:
+      - cargo-fmt
+      - cargo-clippy
+      - cargo-runtime-build
+      - cargo-test
+      - check-runtime-benchmarks
+      - cargo-check-individually
+      - cargo-unused-deps
+    steps:
+      - name: Check job statuses
+        # Another hack is to actually check the status of the dependencies or else it'll fall through
+        run: |
+          echo "Checking statuses..."
+          [[ "${{ needs.cargo-fmt.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.cargo-clippy.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.cargo-runtime-build.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.cargo-test.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.check-runtime-benchmarks.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.cargo-check-individually.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.cargo-unused-deps.result }}" == "success" ]] || exit 1
