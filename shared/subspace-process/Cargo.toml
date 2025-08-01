@@ -11,6 +11,12 @@ include = [
 ]
 
 [dependencies]
+fdlimit.workspace = true
+futures.workspace = true
+supports-color.workspace = true
+tokio = { workspace = true, features = ["parking_lot", "rt-multi-thread", "signal", "sync"] }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-supports-color.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros","parking_lot", "rt-multi-thread", "signal", "sync", "test-util"] }

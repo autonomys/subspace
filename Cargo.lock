@@ -13699,7 +13699,6 @@ dependencies = [
  "clap",
  "derive_more 1.0.0",
  "event-listener-primitives",
- "fdlimit",
  "fs2",
  "futures",
  "futures-timer",
@@ -13800,7 +13799,10 @@ dependencies = [
 name = "subspace-process"
 version = "0.0.1"
 dependencies = [
+ "fdlimit",
+ "futures",
  "supports-color",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]

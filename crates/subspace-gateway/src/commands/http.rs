@@ -7,7 +7,7 @@ use crate::commands::http::server::{ServerParameters, start_server};
 use crate::commands::{GatewayOptions, initialize_object_fetcher};
 use clap::Parser;
 use futures::{FutureExt, select};
-use subspace_networking::utils::{run_future_in_dedicated_thread, shutdown_signal};
+use subspace_process::{run_future_in_dedicated_thread, shutdown_signal};
 use tracing::info;
 
 /// Options for HTTP server.

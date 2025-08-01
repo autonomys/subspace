@@ -37,7 +37,7 @@ use subspace_networking::KeyWithDistance;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::utils::run_future_in_dedicated_thread;
+use subspace_process::run_future_in_dedicated_thread;
 use tokio::sync::Semaphore;
 use tokio::task::yield_now;
 use tracing::{Instrument, debug, error, info, info_span, trace, warn};

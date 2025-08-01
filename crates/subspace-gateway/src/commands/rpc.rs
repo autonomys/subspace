@@ -8,7 +8,7 @@ use clap::Parser;
 use futures::{FutureExt, select};
 use std::pin::pin;
 use subspace_gateway_rpc::{SubspaceGatewayRpc, SubspaceGatewayRpcConfig};
-use subspace_networking::utils::{run_future_in_dedicated_thread, shutdown_signal};
+use subspace_process::{run_future_in_dedicated_thread, shutdown_signal};
 use tracing::info;
 
 /// Options for RPC server.

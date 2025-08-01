@@ -17,9 +17,10 @@ use std::process::exit;
 use std::sync::Arc;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::utils::{raise_fd_limit, run_future_in_dedicated_thread, shutdown_signal};
 use subspace_networking::{Config, KademliaMode, peer_id};
-use subspace_process::init_logger;
+use subspace_process::{
+    init_logger, raise_fd_limit, run_future_in_dedicated_thread, shutdown_signal,
+};
 use tracing::{debug, info};
 
 /// Size of the LRU cache for peers.

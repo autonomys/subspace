@@ -7,8 +7,7 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::{fs, panic};
 use subspace_farmer::single_disk_farm::{ScrubTarget, SingleDiskFarm};
-use subspace_networking::utils::raise_fd_limit;
-use subspace_process::init_logger;
+use subspace_process::{init_logger, raise_fd_limit};
 use subspace_proof_of_space::chia::ChiaTable;
 use tracing::info;
 

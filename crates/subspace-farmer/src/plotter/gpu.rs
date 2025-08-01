@@ -37,7 +37,7 @@ use subspace_farmer_components::plotting::{
     encode_sector, write_sector,
 };
 use subspace_kzg::Kzg;
-use subspace_networking::utils::AsyncJoinOnDrop;
+use subspace_process::AsyncJoinOnDrop;
 use tokio::task::yield_now;
 use tracing::{Instrument, warn};
 

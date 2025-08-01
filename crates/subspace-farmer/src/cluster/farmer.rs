@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::{Piece, PieceOffset};
 use subspace_core_primitives::sectors::SectorIndex;
 use subspace_farmer_components::plotting::PlottedSector;
-use subspace_networking::utils::AsyncJoinOnDrop;
+use subspace_process::AsyncJoinOnDrop;
 use subspace_rpc_primitives::SolutionResponse;
 use tokio::time::MissedTickBehavior;
 use tracing::{Instrument, debug, error, info_span, trace, warn};

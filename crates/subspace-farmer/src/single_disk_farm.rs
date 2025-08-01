@@ -77,7 +77,7 @@ use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{SectorMetadata, SectorMetadataChecksummed, sector_size};
 use subspace_kzg::Kzg;
 use subspace_networking::KnownPeersManager;
-use subspace_networking::utils::AsyncJoinOnDrop;
+use subspace_process::AsyncJoinOnDrop;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;

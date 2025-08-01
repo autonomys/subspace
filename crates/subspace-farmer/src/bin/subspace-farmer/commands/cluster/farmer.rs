@@ -33,7 +33,7 @@ use subspace_farmer::utils::recommended_number_of_farming_threads;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_kzg::Kzg;
-use subspace_networking::utils::{AsyncJoinOnDrop, run_future_in_dedicated_thread};
+use subspace_process::{AsyncJoinOnDrop, run_future_in_dedicated_thread};
 use subspace_proof_of_space::Table;
 use tracing::{Instrument, error, info, info_span, warn};
 
