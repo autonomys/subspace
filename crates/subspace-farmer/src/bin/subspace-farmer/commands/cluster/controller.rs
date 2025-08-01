@@ -210,7 +210,7 @@ pub(super) async fn controller(
 
             async move {
                 let fut =
-                    run_future_in_dedicated_thread(move || fut, format!("cache-worker-{index}"));
+                    run_future_in_dedicated_thread(move || fut, format!("cache-worker-{index:02}"));
                 anyhow::Ok(fut?.await?)
             }
         })
@@ -311,7 +311,7 @@ pub(super) async fn controller(
                         )
                         .await
                     },
-                    format!("caches-{index}"),
+                    format!("caches-{index:02}"),
                 );
                 anyhow::Ok(fut?.await?)
             }

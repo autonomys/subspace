@@ -180,7 +180,7 @@ where
                 },
             }
         },
-        "farmer-cluster-exit-signal-select".to_string(),
+        "cluster-exit".to_string(),
     )?;
 
     exit_signal_select_fut.await??;

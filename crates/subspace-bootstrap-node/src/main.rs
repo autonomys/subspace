@@ -186,7 +186,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             let node_runner_fut = run_future_in_dedicated_thread(
                 move || async move { node_runner.run().await },
-                "bootstrap-node-networking".to_string(),
+                "bootstrap-networking".to_string(),
             )?;
 
             info!("Subspace Bootstrap Node started");
@@ -226,7 +226,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         }
                     }
                 },
-                "bootstrap-node-exit-signal-select".to_string(),
+                "bootstrap-exit".to_string(),
             )?;
 
             exit_signal_select_fut.await?;

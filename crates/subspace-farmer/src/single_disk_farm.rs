@@ -952,7 +952,7 @@ impl SingleDiskFarm {
             metadata_header.plotted_sector_count..target_sector_count;
 
         let farming_thread_pool = ThreadPoolBuilder::new()
-            .thread_name(move |thread_index| format!("farming-{farm_index}.{thread_index}"))
+            .thread_name(move |thread_index| format!("farming-{farm_index:02}.{thread_index:02}"))
             .num_threads(farming_thread_pool_size)
             .spawn_handler(tokio_rayon_spawn_handler())
             .build()

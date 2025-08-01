@@ -387,7 +387,7 @@ where
 
                 Some(run_future_in_dedicated_thread(
                     move || init_fut.instrument(info_span!("", %cache_index)),
-                    format!("piece-cache.{cache_index}"),
+                    format!("piece-cache.{cache_index:02}"),
                 ))
             })
             .collect::<Result<Vec<_>, _>>();

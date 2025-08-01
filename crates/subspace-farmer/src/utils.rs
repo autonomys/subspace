@@ -360,8 +360,9 @@ fn create_plotting_thread_pool_manager_thread_pool_pair(
     cpu_core_set: CpuCoreSet,
     thread_priority: Option<ThreadPriority>,
 ) -> Result<ThreadPool, ThreadPoolBuildError> {
+    // On Linux, thread names are limited to 15 characters.
     let thread_name =
-        move |thread_index| format!("{thread_prefix}-{thread_pool_index}.{thread_index}");
+        move |thread_index| format!("{thread_prefix:9}-{thread_pool_index:02}.{thread_index:02}");
     // TODO: remove this panic handler when rayon logs panic_info
     // https://github.com/rayon-rs/rayon/issues/1208
     // (we'll lose the thread name, because it's not stored within rayon's WorkerThread)

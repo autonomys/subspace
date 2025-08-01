@@ -92,7 +92,7 @@ fn create_thread_pool(
         .unwrap_or_else(recommended_number_of_farming_threads);
 
     ThreadPoolBuilder::new()
-        .thread_name(|thread_index| format!("benchmark.{thread_index}"))
+        .thread_name(|thread_index| format!("benchmark.{thread_index:02}"))
         .num_threads(farming_thread_pool_size)
         .spawn_handler(tokio_rayon_spawn_handler())
         .build()

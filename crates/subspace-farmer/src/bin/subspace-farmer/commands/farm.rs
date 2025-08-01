@@ -883,7 +883,7 @@ where
 
             anyhow::Ok(())
         },
-        "farmer-exit-signal-select".to_string(),
+        "farmer-exit".to_string(),
     )?;
 
     exit_signal_select_fut.await??;

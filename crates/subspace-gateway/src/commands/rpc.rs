@@ -70,7 +70,7 @@ pub async fn run(run_options: RpcCommandOptions) -> anyhow::Result<()> {
 
             anyhow::Ok(())
         },
-        "gateway-exit-signal-select".to_string(),
+        "gateway-exit".to_string(),
     )?;
 
     exit_signal_select_fut.await??;

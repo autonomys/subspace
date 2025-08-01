@@ -138,8 +138,10 @@ impl Deref for JoinOnDrop {
     }
 }
 
-/// Runs future on a dedicated thread with the specified name, will block on drop until background
-/// thread with future is stopped too, ensuring nothing is left in memory
+/// Runs future on a dedicated thread with the specified name. Will block on drop until background
+/// thread with future is stopped, ensuring nothing is left in memory.
+///
+/// Some OSes (like Linux) truncate thread names at 15 characters due to kernel limits.
 pub fn run_future_in_dedicated_thread<CreateFut, Fut, T>(
     create_future: CreateFut,
     thread_name: String,
