@@ -1,4 +1,4 @@
-use crate::utils::{AsyncJoinOnDrop, Handler, HandlerFn};
+use crate::utils::{Handler, HandlerFn};
 use async_trait::async_trait;
 use event_listener_primitives::HandlerId;
 use fs2::FileExt;
@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use std::{io, mem};
 use subspace_core_primitives::hashes::{Blake3Hash, blake3_hash};
+use subspace_process::AsyncJoinOnDrop;
 use thiserror::Error;
 use tokio::time::{Sleep, sleep};
 use tracing::{debug, error, trace, warn};

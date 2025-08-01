@@ -7,7 +7,7 @@ use crate::commands::http::server::{ServerParameters, start_server};
 use crate::commands::{GatewayOptions, initialize_object_fetcher};
 use clap::Parser;
 use futures::{FutureExt, select};
-use subspace_networking::utils::{run_future_in_dedicated_thread, shutdown_signal};
+use subspace_process::{run_future_in_dedicated_thread, shutdown_signal};
 use tracing::info;
 
 /// Options for HTTP server.
@@ -36,7 +36,7 @@ pub async fn run(run_options: HttpCommandOptions) -> anyhow::Result<()> {
     let (object_fetcher, mut dsn_node_runner) = initialize_object_fetcher(gateway_options).await?;
     let dsn_fut = run_future_in_dedicated_thread(
         move || async move { dsn_node_runner.run().await },
-        "gateway-networking".to_string(),
+        "gateway-net".to_string(),
     )?;
 
     let server_params = ServerParameters {
@@ -72,7 +72,7 @@ pub async fn run(run_options: HttpCommandOptions) -> anyhow::Result<()> {
 
             anyhow::Ok(())
         },
-        "gateway-exit-signal-select".to_string(),
+        "gateway-exit".to_string(),
     )?;
 
     exit_signal_select_fut.await??;

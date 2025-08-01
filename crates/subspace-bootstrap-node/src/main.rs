@@ -15,11 +15,12 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::panic;
 use std::process::exit;
 use std::sync::Arc;
-use subspace_logging::init_logger;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::utils::{raise_fd_limit, run_future_in_dedicated_thread, shutdown_signal};
 use subspace_networking::{Config, KademliaMode, peer_id};
+use subspace_process::{
+    init_logger, raise_fd_limit, run_future_in_dedicated_thread, shutdown_signal,
+};
 use tracing::{debug, info};
 
 /// Size of the LRU cache for peers.
@@ -185,7 +186,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             let node_runner_fut = run_future_in_dedicated_thread(
                 move || async move { node_runner.run().await },
-                "bootstrap-node-networking".to_string(),
+                "bstrp-node-net".to_string(),
             )?;
 
             info!("Subspace Bootstrap Node started");
@@ -225,7 +226,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         }
                     }
                 },
-                "bootstrap-node-exit-signal-select".to_string(),
+                "bstrp-node-exit".to_string(),
             )?;
 
             exit_signal_select_fut.await?;

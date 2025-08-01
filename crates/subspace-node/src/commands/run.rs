@@ -34,9 +34,8 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::env;
 use std::sync::Arc;
-use subspace_logging::init_logger;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
-use subspace_networking::utils::{raise_fd_limit, run_future_in_dedicated_thread};
+use subspace_process::{init_logger, raise_fd_limit, run_future_in_dedicated_thread};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::ChainSyncMode;
 use tracing::{debug, error, info, info_span, warn};
@@ -445,7 +444,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
             result
         },
-        "node-exit-signal-select".to_string(),
+        "node-exit".to_string(),
     )
     .map_err(|error| Error::Other(format!("Failed to spawn dedicated thread: {error:?}")))?;
 

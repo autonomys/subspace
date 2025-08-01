@@ -33,7 +33,7 @@ use subspace_core_primitives::sectors::SectorIndex;
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::sector::sector_size;
-use subspace_networking::utils::AsyncJoinOnDrop;
+use subspace_process::AsyncJoinOnDrop;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::MissedTickBehavior;
 use tracing::{Instrument, debug, info, info_span, trace, warn};

@@ -34,7 +34,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use std::{fmt, mem};
-use subspace_networking::utils::AsyncJoinOnDrop;
+use subspace_process::AsyncJoinOnDrop;
 use thiserror::Error;
 use tracing::{Instrument, debug, error, trace, warn};
 use ulid::Ulid;

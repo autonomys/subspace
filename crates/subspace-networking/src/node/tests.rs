@@ -7,7 +7,7 @@ use libp2p::multiaddr::Protocol;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::sync::Arc;
-use subspace_logging::init_logger;
+use subspace_process::init_logger;
 
 #[derive(Encode, Decode)]
 struct ExampleRequest;

@@ -13375,9 +13375,9 @@ dependencies = [
  "prometheus-client",
  "serde",
  "serde_json",
- "subspace-logging",
  "subspace-metrics",
  "subspace-networking",
+ "subspace-process",
  "tokio",
  "tracing",
 ]
@@ -13414,7 +13414,7 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
- "subspace-logging",
+ "subspace-process",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
@@ -13505,9 +13505,9 @@ dependencies = [
  "subspace-erasure-coding",
  "subspace-farmer-components",
  "subspace-kzg",
- "subspace-logging",
  "subspace-metrics",
  "subspace-networking",
+ "subspace-process",
  "subspace-proof-of-space",
  "subspace-proof-of-space-gpu",
  "subspace-rpc-primitives",
@@ -13574,8 +13574,8 @@ dependencies = [
  "subspace-data-retrieval",
  "subspace-gateway-rpc",
  "subspace-kzg",
- "subspace-logging",
  "subspace-networking",
+ "subspace-process",
  "subspace-rpc-primitives",
  "subspace-verification",
  "tokio",
@@ -13610,15 +13610,6 @@ dependencies = [
  "static_assertions",
  "subspace-core-primitives",
  "tracing",
-]
-
-[[package]]
-name = "subspace-logging"
-version = "0.0.1"
-dependencies = [
- "supports-color",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -13708,7 +13699,6 @@ dependencies = [
  "clap",
  "derive_more 1.0.0",
  "event-listener-primitives",
- "fdlimit",
  "fs2",
  "futures",
  "futures-timer",
@@ -13725,8 +13715,8 @@ dependencies = [
  "rand 0.8.5",
  "schnellru",
  "subspace-core-primitives",
- "subspace-logging",
  "subspace-metrics",
+ "subspace-process",
  "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
@@ -13789,9 +13779,9 @@ dependencies = [
  "sp-messenger",
  "sp-runtime",
  "subspace-core-primitives",
- "subspace-logging",
  "subspace-metrics",
  "subspace-networking",
+ "subspace-process",
  "subspace-proof-of-space",
  "subspace-runtime",
  "subspace-runtime-primitives",
@@ -13803,6 +13793,18 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+]
+
+[[package]]
+name = "subspace-process"
+version = "0.0.1"
+dependencies = [
+ "fdlimit",
+ "futures",
+ "supports-color",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

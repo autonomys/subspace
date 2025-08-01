@@ -7,7 +7,7 @@ use sp_core::Pair;
 use sp_core::crypto::{ExposeSecret, SecretString};
 use sp_domains::DomainId;
 use std::path::PathBuf;
-use subspace_logging::init_logger;
+use subspace_process::init_logger;
 use tracing::{info, warn};
 
 /// Options for creating domain key

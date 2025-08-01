@@ -9,8 +9,7 @@ mod piece_validator;
 
 use crate::commands::{Command, set_exit_on_panic};
 use clap::Parser;
-use subspace_logging::init_logger;
-use subspace_networking::utils::raise_fd_limit;
+use subspace_process::{init_logger, raise_fd_limit};
 use tracing::info;
 
 #[global_allocator]

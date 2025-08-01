@@ -16,7 +16,7 @@ use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, SegmentCommitment,
     SegmentHeader,
 };
-use subspace_logging::init_logger;
+use subspace_process::init_logger;
 
 /// A piece getter that panics if called - used to make sure that caches work
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

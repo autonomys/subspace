@@ -34,8 +34,8 @@ subspace-core-primitives.workspace = true
 subspace-data-retrieval.workspace = true
 subspace-gateway-rpc.workspace = true
 subspace-kzg.workspace = true
-subspace-logging.workspace = true
 subspace-networking.workspace = true
+subspace-process.workspace = true
 subspace-rpc-primitives.workspace = true
 subspace-verification = { workspace = true, features = ["kzg"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "macros"] }

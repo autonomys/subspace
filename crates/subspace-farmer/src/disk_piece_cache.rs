@@ -23,7 +23,7 @@ use std::{fs, io};
 use subspace_core_primitives::hashes::{Blake3Hash, blake3_hash_list};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_farmer_components::file_ext::FileExt;
-use subspace_networking::utils::AsyncJoinOnDrop;
+use subspace_process::AsyncJoinOnDrop;
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::task;
