@@ -39,8 +39,9 @@ prometheus-client.workspace = true
 rand.workspace = true
 schnellru.workspace = true
 subspace-core-primitives.workspace = true
-subspace-logging.workspace = true
 subspace-metrics.workspace = true
+# Only used for examples and tests
+subspace-process.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream.workspace = true

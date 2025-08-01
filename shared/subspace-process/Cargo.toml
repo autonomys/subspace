@@ -1,9 +1,9 @@
 [package]
-name = "subspace-logging"
-description = "Ensure all logging uilities are centralized for the whole project"
+name = "subspace-process"
+description = "Process scheduling and logging utilities for the Subspace network"
 license = "0BSD"
 version = "0.0.1"
-authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>", "Teor <teor@riseup.net>"]
 edition.workspace = true
 include = [
     "/src",

@@ -7,10 +7,10 @@ use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_logging::init_logger;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::utils::shutdown_signal;
 use subspace_networking::{Config, Node};
+use subspace_process::init_logger;
 use tokio::time::sleep;
 use tracing::{error, info};
 
