@@ -423,7 +423,7 @@ where
             }
             anyhow::Ok(())
         },
-        "farmer-farm".to_string(),
+        "farm-farmer".to_string(),
     )?;
 
     Ok(Box::pin(async move {

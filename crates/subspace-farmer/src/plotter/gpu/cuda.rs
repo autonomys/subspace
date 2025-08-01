@@ -94,7 +94,7 @@ impl CudaRecordsEncoder {
         global_mutex: Arc<AsyncMutex<()>>,
     ) -> Result<Self, ThreadPoolBuildError> {
         let id = cuda_device.id();
-        let thread_name = move |thread_index| format!("cuda-{id}.{thread_index}");
+        let thread_name = move |thread_index| format!("cuda-{id:02}.{thread_index:02}");
         // TODO: remove this panic handler when rayon logs panic_info
         // https://github.com/rayon-rs/rayon/issues/1208
         let panic_handler = move |panic_info| {

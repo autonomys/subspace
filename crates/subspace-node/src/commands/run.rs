@@ -444,7 +444,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
             result
         },
-        "node-exit-signal-select".to_string(),
+        "node-exit".to_string(),
     )
     .map_err(|error| Error::Other(format!("Failed to spawn dedicated thread: {error:?}")))?;
 

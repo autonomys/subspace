@@ -493,7 +493,7 @@ where
 
             move || future
         },
-        "farmer-cache-worker".to_string(),
+        "farm-cache-work".to_string(),
     )?;
 
     let max_pieces_in_sector = match max_pieces_in_sector {
@@ -839,12 +839,12 @@ where
             }
             anyhow::Ok(())
         },
-        "farmer-farm".to_string(),
+        "farm-farmer".to_string(),
     )?;
 
     let networking_fut = run_future_in_dedicated_thread(
         move || async move { node_runner.run().await },
-        "farmer-networking".to_string(),
+        "farm-net".to_string(),
     )?;
 
     // If a spawned future is running for a long time, it can block receiving exit signals.
@@ -883,7 +883,7 @@ where
 
             anyhow::Ok(())
         },
-        "farmer-exit-signal-select".to_string(),
+        "farm-exit".to_string(),
     )?;
 
     exit_signal_select_fut.await??;
