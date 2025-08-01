@@ -90,7 +90,16 @@ impl SegmentHeaders {
         // We prevent other writers from taking the write lock (or other upgradable read locks),
         // but only while we do the quick rate limit check.
         if this.is_sync_allowed() {
-            // Now that we want to sync, wait for other readers to finish, then take the write lock.
+            // This code has a multiple writers race condition, where an earlier writer could have
+            // found the segment headers we're looking for. So check if we need to re-sync again,
+            // now we have excluded any writers.
+            let cached_segment_headers = this.get_segment_headers(segment_indices);
+            if cached_segment_headers.iter().all(Option::is_some) {
+                return Ok(cached_segment_headers);
+            }
+
+            // Now we're sure we want to sync, wait for other readers to finish, then take the
+            // write lock.
             let mut this = AsyncRwLockUpgradableReadGuard::upgrade(this).await;
             this.sync_inner(client).await?;
 
