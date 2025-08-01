@@ -2,7 +2,11 @@
 //! proxies other requests through
 
 use crate::node_client::{NodeClient, NodeClientExt};
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+use async_lock::{
+    Mutex as AsyncMutex, RwLock as AsyncRwLock,
+    RwLockUpgradableReadGuardArc as AsyncRwLockUpgradableReadGuard,
+    RwLockWriteGuardArc as AsyncRwLockWriteGuard,
+};
 use async_trait::async_trait;
 use futures::{FutureExt, Stream, StreamExt, select};
 use std::pin::Pin;
@@ -29,6 +33,8 @@ struct SegmentHeaders {
 }
 
 impl SegmentHeaders {
+    /// Push a new segment header to the cache, if it is the next segment header.
+    /// Otherwise, skip the push.
     fn push(&mut self, archived_segment_header: SegmentHeader) {
         if self.segment_headers.len() == u64::from(archived_segment_header.segment_index()) as usize
         {
@@ -36,6 +42,9 @@ impl SegmentHeaders {
         }
     }
 
+    /// Get cached segment headers for the given segment indices.
+    ///
+    /// Returns `None` for segment indices that are not in the cache.
     fn get_segment_headers(&self, segment_indices: &[SegmentIndex]) -> Vec<Option<SegmentHeader>> {
         segment_indices
             .iter()
@@ -47,6 +56,7 @@ impl SegmentHeaders {
             .collect::<Vec<_>>()
     }
 
+    /// Get the last `limit` segment headers from the cache.
     fn last_segment_headers(&self, limit: u32) -> Vec<Option<SegmentHeader>> {
         self.segment_headers
             .iter()
@@ -58,15 +68,64 @@ impl SegmentHeaders {
             .collect()
     }
 
-    async fn sync<NC>(&mut self, client: &NC) -> anyhow::Result<()>
+    /// Sync the cache with the node, applying a rate limit, and return cached segment headers.
+    /// This takes an upgradable read lock, which will be upgraded to a write lock if the sync is
+    /// allowed by the rate limit.
+    ///
+    /// Returns `Ok(segment_headers)` if the sync succeeds, or it was skipped due to the rate limit.
+    /// Returns an error if the segment download fails.
+    async fn try_sync<NC>(
+        this: &Arc<AsyncRwLock<Self>>,
+        client: &NC,
+        segment_indices: &[SegmentIndex],
+    ) -> anyhow::Result<Vec<Option<SegmentHeader>>>
     where
         NC: NodeClient,
     {
+        // If we took a write lock here, a queue of writers could starve all the readers, even if
+        // those writers would eventually be rate-limited. So instead, we take an upgradable read
+        // lock for the rate limit check.
+        let this = this.upgradable_read_arc().await;
+
+        // We prevent other writers from taking the write lock (or other upgradable read locks),
+        // but only while we do the quick rate limit check.
+        if this.is_sync_allowed() {
+            // Now that we want to sync, wait for other readers to finish, then take the write lock.
+            let mut this = AsyncRwLockUpgradableReadGuard::upgrade(this).await;
+            this.sync_inner(client).await?;
+
+            // And finally, downgrade the write lock to a shared read lock to get the segment headers.
+            Ok(AsyncRwLockWriteGuard::downgrade(this).get_segment_headers(segment_indices))
+        } else {
+            // If we are rate limited, downgrade the upgradable read lock to a shared read lock,
+            // and return the unmodified cached segment headers.
+            Ok(
+                AsyncRwLockUpgradableReadGuard::downgrade(this)
+                    .get_segment_headers(segment_indices),
+            )
+        }
+    }
+
+    /// Returns `true` if the cache should be synced, based on the sync rate limit.
+    /// This only requires a read lock.
+    fn is_sync_allowed(&self) -> bool {
         if let Some(last_synced) = &self.last_synced
             && last_synced.elapsed() < SEGMENT_HEADERS_SYNC_INTERVAL
         {
-            return Ok(());
+            return false;
         }
+
+        true
+    }
+
+    /// Sync the cache with the node.
+    /// This requires a write lock.
+    ///
+    /// Returns an error if the segment download fails.
+    async fn sync_inner<NC>(&mut self, client: &NC) -> anyhow::Result<()>
+    where
+        NC: NodeClient,
+    {
         self.last_synced.replace(Instant::now());
 
         let mut segment_index_offset = SegmentIndex::from(self.segment_headers.len() as u64);
@@ -130,7 +189,7 @@ where
             client.subscribe_archived_segment_headers().await?;
 
         info!("Downloading all segment headers from node...");
-        segment_headers.sync(&client).await?;
+        segment_headers.sync_inner(&client).await?;
         info!("Downloaded all segment headers from node successfully");
 
         let segment_headers = Arc::new(AsyncRwLock::new(segment_headers));
@@ -320,11 +379,9 @@ where
         if retrieved_segment_headers.iter().all(Option::is_some) {
             Ok(retrieved_segment_headers)
         } else {
-            // Re-sync segment headers
-            let mut segment_headers = self.segment_headers.write().await;
-            segment_headers.sync(&self.inner).await?;
-
-            Ok(segment_headers.get_segment_headers(&segment_indices))
+            // Try to re-sync segment headers (this is rate-limited internally),
+            // then get whatever we have from the cache.
+            SegmentHeaders::try_sync(&self.segment_headers, &self.inner, &segment_indices).await
         }
     }
 
