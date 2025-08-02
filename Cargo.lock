@@ -7945,6 +7945,7 @@ version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
+ "log",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -8240,6 +8241,7 @@ dependencies = [
  "futures",
  "log",
  "pallet-balances",
+ "pallet-sudo",
  "parity-scale-codec",
  "rand 0.8.5",
  "scale-info",

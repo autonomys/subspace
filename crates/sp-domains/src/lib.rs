@@ -379,7 +379,7 @@ pub enum EvmType {
     /// An EVM domain with a contract creation allow list.
     Private {
         /// Accounts initially allowed to create contracts on a private EVM domain.
-        /// The domain owner can update this list using a pallet-domains call (or there's a sudo call).
+        /// The domain owner or sudo can update this list using a pallet-domains call.
         initial_contract_creation_allow_list: PermissionedActionAllowedBy<EthereumAccountId>,
     },
 }
