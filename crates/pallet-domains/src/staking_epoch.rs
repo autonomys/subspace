@@ -558,7 +558,7 @@ pub(crate) fn do_slash_operator<T: Config>(
         }
 
         // The operator state is safe to cleanup if there is no entry in `Deposits` and `Withdrawals`
-        // which means all nominator (inlcuding the operator owner) have been slashed.
+        // which means all nominator (including the operator owner) have been slashed.
         let cleanup_operator = !Deposits::<T>::contains_prefix(operator_id)
             && !Withdrawals::<T>::contains_prefix(operator_id);
 
