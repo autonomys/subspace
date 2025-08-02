@@ -9,8 +9,9 @@ use crate::staking::{
     do_cleanup_operator, do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal,
 };
 use crate::{
-    BalanceOf, Config, DepositOnHold, DomainChainRewards, ElectionVerificationParams, Event,
-    HoldIdentifier, InvalidBundleAuthors, OperatorEpochSharePrice, Pallet, bundle_storage_fund,
+    BalanceOf, Config, DepositOnHold, DeregisteredOperators, DomainChainRewards,
+    ElectionVerificationParams, Event, HoldIdentifier, InvalidBundleAuthors,
+    OperatorEpochSharePrice, Pallet, bundle_storage_fund,
 };
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
 use frame_support::traits::tokens::{
@@ -271,6 +272,8 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
         let mut operators_to_calculate_share_price = operators_with_self_deposits;
         // include invalid bundle authors
         operators_to_calculate_share_price.extend(InvalidBundleAuthors::<T>::take(domain_id));
+        // include operators who de-registered in this epoch
+        operators_to_calculate_share_price.extend(DeregisteredOperators::<T>::take(domain_id));
         // exclude operators who have already been processed as they are in next operator set.
         operators_to_calculate_share_price.retain(|&x| !stake_summary.next_operators.contains(&x));
 
@@ -785,8 +788,8 @@ mod tests {
             vec![(2, 10 * AI3), (4, 10 * AI3)],
             vec![(1, 20 * AI3), (2, 10 * AI3)],
             vec![
-                (1, 164285714285714285666),
-                (2, 64761904761904761888),
+                (1, 164285714285714285665),
+                (2, 64761904761904761879),
                 (3, 10952380952380952377),
                 (4, 10 * AI3),
             ],
