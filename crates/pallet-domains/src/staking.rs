@@ -1450,7 +1450,7 @@ pub(crate) fn do_mark_invalid_bundle_authors<T: Config>(
     Ok(())
 }
 
-fn mark_invalid_bundle_author<T: Config>(
+pub(crate) fn mark_invalid_bundle_author<T: Config>(
     operator_id: OperatorId,
     er_hash: ReceiptHashFor<T>,
     stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,
@@ -1581,7 +1581,7 @@ pub(crate) mod tests {
         OperatorRewardSource,
     };
     use sp_runtime::traits::Zero;
-    use sp_runtime::{PerThing, Perquintill};
+    use sp_runtime::{PerThing, Percent, Perquintill};
     use std::collections::{BTreeMap, BTreeSet};
     use std::ops::RangeInclusive;
     use std::vec;
@@ -1600,6 +1600,7 @@ pub(crate) mod tests {
         operator_stake: BalanceOf<Test>,
         minimum_nominator_stake: BalanceOf<Test>,
         signing_key: OperatorPublicKey,
+        nomination_tax: Percent,
         mut nominators: BTreeMap<NominatorId<Test>, (BalanceOf<Test>, BalanceOf<Test>)>,
     ) -> (OperatorId, OperatorConfig<BalanceOf<Test>>) {
         nominators.insert(operator_account, (operator_free_balance, operator_stake));
@@ -1648,7 +1649,7 @@ pub(crate) mod tests {
         let operator_config = OperatorConfig {
             signing_key,
             minimum_nominator_stake,
-            nomination_tax: Default::default(),
+            nomination_tax,
         };
 
         let res = Domains::register_operator(
@@ -1749,6 +1750,7 @@ pub(crate) mod tests {
                 operator_total_stake,
                 AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::new(),
             );
 
@@ -1834,6 +1836,7 @@ pub(crate) mod tests {
                 operator_total_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(vec![(
                     nominator_account,
                     (nominator_free_balance, nominator_total_stake),
@@ -1937,6 +1940,7 @@ pub(crate) mod tests {
                 operator_stake,
                 AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::new(),
             );
 
@@ -2092,6 +2096,7 @@ pub(crate) mod tests {
                 operator_stake,
                 minimum_nominator_stake,
                 pair.public(),
+                Default::default(),
                 nominators,
             );
 
@@ -3253,6 +3258,7 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators),
             );
 
@@ -3381,6 +3387,7 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators),
             );
 
@@ -3547,6 +3554,7 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators),
             );
 
@@ -3709,6 +3717,7 @@ pub(crate) mod tests {
                 10 * AI3,
                 pair_1.public(),
                 Default::default(),
+                Default::default(),
             );
 
             let (operator_id_2, _) = register_operator(
@@ -3719,6 +3728,7 @@ pub(crate) mod tests {
                 10 * AI3,
                 pair_2.public(),
                 Default::default(),
+                Default::default(),
             );
 
             let (operator_id_3, _) = register_operator(
@@ -3728,6 +3738,7 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * AI3,
                 pair_3.public(),
+                Default::default(),
                 Default::default(),
             );
 
@@ -3839,6 +3850,7 @@ pub(crate) mod tests {
                 operator_total_stake,
                 AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::default(),
             );
 
@@ -3928,6 +3940,7 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators),
             );
 
@@ -3987,6 +4000,7 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators),
             );
 
