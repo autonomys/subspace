@@ -47,11 +47,14 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     PendingStakingOperationCount::<T>::set(domain_id, 0);
 
     // re stake operator's tax from the rewards
-    let rewarded_operator_count = operator_take_reward_tax_and_stake::<T>(domain_id)?;
+    let OperatorTakeRewardTaxResult {
+        rewarded_operator_count,
+        operators_with_self_deposits,
+    } = operator_take_reward_tax_and_stake::<T>(domain_id)?;
 
     // finalize any withdrawals and then deposits
     let (completed_epoch_index, finalized_operator_count) =
-        do_finalize_domain_epoch_staking::<T>(domain_id)?;
+        do_finalize_domain_epoch_staking::<T>(domain_id, operators_with_self_deposits)?;
 
     Ok(EpochTransitionResult {
         rewarded_operator_count,
@@ -60,11 +63,22 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     })
 }
 
+/// Result holding after `operator_take_reward_tax_and_stake`
+pub(crate) struct OperatorTakeRewardTaxResult {
+    rewarded_operator_count: u32,
+    operators_with_self_deposits: BTreeSet<OperatorId>,
+}
+
 /// Operator takes `NominationTax` of the current epoch rewards and stake them.
 pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
     domain_id: DomainId,
-) -> Result<u32, Error> {
+) -> Result<OperatorTakeRewardTaxResult, Error> {
     let mut rewarded_operator_count = 0;
+    // a list of operators got rewarded this epoch and their nomination_tax > 0
+    // so they take nomination_tax from the rewards and does a self deposit.
+    // this will lead to `deposits_in_epoch` for the operator
+    // which is same as a nominator deposits to this operator.
+    let mut operators_with_self_deposits = BTreeSet::new();
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
         let stake_summary = maybe_domain_stake_summary
             .as_mut()
@@ -74,10 +88,12 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
         let mut maybe_reward_per_operator = None;
 
         let domain_rewards = DomainChainRewards::<T>::take(domain_id);
-        // active operator count is current operators in the epoch and any operators who are marked
-        // as invalid bundle authors in this epoch.
-        let invalid_bundle_author_count_in_epoch = InvalidBundleAuthors::<T>::get(domain_id).len();
-        let active_operator_count = (stake_summary.current_epoch_rewards.len() + invalid_bundle_author_count_in_epoch) as u64;
+        // active operators are the operators who received rewards in the epoch
+        // since they are the ones who got rewarded the protocol fees through XDM
+        // once the ER that held this reward is confirmed.
+        // This is also inline with how we reward operators once a ER is confirmed and block fees
+        // distributed to operators who are part of the confirmed ER.
+        let active_operator_count = stake_summary.current_epoch_rewards.len() as u64;
         match (active_operator_count > 0, !domain_rewards.is_zero()) {
             // active operators exist and rewards are non-zero
             (true, true) => {
@@ -169,6 +185,8 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                         operator_id,
                         tax: operator_tax_amount,
                     });
+
+                    operators_with_self_deposits.insert(operator_id);
                 }
 
                 // Add the remaining rewards to the operator's `current_total_stake` which increases the
@@ -194,11 +212,15 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
     })
         .map_err(Error::OperatorRewardStaking)?;
 
-    Ok(rewarded_operator_count)
+    Ok(OperatorTakeRewardTaxResult {
+        rewarded_operator_count,
+        operators_with_self_deposits,
+    })
 }
 
 pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
     domain_id: DomainId,
+    operators_with_self_deposits: BTreeSet<OperatorId>,
 ) -> Result<(EpochIndex, u32), Error> {
     let mut finalized_operator_count = 0;
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_stake_summary| {
@@ -240,23 +262,39 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
             }
         }
 
-        for operator_id in InvalidBundleAuthors::<T>::take(domain_id) {
-            // If an operator is pending to slash then similar to the slashed operator it should not be added
-            // into the `next_operators/current_operators` and we should not `do_finalize_operator_epoch_staking`
-            // for it.
-            if Pallet::<T>::is_operator_pending_to_slash(domain_id, operator_id) {
-                continue;
-            }
+        // we finalized the operators who are in the next operator set.
+        // But there will be deposits/withdrawals for operators who are not part of the next operator set.
+        // So they need to have share price for the previous epoch
+        //  - Deregistered operators who got new deposits/withdrawals before they de-registered.
+        //  - InvalidBundle authors can have deposits or withdrawals before they are marked invalid.
+        //  - Any operator who received rewards in the previous epoch
+        let mut operators_to_calculate_share_price = operators_with_self_deposits;
+        // include invalid bundle authors
+        operators_to_calculate_share_price.extend(InvalidBundleAuthors::<T>::take(domain_id));
+        // exclude operators who have already been processed as they are in next operator set.
+        operators_to_calculate_share_price.retain(|&x| !stake_summary.next_operators.contains(&x));
 
-            let (_, stake_changed) = do_finalize_operator_epoch_staking::<T>(
-                domain_id,
-                operator_id,
-                previous_epoch,
-                false,
-            )?;
+        for operator_id in operators_to_calculate_share_price {
+            if let Some(operator) = Operators::<T>::get(operator_id) {
+                if matches!(
+                    *operator.status::<T>(operator_id),
+                    OperatorStatus::Slashed | OperatorStatus::PendingSlash
+                ) {
+                    // operator is either slashed.
+                    // no need to calculate share price for them
+                    continue;
+                }
 
-            if stake_changed {
-                finalized_operator_count += 1;
+                let (_, stake_changed) = do_finalize_operator_epoch_staking::<T>(
+                    domain_id,
+                    operator_id,
+                    previous_epoch,
+                    false,
+                )?;
+
+                if stake_changed {
+                    finalized_operator_count += 1;
+                }
             }
         }
 
@@ -267,7 +305,6 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
 
         LastEpochStakingDistribution::<T>::insert(domain_id, election_verification_params);
 
-        let previous_epoch = stake_summary.current_epoch_index;
         stake_summary.current_epoch_index = next_epoch;
         stake_summary.current_total_stake = total_domain_stake;
         stake_summary.current_operators = current_operators;
@@ -590,26 +627,30 @@ mod tests {
     };
     use crate::staking::tests::{Share, register_operator};
     use crate::staking::{
-        Error as TransitionError, do_deregister_operator, do_nominate_operator,
+        DomainEpoch, Error as TransitionError, Error, do_deregister_operator, do_nominate_operator,
         do_reward_operators, do_unlock_nominator, do_withdraw_stake,
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, operator_take_reward_tax_and_stake,
     };
-    use crate::tests::{Test, new_test_ext};
-    use crate::{BalanceOf, Config, HoldIdentifier, NominatorId};
+    use crate::tests::{RuntimeOrigin, Test, new_test_ext};
+    use crate::{
+        BalanceOf, Config, HoldIdentifier, InvalidBundleAuthors, NominatorId,
+        OperatorEpochSharePrice,
+    };
     #[cfg(not(feature = "std"))]
     use alloc::vec;
     use frame_support::traits::fungible::InspectHold;
     use frame_support::{StorageDoubleMap, assert_err, assert_ok};
     use sp_core::Pair;
-    use sp_domains::{DomainId, OperatorPair, OperatorRewardSource};
+    use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPair, OperatorRewardSource};
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Percent};
     use std::collections::BTreeMap;
     use subspace_runtime_primitives::AI3;
 
     type Balances = pallet_balances::Pallet<Test>;
+    type Domains = crate::Pallet<Test>;
 
     fn unlock_nominator(
         nominators: Vec<(NominatorId<Test>, BalanceOf<Test>)>,
@@ -649,6 +690,7 @@ mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators.clone()),
             );
 
@@ -796,6 +838,7 @@ mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators),
             );
 
@@ -892,6 +935,7 @@ mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators),
             );
 
@@ -943,5 +987,139 @@ mod tests {
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(domain_stake_summary.current_epoch_rewards.is_empty())
         });
+    }
+
+    fn mark_operator_as_invalid_bundle_author(domain_id: DomainId, operator_id: OperatorId) {
+        let mut invalid_bundle_authors_in_epoch = InvalidBundleAuthors::<Test>::get(domain_id);
+        let mut stake_summary = DomainStakingSummary::<Test>::get(domain_id)
+            .ok_or(Error::DomainNotInitialized)
+            .unwrap();
+
+        crate::staking::mark_invalid_bundle_author::<Test>(
+            operator_id,
+            Default::default(),
+            &mut stake_summary,
+            &mut invalid_bundle_authors_in_epoch,
+        )
+        .unwrap();
+
+        DomainStakingSummary::<Test>::insert(domain_id, stake_summary);
+        InvalidBundleAuthors::<Test>::insert(domain_id, invalid_bundle_authors_in_epoch);
+    }
+
+    fn operator_share_price_exists(
+        domain_id: DomainId,
+        operators: Vec<OperatorId>,
+        epoch_index: EpochIndex,
+    ) {
+        let domain_epoch: DomainEpoch = (domain_id, epoch_index).into();
+        for operator_id in operators {
+            assert!(OperatorEpochSharePrice::<Test>::contains_key(
+                operator_id,
+                domain_epoch
+            ));
+        }
+    }
+
+    fn operator_share_price_does_not_exist(
+        domain_id: DomainId,
+        operators: Vec<OperatorId>,
+        epoch_index: EpochIndex,
+    ) {
+        let domain_epoch: DomainEpoch = (domain_id, epoch_index).into();
+        for operator_id in operators {
+            assert!(!OperatorEpochSharePrice::<Test>::contains_key(
+                operator_id,
+                domain_epoch
+            ));
+        }
+    }
+
+    #[test]
+    fn operator_share_prices() {
+        let domain_id = DomainId::new(0);
+        let operators = vec![
+            (0, OperatorPair::from_seed(&[0; 32])),
+            (1, OperatorPair::from_seed(&[1; 32])),
+            (2, OperatorPair::from_seed(&[2; 32])),
+            (3, OperatorPair::from_seed(&[2; 32])),
+        ];
+
+        let mut ext = new_test_ext();
+        let mut operator_id_map = BTreeMap::new();
+        ext.execute_with(|| {
+            for (operator_account, pair) in operators {
+                let (operator_id, _) = register_operator(
+                    domain_id,
+                    operator_account,
+                    200 * AI3,
+                    100 * AI3,
+                    10 * AI3,
+                    pair.public(),
+                    Percent::from_parts(10),
+                    BTreeMap::default(),
+                );
+
+                operator_id_map.insert(operator_account, operator_id);
+            }
+
+            let get_current_epoch = || {
+                let stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+                stake_summary.current_epoch_index
+            };
+
+            assert_eq!(get_current_epoch(), 1);
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            assert_eq!(get_current_epoch(), 2);
+
+            // reward operators in the epoch 2
+            do_reward_operators::<Test>(
+                domain_id,
+                OperatorRewardSource::XDMProtocolFees,
+                vec![0, 2, 3].into_iter(),
+                10 * AI3,
+            )
+            .unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            operator_share_price_exists(domain_id, vec![0, 2, 3], 2);
+            // operator 1 did not receive any rewards nor has any deposits or withdrawals
+            operator_share_price_does_not_exist(domain_id, vec![1], 2);
+            assert_eq!(get_current_epoch(), 3);
+
+            // mark operator 2 as de-registered and 3 as Invalid Bundle author
+            // they will still receive rewards in epoch 3
+            // so they should have share price set as well
+
+            // reward operators in the epoch 3
+            do_reward_operators::<Test>(
+                domain_id,
+                OperatorRewardSource::XDMProtocolFees,
+                vec![1, 2, 3].into_iter(),
+                10 * AI3,
+            )
+            .unwrap();
+
+            // de-register operator 2
+            let res = Domains::deregister_operator(RuntimeOrigin::signed(2), 2);
+            assert_ok!(res);
+
+            // mark operator 3 as Invalid bundle author
+            mark_operator_as_invalid_bundle_author(domain_id, 3);
+
+            // finalize epoch 3
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+
+            // operator 1, 2, 3 should have share price
+            // 1 received epoch rewards and still part of next operators
+            // 2, 3 not part of next operators but they got rewards so they
+            // should have the epoch rewards
+            operator_share_price_exists(domain_id, vec![1, 2, 3], 3);
+
+            // operator 0 did not receive any rewards nor any deposits or withdrawals
+            // so no share price
+            operator_share_price_does_not_exist(domain_id, vec![0], 3);
+
+            assert_eq!(get_current_epoch(), 4);
+        })
     }
 }
