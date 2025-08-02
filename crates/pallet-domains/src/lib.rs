@@ -771,6 +771,12 @@ mod pallet {
     pub type InvalidBundleAuthors<T: Config> =
         StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, ValueQuery>;
 
+    /// Storage for operators who de-registered in the current epoch.
+    /// Will be cleared once epoch is transitioned.
+    #[pallet::storage]
+    pub type DeregisteredOperators<T: Config> =
+        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, ValueQuery>;
+
     /// Storage that hold a previous versions of Bundle and Execution Receipt.
     /// Unfortunately, it adds a new item for every runtime upgrade if the versions change between
     /// runtime upgrades. If the versions does not change, then same version is set with higher block
