@@ -490,7 +490,7 @@ mod benchmarks {
 
         #[block]
         {
-            do_finalize_domain_epoch_staking::<T>(domain_id)
+            do_finalize_domain_epoch_staking::<T>(domain_id, Default::default())
                 .expect("finalize domain staking should success");
         }
 
@@ -676,7 +676,7 @@ mod benchmarks {
         let (operator_owner, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
 
-        do_finalize_domain_epoch_staking::<T>(domain_id)
+        do_finalize_domain_epoch_staking::<T>(domain_id, Default::default())
             .expect("finalize domain staking should success");
 
         #[extrinsic_call]
@@ -712,7 +712,7 @@ mod benchmarks {
             operator_id,
             withdraw_amount * 3u32.into(),
         ));
-        do_finalize_domain_epoch_staking::<T>(domain_id)
+        do_finalize_domain_epoch_staking::<T>(domain_id, Default::default())
             .expect("finalize domain staking should success");
 
         // Add one more withdraw and deposit to the previous epoch
@@ -726,7 +726,7 @@ mod benchmarks {
             operator_id,
             withdraw_amount,
         ));
-        do_finalize_domain_epoch_staking::<T>(domain_id)
+        do_finalize_domain_epoch_staking::<T>(domain_id, Default::default())
             .expect("finalize domain staking should success");
 
         #[extrinsic_call]
@@ -757,7 +757,7 @@ mod benchmarks {
             operator_id,
             staking_amount,
         ));
-        do_finalize_domain_epoch_staking::<T>(domain_id)
+        do_finalize_domain_epoch_staking::<T>(domain_id, Default::default())
             .expect("finalize domain staking should success");
 
         // Request `w` withdrawals in different epochs, this removes slightly under (or exactly)
@@ -768,7 +768,7 @@ mod benchmarks {
                 operator_id,
                 (T::MinOperatorStake::get() / w.into()).into(),
             ));
-            do_finalize_domain_epoch_staking::<T>(domain_id)
+            do_finalize_domain_epoch_staking::<T>(domain_id, Default::default())
                 .expect("finalize domain staking should success");
         }
         // Withdraw all the remaining stake.
@@ -790,7 +790,7 @@ mod benchmarks {
             operator_id,
             remaining_stake,
         ));
-        do_finalize_domain_epoch_staking::<T>(domain_id)
+        do_finalize_domain_epoch_staking::<T>(domain_id, Default::default())
             .expect("finalize domain staking should success");
 
         let current_domain_epoch_index = DomainStakingSummary::<T>::get(domain_id)
