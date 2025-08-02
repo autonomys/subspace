@@ -12,9 +12,9 @@ use crate::pallet::{
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
-    BalanceOf, Config, DepositOnHold, DomainBlockNumberFor, DomainHashingFor, Event,
-    ExecutionReceiptOf, HoldIdentifier, InvalidBundleAuthors, NominatorId, OperatorEpochSharePrice,
-    OperatorHighestSlot, Pallet, ReceiptHashFor, SlashedReason,
+    BalanceOf, Config, DepositOnHold, DeregisteredOperators, DomainBlockNumberFor,
+    DomainHashingFor, Event, ExecutionReceiptOf, HoldIdentifier, InvalidBundleAuthors, NominatorId,
+    OperatorEpochSharePrice, OperatorHighestSlot, Pallet, ReceiptHashFor, SlashedReason,
 };
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
@@ -698,6 +698,10 @@ pub(crate) fn do_deregister_operator<T: Config>(
                 operator.update_status(OperatorStatus::Deregistered(operator_deregister_info));
 
                 stake_summary.next_operators.remove(&operator_id);
+
+                DeregisteredOperators::<T>::mutate(operator.current_domain_id, |operators| {
+                    operators.insert(operator_id)
+                });
                 Ok(())
             },
         )
@@ -1131,36 +1135,35 @@ pub(crate) fn do_unlock_nominator<T: Config>(
         let mut deposit = Deposits::<T>::take(operator_id, nominator_id.clone())
             .ok_or(Error::UnknownNominator)?;
 
-        // convert any deposits from the previous epoch to shares
-        match do_convert_previous_epoch_deposits::<T>(
+        // convert any deposits from the previous epoch to shares.
+        // share prices will always be present because
+        // - if there are any deposits before operator de-registered, we ensure to create a
+        //   share price for them at the time of epoch transition.
+        // - if the operator got rewarded after the being de-registered and due to nomination tax
+        //   operator self deposits said tax amount, we calculate share price at the time of epoch transition.
+        do_convert_previous_epoch_deposits::<T>(
             operator_id,
             &mut deposit,
             current_domain_epoch_index,
-        ) {
-            // Share price may be missing if there is deposit happen in the same epoch as de-register
-            Ok(()) | Err(Error::MissingOperatorEpochSharePrice) => {}
-            Err(err) => return Err(err),
-        }
+        )?;
 
         // if there are any withdrawals from this operator, account for them
         // if the withdrawals has share price noted, then convert them to AI3
-        // if no share price, then it must be intitated in the epoch before operator de-registered,
-        // so get the shares as is and include them in the total staked shares.
         let (
             amount_ready_to_withdraw,
             total_storage_fee_withdrawal,
             shares_withdrew_in_current_epoch,
         ) = Withdrawals::<T>::take(operator_id, nominator_id.clone())
             .map(|mut withdrawal| {
-                match do_convert_previous_epoch_withdrawal::<T>(
+                // convert any withdrawals from the previous epoch to stake.
+                // share prices will always be present because
+                // - if there are any withdrawals before operator de-registered, we ensure to create a
+                //   share price for them at the time of epoch transition.
+                do_convert_previous_epoch_withdrawal::<T>(
                     operator_id,
                     &mut withdrawal,
                     current_domain_epoch_index,
-                ) {
-                    // Share price may be missing if there is withdrawal happen in the same epoch as de-register
-                    Ok(()) | Err(Error::MissingOperatorEpochSharePrice) => {}
-                    Err(err) => return Err(err),
-                }
+                )?;
                 Ok((
                     withdrawal.total_withdrawal_amount,
                     withdrawal.total_storage_fee_withdrawal,

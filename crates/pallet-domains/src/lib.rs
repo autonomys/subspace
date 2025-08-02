@@ -771,6 +771,12 @@ mod pallet {
     pub type InvalidBundleAuthors<T: Config> =
         StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, ValueQuery>;
 
+    /// Storage for operators who de-registered in the current epoch.
+    /// Will be cleared once epoch is transitioned.
+    #[pallet::storage]
+    pub type DeregisteredOperators<T: Config> =
+        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, ValueQuery>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.
