@@ -302,6 +302,7 @@ mod tests {
             setup.operator_stake,
             setup.min_nominator_stake,
             pair.public(),
+            Default::default(),
             BTreeMap::from_iter(vec![(
                 setup.nominator_account,
                 (setup.nominator_free_balance, setup.nominator_stake),
