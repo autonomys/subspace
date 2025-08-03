@@ -708,7 +708,7 @@ mod tests {
             let mut receipt_of_block_1 = None;
             let mut bundle_header_hash_of_block_1 = None;
             for block_number in 1..=(block_tree_pruning_depth + 3) {
-                // Finilize parent block and initialize block at `block_number`
+                // Finalize parent block and initialize block at `block_number`
                 run_to_block::<Test>(block_number, *receipt.consensus_block_hash());
 
                 if block_number != 1 {

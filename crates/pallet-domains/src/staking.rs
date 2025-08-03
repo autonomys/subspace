@@ -831,7 +831,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                 }
             };
 
-            // Withdraw storage fund, the `withdraw_storage_fee` amount of fund will be transfered
+            // Withdraw storage fund, the `withdraw_storage_fee` amount of fund will be transferred
             // and hold on the nominator account
             let storage_fee_to_withdraw =
                 Perquintill::from_rational(shares_withdrew.into(), known_shares.into())
@@ -1136,7 +1136,7 @@ pub(crate) fn do_unlock_nominator<T: Config>(
 
         // if there are any withdrawals from this operator, account for them
         // if the withdrawals has share price noted, then convert them to AI3
-        // if no share price, then it must be intitated in the epoch before operator de-registered,
+        // if no share price, then it must be initiated in the epoch before operator de-registered,
         // so get the shares as is and include them in the total staked shares.
         let (
             amount_ready_to_withdraw,
@@ -1249,7 +1249,7 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             total_storage_fee_deposit.saturating_sub(nominator_total_storage_fee_deposit);
 
         // The operator state is safe to cleanup if there is no entry in `Deposits` and `Withdrawals`
-        // which means all nominator (inlcuding the operator owner) have unlocked their stake.
+        // which means all nominator (including the operator owner) have unlocked their stake.
         let cleanup_operator = !Deposits::<T>::contains_prefix(operator_id)
             && !Withdrawals::<T>::contains_prefix(operator_id);
 
@@ -1861,13 +1861,13 @@ pub(crate) mod tests {
             );
 
             // another transfer with an existing transfer in place should lead to single
-            let addtional_nomination_total_stake = 40 * AI3;
-            let addtional_nomination_stake = 32 * AI3;
-            let addtional_nomination_storage_fee_deposit = 8 * AI3;
+            let additional_nomination_total_stake = 40 * AI3;
+            let additional_nomination_stake = 32 * AI3;
+            let additional_nomination_storage_fee_deposit = 8 * AI3;
             let res = Domains::nominate_operator(
                 RuntimeOrigin::signed(nominator_account),
                 operator_id,
-                addtional_nomination_total_stake,
+                additional_nomination_total_stake,
             );
             assert_ok!(res);
             let pending_deposit = Deposits::<Test>::get(0, nominator_account)
@@ -1876,24 +1876,24 @@ pub(crate) mod tests {
                 .unwrap();
             assert_eq!(
                 pending_deposit.amount,
-                nominator_stake + addtional_nomination_stake
+                nominator_stake + additional_nomination_stake
             );
             assert_eq!(
                 pending_deposit.storage_fee_deposit,
-                nominator_storage_fee_deposit + addtional_nomination_storage_fee_deposit
+                nominator_storage_fee_deposit + additional_nomination_storage_fee_deposit
             );
 
             let operator = Operators::<Test>::get(operator_id).unwrap();
             assert_eq!(operator.current_total_stake, operator_stake);
             assert_eq!(
                 operator.deposits_in_epoch,
-                nominator_stake + addtional_nomination_stake
+                nominator_stake + additional_nomination_stake
             );
             assert_eq!(
                 operator.total_storage_fee_deposit,
                 operator_storage_fee_deposit
                     + nominator_storage_fee_deposit
-                    + addtional_nomination_storage_fee_deposit
+                    + additional_nomination_storage_fee_deposit
             );
 
             // do epoch transition
@@ -1902,13 +1902,13 @@ pub(crate) mod tests {
             let operator = Operators::<Test>::get(operator_id).unwrap();
             assert_eq!(
                 operator.current_total_stake,
-                operator_stake + nominator_stake + addtional_nomination_stake
+                operator_stake + nominator_stake + additional_nomination_stake
             );
 
             let domain_staking_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert_eq!(
                 domain_staking_summary.current_total_stake,
-                operator_stake + nominator_stake + addtional_nomination_stake
+                operator_stake + nominator_stake + additional_nomination_stake
             );
         });
     }
@@ -2004,7 +2004,7 @@ pub(crate) mod tests {
     type WithdrawWithResult = Vec<(Share, Result<(), StakingError>)>;
 
     /// Expected withdrawal amount.
-    /// Bool indicates to include exisitential deposit while asserting the final balance
+    /// Bool indicates to include existential deposit while asserting the final balance
     /// since ED is not holded back from usable balance when there are no holds on the account.
     type ExpectedWithdrawAmount = Option<(BalanceOf<Test>, bool)>;
 
@@ -3811,7 +3811,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn bundle_storage_fund_charged_and_refund_storege_fee() {
+    fn bundle_storage_fund_charged_and_refund_storage_fee() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let operator_free_balance = 150 * AI3;
@@ -3997,7 +3997,7 @@ pub(crate) mod tests {
                 DomainEpoch::from((domain_id, previous_epoch.completed_epoch_index)),
             );
 
-            // Both deposit and withdraw should fail due to the share price is missing unexpectly
+            // Both deposit and withdraw should fail due to the share price is missing unexpectedly
             assert_err!(
                 do_nominate_operator::<Test>(operator_id, nominator_account, AI3),
                 StakingError::MissingOperatorEpochSharePrice

@@ -1158,7 +1158,7 @@ mod pallet {
                 ReceiptType::Rejected(rejected_receipt_type) => {
                     return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
                 }
-                // Add the exeuction receipt to the block tree
+                // Add the execution receipt to the block tree
                 ReceiptType::Accepted(accepted_receipt_type) => {
                     // Before adding the new head receipt to the block tree, try to prune any previous
                     // bad ER at the same domain block and slash the submitter.
@@ -1802,7 +1802,7 @@ mod pallet {
                 ReceiptType::Rejected(rejected_receipt_type) => {
                     return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
                 }
-                // Add the exeuctione receipt to the block tree
+                // Add the execution receipt to the block tree
                 ReceiptType::Accepted(accepted_receipt_type) => {
                     // Before adding the new head receipt to the block tree, try to prune any previous
                     // bad ER at the same domain block and slash the submitter.
@@ -2424,7 +2424,7 @@ impl<T: Config> Pallet<T> {
             receipt.version(),
         )?;
 
-        // Ensure the receipt gap is <= 1 so that the bundle will only be acceptted if its receipt is
+        // Ensure the receipt gap is <= 1 so that the bundle will only be accepted if its receipt is
         // derived from the latest domain block, and the stale bundle (that verified against an old
         // domain block) produced by a lagging honest operator will be rejected.
         ensure!(
@@ -3011,7 +3011,7 @@ impl<T: Config> Pallet<T> {
                 // `confirm_domain_block` can happen, thus we use the `max` of them
                 //
                 // We use `MAX_BUNDLE_PER_BLOCK` number to assume the number of slashed operators.
-                // We do not expect so many operators to be slashed but nontheless, if it did happen
+                // We do not expect so many operators to be slashed but nonetheless, if it did happen
                 // we will limit the weight to 100 operators.
                 T::WeightInfo::handle_bad_receipt(MAX_BUNDLE_PER_BLOCK).max(
                     T::WeightInfo::confirm_domain_block(MAX_BUNDLE_PER_BLOCK, MAX_BUNDLE_PER_BLOCK),
@@ -3028,7 +3028,7 @@ impl<T: Config> Pallet<T> {
                 // `confirm_domain_block` can happen, thus we use the `max` of them
                 //
                 // We use `MAX_BUNDLE_PER_BLOCK` number to assume the number of slashed operators.
-                // We do not expect so many operators to be slashed but nontheless, if it did happen
+                // We do not expect so many operators to be slashed but nonetheless, if it did happen
                 // we will limit the weight to 100 operators.
                 T::WeightInfo::handle_bad_receipt(MAX_BUNDLE_PER_BLOCK).max(
                     T::WeightInfo::confirm_domain_block(MAX_BUNDLE_PER_BLOCK, MAX_BUNDLE_PER_BLOCK),
