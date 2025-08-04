@@ -191,6 +191,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             info!("Subspace Bootstrap Node started");
 
+            // TODO: spawn this in a dedicated thread
             let prometheus_task = should_start_prometheus_server
                 .then(|| {
                     start_prometheus_metrics_server(
@@ -200,36 +201,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 })
                 .transpose()?;
 
-            // If a spawned future is running for a long time, it can block receiving exit signals.
-            // Rather than hunting down every possible blocking future, we give the exit signal itself a
-            // dedicated thread to run on.
-            let exit_signal_select_fut = run_future_in_dedicated_thread(
-                move || async move {
-                    if let Some(prometheus_task) = prometheus_task {
-                        select! {
-                            // Signal future
-                            () = signal.fuse() => {},
-                            _ = node_runner_fut.fuse() => {
-                                info!("DSN network runner exited.");
-                            },
-                            _ = prometheus_task.fuse() => {
-                                info!("Prometheus server exited.");
-                            },
-                        }
-                    } else {
-                        select! {
-                            // Signal future
-                            () = signal.fuse() => {},
-                            _ = node_runner_fut.fuse() => {
-                                info!("DSN network runner exited.");
-                            },
-                        }
-                    }
-                },
-                "bootstrap-exit".to_string(),
-            )?;
-
-            exit_signal_select_fut.await?;
+            if let Some(prometheus_task) = prometheus_task {
+                select! {
+                    // Signal future
+                    () = signal.fuse() => {},
+                    _ = node_runner_fut.fuse() => {
+                        info!("DSN network runner exited.");
+                    },
+                    _ = prometheus_task.fuse() => {
+                        info!("Prometheus server exited.");
+                    },
+                }
+            } else {
+                select! {
+                    // Signal future
+                    () = signal.fuse() => {},
+                    _ = node_runner_fut.fuse() => {
+                        info!("DSN network runner exited.");
+                    },
+                }
+            }
         }
         Command::GenerateKeypair { json } => {
             let output = KeypairOutput::new(Keypair::generate());
