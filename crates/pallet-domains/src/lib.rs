@@ -777,6 +777,21 @@ mod pallet {
     pub type DeregisteredOperators<T: Config> =
         StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, ValueQuery>;
 
+    pub struct AllowedMissingSharePriceEpoch;
+
+    impl Get<DomainEpoch> for AllowedMissingSharePriceEpoch {
+        fn get() -> DomainEpoch {
+            (DomainId::new(0), 23_347).into()
+        }
+    }
+
+    /// Storage that hold a domain epoch, for epoch that happen before it, the share price may
+    /// be missing due to https://github.com/autonomys/subspace/pull/3661, in this case, we
+    /// use the current share price as the default.
+    #[pallet::storage]
+    pub type AllowedDefaultSharePriceEpoch<T> =
+        StorageValue<_, DomainEpoch, ValueQuery, AllowedMissingSharePriceEpoch>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.

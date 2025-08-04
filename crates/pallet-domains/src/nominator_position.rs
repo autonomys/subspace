@@ -2,7 +2,9 @@
 
 use crate::pallet::{Config, Deposits, DomainStakingSummary, Operators, Withdrawals};
 
-use crate::staking::{do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal};
+use crate::staking::{
+    SharePrice, do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal,
+};
 use crate::{BalanceOf, DomainBlockNumberFor, ReceiptHashFor};
 use alloc::vec::Vec;
 use sp_domains::{EpochIndex, OperatorId};
@@ -77,6 +79,7 @@ fn process_deposit<T: Config>(
         operator_id,
         &mut deposit,
         position_data.current_epoch_index,
+        None,
     );
 
     // Extract results
@@ -123,6 +126,7 @@ fn process_withdrawals<T: Config>(
     nominator_account: &T::AccountId,
     current_share_price: &crate::staking::SharePrice,
     current_epoch_index: EpochIndex,
+    maybe_share_price: Option<SharePrice>,
 ) -> Vec<sp_domains::PendingWithdrawal<BalanceOf<T>, DomainBlockNumberFor<T>>> {
     let Some(withdrawal) = Withdrawals::<T>::get(operator_id, nominator_account) else {
         return Vec::new();
@@ -136,6 +140,7 @@ fn process_withdrawals<T: Config>(
         operator_id,
         &mut withdrawal,
         current_epoch_index,
+        maybe_share_price,
     );
 
     let mut pending_withdrawals = Vec::with_capacity(
@@ -216,6 +221,7 @@ pub fn nominator_position<T: Config>(
         &nominator_account,
         &position_data.current_share_price,
         position_data.current_epoch_index,
+        Some(position_data.current_share_price.clone()),
     );
 
     Some(NominatorPosition {

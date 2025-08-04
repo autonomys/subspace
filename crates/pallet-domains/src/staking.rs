@@ -12,9 +12,10 @@ use crate::pallet::{
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
-    BalanceOf, Config, DepositOnHold, DeregisteredOperators, DomainBlockNumberFor,
-    DomainHashingFor, Event, ExecutionReceiptOf, HoldIdentifier, InvalidBundleAuthors, NominatorId,
-    OperatorEpochSharePrice, OperatorHighestSlot, Pallet, ReceiptHashFor, SlashedReason,
+    AllowedDefaultSharePriceEpoch, BalanceOf, Config, DepositOnHold, DeregisteredOperators,
+    DomainBlockNumberFor, DomainHashingFor, Event, ExecutionReceiptOf, HoldIdentifier,
+    InvalidBundleAuthors, NominatorId, OperatorEpochSharePrice, OperatorHighestSlot, Pallet,
+    ReceiptHashFor, SlashedReason,
 };
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
@@ -423,6 +424,7 @@ pub fn do_register_operator<T: Config>(
             current_domain_epoch,
             new_deposit,
             None,
+            None,
         )?;
 
         Ok((operator_id, domain_stake_summary.current_epoch_index))
@@ -439,10 +441,16 @@ pub(crate) fn do_calculate_previous_epoch_deposit_shares_and_add_new_deposit<T: 
     current_domain_epoch: DomainEpoch,
     new_deposit: NewDeposit<BalanceOf<T>>,
     required_minimum_nominator_stake: Option<BalanceOf<T>>,
+    maybe_share_price: Option<SharePrice>,
 ) -> Result<(), Error> {
     Deposits::<T>::try_mutate(operator_id, nominator_id, |maybe_deposit| {
         let mut deposit = maybe_deposit.take().unwrap_or_default();
-        do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit, current_domain_epoch.1)?;
+        do_convert_previous_epoch_deposits::<T>(
+            operator_id,
+            &mut deposit,
+            current_domain_epoch.1,
+            maybe_share_price,
+        )?;
 
         // add or create new pending deposit
         let pending_deposit = match deposit.pending {
@@ -483,19 +491,27 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
     operator_id: OperatorId,
     deposit: &mut Deposit<T::Share, BalanceOf<T>>,
     current_domain_epoch_index: EpochIndex,
+    maybe_share_price: Option<SharePrice>,
 ) -> Result<(), Error> {
     // if it is one of the previous domain epoch, then calculate shares for the epoch and update known deposit
     let epoch_share_price = match deposit.pending {
         None => return Ok(()),
         Some(pending_deposit) => {
+            if pending_deposit.effective_domain_epoch.1 >= current_domain_epoch_index {
+                return Ok(());
+            }
+
             match get_share_price::<T>(operator_id, pending_deposit.effective_domain_epoch) {
                 Some(p) => p,
                 None => {
-                    ensure!(
-                        pending_deposit.effective_domain_epoch.1 >= current_domain_epoch_index,
-                        Error::MissingOperatorEpochSharePrice
-                    );
-                    return Ok(());
+                    match allowed_default_share_price::<T>(
+                        operator_id,
+                        pending_deposit.effective_domain_epoch.1,
+                        maybe_share_price,
+                    ) {
+                        Some(p) => p,
+                        None => return Err(Error::MissingOperatorEpochSharePrice),
+                    }
                 }
             }
         }
@@ -523,6 +539,25 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
     Ok(())
 }
 
+pub(crate) fn allowed_default_share_price<T: Config>(
+    operator_id: OperatorId,
+    domain_epoch_index: EpochIndex,
+    maybe_share_price: Option<SharePrice>,
+) -> Option<SharePrice> {
+    let DomainEpoch(allowed_domain_id, allowed_epoch_index) =
+        AllowedDefaultSharePriceEpoch::<T>::get();
+    let operator = Operators::<T>::get(operator_id)?;
+
+    // The default share price is only allowed if the requested `domain_epoch_index` is happen
+    // before (or is the same as) the `AllowedDefaultSharePriceEpoch`
+    if allowed_domain_id == operator.current_domain_id && allowed_epoch_index >= domain_epoch_index
+    {
+        maybe_share_price
+    } else {
+        None
+    }
+}
+
 /// Converts any epoch withdrawals into balance using the operator epoch share price.
 ///
 /// If there is withdrawal happened in the current epoch (thus share price is unavailable),
@@ -532,6 +567,7 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
     operator_id: OperatorId,
     withdrawal: &mut Withdrawal<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
     current_domain_epoch_index: EpochIndex,
+    maybe_share_price: Option<SharePrice>,
 ) -> Result<(), Error> {
     let epoch_share_price = match withdrawal.withdrawal_in_shares.as_ref() {
         None => return Ok(()),
@@ -543,7 +579,16 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
 
             match get_share_price::<T>(operator_id, withdraw.domain_epoch) {
                 Some(p) => p,
-                None => return Err(Error::MissingOperatorEpochSharePrice),
+                None => {
+                    match allowed_default_share_price::<T>(
+                        operator_id,
+                        withdraw.domain_epoch.1,
+                        maybe_share_price,
+                    ) {
+                        Some(p) => p,
+                        None => return Err(Error::MissingOperatorEpochSharePrice),
+                    }
+                }
             }
         }
     };
@@ -595,6 +640,8 @@ pub(crate) fn do_nominate_operator<T: Config>(
         let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
             .ok_or(Error::DomainNotInitialized)?;
 
+        let share_price = current_share_price::<T>(operator_id, operator, &domain_stake_summary)?;
+
         // Reserve for the bundle storage fund
         let new_deposit = deposit_reserve_for_storage_fund::<T>(operator_id, &nominator_id, amount)
             .map_err(Error::BundleStorageFund)?;
@@ -630,6 +677,7 @@ pub(crate) fn do_nominate_operator<T: Config>(
             current_domain_epoch,
             new_deposit,
             Some(operator.minimum_nominator_stake),
+            Some(share_price),
         )?;
 
         Ok(())
@@ -770,6 +818,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
         )
             .into();
 
+        let share_price = current_share_price::<T>(operator_id, operator, &domain_stake_summary)?;
         let known_shares =
             Deposits::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_deposit| {
                 let deposit = maybe_deposit.as_mut().ok_or(Error::UnknownNominator)?;
@@ -777,6 +826,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                     operator_id,
                     deposit,
                     domain_stake_summary.current_epoch_index,
+                    Some(share_price.clone()),
                 )?;
                 Ok(deposit.known.shares)
             })?;
@@ -787,6 +837,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                     operator_id,
                     withdrawal,
                     domain_stake_summary.current_epoch_index,
+                    Some(share_price.clone()),
                 )?;
                 if withdrawal.withdrawals.len() as u32 >= T::WithdrawalLimit::get() {
                     return Err(Error::TooManyWithdrawals);
@@ -816,9 +867,6 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 
                     (remaining_shares, to_withdraw)
                 } else {
-                    let share_price =
-                        current_share_price::<T>(operator_id, operator, &domain_stake_summary)?;
-
                     let remaining_storage_fee =
                         Perquintill::from_rational(remaining_shares.into(), known_shares.into())
                             .mul_floor(deposit.known.storage_fee_deposit);
@@ -948,9 +996,10 @@ pub(crate) fn do_unlock_funds<T: Config>(
         Error::OperatorNotRegistered
     );
 
-    let current_domain_epoch_index = DomainStakingSummary::<T>::get(operator.current_domain_id)
-        .ok_or(Error::DomainNotInitialized)?
-        .current_epoch_index;
+    let stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
+        .ok_or(Error::DomainNotInitialized)?;
+    let current_domain_epoch_index = stake_summary.current_epoch_index;
+    let share_price = current_share_price::<T>(operator_id, &operator, &stake_summary)?;
 
     Withdrawals::<T>::try_mutate_exists(operator_id, nominator_id.clone(), |maybe_withdrawal| {
         let withdrawal = maybe_withdrawal.as_mut().ok_or(Error::MissingWithdrawal)?;
@@ -958,6 +1007,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
             operator_id,
             withdrawal,
             current_domain_epoch_index,
+            Some(share_price),
         )?;
 
         ensure!(!withdrawal.withdrawals.is_empty(), Error::MissingWithdrawal);
@@ -1145,6 +1195,7 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             operator_id,
             &mut deposit,
             current_domain_epoch_index,
+            Some(share_price.clone()),
         )?;
 
         // if there are any withdrawals from this operator, account for them
@@ -1163,6 +1214,7 @@ pub(crate) fn do_unlock_nominator<T: Config>(
                     operator_id,
                     &mut withdrawal,
                     current_domain_epoch_index,
+                    Some(share_price.clone()),
                 )?;
                 Ok((
                     withdrawal.total_withdrawal_amount,
@@ -1569,8 +1621,8 @@ pub(crate) mod tests {
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{ExistentialDeposit, MinOperatorStake, RuntimeOrigin, Test, new_test_ext};
     use crate::{
-        BalanceOf, Error, MAX_NOMINATORS_TO_SLASH, NominatorId, OperatorEpochSharePrice,
-        SlashedReason, bundle_storage_fund,
+        AllowedDefaultSharePriceEpoch, BalanceOf, Error, MAX_NOMINATORS_TO_SLASH, NominatorId,
+        OperatorEpochSharePrice, SlashedReason, bundle_storage_fund,
     };
     use frame_support::traits::Currency;
     use frame_support::traits::fungible::Mutate;
@@ -2318,6 +2370,9 @@ pub(crate) mod tests {
         }
 
     // Export the macro for use in other modules (and earlier in this file).
+    use crate::staking_epoch::tests::{
+        get_current_epoch, operator_share_price_does_not_exist, operator_share_price_exists,
+    };
     pub(crate) use prop_assert_approx;
 
     /// Rounding down factor for property tests to account for arithmetic precision errors.
@@ -3310,6 +3365,7 @@ pub(crate) mod tests {
                     operator_id,
                     withdrawal,
                     domain_stake_summary.current_epoch_index,
+                    None,
                 )
                 .unwrap();
                 assert_eq!(
@@ -3427,6 +3483,7 @@ pub(crate) mod tests {
                         operator_id,
                         maybe_withdrawal.as_mut().unwrap(),
                         domain_stake_summary.current_epoch_index,
+                        None,
                     )
                 })
                 .unwrap();
@@ -3560,8 +3617,13 @@ pub(crate) mod tests {
                 Default::default(),
                 BTreeMap::from_iter(nominators),
             );
+            assert_eq!(get_current_epoch(domain_id), 1);
+            operator_share_price_exists(domain_id, vec![0], 0);
 
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            assert_eq!(get_current_epoch(domain_id), 2);
+            operator_share_price_exists(domain_id, vec![0], 1);
+
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert_eq!(domain_stake_summary.current_total_stake, init_total_stake);
 
@@ -3585,6 +3647,8 @@ pub(crate) mod tests {
             )
             .unwrap();
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            assert_eq!(get_current_epoch(domain_id), 3);
+            operator_share_price_exists(domain_id, vec![0], 2);
 
             // Manually convert previous withdrawal in share to balance
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
@@ -3594,6 +3658,7 @@ pub(crate) mod tests {
                         operator_id,
                         maybe_withdrawal.as_mut().unwrap(),
                         domain_stake_summary.current_epoch_index,
+                        None,
                     )
                 })
                 .unwrap();
@@ -3649,6 +3714,8 @@ pub(crate) mod tests {
             .unwrap();
 
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            assert_eq!(get_current_epoch(domain_id), 4);
+            operator_share_price_does_not_exist(domain_id, vec![0], 3);
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(!domain_stake_summary.next_operators.contains(&operator_id));
@@ -3996,6 +4063,7 @@ pub(crate) mod tests {
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
+            AllowedDefaultSharePriceEpoch::<Test>::set((domain_id, 0).into());
             let (operator_id, _) = register_operator(
                 domain_id,
                 operator_account,
