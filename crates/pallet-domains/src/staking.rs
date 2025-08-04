@@ -11,9 +11,9 @@ use crate::pallet::{
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
-    BalanceOf, Config, DepositOnHold, DomainBlockNumberFor, DomainHashingFor, Event,
-    ExecutionReceiptOf, HoldIdentifier, InvalidBundleAuthors, NominatorId, OperatorEpochSharePrice,
-    OperatorHighestSlot, Pallet, ReceiptHashFor, SlashedReason,
+    BalanceOf, Config, DepositOnHold, DeregisteredOperators, DomainBlockNumberFor,
+    DomainHashingFor, Event, ExecutionReceiptOf, HoldIdentifier, InvalidBundleAuthors, NominatorId,
+    OperatorEpochSharePrice, OperatorHighestSlot, Pallet, ReceiptHashFor, SlashedReason,
 };
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
@@ -690,6 +690,10 @@ pub(crate) fn do_deregister_operator<T: Config>(
                 operator.update_status(OperatorStatus::Deregistered(operator_deregister_info));
 
                 stake_summary.next_operators.remove(&operator_id);
+
+                DeregisteredOperators::<T>::mutate(operator.current_domain_id, |operators| {
+                    operators.insert(operator_id)
+                });
                 Ok(())
             },
         )
@@ -1123,36 +1127,35 @@ pub(crate) fn do_unlock_nominator<T: Config>(
         let mut deposit = Deposits::<T>::take(operator_id, nominator_id.clone())
             .ok_or(Error::UnknownNominator)?;
 
-        // convert any deposits from the previous epoch to shares
-        match do_convert_previous_epoch_deposits::<T>(
+        // convert any deposits from the previous epoch to shares.
+        // share prices will always be present because
+        // - if there are any deposits before operator de-registered, we ensure to create a
+        //   share price for them at the time of epoch transition.
+        // - if the operator got rewarded after the being de-registered and due to nomination tax
+        //   operator self deposits said tax amount, we calculate share price at the time of epoch transition.
+        do_convert_previous_epoch_deposits::<T>(
             operator_id,
             &mut deposit,
             current_domain_epoch_index,
-        ) {
-            // Share price may be missing if there is deposit happen in the same epoch as de-register
-            Ok(()) | Err(Error::MissingOperatorEpochSharePrice) => {}
-            Err(err) => return Err(err),
-        }
+        )?;
 
         // if there are any withdrawals from this operator, account for them
         // if the withdrawals has share price noted, then convert them to AI3
-        // if no share price, then it must be initiated in the epoch before operator de-registered,
-        // so get the shares as is and include them in the total staked shares.
         let (
             amount_ready_to_withdraw,
             total_storage_fee_withdrawal,
             shares_withdrew_in_current_epoch,
         ) = Withdrawals::<T>::take(operator_id, nominator_id.clone())
             .map(|mut withdrawal| {
-                match do_convert_previous_epoch_withdrawal::<T>(
+                // convert any withdrawals from the previous epoch to stake.
+                // share prices will always be present because
+                // - if there are any withdrawals before operator de-registered, we ensure to create a
+                //   share price for them at the time of epoch transition.
+                do_convert_previous_epoch_withdrawal::<T>(
                     operator_id,
                     &mut withdrawal,
                     current_domain_epoch_index,
-                ) {
-                    // Share price may be missing if there is withdrawal happen in the same epoch as de-register
-                    Ok(()) | Err(Error::MissingOperatorEpochSharePrice) => {}
-                    Err(err) => return Err(err),
-                }
+                )?;
                 Ok((
                     withdrawal.total_withdrawal_amount,
                     withdrawal.total_storage_fee_withdrawal,
@@ -1442,7 +1445,7 @@ pub(crate) fn do_mark_invalid_bundle_authors<T: Config>(
     Ok(())
 }
 
-fn mark_invalid_bundle_author<T: Config>(
+pub(crate) fn mark_invalid_bundle_author<T: Config>(
     operator_id: OperatorId,
     er_hash: ReceiptHashFor<T>,
     stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,
@@ -1573,7 +1576,7 @@ pub(crate) mod tests {
         OperatorRewardSource,
     };
     use sp_runtime::traits::Zero;
-    use sp_runtime::{PerThing, Perquintill};
+    use sp_runtime::{PerThing, Percent, Perquintill};
     use std::collections::{BTreeMap, BTreeSet};
     use std::ops::RangeInclusive;
     use std::vec;
@@ -1592,6 +1595,7 @@ pub(crate) mod tests {
         operator_stake: BalanceOf<Test>,
         minimum_nominator_stake: BalanceOf<Test>,
         signing_key: OperatorPublicKey,
+        nomination_tax: Percent,
         mut nominators: BTreeMap<NominatorId<Test>, (BalanceOf<Test>, BalanceOf<Test>)>,
     ) -> (OperatorId, OperatorConfig<BalanceOf<Test>>) {
         nominators.insert(operator_account, (operator_free_balance, operator_stake));
@@ -1640,7 +1644,7 @@ pub(crate) mod tests {
         let operator_config = OperatorConfig {
             signing_key,
             minimum_nominator_stake,
-            nomination_tax: Default::default(),
+            nomination_tax,
         };
 
         let res = Domains::register_operator(
@@ -1741,6 +1745,7 @@ pub(crate) mod tests {
                 operator_total_stake,
                 AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::new(),
             );
 
@@ -1826,6 +1831,7 @@ pub(crate) mod tests {
                 operator_total_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(vec![(
                     nominator_account,
                     (nominator_free_balance, nominator_total_stake),
@@ -1929,6 +1935,7 @@ pub(crate) mod tests {
                 operator_stake,
                 AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::new(),
             );
 
@@ -2084,6 +2091,7 @@ pub(crate) mod tests {
                 operator_stake,
                 minimum_nominator_stake,
                 pair.public(),
+                Default::default(),
                 nominators,
             );
 
@@ -3244,6 +3252,7 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators),
             );
 
@@ -3372,6 +3381,7 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators),
             );
 
@@ -3538,6 +3548,7 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators),
             );
 
@@ -3700,6 +3711,7 @@ pub(crate) mod tests {
                 10 * AI3,
                 pair_1.public(),
                 Default::default(),
+                Default::default(),
             );
 
             let (operator_id_2, _) = register_operator(
@@ -3710,6 +3722,7 @@ pub(crate) mod tests {
                 10 * AI3,
                 pair_2.public(),
                 Default::default(),
+                Default::default(),
             );
 
             let (operator_id_3, _) = register_operator(
@@ -3719,6 +3732,7 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * AI3,
                 pair_3.public(),
+                Default::default(),
                 Default::default(),
             );
 
@@ -3830,6 +3844,7 @@ pub(crate) mod tests {
                 operator_total_stake,
                 AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::default(),
             );
 
@@ -3919,6 +3934,7 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators),
             );
 
@@ -3978,6 +3994,7 @@ pub(crate) mod tests {
                 operator_stake,
                 10 * AI3,
                 pair.public(),
+                Default::default(),
                 BTreeMap::from_iter(nominators),
             );
 
