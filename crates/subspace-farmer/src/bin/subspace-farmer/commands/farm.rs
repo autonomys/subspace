@@ -792,8 +792,8 @@ where
     // event handlers
     drop(plotted_pieces);
 
+    // The prometheus server is a non-essential service, so we don't exit if it stops.
     // TODO: spawn this in a dedicated thread
-    // TODO: stop if the prometheus server stops
     let _prometheus_worker = if should_start_prometheus_server {
         let prometheus_task = start_prometheus_metrics_server(
             prometheus_listen_on,

@@ -3,7 +3,7 @@
 #![feature(type_changing_struct_update)]
 
 use clap::Parser;
-use futures::{FutureExt, select};
+use futures::FutureExt;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::kad::Mode;
 use libp2p::{Multiaddr, PeerId, identity};
@@ -19,8 +19,9 @@ use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{Config, KademliaMode, peer_id};
 use subspace_process::{
-    init_logger, raise_fd_limit, run_future_in_dedicated_thread, shutdown_signal,
+    AsyncJoinOnDrop, init_logger, raise_fd_limit, run_future_in_dedicated_thread, shutdown_signal,
 };
+use tokio::select;
 use tracing::{debug, info};
 
 /// Size of the LRU cache for peers.
@@ -151,9 +152,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             // Metrics
             let should_start_prometheus_server = !prometheus_listen_on.is_empty();
-            let mut metrics_registry = Registry::default();
-            let dsn_metrics_registry =
-                should_start_prometheus_server.then_some(&mut metrics_registry);
+            let mut registry = Registry::default();
+            let dsn_registry: Option<&mut Registry> =
+                should_start_prometheus_server.then_some(&mut registry);
 
             let config = Config {
                 listen_on,
@@ -167,7 +168,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 kademlia_mode: KademliaMode::Static(Mode::Server),
                 external_addresses,
 
-                ..Config::new(protocol_version.to_string(), keypair, dsn_metrics_registry)
+                ..Config::new(protocol_version.to_string(), keypair, dsn_registry)
             };
             let (node, mut node_runner) =
                 subspace_networking::construct(config).expect("Networking stack creation failed.");
@@ -191,35 +192,29 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             info!("Subspace Bootstrap Node started");
 
+            // The prometheus server is a non-essential service, so we don't exit if it stops.
             // TODO: spawn this in a dedicated thread
-            let prometheus_task = should_start_prometheus_server
-                .then(|| {
-                    start_prometheus_metrics_server(
-                        prometheus_listen_on,
-                        RegistryAdapter::PrometheusClient(metrics_registry),
-                    )
-                })
-                .transpose()?;
+            let _prometheus_worker = if should_start_prometheus_server {
+                let prometheus_task = start_prometheus_metrics_server(
+                    prometheus_listen_on,
+                    RegistryAdapter::PrometheusClient(registry),
+                )?;
 
-            if let Some(prometheus_task) = prometheus_task {
-                select! {
-                    // Signal future
-                    () = signal.fuse() => {},
-                    _ = node_runner_fut.fuse() => {
-                        info!("DSN network runner exited.");
-                    },
-                    _ = prometheus_task.fuse() => {
-                        info!("Prometheus server exited.");
-                    },
-                }
+                let join_handle = tokio::spawn(prometheus_task);
+                Some(AsyncJoinOnDrop::new(join_handle, true))
             } else {
-                select! {
-                    // Signal future
-                    () = signal.fuse() => {},
-                    _ = node_runner_fut.fuse() => {
-                        info!("DSN network runner exited.");
-                    },
-                }
+                None
+            };
+
+            select! {
+                // Signal future
+                // Match the return type, so we change the code if we add errors in future.
+                () = signal.fuse() => {},
+
+                // Networking node runner future
+                _ = node_runner_fut.fuse() => {
+                    info!("DSN network runner exited.");
+                },
             }
         }
         Command::GenerateKeypair { json } => {
