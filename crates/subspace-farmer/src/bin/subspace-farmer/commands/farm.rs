@@ -6,8 +6,9 @@ use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use futures::channel::oneshot;
+use futures::future::OptionFuture;
 use futures::stream::FuturesUnordered;
-use futures::{FutureExt, StreamExt, select};
+use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::fs;
@@ -53,6 +54,7 @@ use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_process::{AsyncJoinOnDrop, run_future_in_dedicated_thread, shutdown_signal};
 use subspace_proof_of_space::Table;
+use tokio::select;
 use tracing::{Instrument, error, info, info_span, warn};
 
 /// Get piece retry attempts number.
@@ -793,17 +795,16 @@ where
     drop(plotted_pieces);
 
     // TODO: spawn this in a dedicated thread
-    // TODO: stop if the prometheus server stops
-    let _prometheus_worker = if should_start_prometheus_server {
+    let prometheus_worker = if should_start_prometheus_server {
         let prometheus_task = start_prometheus_metrics_server(
             prometheus_listen_on,
             RegistryAdapter::PrometheusClient(registry),
         )?;
 
         let join_handle = tokio::spawn(prometheus_task);
-        Some(AsyncJoinOnDrop::new(join_handle, true))
+        OptionFuture::from(Some(AsyncJoinOnDrop::new(join_handle, true)))
     } else {
-        None
+        OptionFuture::from(None)
     };
 
     let mut farm_errors = Vec::new();
@@ -853,6 +854,7 @@ where
     let networking_fut = networking_fut;
     let farm_fut = farm_fut;
     let farmer_cache_worker_fut = farmer_cache_worker_fut;
+    let prometheus_worker = prometheus_worker;
 
     let networking_fut = pin!(networking_fut);
     let farm_fut = pin!(farm_fut);
@@ -875,6 +877,11 @@ where
         // Piece cache worker future
         _ = farmer_cache_worker_fut.fuse() => {
             info!("Farmer cache worker exited.")
+        },
+
+        // Prometheus worker future, disabled if there is no prometheus worker
+        Some(_) = prometheus_worker.fuse() => {
+            info!("Prometheus server exited.")
         },
     }
 
