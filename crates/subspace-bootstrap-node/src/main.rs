@@ -4,6 +4,7 @@
 
 use clap::Parser;
 use futures::FutureExt;
+use futures::channel::oneshot;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::kad::Mode;
 use libp2p::{Multiaddr, PeerId, identity};
@@ -212,7 +213,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 () = signal.fuse() => {},
 
                 // Networking node runner future
-                _ = node_runner_fut.fuse() => {
+                Ok(()) | Err(oneshot::Canceled) = node_runner_fut.fuse() => {
                     info!("DSN network runner exited.");
                 },
             }

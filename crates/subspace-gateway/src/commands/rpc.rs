@@ -5,6 +5,7 @@ pub(crate) mod server;
 use crate::commands::rpc::server::{RPC_DEFAULT_PORT, RpcOptions, launch_rpc_server};
 use crate::commands::{GatewayOptions, initialize_object_fetcher};
 use clap::Parser;
+use futures::channel::oneshot;
 use futures::{FutureExt, select};
 use std::pin::pin;
 use subspace_gateway_rpc::{SubspaceGatewayRpc, SubspaceGatewayRpcConfig};
@@ -50,10 +51,11 @@ pub async fn run(run_options: RpcCommandOptions) -> anyhow::Result<()> {
 
     select! {
         // Signal future
+        // Match the return type, so we change the code if we add errors in future.
         () = signal.fuse() => {},
 
         // Networking future
-        _ = dsn_fut.fuse() => {
+        Ok(()) | Err(oneshot::Canceled) = dsn_fut.fuse() => {
             info!("DSN network runner exited.");
         },
 
