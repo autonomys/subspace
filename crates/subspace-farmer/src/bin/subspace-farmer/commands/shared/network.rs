@@ -257,7 +257,9 @@ where
                                 "Segment headers request received.",
                             );
 
-                            node_client.segment_headers(segment_indexes).await
+                            // To avoid remote denial of service, we don't update the cache in
+                            // response to any network requests.
+                            node_client.cached_segment_headers(segment_indexes).await
                         }
                         SegmentHeaderRequest::LastSegmentHeaders { mut limit } => {
                             if limit > SEGMENT_HEADERS_LIMIT {

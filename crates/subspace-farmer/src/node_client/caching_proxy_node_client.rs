@@ -332,6 +332,10 @@ where
         ))
     }
 
+    /// Gets segment headers for the given segment indices, updating the cache from the node if
+    /// needed.
+    ///
+    /// Returns `None` for segment indices that are not in the cache.
     async fn segment_headers(
         &self,
         segment_indices: Vec<SegmentIndex>,
@@ -401,6 +405,19 @@ impl<NC> NodeClientExt for CachingProxyNodeClient<NC>
 where
     NC: NodeClientExt,
 {
+    async fn cached_segment_headers(
+        &self,
+        segment_indices: Vec<SegmentIndex>,
+    ) -> anyhow::Result<Vec<Option<SegmentHeader>>> {
+        // To avoid remote denial of service, we don't update the cache here, because it is called
+        // from network code.
+        Ok(self
+            .segment_headers
+            .read()
+            .await
+            .get_segment_headers(&segment_indices))
+    }
+
     async fn last_segment_headers(&self, limit: u32) -> anyhow::Result<Vec<Option<SegmentHeader>>> {
         Ok(self
             .segment_headers
