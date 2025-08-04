@@ -73,6 +73,19 @@ pub trait NodeClient: fmt::Debug + Send + Sync + 'static {
 /// Node Client extension methods that are not necessary for farmer as a library, but might be useful for an app
 #[async_trait]
 pub trait NodeClientExt: NodeClient {
-    /// Get the last segment headers.
+    /// Get the cached segment headers for the given segment indices.
+    /// If there is a cache, it is not updated, to avoid remote denial of service.
+    ///
+    /// Returns `None` for segment indices that are not in the cache.
+    async fn cached_segment_headers(
+        &self,
+        segment_indices: Vec<SegmentIndex>,
+    ) -> anyhow::Result<Vec<Option<SegmentHeader>>>;
+
+    /// Get up to `limit` most recent segment headers.
+    /// If there is a cache, it is not updated, to avoid remote denial of service.
+    ///
+    /// If the node or cache has less than `limit` segment headers, the returned vector will be
+    /// shorter. Each returned segment header is wrapped in `Some`.
     async fn last_segment_headers(&self, limit: u32) -> anyhow::Result<Vec<Option<SegmentHeader>>>;
 }
