@@ -862,26 +862,27 @@ where
 
     select! {
         // Signal future
-        _ = signal.fuse() => {}
+        () = signal.fuse() => {}
 
         // Networking future
-        _ = networking_fut.fuse() => {
-            info!("Node runner exited.")
+        networking_error = networking_fut.fuse() => {
+            info!(?networking_error, "Node runner exited.")
         },
 
         // Farm future
         result = farm_fut.fuse() => {
+            info!("Farm exited.");
             result??;
         },
 
         // Piece cache worker future
-        _ = farmer_cache_worker_fut.fuse() => {
-            info!("Farmer cache worker exited.")
+        farmer_cache_worker_error = farmer_cache_worker_fut.fuse() => {
+            info!(?farmer_cache_worker_error, "Farmer cache worker exited.")
         },
 
         // Prometheus worker future, disabled if there is no prometheus worker
-        Some(_) = prometheus_worker.fuse() => {
-            info!("Prometheus server exited.")
+        Some(prometheus_worker_error) = prometheus_worker.fuse() => {
+            info!(?prometheus_worker_error, "Prometheus server exited.")
         },
     }
 

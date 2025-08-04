@@ -53,8 +53,8 @@ pub async fn run(run_options: RpcCommandOptions) -> anyhow::Result<()> {
         () = signal.fuse() => {},
 
         // Networking future
-        _ = dsn_fut.fuse() => {
-            info!("DSN network runner exited.");
+        dsn_error = dsn_fut.fuse() => {
+            info!(?dsn_error, "DSN network runner exited.");
         },
 
         // RPC service future

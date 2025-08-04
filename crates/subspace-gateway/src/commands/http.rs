@@ -56,13 +56,13 @@ pub async fn run(run_options: HttpCommandOptions) -> anyhow::Result<()> {
         () = signal.fuse() => {},
 
         // Networking future
-        _ = dsn_fut.fuse() => {
-            info!("DSN network runner exited.");
+        dsn_error = dsn_fut.fuse() => {
+            info!(?dsn_error, "DSN network runner exited.");
         },
 
         // HTTP service future
-        _ = http_server_handle.fuse() => {
-            info!("HTTP server exited.");
+        http_server_error = http_server_handle.fuse() => {
+            info!(?http_server_error, "HTTP server exited.");
         },
     }
 
