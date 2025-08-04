@@ -550,7 +550,7 @@ pub(crate) fn allowed_default_share_price<T: Config>(
 
     // The default share price is only allowed if the requested `domain_epoch_index` is happen
     // before (or is the same as) the `AllowedDefaultSharePriceEpoch`
-    if allowed_domain_id == operator.current_domain_id && allowed_epoch_index >= domain_epoch_index
+    if allowed_domain_id == operator.current_domain_id && domain_epoch_index <= allowed_epoch_index
     {
         maybe_share_price
     } else {
