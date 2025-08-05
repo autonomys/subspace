@@ -3,7 +3,8 @@
 #![feature(type_changing_struct_update)]
 
 use clap::Parser;
-use futures::{FutureExt, select};
+use futures::FutureExt;
+use futures::future::OptionFuture;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::kad::Mode;
 use libp2p::{Multiaddr, PeerId, identity};
@@ -19,8 +20,9 @@ use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{Config, KademliaMode, peer_id};
 use subspace_process::{
-    init_logger, raise_fd_limit, run_future_in_dedicated_thread, shutdown_signal,
+    AsyncJoinOnDrop, init_logger, raise_fd_limit, run_future_in_dedicated_thread, shutdown_signal,
 };
+use tokio::select;
 use tracing::{debug, info};
 
 /// Size of the LRU cache for peers.
@@ -192,34 +194,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
             info!("Subspace Bootstrap Node started");
 
             // TODO: spawn this in a dedicated thread
-            let prometheus_task = should_start_prometheus_server
-                .then(|| {
-                    start_prometheus_metrics_server(
-                        prometheus_listen_on,
-                        RegistryAdapter::PrometheusClient(metrics_registry),
-                    )
-                })
-                .transpose()?;
+            let prometheus_worker = if should_start_prometheus_server {
+                let prometheus_task = start_prometheus_metrics_server(
+                    prometheus_listen_on,
+                    RegistryAdapter::PrometheusClient(metrics_registry),
+                )?;
 
-            if let Some(prometheus_task) = prometheus_task {
-                select! {
-                    // Signal future
-                    () = signal.fuse() => {},
-                    _ = node_runner_fut.fuse() => {
-                        info!("DSN network runner exited.");
-                    },
-                    _ = prometheus_task.fuse() => {
-                        info!("Prometheus server exited.");
-                    },
-                }
+                let join_handle = tokio::spawn(prometheus_task);
+                OptionFuture::from(Some(AsyncJoinOnDrop::new(join_handle, true)))
             } else {
-                select! {
-                    // Signal future
-                    () = signal.fuse() => {},
-                    _ = node_runner_fut.fuse() => {
-                        info!("DSN network runner exited.");
-                    },
-                }
+                OptionFuture::from(None)
+            };
+
+            select! {
+                // Signal future
+                () = signal.fuse() => {},
+
+                // Networking node runner future
+                node_runner_error = node_runner_fut.fuse() => {
+                    info!(?node_runner_error, "DSN network runner exited.");
+                },
+
+                // Prometheus worker future, disabled if there is no prometheus worker
+                Some(prometheus_worker_error) = prometheus_worker.fuse() => {
+                    info!(?prometheus_worker_error, "Prometheus server exited.");
+                },
             }
         }
         Command::GenerateKeypair { json } => {
