@@ -1,6 +1,6 @@
 [package]
 name = "subspace-gateway"
-version = "0.1.1"
+version = "0.1.2"
 authors = [
     "Teor <teor@riseup.net>",
     "Shamil Gadelshin <shamilgadelshin@gmail.com>"
