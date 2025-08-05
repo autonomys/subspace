@@ -187,7 +187,7 @@ impl<T: Config> sp_domains::SkipBalanceChecks for DomainsSkipBalanceChecks<T> {
 }
 
 /// The current storage version.
-const STORAGE_VERSION: StorageVersion = StorageVersion::new(5);
+const STORAGE_VERSION: StorageVersion = StorageVersion::new(6);
 
 /// The number of bundle of a particular domain to be included in the block is probabilistic
 /// and based on the consensus chain slot probability and domain bundle slot probability, usually

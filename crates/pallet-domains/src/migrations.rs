@@ -1,7 +1,9 @@
 mod v1_to_v5;
+mod v5_to_v6;
 
 pub(crate) use share_price_v0::OperatorEpochSharePrice as OperatorEpochSharePriceV0;
 pub use v1_to_v5::VersionCheckedMigrateDomainsV1ToV5;
+pub use v5_to_v6::VersionCheckedMigrateDomainsV5ToV6;
 
 mod share_price_v0 {
     use crate::staking::{DomainEpoch, SharePrice as SharePriceV1};

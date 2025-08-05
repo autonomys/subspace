@@ -128,7 +128,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     impl_name: Cow::Borrowed("subspace"),
     authoring_version: 0,
     // The spec version can be different on Taurus and Mainnet
-    spec_version: 19,
+    spec_version: 20,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -1135,12 +1135,7 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    // TODO: remove only after migrations are run on Mainnet
-    (
-        pallet_domains::migrations::VersionCheckedMigrateDomainsV1ToV5<Runtime>,
-        pallet_messenger::migrations::VersionCheckedMigrateDomainsV0ToV1<Runtime>,
-        pallet_messenger::migrations::VersionCheckedMigrateDomainsV1ToV2<Runtime>,
-    ),
+    (pallet_domains::migrations::VersionCheckedMigrateDomainsV5ToV6<Runtime>,),
 >;
 
 impl pallet_subspace::extensions::MaybeSubspaceCall<Runtime> for RuntimeCall {

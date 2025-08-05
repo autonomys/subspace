@@ -777,6 +777,7 @@ mod benchmarks {
                     operator_id,
                     deposit,
                     domain_stake_summary.current_epoch_index,
+                    None,
                 )
                 .unwrap();
                 Ok::<T::Share, StakingError>(deposit.known.shares)
@@ -799,6 +800,7 @@ mod benchmarks {
                 operator_id,
                 withdrawal,
                 current_domain_epoch_index,
+                None,
             )?;
             assert_eq!(withdrawal.withdrawals.len() as u32, w);
             Ok::<(), StakingError>(())

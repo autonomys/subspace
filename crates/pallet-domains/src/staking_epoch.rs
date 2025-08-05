@@ -1022,7 +1022,6 @@ pub(crate) mod tests {
         epoch_index: EpochIndex,
     ) {
         let domain_epoch: DomainEpoch = (domain_id, epoch_index).into();
-        println!("{:?}", domain_epoch);
         for operator_id in operators {
             assert!(OperatorEpochSharePrice::<Test>::contains_key(
                 operator_id,
