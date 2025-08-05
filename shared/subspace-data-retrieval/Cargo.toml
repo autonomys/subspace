@@ -27,7 +27,7 @@ tracing = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 rand = { workspace = true, features = ["std", "std_rng"] }
-subspace-logging.workspace = true
+subspace-process.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 [features]

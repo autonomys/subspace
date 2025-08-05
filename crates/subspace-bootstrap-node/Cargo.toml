@@ -26,8 +26,8 @@ libp2p = { workspace = true, features = ["kad"] }
 prometheus-client.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-subspace-logging.workspace = true
 subspace-metrics.workspace = true
 subspace-networking.workspace = true
+subspace-process.workspace = true
 tokio = { workspace = true, features = ["macros", "parking_lot", "rt-multi-thread"] }
 tracing.workspace = true

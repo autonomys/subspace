@@ -34,9 +34,8 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::env;
 use std::sync::Arc;
-use subspace_logging::init_logger;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
-use subspace_networking::utils::{raise_fd_limit, run_future_in_dedicated_thread};
+use subspace_process::{init_logger, raise_fd_limit};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::ChainSyncMode;
 use tracing::{debug, error, info, info_span, warn};
@@ -417,41 +416,27 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         consensus_chain_node.task_manager
     };
 
-    // If a spawned future is running for a long time, it can block receiving exit signals.
-    // Rather than hunting down every possible blocking future, we give the exit signal itself a
-    // dedicated thread to run on.
-    //
     // TODO: if the node is slow to exit, or node tasks respond slowly at runtime, spawn each task
     // above in a dedicated thread. This will likely require a custom task manager.
-    let exit_signal_select_fut = run_future_in_dedicated_thread(
-        move || async move {
-            let result = signals.run_until_signal(task_manager.future().fuse()).await;
+    let result = signals.run_until_signal(task_manager.future().fuse()).await;
 
-            let running_tasks = task_manager
-                .into_task_registry()
-                .running_tasks()
-                .into_iter()
-                .map(|(task_kind, task_count)| {
-                    (
-                        format!("{}-{}", task_kind.group, task_kind.name),
-                        task_count,
-                    )
-                })
-                .collect::<Vec<_>>();
-            debug!(
-                ?running_tasks,
-                "Tasks running after task manager was dropped",
-            );
+    let running_tasks = task_manager
+        .into_task_registry()
+        .running_tasks()
+        .into_iter()
+        .map(|(task_kind, task_count)| {
+            (
+                format!("{}-{}", task_kind.group, task_kind.name),
+                task_count,
+            )
+        })
+        .collect::<Vec<_>>();
+    debug!(
+        ?running_tasks,
+        "Tasks running after task manager was dropped",
+    );
 
-            result
-        },
-        "node-exit-signal-select".to_string(),
-    )
-    .map_err(|error| Error::Other(format!("Failed to spawn dedicated thread: {error:?}")))?;
-
-    exit_signal_select_fut.await.map_err(|_canceled_error| {
-        Error::Other("Task spawned in dedicated thread exited unexpectedly".to_string())
-    })??;
+    result?;
 
     Ok(())
 }

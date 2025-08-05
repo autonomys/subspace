@@ -257,9 +257,9 @@ subspace-erasure-coding = { version = "0.1.0", path = "crates/subspace-erasure-c
 subspace-farmer-components = { version = "0.1.0", path = "crates/subspace-farmer-components" }
 subspace-gateway-rpc = { version = "0.1.0", path = "crates/subspace-gateway-rpc" }
 subspace-kzg = { version = "0.1.0", path = "shared/subspace-kzg", default-features = false }
-subspace-logging = { version = "0.0.1", path = "shared/subspace-logging" }
 subspace-metrics = { version = "0.1.0", path = "shared/subspace-metrics" }
 subspace-networking = { version = "0.1.0", path = "crates/subspace-networking" }
+subspace-process = { version = "0.0.1", path = "shared/subspace-process" }
 subspace-proof-of-space = { version = "0.1.0", path = "crates/subspace-proof-of-space", default-features = false }
 subspace-proof-of-space-gpu = { version = "0.1.0", path = "shared/subspace-proof-of-space-gpu" }
 subspace-proof-of-time = { version = "0.1.0", path = "crates/subspace-proof-of-time" }

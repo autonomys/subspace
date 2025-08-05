@@ -23,7 +23,6 @@ bytes.workspace = true
 clap = { workspace = true, features = ["color", "derive"] }
 derive_more = { workspace = true, features = ["full"] }
 event-listener-primitives.workspace = true
-fdlimit.workspace = true
 fs2.workspace = true
 futures.workspace = true
 futures-timer.workspace = true
@@ -39,10 +38,11 @@ prometheus-client.workspace = true
 rand.workspace = true
 schnellru.workspace = true
 subspace-core-primitives.workspace = true
-subspace-logging.workspace = true
 subspace-metrics.workspace = true
+# Only used for examples and tests
+subspace-process.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { workspace = true, features = ["macros", "parking_lot", "rt-multi-thread", "sync", "time"] }
 tokio-stream.workspace = true
 tracing.workspace = true
 unsigned-varint = { workspace = true, features = ["futures", "asynchronous_codec"] }

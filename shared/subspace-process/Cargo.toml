@@ -1,0 +1,22 @@
+[package]
+name = "subspace-process"
+description = "Process scheduling and logging utilities for the Subspace network"
+license = "0BSD"
+version = "0.0.1"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>", "Teor <teor@riseup.net>"]
+edition.workspace = true
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+fdlimit.workspace = true
+futures.workspace = true
+supports-color.workspace = true
+tokio = { workspace = true, features = ["parking_lot", "rt-multi-thread", "signal", "sync"] }
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros","parking_lot", "rt-multi-thread", "signal", "sync", "test-util"] }

@@ -29,7 +29,7 @@ use subspace_farmer::node_client::rpc_node_client::RpcNodeClient;
 use subspace_farmer::single_disk_farm::identity::Identity;
 use subspace_kzg::Kzg;
 use subspace_networking::utils::piece_provider::PieceProvider;
-use subspace_networking::utils::{AsyncJoinOnDrop, run_future_in_dedicated_thread};
+use subspace_process::{AsyncJoinOnDrop, run_future_in_dedicated_thread};
 use tracing::{Instrument, info, info_span};
 
 /// Get piece retry attempts number.
@@ -210,7 +210,7 @@ pub(super) async fn controller(
 
             async move {
                 let fut =
-                    run_future_in_dedicated_thread(move || fut, format!("cache-worker-{index}"));
+                    run_future_in_dedicated_thread(move || fut, format!("cache-worker-{index:02}"));
                 anyhow::Ok(fut?.await?)
             }
         })
@@ -311,7 +311,7 @@ pub(super) async fn controller(
                         )
                         .await
                     },
-                    format!("caches-{index}"),
+                    format!("caches-{index:02}"),
                 );
                 anyhow::Ok(fut?.await?)
             }

@@ -51,9 +51,7 @@ use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_kzg::Kzg;
 use subspace_metrics::{RegistryAdapter, start_prometheus_metrics_server};
 use subspace_networking::utils::piece_provider::PieceProvider;
-use subspace_networking::utils::{
-    AsyncJoinOnDrop, run_future_in_dedicated_thread, shutdown_signal,
-};
+use subspace_process::{AsyncJoinOnDrop, run_future_in_dedicated_thread, shutdown_signal};
 use subspace_proof_of_space::Table;
 use tracing::{Instrument, error, info, info_span, warn};
 
@@ -794,6 +792,8 @@ where
     // event handlers
     drop(plotted_pieces);
 
+    // TODO: spawn this in a dedicated thread
+    // TODO: stop if the prometheus server stops
     let _prometheus_worker = if should_start_prometheus_server {
         let prometheus_task = start_prometheus_metrics_server(
             prometheus_listen_on,
@@ -849,46 +849,34 @@ where
         "farmer-networking".to_string(),
     )?;
 
-    // If a spawned future is running for a long time, it can block receiving exit signals.
-    // Rather than hunting down every possible blocking future, we give the exit signal itself a
-    // dedicated thread to run on.
-    let exit_signal_select_fut = run_future_in_dedicated_thread(
-        move || async move {
-            // This defines order in which things are dropped
-            let networking_fut = networking_fut;
-            let farm_fut = farm_fut;
-            let farmer_cache_worker_fut = farmer_cache_worker_fut;
+    // This defines order in which things are dropped
+    let networking_fut = networking_fut;
+    let farm_fut = farm_fut;
+    let farmer_cache_worker_fut = farmer_cache_worker_fut;
 
-            let networking_fut = pin!(networking_fut);
-            let farm_fut = pin!(farm_fut);
-            let farmer_cache_worker_fut = pin!(farmer_cache_worker_fut);
+    let networking_fut = pin!(networking_fut);
+    let farm_fut = pin!(farm_fut);
+    let farmer_cache_worker_fut = pin!(farmer_cache_worker_fut);
 
-            select! {
-                // Signal future
-                _ = signal.fuse() => {}
+    select! {
+        // Signal future
+        _ = signal.fuse() => {}
 
-                // Networking future
-                _ = networking_fut.fuse() => {
-                    info!("Node runner exited.")
-                },
-
-                // Farm future
-                result = farm_fut.fuse() => {
-                    result??;
-                },
-
-                // Piece cache worker future
-                _ = farmer_cache_worker_fut.fuse() => {
-                    info!("Farmer cache worker exited.")
-                },
-            }
-
-            anyhow::Ok(())
+        // Networking future
+        _ = networking_fut.fuse() => {
+            info!("Node runner exited.")
         },
-        "farmer-exit-signal-select".to_string(),
-    )?;
 
-    exit_signal_select_fut.await??;
+        // Farm future
+        result = farm_fut.fuse() => {
+            result??;
+        },
+
+        // Piece cache worker future
+        _ = farmer_cache_worker_fut.fuse() => {
+            info!("Farmer cache worker exited.")
+        },
+    }
 
     anyhow::Ok(())
 }
