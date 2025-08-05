@@ -1,6 +1,6 @@
 [package]
 name = "subspace-bootstrap-node"
-version = "0.1.1"
+version = "0.1.2"
 authors = [
     "Nazar Mokrynskyi <nazar@mokrynskyi.com>",
     "Shamil Gadelshin <shamilgadelshin@gmail.com>"

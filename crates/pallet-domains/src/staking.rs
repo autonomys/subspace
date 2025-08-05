@@ -579,7 +579,7 @@ pub(crate) fn do_nominate_operator<T: Config>(
             Error::OperatorNotRegistered
         );
 
-        // If the this is the first staking request of this operator `note_pending_staking_operation` for it
+        // If this is the first staking request of this operator `note_pending_staking_operation` for it
         if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
             note_pending_staking_operation::<T>(operator.current_domain_id)?;
         }
@@ -748,7 +748,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
             Error::OperatorNotRegistered
         );
 
-        // If the this is the first staking request of this operator `note_pending_staking_operation` for it
+        // If this is the first staking request of this operator `note_pending_staking_operation` for it
         if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
             note_pending_staking_operation::<T>(operator.current_domain_id)?;
         }
