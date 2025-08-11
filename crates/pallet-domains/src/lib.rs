@@ -2438,6 +2438,9 @@ impl<T: Config> Pallet<T> {
             BundleError::UnexpectedReceiptGap,
         );
 
+        charge_bundle_storage_fee::<T>(operator_id, opaque_bundle.size())
+            .map_err(|_| BundleError::UnableToPayBundleStorageFee)?;
+
         let domain_config = &DomainRegistry::<T>::get(domain_id)
             .ok_or(BundleError::InvalidDomainId)?
             .domain_config;
@@ -2454,9 +2457,6 @@ impl<T: Config> Pallet<T> {
 
         verify_execution_receipt::<T>(domain_id, &receipt).map_err(BundleError::Receipt)?;
 
-        charge_bundle_storage_fee::<T>(operator_id, opaque_bundle.size())
-            .map_err(|_| BundleError::UnableToPayBundleStorageFee)?;
-
         Ok(())
     }
 
@@ -2472,6 +2472,9 @@ impl<T: Config> Pallet<T> {
             Self::receipt_gap(domain_id)? > One::one(),
             BundleError::ExpectingReceiptGap,
         );
+
+        charge_bundle_storage_fee::<T>(operator_id, sealed_singleton_receipt.size())
+            .map_err(|_| BundleError::UnableToPayBundleStorageFee)?;
 
         Self::check_execution_receipt_version(
             *sealed_singleton_receipt
@@ -2500,9 +2503,6 @@ impl<T: Config> Pallet<T> {
                 .as_execution_receipt_ref(),
         )
         .map_err(BundleError::Receipt)?;
-
-        charge_bundle_storage_fee::<T>(operator_id, sealed_singleton_receipt.size())
-            .map_err(|_| BundleError::UnableToPayBundleStorageFee)?;
 
         Ok(())
     }
