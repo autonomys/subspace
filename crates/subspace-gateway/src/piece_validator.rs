@@ -2,6 +2,7 @@
 
 use crate::node_client::NodeClient;
 use async_trait::async_trait;
+use jsonrpsee::core::client::Error as JsonRpseeError;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_kzg::Kzg;
 use subspace_networking::Node;
@@ -52,6 +53,12 @@ where
         let segment_headers = match self.node_client.segment_headers(vec![segment_index]).await {
             Ok(segment_headers) => segment_headers,
             Err(error) => {
+                if let Some(JsonRpseeError::RestartNeeded(_)) =
+                    error.downcast_ref::<JsonRpseeError>()
+                {
+                    panic!("Node WS background task closed; restart required");
+                }
+
                 error!(
                     %piece_index,
                     ?error,
