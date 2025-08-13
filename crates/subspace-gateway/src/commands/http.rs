@@ -6,6 +6,7 @@ pub(crate) mod server;
 use crate::commands::http::server::{ServerParameters, start_server};
 use crate::commands::{GatewayOptions, initialize_object_fetcher};
 use clap::Parser;
+use futures::channel::oneshot;
 use futures::{FutureExt, select};
 use subspace_process::{run_future_in_dedicated_thread, shutdown_signal};
 use tracing::info;
@@ -53,16 +54,17 @@ pub async fn run(run_options: HttpCommandOptions) -> anyhow::Result<()> {
 
     select! {
         // Signal future
+        // Match the return type, so we change the code if we add errors in future.
         () = signal.fuse() => {},
 
         // Networking future
-        _ = dsn_fut.fuse() => {
+        Ok(()) | Err(oneshot::Canceled) = dsn_fut.fuse() => {
             info!("DSN network runner exited.");
         },
 
         // HTTP service future
-        _ = http_server_handle.fuse() => {
-            info!("HTTP server exited.");
+        http_server_error = http_server_handle.fuse() => {
+            info!(?http_server_error, "HTTP server exited.");
         },
     }
 

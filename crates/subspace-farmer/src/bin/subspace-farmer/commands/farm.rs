@@ -792,8 +792,8 @@ where
     // event handlers
     drop(plotted_pieces);
 
+    // The prometheus server is a non-essential service, so we don't exit if it stops.
     // TODO: spawn this in a dedicated thread
-    // TODO: stop if the prometheus server stops
     let _prometheus_worker = if should_start_prometheus_server {
         let prometheus_task = start_prometheus_metrics_server(
             prometheus_listen_on,
@@ -860,12 +860,11 @@ where
 
     select! {
         // Signal future
-        _ = signal.fuse() => {}
+        // Match the return type, so we change the code if we add errors in future.
+        () = signal.fuse() => {}
 
         // Networking future
-        _ = networking_fut.fuse() => {
-            info!("Node runner exited.")
-        },
+        Ok(()) | Err(oneshot::Canceled) = networking_fut.fuse() => {}
 
         // Farm future
         result = farm_fut.fuse() => {
@@ -873,9 +872,7 @@ where
         },
 
         // Piece cache worker future
-        _ = farmer_cache_worker_fut.fuse() => {
-            info!("Farmer cache worker exited.")
-        },
+        Ok(()) | Err(oneshot::Canceled) = farmer_cache_worker_fut.fuse() => {},
     }
 
     anyhow::Ok(())
