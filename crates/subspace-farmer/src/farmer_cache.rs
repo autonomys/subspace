@@ -568,6 +568,8 @@ where
 
                     while let Some((index, (piece_index, result))) = pieces_stream.next().await {
                         debug!(%batch, %index, %piece_index, "Downloaded piece");
+                        // Release slot for future batches, by dropping it along with the piece.
+                        let _permit = permit.split(1);
 
                         let piece = match result {
                             Ok(Some(piece)) => {
@@ -588,8 +590,6 @@ where
                                 continue;
                             }
                         };
-                        // Release slot for future batches
-                        permit.split(1);
 
                         let (offset, maybe_backend) = {
                             let mut caches = caches.lock();
