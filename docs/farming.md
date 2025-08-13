@@ -122,7 +122,7 @@ If you're connected directly without any router, then again nothing needs to be 
 2022-02-03 10:52:26 🔍 Discovered new external address for our node: /ip4/176.233.17.199/tcp/30333/p2p/12D3KooWBgKtea7MVvraeNyxdPF935pToq1x9VjR1rDeNH1qecXu
 2022-02-03 10:52:29 ⚙️  Syncing, target=#215883 (2 peers), best: #55 (0xafc7…bccf), finalized #0 (0x6ada…0d38), ⬇ 850.1kiB/s ⬆ 1.5kiB/s
 ```
-7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
+6. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```bash
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
 # Replace `PATH_TO_FARM` with location where you want to store plot files
@@ -175,7 +175,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 2022-02-03 10:52:26 🔍 Discovered new external address for our node: /ip4/176.233.17.199/tcp/30333/p2p/12D3KooWBgKtea7MVvraeNyxdPF935pToq1x9VjR1rDeNH1qecXu
 2022-02-03 10:52:29 ⚙️  Syncing, target=#215883 (2 peers), best: #55 (0xafc7…bccf), finalized #0 (0x6ada…0d38), ⬇ 850.1kiB/s ⬆ 1.5kiB/s
 ```
-7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
+6. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```bash
 # Replace `PATH_TO_FARM` with location where you want to store plot files
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
