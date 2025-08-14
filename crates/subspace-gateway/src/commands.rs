@@ -12,8 +12,6 @@ use crate::piece_getter::DsnPieceGetter;
 use crate::piece_validator::SegmentCommitmentPieceValidator;
 use async_lock::Semaphore;
 use clap::Parser;
-use std::panic;
-use std::process::exit;
 use std::sync::Arc;
 use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_kzg::Kzg;
@@ -53,16 +51,6 @@ pub(crate) struct GatewayOptions {
 
     #[clap(flatten)]
     dsn_options: NetworkArgs,
-}
-
-/// Install a panic handler which exits on panics, rather than unwinding. Unwinding can hang the
-/// tokio runtime waiting for stuck tasks or threads.
-pub(crate) fn set_exit_on_panic() {
-    let default_panic_hook = panic::take_hook();
-    panic::set_hook(Box::new(move |panic_info| {
-        default_panic_hook(panic_info);
-        exit(1);
-    }));
 }
 
 /// Configures and returns object fetcher and DSN node runner.

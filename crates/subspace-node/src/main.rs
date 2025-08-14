@@ -8,7 +8,6 @@ mod cli;
 mod domain;
 
 use crate::cli::{Cli, SubspaceCliPlaceholder};
-use crate::commands::set_exit_on_panic;
 use crate::domain::cli::DomainKey;
 use crate::domain::{DomainCli, DomainSubcommand};
 use clap::Parser;
@@ -23,6 +22,7 @@ use serde_json::Value;
 use sp_core::crypto::Ss58AddressFormat;
 #[cfg(feature = "runtime-benchmarks")]
 use sp_runtime::traits::HashingFor;
+use subspace_process::set_exit_on_panic;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
 #[cfg(feature = "runtime-benchmarks")]
