@@ -8,7 +8,7 @@ use subspace_networking::Config;
 use subspace_networking::protocols::request_response::handlers::generic_request_handler::{
     GenericRequest, GenericRequestHandler,
 };
-use subspace_process::init_logger;
+use subspace_process::{init_logger, set_exit_on_panic};
 use tokio::time::sleep;
 
 #[derive(Encode, Decode)]
@@ -25,6 +25,7 @@ struct ExampleResponse;
 
 #[tokio::main]
 async fn main() {
+    set_exit_on_panic();
     init_logger();
 
     let config_1 = Config {

@@ -14,7 +14,7 @@ use subspace_networking::protocols::request_response::handlers::piece_by_index::
     PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
 };
 use subspace_networking::{Config, Multihash, Node, PeerDiscovered, SendRequestError};
-use subspace_process::init_logger;
+use subspace_process::{init_logger, set_exit_on_panic};
 use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Parser)]
@@ -45,6 +45,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
+    set_exit_on_panic();
     init_logger();
 
     let args: Args = Args::parse();

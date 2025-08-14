@@ -5,8 +5,9 @@ use std::fmt::Display;
 use std::future::Future;
 use std::ops::Deref;
 use std::pin::{Pin, pin};
+use std::process::exit;
 use std::task::{Context, Poll};
-use std::{io, thread};
+use std::{io, panic, thread};
 use tokio::runtime::Handle;
 use tokio::{signal, task};
 use tracing::level_filters::LevelFilter;
@@ -236,4 +237,14 @@ pub fn raise_fd_limit() {
             );
         }
     }
+}
+
+/// Install a panic handler which exits on panics, rather than unwinding. Unwinding can hang the
+/// tokio runtime waiting for stuck tasks or threads.
+pub fn set_exit_on_panic() {
+    let default_panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |panic_info| {
+        default_panic_hook(panic_info);
+        exit(1);
+    }));
 }

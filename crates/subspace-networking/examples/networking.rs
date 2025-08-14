@@ -8,12 +8,13 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_networking::Config;
-use subspace_process::init_logger;
+use subspace_process::{init_logger, set_exit_on_panic};
 
 const TOPIC: &str = "Foo";
 
 #[tokio::main]
 async fn main() {
+    set_exit_on_panic();
     init_logger();
 
     let config_1 = Config {

@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use subspace_malicious_operator::malicious_domain_instance_starter::DomainInstanceStarter;
 use subspace_malicious_operator::{Cli, DomainCli, create_malicious_operator_configuration};
 use subspace_networking::libp2p::Multiaddr;
+use subspace_process::{init_logger, raise_fd_limit, set_exit_on_panic};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::{SubspaceConfiguration, SubspaceNetworking};
@@ -77,6 +78,10 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
 
 #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 fn main() -> Result<(), Error> {
+    set_exit_on_panic();
+    init_logger();
+    raise_fd_limit();
+
     let cli = Cli::from_args();
 
     let sudo_account = cli.sudo_account();

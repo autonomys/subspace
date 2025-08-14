@@ -57,7 +57,7 @@ subspace-farmer-components.workspace = true
 subspace-kzg.workspace = true
 subspace-metrics = { workspace = true, optional = true }
 subspace-networking.workspace = true
-subspace-process = { workspace = true, optional = true }
+subspace-process.workspace = true
 subspace-proof-of-space.workspace = true
 subspace-rpc-primitives.workspace = true
 subspace-verification = { workspace = true, features = ["kzg"] }
@@ -97,5 +97,4 @@ binary = [
     "dep:criterion",
     "dep:mimalloc",
     "dep:subspace-metrics",
-    "dep:subspace-process",
 ]
