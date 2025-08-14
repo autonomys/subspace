@@ -589,7 +589,6 @@ pub(super) fn create_consensus_chain_configuration(
         Some("chronos") => chain_spec::chronos_config()?,
         Some("devnet") => chain_spec::devnet_config()?,
         Some("devnet-compiled") => chain_spec::devnet_config_compiled()?,
-        Some("chronos-compiled") => chain_spec::chronos_compiled()?,
         Some("dev") => chain_spec::dev_config()?,
         Some(path) => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         None => {
