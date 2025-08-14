@@ -28,7 +28,7 @@ jobs:
           pull: true
           push: false
 
-      - name: Generate testnet chain specifications
+      - name: Generate chain specifications
         run: |
           docker run --rm -u root ${{ steps.build.outputs.imageid }} build-spec --chain mainnet-compiled --disable-default-bootnode > chain-spec-mainnet.json
           docker run --rm -u root ${{ steps.build.outputs.imageid }} build-spec --chain mainnet-compiled --disable-default-bootnode --raw > chain-spec-raw-mainnet.json
