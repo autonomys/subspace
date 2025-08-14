@@ -4,7 +4,10 @@
   "chainType": {
     "Custom": "Autonomys Chronos Testnet"
   },
-  "bootNodes": [],
+  "bootNodes": [
+    "/dns/bootstrap-0.chronos.autonomys.xyz/tcp/30333/p2p/12D3KooWC5yyoJL3EBEiu9ddDUp4g5dLZ4hhrTN4GToDhUEPYqqW",
+    "/dns/bootstrap-1.chronos.autonomys.xyz/tcp/30333/p2p/12D3KooWFiPZY4aHousky8dUHCC5vmMgY9WsyAzr6AV86t9JiiWh"
+  ],
   "telemetryEndpoints": [
     [
       "/dns/telemetry.subspace.foundation/tcp/443/x-parity-wss/%2Fsubmit%2F",
@@ -14,7 +17,10 @@
   "protocolId": "autonomys-chronos",
   "properties": {
     "domainsBootstrapNodes": {},
-    "dsnBootstrapNodes": [],
+    "dsnBootstrapNodes": [
+      "/dns/bootstrap-0.chronos.autonomys.xyz/tcp/30533/p2p/12D3KooWQQ1vGQwGa3NgjZNhKARiUiDDAUVKM54rvYPwWuBpwE15",
+      "/dns/bootstrap-1.chronos.autonomys.xyz/tcp/30533/p2p/12D3KooWSnemSZes5r5JPuBWnHTWyaQfuPv1TSmr2sU4vf6JSVmB"
+    ],
     "potExternalEntropy": "000000000000000000012198800685fd56c1f6e97a3d749497f73c0cc4d68ff0",
     "ss58Format": 6094,
     "tokenDecimals": 18,
