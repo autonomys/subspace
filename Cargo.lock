@@ -13668,6 +13668,7 @@ dependencies = [
  "sp-weights",
  "subspace-core-primitives",
  "subspace-networking",
+ "subspace-process",
  "subspace-proof-of-space",
  "subspace-runtime",
  "subspace-runtime-primitives",

@@ -18,7 +18,7 @@ use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_networking::protocols::request_response::handlers::piece_by_index::PieceByIndexRequestHandler;
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, PieceValidator};
 use subspace_networking::{Config, Node};
-use subspace_process::init_logger;
+use subspace_process::{init_logger, set_exit_on_panic};
 use tracing::{debug, error, info, trace, warn};
 
 /// Defines initial duration between get_piece calls.
@@ -126,7 +126,9 @@ enum Command {
 
 #[tokio::main]
 async fn main() {
+    set_exit_on_panic();
     init_logger();
+
     let args: Args = Args::parse();
 
     info!(?args, "Benchmark started.");

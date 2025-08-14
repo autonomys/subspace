@@ -70,6 +70,7 @@ sp-keyring.workspace = true
 sp-weights.workspace = true
 subspace-core-primitives.workspace = true
 subspace-networking.workspace = true
+subspace-process.workspace = true
 subspace-proof-of-space.workspace = true
 subspace-runtime.workspace = true
 subspace-runtime-primitives.workspace = true
