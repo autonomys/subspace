@@ -457,10 +457,6 @@ where
             .ok_or(sp_blockchain::Error::Application(Box::from(format!(
                 "No RuntimeId found for {domain_id:?}"
             ))))?;
-        // This API is only present in API versions 2 and later, but it is safe to call
-        // unconditionally, because:
-        // - on Mainnet, there are no domains yet, and
-        // - on Taurus, there are no invalid execution receipts yet.
         let runtime_upgrades = self.consensus_client.runtime_api().runtime_upgrades(at)?;
 
         let is_runtime_upgraded = runtime_upgrades.contains(&runtime_id);

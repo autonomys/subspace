@@ -586,7 +586,6 @@ pub(super) fn create_consensus_chain_configuration(
     let chain_spec = match chain.as_deref() {
         Some("mainnet-compiled") => chain_spec::mainnet_compiled()?,
         Some("mainnet") => chain_spec::mainnet_config()?,
-        Some("taurus") => chain_spec::taurus_config()?,
         Some("chronos") => chain_spec::chronos_config()?,
         Some("devnet") => chain_spec::devnet_config()?,
         Some("devnet-compiled") => chain_spec::devnet_config_compiled()?,
