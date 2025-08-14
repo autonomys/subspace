@@ -5,7 +5,9 @@ use crate::domain::cli::{GenesisDomain, SpecId};
 use crate::domain::evm_chain_spec::{self};
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
-use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, MAINNET_CHAIN_SPEC, TAURUS_CHAIN_SPEC};
+use sc_subspace_chain_specs::{
+    CHRONOS_CHAIN_SPEC, DEVNET_CHAIN_SPEC, MAINNET_CHAIN_SPEC, TAURUS_CHAIN_SPEC,
+};
 use sc_telemetry::TelemetryEndpoints;
 use serde::Deserialize;
 use sp_core::crypto::Ss58Codec;
@@ -250,7 +252,6 @@ pub fn mainnet_config() -> Result<GenericChainSpec, String> {
     GenericChainSpec::from_json_bytes(MAINNET_CHAIN_SPEC.as_bytes())
 }
 
-#[allow(dead_code)]
 pub fn chronos_compiled() -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "Wasm binary must be built for Chronos".to_string())?,
@@ -297,11 +298,16 @@ pub fn chronos_compiled() -> Result<GenericChainSpec, String> {
             members: council_members.clone(),
         };
 
+        let history_seeder =
+            AccountId::from_ss58check("suendgM2YCS2EfgJG9fQ4sbnTK1TBMuwmaGKqiEGgpcuEF3SN")
+                .expect("Wrong root account address");
+
         let mut balances = council_members
             .into_iter()
             .map(|member| (member, 1000 * AI3))
             .collect::<Vec<(AccountId, Balance)>>();
         balances.push((sudo_account.clone(), 1000 * AI3));
+        balances.push((history_seeder, 10 * AI3));
 
         let GenesisConfigParams {
             confirmation_depth_k,
@@ -434,6 +440,10 @@ pub fn chronos_compiled() -> Result<GenericChainSpec, String> {
         .map_err(|error| format!("Failed to serialize genesis config: {error}"))?
     })
     .build())
+}
+
+pub fn chronos_config() -> Result<GenericChainSpec, String> {
+    GenericChainSpec::from_json_bytes(CHRONOS_CHAIN_SPEC.as_bytes())
 }
 
 pub fn taurus_config() -> Result<GenericChainSpec, String> {

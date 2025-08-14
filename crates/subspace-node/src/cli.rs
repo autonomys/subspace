@@ -86,9 +86,10 @@ impl SubstrateCli for SubspaceCliPlaceholder {
             "mainnet-compiled" => chain_spec::mainnet_compiled()?,
             "mainnet" => chain_spec::mainnet_config()?,
             "taurus" => chain_spec::taurus_config()?,
+            "chronos" => chain_spec::chronos_config()?,
             "devnet" => chain_spec::devnet_config()?,
             "devnet-compiled" => chain_spec::devnet_config_compiled()?,
-            "cronos-compiled" => chain_spec::chronos_compiled()?,
+            "chronos-compiled" => chain_spec::chronos_compiled()?,
             "dev" => chain_spec::dev_config()?,
             path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         };
