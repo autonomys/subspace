@@ -18,7 +18,6 @@ use sp_domains::{
 };
 use sp_runtime::BuildStorage;
 use sp_runtime::traits::Convert;
-use std::collections::BTreeSet;
 use subspace_runtime_primitives::{AI3, Balance};
 
 /// Development keys that will be injected automatically on polkadotjs apps
@@ -53,21 +52,21 @@ pub fn development_config(
     .build())
 }
 
-pub fn taurus_config(
+pub fn chronos_config(
     runtime_genesis_config: RuntimeGenesisConfig,
 ) -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "WASM binary was not build, please build it!".to_string())?,
         None,
     )
-    .with_name("Autonomys Taurus EVM Domain")
-    .with_id("autonomys_taurus_evm_domain")
+    .with_name("Autonomys Chronos EVM Domain")
+    .with_id("autonomys_chronos_evm_domain")
     .with_chain_type(ChainType::Live)
     .with_genesis_config(
         serde_json::to_value(runtime_genesis_config)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
     )
-    .with_protocol_id("autonomys-taurus-evm-domain")
+    .with_protocol_id("autonomys-chronos-evm-domain")
     .with_properties(chain_spec_properties())
     .build())
 }
@@ -112,7 +111,7 @@ pub fn devnet_config(
 
 pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
-        "taurus" => taurus_config(get_testnet_genesis_by_spec_id(SpecId::Taurus))?,
+        "chronos" => chronos_config(get_testnet_genesis_by_spec_id(SpecId::Chronos))?,
         "devnet" => devnet_config(get_testnet_genesis_by_spec_id(SpecId::DevNet))?,
         "dev" => development_config(get_testnet_genesis_by_spec_id(SpecId::Dev))?,
         "mainnet" => mainnet_config(get_testnet_genesis_by_spec_id(SpecId::Mainnet))?,
@@ -131,7 +130,7 @@ pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAcc
             .into_iter()
             .map(|acc| (AccountId20Converter::convert(acc), 1_000_000 * AI3))
             .collect(),
-        SpecId::DevNet | SpecId::Taurus | SpecId::Mainnet => vec![],
+        SpecId::DevNet | SpecId::Chronos | SpecId::Mainnet => vec![],
     }
 }
 
@@ -171,22 +170,11 @@ fn empty_genesis() -> RuntimeGenesisConfig {
     }
 }
 
-fn get_operator_params(
-    spec_id: SpecId,
-    sudo_account: subspace_runtime_primitives::AccountId,
-) -> GenesisOperatorParams {
+fn get_operator_params(spec_id: SpecId) -> GenesisOperatorParams {
     match spec_id {
         SpecId::Dev => GenesisOperatorParams {
             operator_allow_list: OperatorAllowList::Anyone,
             operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Bob"),
-        },
-        SpecId::Taurus => GenesisOperatorParams {
-            operator_allow_list: OperatorAllowList::Operators(BTreeSet::from_iter(vec![
-                sudo_account.clone(),
-            ])),
-            operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
-                "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
-            )),
         },
         SpecId::DevNet => GenesisOperatorParams {
             operator_allow_list: OperatorAllowList::Anyone,
@@ -194,22 +182,18 @@ fn get_operator_params(
                 "701184b4a34873117e075768adfbff7ce798f89108203e211d7d4b5ad8164e20"
             )),
         },
-        // mainnet should never be called for genesis domain instantiation since
-        // actual consensus mainnet has no genesis domains.
-        SpecId::Mainnet => {
-            panic!("mainnet domains does not have any operator parameters")
+        // mainnet/chronos should never be called for genesis domain instantiation since
+        // actual consensus mainnet/chronos has no genesis domains.
+        SpecId::Mainnet | SpecId::Chronos => {
+            panic!("mainnet/chronos domains does not have any operator parameters")
         }
     }
 }
 
-pub fn get_genesis_domain(
-    spec_id: SpecId,
-    sudo_account: subspace_runtime_primitives::AccountId,
-    evm_type: EvmType,
-) -> Result<GenesisDomain, String> {
+pub fn get_genesis_domain(spec_id: SpecId, evm_type: EvmType) -> Result<GenesisDomain, String> {
     let chain_spec = match spec_id {
         SpecId::Dev => development_config(get_testnet_genesis_by_spec_id(spec_id))?,
-        SpecId::Taurus => taurus_config(get_testnet_genesis_by_spec_id(spec_id))?,
+        SpecId::Chronos => chronos_config(get_testnet_genesis_by_spec_id(spec_id))?,
         SpecId::DevNet => devnet_config(get_testnet_genesis_by_spec_id(spec_id))?,
         SpecId::Mainnet => return Err("No genesis domain available for mainnet spec.".to_string()),
     };
@@ -217,7 +201,7 @@ pub fn get_genesis_domain(
     let GenesisOperatorParams {
         operator_allow_list,
         operator_signing_key,
-    } = get_operator_params(spec_id, sudo_account);
+    } = get_operator_params(spec_id);
 
     let storage = chain_spec
         .build_storage()

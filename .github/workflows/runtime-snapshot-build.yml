@@ -9,7 +9,7 @@ on:
   push:
     tags:
       - "runtime-snapshot-*"
-      - "runtime-taurus-*"
+      - "runtime-chronos-*"
       - "runtime-mainnet-*"
 
 jobs:

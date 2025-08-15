@@ -10,7 +10,7 @@ on:
   push:
     tags:
       - "snapshot-*"
-      - "taurus-*"
+      - "chronos-*"
       - "mainnet-*"
 
 # Incremental compilation here isn't helpful

@@ -85,7 +85,7 @@ impl SubstrateCli for SubspaceCliPlaceholder {
         let chain_spec = match id {
             "mainnet-compiled" => chain_spec::mainnet_compiled()?,
             "mainnet" => chain_spec::mainnet_config()?,
-            "taurus" => chain_spec::taurus_config()?,
+            "chronos" => chain_spec::chronos_config()?,
             "devnet" => chain_spec::devnet_config()?,
             "devnet-compiled" => chain_spec::devnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,

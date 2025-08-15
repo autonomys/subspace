@@ -78,9 +78,9 @@ pub struct DomainCli {
 #[derive(Debug, Copy, Clone)]
 pub enum SpecId {
     Dev,
-    Taurus,
     DevNet,
     Mainnet,
+    Chronos,
 }
 
 impl DomainCli {
@@ -328,12 +328,14 @@ impl BuildGenesisStorageCmd {
         let is_dev = self.shared_params.is_dev();
         let chain_id = self.shared_params.chain_id(is_dev);
         let domain_chain_spec = match chain_id.as_str() {
-            "taurus" | "devnet" | "dev" | "mainnet" => match self.runtime_type {
+            "chronos" | "devnet" | "dev" | "mainnet" => match self.runtime_type {
                 DomainRuntimeType::Evm => evm_chain_spec::load_chain_spec(&chain_id)?,
                 DomainRuntimeType::AutoId => auto_id_chain_spec::load_chain_spec(&chain_id)?,
             },
             unknown_id => {
-                eprintln!("unknown chain {unknown_id:?}, expected mainnet, taurus, devnet, or dev",);
+                eprintln!(
+                    "unknown chain {unknown_id:?}, expected mainnet, chronos, devnet, or dev",
+                );
                 return Ok(());
             }
         };

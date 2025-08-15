@@ -8,7 +8,7 @@ on:
   push:
     tags:
       - 'domain-genesis-storage-snapshot-*'
-      - 'domain-genesis-storage-taurus-*'
+      - 'domain-genesis-storage-chronos-*'
       - 'domain-genesis-storage-mainnet-*'
 
 jobs:
@@ -35,10 +35,10 @@ jobs:
         run: |
           EVM_SPEC_VERSION=$(sed -nr 's/.*spec_version: ([0-9]+),/\1/p' domains/runtime/evm/src/lib.rs)
           AUTO_ID_SPEC_VERSION=$(sed -nr 's/.*spec_version: ([0-9]+),/\1/p' domains/runtime/auto-id/src/lib.rs)
-          docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --runtime-type evm --chain taurus > evm-domain-genesis-storage-taurus-v$EVM_SPEC_VERSION
+          docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --runtime-type evm --chain chronos > evm-domain-genesis-storage-chronos-v$EVM_SPEC_VERSION
           docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --runtime-type evm --chain devnet > evm-domain-genesis-storage-devnet-v$EVM_SPEC_VERSION
           docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --runtime-type evm --chain mainnet > evm-domain-genesis-storage-mainnet-v$EVM_SPEC_VERSION
-          docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --runtime-type auto-id --chain taurus > auto-id-domain-genesis-storage-taurus-v$AUTO_ID_SPEC_VERSION
+          docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --runtime-type auto-id --chain chronos > auto-id-domain-genesis-storage-chronos-v$AUTO_ID_SPEC_VERSION
           docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --runtime-type auto-id --chain devnet > auto-id-domain-genesis-storage-devnet-v$AUTO_ID_SPEC_VERSION
           docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --runtime-type auto-id --chain mainnet > auto-id-domain-genesis-storage-mainnet-v$AUTO_ID_SPEC_VERSION
           echo "EVM_SPEC_VERSION=$EVM_SPEC_VERSION" >> $GITHUB_ENV
@@ -49,10 +49,10 @@ jobs:
         with:
           name: domain-genesis-storage
           path: |
-            evm-domain-genesis-storage-taurus-v${{ env.EVM_SPEC_VERSION }}
+            evm-domain-genesis-storage-chronos-v${{ env.EVM_SPEC_VERSION }}
             evm-domain-genesis-storage-devnet-v${{ env.EVM_SPEC_VERSION }}
             evm-domain-genesis-storage-mainnet-v${{ env.EVM_SPEC_VERSION }}
-            auto-id-domain-genesis-storage-taurus-v${{ env.AUTO_ID_SPEC_VERSION }}
+            auto-id-domain-genesis-storage-chronos-v${{ env.AUTO_ID_SPEC_VERSION }}
             auto-id-domain-genesis-storage-devnet-v${{ env.AUTO_ID_SPEC_VERSION }}
             auto-id-domain-genesis-storage-mainnet-v${{ env.AUTO_ID_SPEC_VERSION }}
           if-no-files-found: error
@@ -62,6 +62,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          asset_paths: '["evm-domain-genesis-storage-mainnet-v${{ env.EVM_SPEC_VERSION }}", "evm-domain-genesis-storage-taurus-v${{ env.EVM_SPEC_VERSION }}", "evm-domain-genesis-storage-devnet-v${{ env.EVM_SPEC_VERSION }}", "auto-id-domain-genesis-storage-mainnet-v${{ env.AUTO_ID_SPEC_VERSION }}", "auto-id-domain-genesis-storage-taurus-v${{ env.AUTO_ID_SPEC_VERSION }}", "auto-id-domain-genesis-storage-devnet-v${{ env.AUTO_ID_SPEC_VERSION }}"]'
+          asset_paths: '["evm-domain-genesis-storage-mainnet-v${{ env.EVM_SPEC_VERSION }}", "evm-domain-genesis-storage-chronos-v${{ env.EVM_SPEC_VERSION }}", "evm-domain-genesis-storage-devnet-v${{ env.EVM_SPEC_VERSION }}", "auto-id-domain-genesis-storage-mainnet-v${{ env.AUTO_ID_SPEC_VERSION }}", "auto-id-domain-genesis-storage-chronos-v${{ env.AUTO_ID_SPEC_VERSION }}", "auto-id-domain-genesis-storage-devnet-v${{ env.AUTO_ID_SPEC_VERSION }}"]'
         # Only run for releases
         if: github.event_name == 'push' && github.ref_type == 'tag'

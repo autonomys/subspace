@@ -5,7 +5,7 @@ use crate::domain::cli::{GenesisDomain, SpecId};
 use crate::domain::evm_chain_spec::{self};
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
-use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, MAINNET_CHAIN_SPEC, TAURUS_CHAIN_SPEC};
+use sc_subspace_chain_specs::{CHRONOS_CHAIN_SPEC, DEVNET_CHAIN_SPEC, MAINNET_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
 use serde::Deserialize;
 use sp_core::crypto::Ss58Codec;
@@ -250,8 +250,8 @@ pub fn mainnet_config() -> Result<GenericChainSpec, String> {
     GenericChainSpec::from_json_bytes(MAINNET_CHAIN_SPEC.as_bytes())
 }
 
-pub fn taurus_config() -> Result<GenericChainSpec, String> {
-    GenericChainSpec::from_json_bytes(TAURUS_CHAIN_SPEC.as_bytes())
+pub fn chronos_config() -> Result<GenericChainSpec, String> {
+    GenericChainSpec::from_json_bytes(CHRONOS_CHAIN_SPEC.as_bytes())
 }
 
 pub fn devnet_config() -> Result<GenericChainSpec, String> {
@@ -313,7 +313,6 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                 ]),
                 genesis_domains: vec![evm_chain_spec::get_genesis_domain(
                     SpecId::DevNet,
-                    sudo_account.clone(),
                     EvmType::Public,
                 )?],
             },
@@ -379,7 +378,6 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     ]),
                     genesis_domains: vec![evm_chain_spec::get_genesis_domain(
                         SpecId::Dev,
-                        sudo_account,
                         // TODO: in production configs, set this to Public, unless we specifically want a private EVM
                         EvmType::Private {
                             initial_contract_creation_allow_list:
