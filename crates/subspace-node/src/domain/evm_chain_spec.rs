@@ -111,20 +111,20 @@ pub fn devnet_config(
 
 pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
-        "chronos" => chronos_config(get_testnet_genesis_by_spec_id(SpecId::Chronos))?,
-        "devnet" => devnet_config(get_testnet_genesis_by_spec_id(SpecId::DevNet))?,
-        "dev" => development_config(get_testnet_genesis_by_spec_id(SpecId::Dev))?,
-        "mainnet" => mainnet_config(get_testnet_genesis_by_spec_id(SpecId::Mainnet))?,
+        "chronos" => chronos_config(get_genesis_by_spec_id(SpecId::Chronos))?,
+        "devnet" => devnet_config(get_genesis_by_spec_id(SpecId::DevNet))?,
+        "dev" => development_config(get_genesis_by_spec_id(SpecId::Dev))?,
+        "mainnet" => mainnet_config(get_genesis_by_spec_id(SpecId::Mainnet))?,
         path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
     Ok(Box::new(chain_spec))
 }
 
-pub fn get_testnet_genesis_by_spec_id(_: SpecId) -> RuntimeGenesisConfig {
+pub fn get_genesis_by_spec_id(_: SpecId) -> RuntimeGenesisConfig {
     empty_genesis()
 }
 
-pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAccountId, Balance)> {
+pub fn get_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAccountId, Balance)> {
     match spec_id {
         SpecId::Dev => get_dev_accounts()
             .into_iter()
@@ -192,9 +192,9 @@ fn get_operator_params(spec_id: SpecId) -> GenesisOperatorParams {
 
 pub fn get_genesis_domain(spec_id: SpecId, evm_type: EvmType) -> Result<GenesisDomain, String> {
     let chain_spec = match spec_id {
-        SpecId::Dev => development_config(get_testnet_genesis_by_spec_id(spec_id))?,
-        SpecId::Chronos => chronos_config(get_testnet_genesis_by_spec_id(spec_id))?,
-        SpecId::DevNet => devnet_config(get_testnet_genesis_by_spec_id(spec_id))?,
+        SpecId::Dev => development_config(get_genesis_by_spec_id(spec_id))?,
+        SpecId::Chronos => chronos_config(get_genesis_by_spec_id(spec_id))?,
+        SpecId::DevNet => devnet_config(get_genesis_by_spec_id(spec_id))?,
         SpecId::Mainnet => return Err("No genesis domain available for mainnet spec.".to_string()),
     };
 
@@ -213,7 +213,7 @@ pub fn get_genesis_domain(spec_id: SpecId, evm_type: EvmType) -> Result<GenesisD
         runtime_type: RuntimeType::Evm,
         runtime_version: evm_domain_runtime::VERSION,
         domain_name: "nova".to_string(),
-        initial_balances: get_testnet_endowed_accounts_by_spec_id(spec_id),
+        initial_balances: get_endowed_accounts_by_spec_id(spec_id),
         operator_allow_list,
         operator_signing_key,
         domain_runtime_config: EvmDomainRuntimeConfig { evm_type }.into(),
