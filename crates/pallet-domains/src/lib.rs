@@ -482,16 +482,20 @@ mod pallet {
     /// Starting EVM chain ID for evm runtimes.
     pub struct StartingEVMChainId;
 
-    impl Get<EVMChainId> for StartingEVMChainId {
-        fn get() -> EVMChainId {
-            // Starting EVM chainID for domains.
-            870
-        }
-    }
+    // impl Get<EVMChainId> for StartingEVMChainId {
+    //     fn get() -> EVMChainId {
+    //         // Starting EVM chainID for domains.
+    //         870
+    //     }
+    // }
+    //
+    // /// Stores the next evm chain id.
+    // #[pallet::storage]
+    // pub(super) type NextEVMChainId<T> = StorageValue<_, EVMChainId, ValueQuery, StartingEVMChainId>;
 
-    /// Stores the next evm chain id.
+    /// Stored the occupied evm chain id against a domain_id.
     #[pallet::storage]
-    pub(super) type NextEVMChainId<T> = StorageValue<_, EVMChainId, ValueQuery, StartingEVMChainId>;
+    pub type EvmChainIds<T: Config> = StorageMap<_, Identity, EVMChainId, DomainId, OptionQuery>;
 
     #[pallet::storage]
     pub type RuntimeRegistry<T: Config> =
@@ -1990,7 +1994,7 @@ mod pallet {
                         bundle_slot_probability: genesis_domain.bundle_slot_probability,
                         operator_allow_list: genesis_domain.operator_allow_list,
                         initial_balances: genesis_domain.initial_balances,
-                        domain_runtime_config: genesis_domain.domain_runtime_config,
+                        domain_runtime_info: genesis_domain.domain_runtime_info,
                     };
                     let domain_owner = genesis_domain.owner_account_id;
                     let domain_id = do_instantiate_domain::<T>(

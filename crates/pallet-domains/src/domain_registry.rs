@@ -4,12 +4,11 @@
 extern crate alloc;
 
 use crate::block_tree::import_genesis_receipt;
-use crate::pallet::{DomainStakingSummary, NextEVMChainId};
-use crate::runtime_registry::DomainRuntimeInfo;
+use crate::pallet::DomainStakingSummary;
 use crate::staking::StakingSummary;
 use crate::{
-    BalanceOf, Config, DomainHashingFor, DomainRegistry, DomainSudoCalls, ExecutionReceiptOf,
-    HoldIdentifier, NextDomainId, RuntimeRegistry, into_complete_raw_genesis,
+    BalanceOf, Config, DomainHashingFor, DomainRegistry, DomainSudoCalls, EvmChainIds,
+    ExecutionReceiptOf, HoldIdentifier, NextDomainId, RuntimeRegistry, into_complete_raw_genesis,
 };
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
@@ -25,7 +24,7 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{
-    DomainBundleLimit, DomainId, DomainRuntimeConfig, DomainSudoCall, DomainsDigestItem,
+    DomainBundleLimit, DomainId, DomainRuntimeInfo, DomainSudoCall, DomainsDigestItem,
     DomainsTransfersTracker, OnDomainInstantiated, OperatorAllowList, RuntimeId, RuntimeType,
     calculate_max_bundle_weight_and_size, derive_domain_block_hash,
 };
@@ -40,7 +39,7 @@ pub enum Error {
     ExceedMaxDomainBlockWeight,
     ExceedMaxDomainBlockSize,
     MaxDomainId,
-    MaxEVMChainId,
+    InvalidEVMChainId,
     InvalidSlotProbability,
     RuntimeNotFound,
     InsufficientFund,
@@ -94,7 +93,7 @@ pub struct DomainConfigParams<AccountId: Ord, Balance> {
     /// Configurations for a specific type of domain runtime, for example, EVM.
     /// Currently these are all copied into `DomainObject.domain_runtime_info`, so they don't need
     /// to be in `DomainConfig`.
-    pub domain_runtime_config: DomainRuntimeConfig,
+    pub domain_runtime_info: DomainRuntimeInfo,
 }
 
 pub fn into_domain_config<T: Config>(
@@ -107,7 +106,7 @@ pub fn into_domain_config<T: Config>(
         bundle_slot_probability,
         operator_allow_list,
         initial_balances,
-        domain_runtime_config: _,
+        domain_runtime_info: _,
     } = domain_config_params;
 
     let DomainBundleLimit {
@@ -244,7 +243,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     owner_account_id: T::AccountId,
     created_at: BlockNumberFor<T>,
 ) -> Result<DomainId, Error> {
-    let domain_runtime_config = domain_config_params.domain_runtime_config.clone();
+    let domain_runtime_info = domain_config_params.domain_runtime_info.clone();
     let domain_config = can_instantiate_domain::<T>(&owner_account_id, domain_config_params)?;
 
     let domain_instantiation_deposit = T::DomainInstantiationDeposit::get();
@@ -258,22 +257,36 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         runtime_object
     });
 
-    let domain_runtime_info = match (runtime_obj.runtime_type, domain_runtime_config) {
-        (RuntimeType::Evm, DomainRuntimeConfig::Evm(domain_runtime_config)) => {
-            let evm_chain_id = NextEVMChainId::<T>::get();
-            let next_evm_chain_id = evm_chain_id.checked_add(1).ok_or(Error::MaxEVMChainId)?;
-            NextEVMChainId::<T>::set(next_evm_chain_id);
+    let domain_runtime_info = match (runtime_obj.runtime_type, domain_runtime_info) {
+        (
+            RuntimeType::Evm,
+            DomainRuntimeInfo::Evm {
+                chain_id,
+                domain_runtime_config,
+            },
+        ) => {
+            // ensure chain_id is not already allocated.
+            ensure!(
+                !EvmChainIds::<T>::contains_key(chain_id),
+                Error::InvalidEVMChainId
+            );
+
+            // allocate the chain_id to this domain
+            EvmChainIds::<T>::insert(chain_id, domain_id);
 
             DomainRuntimeInfo::Evm {
-                chain_id: evm_chain_id,
+                chain_id,
                 domain_runtime_config,
             }
         }
-        (RuntimeType::AutoId, DomainRuntimeConfig::AutoId(domain_runtime_config)) => {
+        (
+            RuntimeType::AutoId,
             DomainRuntimeInfo::AutoId {
                 domain_runtime_config,
-            }
-        }
+            },
+        ) => DomainRuntimeInfo::AutoId {
+            domain_runtime_config,
+        },
         _ => return Err(Error::InvalidConfigForRuntimeType),
     };
 
@@ -386,7 +399,7 @@ pub(crate) fn do_update_domain_allow_list<T: Config>(
 mod tests {
     use super::*;
     use crate::tests::{TEST_RUNTIME_APIS, Test, new_test_ext};
-    use domain_runtime_primitives::{AccountId20, AccountId20Converter};
+    use domain_runtime_primitives::{AccountId20, AccountId20Converter, DEFAULT_EVM_CHAIN_ID};
     use frame_support::traits::Currency;
     use frame_support::{assert_err, assert_ok};
     use hex_literal::hex;
@@ -414,7 +427,7 @@ mod tests {
             bundle_slot_probability: (0, 0),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
-            domain_runtime_config: Default::default(),
+            domain_runtime_info: (DEFAULT_EVM_CHAIN_ID, Default::default()).into(),
         };
 
         let mut ext = new_test_ext();
@@ -573,7 +586,7 @@ mod tests {
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: vec![(MultiAccountId::Raw(vec![0, 1, 2, 3, 4, 5]), 1_000_000 * AI3)],
-            domain_runtime_config: Default::default(),
+            domain_runtime_info: (DEFAULT_EVM_CHAIN_ID, Default::default()).into(),
         };
 
         let mut ext = new_test_ext();
@@ -715,6 +728,8 @@ mod tests {
             );
 
             // should be successful
+            domain_config_params.domain_runtime_info =
+                (DEFAULT_EVM_CHAIN_ID + 1, Default::default()).into();
             let domain_id =
                 do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at)
                     .unwrap();
@@ -746,7 +761,7 @@ mod tests {
                 ))),
                 1_000_000 * AI3,
             )],
-            domain_runtime_config: Default::default(),
+            domain_runtime_info: (DEFAULT_EVM_CHAIN_ID, Default::default()).into(),
         };
 
         let mut ext = new_test_ext();
@@ -799,17 +814,19 @@ mod tests {
             assert_eq!(
                 domain_obj
                     .domain_runtime_info
-                    .domain_runtime_config()
                     .initial_contract_creation_allow_list(),
                 None,
                 "default is public EVM, which does not have a contract creation allow list"
             );
 
             // Set public EVM
-            domain_config_params.domain_runtime_config = EvmDomainRuntimeConfig {
-                evm_type: EvmType::Public,
-            }
-            .into();
+            domain_config_params.domain_runtime_info = (
+                DEFAULT_EVM_CHAIN_ID + 1,
+                EvmDomainRuntimeConfig {
+                    evm_type: EvmType::Public,
+                },
+            )
+                .into();
 
             // Set enough fund to creator
             Balances::make_free_balance_be(
@@ -835,7 +852,6 @@ mod tests {
             assert_eq!(
                 domain_obj
                     .domain_runtime_info
-                    .domain_runtime_config()
                     .initial_contract_creation_allow_list(),
                 None,
                 "public EVMs do not have a contract creation allow list"
@@ -843,14 +859,17 @@ mod tests {
 
             // Set empty list
             let mut list = vec![];
-            domain_config_params.domain_runtime_config = EvmDomainRuntimeConfig {
-                evm_type: EvmType::Private {
-                    initial_contract_creation_allow_list: PermissionedActionAllowedBy::Accounts(
-                        list.clone(),
-                    ),
+            domain_config_params.domain_runtime_info = (
+                DEFAULT_EVM_CHAIN_ID + 2,
+                EvmDomainRuntimeConfig {
+                    evm_type: EvmType::Private {
+                        initial_contract_creation_allow_list: PermissionedActionAllowedBy::Accounts(
+                            list.clone(),
+                        ),
+                    },
                 },
-            }
-            .into();
+            )
+                .into();
 
             // Set enough fund to creator
             Balances::make_free_balance_be(
@@ -876,7 +895,6 @@ mod tests {
             assert_eq!(
                 domain_obj
                     .domain_runtime_info
-                    .domain_runtime_config()
                     .initial_contract_creation_allow_list(),
                 Some(&PermissionedActionAllowedBy::Accounts(list)),
                 "empty list should work"
@@ -884,14 +902,17 @@ mod tests {
 
             // Set 1 account in list
             list = vec![hex!("0102030405060708091011121314151617181920").into()];
-            domain_config_params.domain_runtime_config = EvmDomainRuntimeConfig {
-                evm_type: EvmType::Private {
-                    initial_contract_creation_allow_list: PermissionedActionAllowedBy::Accounts(
-                        list.clone(),
-                    ),
+            domain_config_params.domain_runtime_info = (
+                DEFAULT_EVM_CHAIN_ID + 3,
+                EvmDomainRuntimeConfig {
+                    evm_type: EvmType::Private {
+                        initial_contract_creation_allow_list: PermissionedActionAllowedBy::Accounts(
+                            list.clone(),
+                        ),
+                    },
                 },
-            }
-            .into();
+            )
+                .into();
 
             // Set enough fund to creator
             Balances::make_free_balance_be(
@@ -917,7 +938,6 @@ mod tests {
             assert_eq!(
                 domain_obj
                     .domain_runtime_info
-                    .domain_runtime_config()
                     .initial_contract_creation_allow_list(),
                 Some(&PermissionedActionAllowedBy::Accounts(list)),
                 "1 account list should work"
@@ -929,14 +949,17 @@ mod tests {
                 hex!("1102030405060708091011121314151617181920").into(),
                 hex!("2102030405060708091011121314151617181920").into(),
             ];
-            domain_config_params.domain_runtime_config = EvmDomainRuntimeConfig {
-                evm_type: EvmType::Private {
-                    initial_contract_creation_allow_list: PermissionedActionAllowedBy::Accounts(
-                        list.clone(),
-                    ),
+            domain_config_params.domain_runtime_info = (
+                DEFAULT_EVM_CHAIN_ID + 4,
+                EvmDomainRuntimeConfig {
+                    evm_type: EvmType::Private {
+                        initial_contract_creation_allow_list: PermissionedActionAllowedBy::Accounts(
+                            list.clone(),
+                        ),
+                    },
                 },
-            }
-            .into();
+            )
+                .into();
 
             // Set enough fund to creator
             Balances::make_free_balance_be(
@@ -962,7 +985,6 @@ mod tests {
             assert_eq!(
                 domain_obj
                     .domain_runtime_info
-                    .domain_runtime_config()
                     .initial_contract_creation_allow_list(),
                 Some(&PermissionedActionAllowedBy::Accounts(list)),
                 "multi account list should work"

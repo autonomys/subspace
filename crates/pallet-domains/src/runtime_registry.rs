@@ -11,7 +11,7 @@ use crate::{BalanceOf, Config, Event};
 use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use domain_runtime_primitives::{AccountId20, EVMChainId, MultiAccountId, TryConvertBack};
+use domain_runtime_primitives::{AccountId20, MultiAccountId, TryConvertBack};
 use frame_support::{PalletError, ensure};
 use frame_system::AccountInfo;
 use frame_system::pallet_prelude::*;
@@ -21,8 +21,8 @@ use sp_core::Hasher;
 use sp_core::crypto::AccountId32;
 use sp_domains::storage::{RawGenesis, StorageData, StorageKey};
 use sp_domains::{
-    AutoIdDomainRuntimeConfig, DomainId, DomainRuntimeConfig, DomainsDigestItem,
-    EvmDomainRuntimeConfig, RuntimeId, RuntimeObject, RuntimeType,
+    AutoIdDomainRuntimeConfig, DomainId, DomainRuntimeInfo, DomainsDigestItem, RuntimeId,
+    RuntimeObject, RuntimeType,
 };
 use sp_runtime::DigestItem;
 use sp_runtime::traits::{CheckedAdd, Zero};
@@ -42,74 +42,6 @@ pub enum Error {
     FailedToDecodeRawGenesis,
     RuntimeCodeNotFoundInRawGenesis,
     InvalidAccountIdType,
-}
-
-/// Domain runtime specific information to create domain raw genesis.
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub enum DomainRuntimeInfo {
-    Evm {
-        /// The dynamic EVM chain id for this domain.
-        chain_id: EVMChainId,
-        /// The EVM-specific domain runtime config.
-        domain_runtime_config: EvmDomainRuntimeConfig,
-    },
-    AutoId {
-        /// The AutoId-specific domain runtime config.
-        domain_runtime_config: AutoIdDomainRuntimeConfig,
-    },
-}
-
-impl Default for DomainRuntimeInfo {
-    fn default() -> Self {
-        Self::Evm {
-            chain_id: 0,
-            domain_runtime_config: EvmDomainRuntimeConfig::default(),
-        }
-    }
-}
-
-impl DomainRuntimeInfo {
-    /// Returns the inner config as a `DomainRuntimeConfig`.
-    pub fn domain_runtime_config(&self) -> DomainRuntimeConfig {
-        match self {
-            Self::Evm {
-                domain_runtime_config,
-                ..
-            } => DomainRuntimeConfig::Evm(domain_runtime_config.clone()),
-            Self::AutoId {
-                domain_runtime_config,
-                ..
-            } => DomainRuntimeConfig::AutoId(domain_runtime_config.clone()),
-        }
-    }
-
-    /// If this is an EVM runtime, returns the chain id.
-    pub fn evm_chain_id(&self) -> Option<EVMChainId> {
-        match self {
-            Self::Evm { chain_id, .. } => Some(*chain_id),
-            _ => None,
-        }
-    }
-
-    pub fn is_evm_domain(&self) -> bool {
-        matches!(self, Self::Evm { .. })
-    }
-
-    pub fn is_private_evm_domain(&self) -> bool {
-        if let Self::Evm {
-            domain_runtime_config,
-            ..
-        } = self
-        {
-            domain_runtime_config.evm_type.is_private_evm_domain()
-        } else {
-            false
-        }
-    }
-
-    pub fn is_auto_id(&self) -> bool {
-        matches!(self, Self::AutoId { .. })
-    }
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]

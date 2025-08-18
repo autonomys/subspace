@@ -1,7 +1,7 @@
 //! Chain specification for the evm domain.
 
 use crate::chain_spec::get_from_seed;
-use domain_runtime_primitives::AccountId20Converter;
+use domain_runtime_primitives::{AccountId20Converter, DEFAULT_EVM_CHAIN_ID};
 use evm_domain_test_runtime::{
     AccountId as AccountId20, Precompiles, RuntimeGenesisConfig, Signature,
 };
@@ -137,6 +137,6 @@ pub fn get_genesis_domain(
             .map(|k| (AccountId20Converter::convert(k), 2_000_000 * AI3))
             .collect(),
 
-        domain_runtime_config: EvmDomainRuntimeConfig { evm_type }.into(),
+        domain_runtime_info: (DEFAULT_EVM_CHAIN_ID, EvmDomainRuntimeConfig { evm_type }).into(),
     })
 }

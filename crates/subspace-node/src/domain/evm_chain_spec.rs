@@ -2,7 +2,7 @@
 
 use crate::chain_spec_utils::{chain_spec_properties, get_public_key_from_seed};
 use crate::domain::cli::{GenesisDomain, GenesisOperatorParams, SpecId};
-use domain_runtime_primitives::{AccountId20Converter, MultiAccountId};
+use domain_runtime_primitives::{AccountId20Converter, DEFAULT_EVM_CHAIN_ID, MultiAccountId};
 use evm_domain_runtime::{
     AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, Precompiles, RuntimeGenesisConfig,
     SystemConfig, WASM_BINARY,
@@ -216,6 +216,6 @@ pub fn get_genesis_domain(spec_id: SpecId, evm_type: EvmType) -> Result<GenesisD
         initial_balances: get_endowed_accounts_by_spec_id(spec_id),
         operator_allow_list,
         operator_signing_key,
-        domain_runtime_config: EvmDomainRuntimeConfig { evm_type }.into(),
+        domain_runtime_info: (DEFAULT_EVM_CHAIN_ID, EvmDomainRuntimeConfig { evm_type }).into(),
     })
 }

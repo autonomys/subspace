@@ -73,6 +73,9 @@ pub const SLOT_DURATION: u64 = 1000;
 /// The EVM chain Id type
 pub type EVMChainId = u64;
 
+/// Default EVM chain ID used for testing and Genesis domains for Devnet and Local net.
+pub const DEFAULT_EVM_CHAIN_ID: EVMChainId = 870;
+
 /// Alias to 512-bit hash when used in the context of a transaction signature on the EVM chain.
 pub type EthereumSignature = EVMSignature;
 

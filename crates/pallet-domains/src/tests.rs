@@ -11,8 +11,8 @@ use crate::{
     OperatorConfig, RawOrigin as DomainOrigin, RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
 use core::mem;
-use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
+use domain_runtime_primitives::{BlockNumber as DomainBlockNumber, DEFAULT_EVM_CHAIN_ID};
 use frame_support::dispatch::{DispatchInfo, RawOrigin};
 use frame_support::traits::{ConstU64, Currency, Hooks, VariantCount};
 use frame_support::weights::constants::ParityDbWeight;
@@ -606,7 +606,7 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_number: usize) -> 
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
-            domain_runtime_config: Default::default(),
+            domain_runtime_info: (DEFAULT_EVM_CHAIN_ID, Default::default()).into(),
         },
     )
     .unwrap();
@@ -782,7 +782,7 @@ fn test_bundle_format_verification() {
             created_at: Default::default(),
             genesis_receipt_hash: Default::default(),
             domain_config,
-            domain_runtime_info: Default::default(),
+            domain_runtime_info: (DEFAULT_EVM_CHAIN_ID, Default::default()).into(),
             domain_instantiation_deposit: Default::default(),
         };
         DomainRegistry::<Test>::insert(domain_id, domain_obj);

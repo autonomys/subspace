@@ -1564,6 +1564,7 @@ pub(crate) mod tests {
         BalanceOf, Error, MAX_NOMINATORS_TO_SLASH, NominatorId, OperatorEpochSharePrice,
         SlashedReason, bundle_storage_fund,
     };
+    use domain_runtime_primitives::DEFAULT_EVM_CHAIN_ID;
     use frame_support::traits::Currency;
     use frame_support::traits::fungible::Mutate;
     use frame_support::weights::Weight;
@@ -1621,7 +1622,7 @@ pub(crate) mod tests {
                 created_at: 0,
                 genesis_receipt_hash: Default::default(),
                 domain_config,
-                domain_runtime_info: Default::default(),
+                domain_runtime_info: (DEFAULT_EVM_CHAIN_ID, Default::default()).into(),
                 domain_instantiation_deposit: Default::default(),
             };
 
@@ -1977,7 +1978,7 @@ pub(crate) mod tests {
                 created_at: 0,
                 genesis_receipt_hash: Default::default(),
                 domain_config,
-                domain_runtime_info: Default::default(),
+                domain_runtime_info: (DEFAULT_EVM_CHAIN_ID, Default::default()).into(),
                 domain_instantiation_deposit: Default::default(),
             };
 

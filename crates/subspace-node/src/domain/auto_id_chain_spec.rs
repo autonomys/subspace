@@ -12,7 +12,7 @@ use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
 use sp_core::crypto::{AccountId32, UncheckedFrom};
 use sp_domains::storage::RawGenesis;
-use sp_domains::{DomainRuntimeConfig, OperatorAllowList, OperatorPublicKey, RuntimeType};
+use sp_domains::{DomainRuntimeInfo, OperatorAllowList, OperatorPublicKey, RuntimeType};
 use sp_runtime::BuildStorage;
 use sp_runtime::traits::Convert;
 use subspace_runtime_primitives::{AI3, Balance};
@@ -189,6 +189,8 @@ pub fn get_genesis_domain(spec_id: SpecId) -> Result<GenesisDomain, String> {
         initial_balances: get_endowed_accounts_by_spec_id(spec_id),
         operator_allow_list,
         operator_signing_key,
-        domain_runtime_config: DomainRuntimeConfig::default_auto_id(),
+        domain_runtime_info: DomainRuntimeInfo::AutoId {
+            domain_runtime_config: Default::default(),
+        },
     })
 }
