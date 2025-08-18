@@ -20,7 +20,7 @@ You can find these executables in the [Releases](https://github.com/autonomys/su
 
 ## Polkadot.js wallet
 
-Before running anything you need to have a wallet where you'll receive testnet coins.
+Before running anything you need to have a wallet where you'll receive mainnet coins.
 Install [Polkadot.js extension](https://polkadot.js.org/extension/) into your browser and create a new account there.
 The address of your account will be necessary at the last step.
 
