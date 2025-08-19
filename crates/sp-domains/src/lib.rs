@@ -428,7 +428,7 @@ pub struct AutoIdDomainRuntimeConfig {
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DomainRuntimeInfo {
     Evm {
-        /// The dynamic EVM chain id for this domain.
+        /// The EVM chain id for this domain.
         chain_id: EVMChainId,
         /// The EVM-specific domain runtime config.
         domain_runtime_config: EvmDomainRuntimeConfig,
@@ -495,6 +495,8 @@ impl DomainRuntimeInfo {
         matches!(self, Self::Evm { .. })
     }
 
+    /// Returns true if the domain is configured as a private EVM domain.
+    /// Returns false for public EVM domains and non-EVM domains.
     pub fn is_private_evm_domain(&self) -> bool {
         if let Self::Evm {
             domain_runtime_config,
