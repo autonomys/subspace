@@ -30,7 +30,7 @@ use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionErro
 use core::num::ParseIntError;
 use core::ops::{Add, Sub};
 use core::str::FromStr;
-use domain_runtime_primitives::{EthereumAccountId, MultiAccountId};
+use domain_runtime_primitives::{EVMChainId, EthereumAccountId, MultiAccountId};
 use execution_receipt::{ExecutionReceiptFor, SealedSingletonReceipt};
 use frame_support::storage::storage_prefix;
 use frame_support::{Blake2_128Concat, StorageHasher};
@@ -424,51 +424,45 @@ pub struct AutoIdDomainRuntimeConfig {
     // Currently, there is no specific configuration for AutoId.
 }
 
-/// Configurations for specific domain runtime kinds.
+/// Domain runtime specific information to create domain raw genesis.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DomainRuntimeConfig {
-    Evm(EvmDomainRuntimeConfig),
-    AutoId(AutoIdDomainRuntimeConfig),
+pub enum DomainRuntimeInfo {
+    Evm {
+        /// The EVM chain id for this domain.
+        chain_id: EVMChainId,
+        /// The EVM-specific domain runtime config.
+        domain_runtime_config: EvmDomainRuntimeConfig,
+    },
+    AutoId {
+        /// The AutoId-specific domain runtime config.
+        domain_runtime_config: AutoIdDomainRuntimeConfig,
+    },
 }
 
-impl Default for DomainRuntimeConfig {
-    fn default() -> Self {
-        Self::default_evm()
+impl From<(EVMChainId, EvmDomainRuntimeConfig)> for DomainRuntimeInfo {
+    fn from(v: (EVMChainId, EvmDomainRuntimeConfig)) -> Self {
+        DomainRuntimeInfo::Evm {
+            chain_id: v.0,
+            domain_runtime_config: v.1,
+        }
     }
 }
 
-impl From<EvmDomainRuntimeConfig> for DomainRuntimeConfig {
-    fn from(evm_config: EvmDomainRuntimeConfig) -> Self {
-        DomainRuntimeConfig::Evm(evm_config)
-    }
-}
-
-impl From<AutoIdDomainRuntimeConfig> for DomainRuntimeConfig {
+impl From<AutoIdDomainRuntimeConfig> for DomainRuntimeInfo {
     fn from(auto_id_config: AutoIdDomainRuntimeConfig) -> Self {
-        DomainRuntimeConfig::AutoId(auto_id_config)
+        DomainRuntimeInfo::AutoId {
+            domain_runtime_config: auto_id_config,
+        }
     }
 }
 
-impl DomainRuntimeConfig {
-    pub fn default_evm() -> Self {
-        DomainRuntimeConfig::Evm(EvmDomainRuntimeConfig::default())
-    }
-
-    pub fn default_auto_id() -> Self {
-        DomainRuntimeConfig::AutoId(AutoIdDomainRuntimeConfig::default())
-    }
-
-    pub fn is_evm_domain(&self) -> bool {
-        matches!(self, DomainRuntimeConfig::Evm(_))
-    }
-
-    pub fn is_auto_id(&self) -> bool {
-        matches!(self, DomainRuntimeConfig::AutoId(_))
-    }
-
+impl DomainRuntimeInfo {
     pub fn evm(&self) -> Option<&EvmDomainRuntimeConfig> {
         match self {
-            DomainRuntimeConfig::Evm(evm_config) => Some(evm_config),
+            DomainRuntimeInfo::Evm {
+                domain_runtime_config,
+                ..
+            } => Some(domain_runtime_config),
             _ => None,
         }
     }
@@ -482,9 +476,41 @@ impl DomainRuntimeConfig {
 
     pub fn auto_id(&self) -> Option<&AutoIdDomainRuntimeConfig> {
         match self {
-            DomainRuntimeConfig::AutoId(auto_id_config) => Some(auto_id_config),
+            DomainRuntimeInfo::AutoId {
+                domain_runtime_config,
+            } => Some(domain_runtime_config),
             _ => None,
         }
+    }
+
+    /// If this is an EVM runtime, returns the chain id.
+    pub fn evm_chain_id(&self) -> Option<EVMChainId> {
+        match self {
+            Self::Evm { chain_id, .. } => Some(*chain_id),
+            _ => None,
+        }
+    }
+
+    pub fn is_evm_domain(&self) -> bool {
+        matches!(self, Self::Evm { .. })
+    }
+
+    /// Returns true if the domain is configured as a private EVM domain.
+    /// Returns false for public EVM domains and non-EVM domains.
+    pub fn is_private_evm_domain(&self) -> bool {
+        if let Self::Evm {
+            domain_runtime_config,
+            ..
+        } = self
+        {
+            domain_runtime_config.evm_type.is_private_evm_domain()
+        } else {
+            false
+        }
+    }
+
+    pub fn is_auto_id(&self) -> bool {
+        matches!(self, Self::AutoId { .. })
     }
 }
 
@@ -502,7 +528,7 @@ pub struct GenesisDomain<AccountId: Ord, Balance> {
     pub bundle_slot_probability: (u64, u64),
     pub operator_allow_list: OperatorAllowList<AccountId>,
     /// Configurations for a specific type of domain runtime, for example, EVM.
-    pub domain_runtime_config: DomainRuntimeConfig,
+    pub domain_runtime_info: DomainRuntimeInfo,
 
     // Genesis operator
     pub signing_key: OperatorPublicKey,

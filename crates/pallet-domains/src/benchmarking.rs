@@ -23,6 +23,7 @@ use crate::{
 use alloc::borrow::ToOwned;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use domain_runtime_primitives::EVMChainId;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
 use frame_support::traits::Hooks;
@@ -68,7 +69,7 @@ mod benchmarks {
     #[benchmark]
     fn submit_bundle() {
         let block_tree_pruning_depth = T::BlockTreePruningDepth::get().saturated_into::<u32>();
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(1);
         let (_, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
 
@@ -156,7 +157,7 @@ mod benchmarks {
 
     #[benchmark]
     fn submit_fraud_proof() {
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(2);
         let (_, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
 
@@ -216,7 +217,7 @@ mod benchmarks {
     #[benchmark]
     fn handle_bad_receipt(n: Linear<1, MAX_BUNDLE_PER_BLOCK>) {
         let minimum_nominator_stake = T::MinNominatorStake::get();
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(3);
         let mut operator_ids = Vec::new();
         for i in 0..n {
             let (_, operator_id) =
@@ -286,7 +287,7 @@ mod benchmarks {
             T::Currency::minimum_balance() + 1u32.into(),
         );
 
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(4);
         let mut operator_ids = Vec::new();
         for i in 0..(n + s) {
             let (_, operator_id) =
@@ -351,7 +352,7 @@ mod benchmarks {
             T::Currency::minimum_balance() + 1u32.into(),
         );
 
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(5);
         let mut operator_ids = Vec::new();
         for i in 0..n {
             let (_, operator_id) =
@@ -389,7 +390,7 @@ mod benchmarks {
     #[benchmark]
     fn slash_operator(n: Linear<0, MAX_NOMINATORS_TO_SLASH_WITHOUT_OPERATOR>) {
         let minimum_nominator_stake = T::MinNominatorStake::get();
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(6);
 
         let operator_count = 1;
         let nominator_per_operator = n;
@@ -455,7 +456,7 @@ mod benchmarks {
             T::Currency::minimum_balance() + 1u32.into(),
         );
 
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(7);
         let mut operator_ids = Vec::new();
         for i in 0..T::MaxPendingStakingOperation::get() {
             let (_, operator_id) =
@@ -566,7 +567,7 @@ mod benchmarks {
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
-            domain_runtime_config: Default::default(),
+            domain_runtime_info: (8, Default::default()).into(),
         };
 
         assert_ok!(Domains::<T>::set_permissioned_action_allowed_by(
@@ -601,7 +602,7 @@ mod benchmarks {
             T::MinOperatorStake::get() + T::MinNominatorStake::get(),
         );
 
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(9);
         let operator_id = NextOperatorId::<T>::get();
         let key =
             OperatorPublicKey::from_ss58check("5Gv1Uopoqo1k7125oDtFSCmxH4DzuCiBU7HBKu2bF1GZFsEb")
@@ -646,7 +647,7 @@ mod benchmarks {
             minimum_nominator_stake * 2u32.into() + T::MinNominatorStake::get(),
         );
 
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(10);
         let (_, operator_id) = register_helper_operator::<T>(domain_id, minimum_nominator_stake);
 
         // Add one more pending deposit
@@ -671,7 +672,7 @@ mod benchmarks {
 
     #[benchmark]
     fn deregister_operator() {
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(11);
 
         let (operator_owner, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
@@ -705,7 +706,7 @@ mod benchmarks {
             withdraw_amount * 4u32.into() + T::MinNominatorStake::get(),
         );
 
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(12);
         let (_, operator_id) = register_helper_operator::<T>(domain_id, minimum_nominator_stake);
         assert_ok!(Domains::<T>::nominate_operator(
             RawOrigin::Signed(nominator.clone()).into(),
@@ -750,7 +751,7 @@ mod benchmarks {
         let staking_amount = T::MinOperatorStake::get() * 3u32.into();
         T::Currency::set_balance(&nominator, staking_amount + T::MinNominatorStake::get());
 
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(13);
         let (_, operator_id) = register_helper_operator::<T>(domain_id, minimum_nominator_stake);
         assert_ok!(Domains::<T>::nominate_operator(
             RawOrigin::Signed(nominator.clone()).into(),
@@ -824,7 +825,7 @@ mod benchmarks {
     /// Benchmark `unlock_nominator` extrinsic for a given de-registered operator
     #[benchmark]
     fn unlock_nominator() {
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(14);
         let (operator_owner, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
         do_finalize_domain_current_epoch::<T>(domain_id)
@@ -856,7 +857,7 @@ mod benchmarks {
 
     #[benchmark]
     fn update_domain_operator_allow_list() {
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(15);
         let _ = register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
         do_finalize_domain_current_epoch::<T>(domain_id)
             .expect("finalize domain staking should success");
@@ -900,7 +901,7 @@ mod benchmarks {
 
     #[benchmark]
     fn submit_receipt() {
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(16);
         let (_, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
 
@@ -930,7 +931,7 @@ mod benchmarks {
 
     #[benchmark]
     fn validate_submit_bundle() {
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(17);
 
         // Use `Alice` as signing key
         let signing_key =
@@ -992,7 +993,7 @@ mod benchmarks {
 
     #[benchmark]
     fn validate_singleton_receipt() {
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(18);
 
         // Use `Alice` as signing key
         let signing_key =
@@ -1057,7 +1058,7 @@ mod benchmarks {
 
     #[benchmark]
     fn fraud_proof_pre_check() {
-        let domain_id = register_domain::<T>();
+        let domain_id = register_domain::<T>(19);
         let (_, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
 
@@ -1125,7 +1126,7 @@ mod benchmarks {
         runtime_id
     }
 
-    fn register_domain<T: Config>() -> DomainId {
+    fn register_domain<T: Config>(chain_id: EVMChainId) -> DomainId {
         let creator = account("domain_creator", 1, SEED);
         T::Currency::set_balance(
             &creator,
@@ -1141,7 +1142,7 @@ mod benchmarks {
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
-            domain_runtime_config: Default::default(),
+            domain_runtime_info: (chain_id, Default::default()).into(),
         };
 
         assert_ok!(Domains::<T>::set_permissioned_action_allowed_by(

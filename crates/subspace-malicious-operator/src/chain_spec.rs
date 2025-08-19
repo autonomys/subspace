@@ -1,4 +1,4 @@
-use domain_runtime_primitives::{AccountId20Converter, MultiAccountId};
+use domain_runtime_primitives::{AccountId20Converter, DEFAULT_EVM_CHAIN_ID, MultiAccountId};
 use evm_domain_runtime::{AccountId as AccountId20, EVMChainIdConfig, EVMConfig, Precompiles};
 use hex_literal::hex;
 use parity_scale_codec::Encode;
@@ -8,8 +8,8 @@ use sp_core::crypto::AccountId32;
 use sp_core::{Pair, Public, sr25519};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    DomainRuntimeConfig, OperatorAllowList, OperatorPublicKey, PermissionedActionAllowedBy,
-    RuntimeType,
+    DomainRuntimeInfo, EvmDomainRuntimeConfig, EvmType, OperatorAllowList, OperatorPublicKey,
+    PermissionedActionAllowedBy, RuntimeType,
 };
 use sp_runtime::traits::{Convert, IdentifyAccount};
 use sp_runtime::{BuildStorage, MultiSigner, Percent};
@@ -141,7 +141,7 @@ struct GenesisDomainParams {
     raw_genesis_storage: Vec<u8>,
     initial_balances: Vec<(MultiAccountId, Balance)>,
     permissioned_action_allowed_by: PermissionedActionAllowedBy<AccountId>,
-    domain_runtime_config: DomainRuntimeConfig,
+    domain_runtime_info: DomainRuntimeInfo,
 }
 
 pub fn dev_config() -> Result<GenericChainSpec, String> {
@@ -201,7 +201,13 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     raw_genesis_storage: raw_genesis_storage.clone(),
                     initial_balances: endowed_accounts(),
                     permissioned_action_allowed_by: PermissionedActionAllowedBy::Anyone,
-                    domain_runtime_config: DomainRuntimeConfig::default_evm(),
+                    domain_runtime_info: (
+                        DEFAULT_EVM_CHAIN_ID,
+                        EvmDomainRuntimeConfig {
+                            evm_type: EvmType::Public,
+                        },
+                    )
+                        .into(),
                 },
             ))
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
@@ -275,7 +281,7 @@ fn subspace_genesis_config(
                 nomination_tax: Percent::from_percent(5),
                 minimum_nominator_stake: 100 * AI3,
                 initial_balances: genesis_domain_params.initial_balances,
-                domain_runtime_config: genesis_domain_params.domain_runtime_config,
+                domain_runtime_info: genesis_domain_params.domain_runtime_info,
             }],
         },
     }

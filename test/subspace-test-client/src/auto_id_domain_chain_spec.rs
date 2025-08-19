@@ -9,7 +9,7 @@ use sp_core::crypto::AccountId32;
 use sp_core::{Pair, Public, sr25519};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    DomainRuntimeConfig, GenesisDomain, OperatorAllowList, OperatorPublicKey, RuntimeType,
+    DomainRuntimeInfo, GenesisDomain, OperatorAllowList, OperatorPublicKey, RuntimeType,
 };
 use sp_runtime::traits::{Convert, IdentifyAccount};
 use sp_runtime::{BuildStorage, MultiSigner, Percent};
@@ -97,6 +97,8 @@ pub fn get_genesis_domain(
             .map(|k| (AccountIdConverter::convert(k), 2_000_000 * AI3))
             .collect(),
 
-        domain_runtime_config: DomainRuntimeConfig::default_auto_id(),
+        domain_runtime_info: DomainRuntimeInfo::AutoId {
+            domain_runtime_config: Default::default(),
+        },
     })
 }
