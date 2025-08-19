@@ -134,7 +134,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_version: 5,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
-    transaction_version: 0,
+    transaction_version: 1,
     system_version: 2,
 };
 
@@ -1152,6 +1152,7 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
+    pallet_domains::migrations::VersionCheckedMigrateDomainsV5ToV6<Runtime>,
 >;
 
 impl pallet_subspace::extensions::MaybeSubspaceCall<Runtime> for RuntimeCall {
