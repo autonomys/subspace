@@ -537,6 +537,7 @@ where
         let downloaded_pieces_count = AtomicUsize::new(stored_count);
         let caches = Mutex::new(caches);
         self.handlers.progress.call_simple(&0.0);
+        let batch_count = piece_indices_to_store.len();
         let piece_indices_to_store = piece_indices_to_store.into_iter().enumerate();
 
         let downloading_semaphore = &Semaphore::new(SYNC_BATCH_SIZE * SYNC_CONCURRENT_BATCHES);
@@ -546,13 +547,26 @@ where
             stream::iter(piece_indices_to_store.map(|(batch, piece_indices)| {
                 let downloaded_pieces_count = &downloaded_pieces_count;
                 let caches = &caches;
+                let num_pieces = piece_indices.len();
+
+                trace!(
+                    %num_pieces,
+                    %batch,
+                    %batch_count,
+                    first_piece_index = ?piece_indices.first().expect("chunks are never empty"),
+                    last_piece_index = ?piece_indices.last().expect("chunks are never empty"),
+                    downloaded_pieces_count = %downloaded_pieces_count.load(Ordering::Relaxed),
+                    %pieces_to_download_total,
+                    available_permits = %downloading_semaphore.available_permits(),
+                    "Started piece cache sync batch",
+                );
 
                 async move {
                     let mut permit = downloading_semaphore
                         .acquire_many(SYNC_BATCH_SIZE as u32)
                         .await
                         .expect("Semaphore is never closed; qed");
-                    debug!(%batch, num_pieces = %piece_indices.len(), "Downloading pieces");
+                    debug!(%batch, %num_pieces, "Downloading pieces");
 
                     let pieces_stream = match piece_getter.get_pieces(piece_indices).await {
                         Ok(pieces_stream) => pieces_stream,
@@ -672,6 +686,16 @@ where
                             self.handlers.progress.call_simple(&progress);
                         }
                     }
+
+                    trace!(
+                        %num_pieces,
+                        %batch,
+                        %batch_count,
+                        downloaded_pieces_count = %downloaded_pieces_count.load(Ordering::Relaxed),
+                        %pieces_to_download_total,
+                        available_permits = %downloading_semaphore.available_permits(),
+                        "Finished piece cache sync batch",
+                    );
                 }
             }));
 
