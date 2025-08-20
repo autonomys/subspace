@@ -811,7 +811,7 @@ where
                     .store_additional_piece(piece_index, &piece)
                     .await
                 {
-                    trace!(%piece_index, "Piece doesn't need to be cached in plot cache");
+                    trace!(%piece_index, "Piece could not be cached in plot cache");
                 }
 
                 if !self
@@ -1024,11 +1024,16 @@ struct PlotCaches {
 }
 
 impl PlotCaches {
+    /// Returns true if there might be space to add a piece to a cache.
+    /// Returns false if it is already in a cache, or it can't be added to any of the caches.
+    ///
+    /// Available space can be overwritten by a sector at any time, so the piece write can still
+    /// fail even if this returns `true`.
     async fn should_store(&self, piece_index: PieceIndex, key: &RecordKey) -> bool {
         for (cache_index, cache) in self.caches.read().await.iter().enumerate() {
             match cache.is_piece_maybe_stored(key).await {
                 Ok(MaybePieceStoredResult::No) => {
-                    // Try another one if there is any
+                    // Isn't stored or can't be stored, try another cache if there is one
                 }
                 Ok(MaybePieceStoredResult::Vacant) => {
                     return true;
@@ -1051,7 +1056,9 @@ impl PlotCaches {
         false
     }
 
-    /// Store a piece in additional downloaded pieces, if there is space for them
+    /// Store a piece in additional downloaded pieces, if there is space for it.
+    /// Returns `true` if the piece was added to a cache, and `false` if it couldn't be stored,
+    /// typically because the cache is full.
     async fn store_additional_piece(&self, piece_index: PieceIndex, piece: &Piece) -> bool {
         let plot_caches = self.caches.read().await;
         let plot_caches_len = plot_caches.len();
@@ -1066,7 +1073,7 @@ impl PlotCaches {
                 .await
             {
                 Ok(true) => {
-                    return false;
+                    return true;
                 }
                 Ok(false) => {
                     continue;
@@ -1592,19 +1599,25 @@ impl FarmerCache {
         None
     }
 
-    /// Try to store a piece in additional downloaded pieces, if there is space for them
-    pub async fn maybe_store_additional_piece(&self, piece_index: PieceIndex, piece: &Piece) {
+    /// Try to store a piece in additional downloaded pieces, if there is space for it.
+    /// Returns `true` if the piece was added to this cache, and `false` if it was already stored,
+    /// or there was no space.
+    pub async fn maybe_store_additional_piece(
+        &self,
+        piece_index: PieceIndex,
+        piece: &Piece,
+    ) -> bool {
         let key = RecordKey::from(piece_index.to_multihash());
 
         let should_store = self.plot_caches.should_store(piece_index, &key).await;
 
         if !should_store {
-            return;
+            return false;
         }
 
         self.plot_caches
             .store_additional_piece(piece_index, piece)
-            .await;
+            .await
     }
 
     /// Initialize replacement of backing caches
@@ -1691,14 +1704,21 @@ impl FarmerCaches {
         farmer_cache.has_pieces(piece_indices).await
     }
 
-    /// Try to store a piece in additional downloaded pieces, if there is space for them
-    pub async fn maybe_store_additional_piece(&self, piece_index: PieceIndex, piece: &Piece) {
+    /// Try to store a piece in additional downloaded pieces, if there is space for it.
+    /// Returns `true` if the piece was added to one or more caches, and `false` if it was already
+    /// stored, or there was no space.
+    pub async fn maybe_store_additional_piece(
+        &self,
+        piece_index: PieceIndex,
+        piece: &Piece,
+    ) -> bool {
+        // Run all the futures to completion, and take a non-short-circuiting any() on the results.
         self.caches
             .iter()
             .map(|farmer_cache| farmer_cache.maybe_store_additional_piece(piece_index, piece))
             .collect::<FuturesUnordered<_>>()
-            .for_each(|()| async {})
-            .await;
+            .fold::<bool, _, _>(false, |acc, stored| async move { acc || stored })
+            .await
     }
 }
 

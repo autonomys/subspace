@@ -22,7 +22,7 @@ use subspace_networking::utils::multihash::ToMultihash;
 use subspace_process::AsyncJoinOnDrop;
 use thiserror::Error;
 use tokio::task;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 /// Disk plot cache open error
 #[derive(Debug, Error)]
@@ -64,6 +64,8 @@ impl PlotCache for DiskPlotCache {
         Ok(self.is_piece_maybe_stored(key))
     }
 
+    /// Store piece in cache if there is free space, and return `Ok(true)`.
+    /// Returns `Ok(false)` if there is no free space, or the farm or process is shutting down.
     async fn try_store_piece(
         &self,
         piece_index: PieceIndex,
@@ -176,7 +178,8 @@ impl DiskPlotCache {
         }
     }
 
-    /// Store piece in cache if there is free space, otherwise `Ok(false)` is returned
+    /// Store piece in cache if there is free space, and return `Ok(true)`.
+    /// Returns `Ok(false)` if there is no free space, or the farm or process is shutting down.
     pub(crate) async fn try_store_piece(
         &self,
         piece_index: PieceIndex,
@@ -202,6 +205,7 @@ impl DiskPlotCache {
         };
 
         let Some(sectors_metadata) = self.sectors_metadata.upgrade() else {
+            // Metadata has been dropped, farm or process is shutting down
             return Ok(false);
         };
 

@@ -115,11 +115,11 @@ where
         // L2 piece acquisition
         trace!(%piece_index, "Getting piece from DSN L2 cache");
         if let Some(piece) = inner.piece_provider.get_piece_from_cache(piece_index).await {
-            trace!(%piece_index, "Got piece from DSN L2 cache");
-            inner
+            let added_to_cache = inner
                 .farmer_caches
                 .maybe_store_additional_piece(piece_index, &piece)
                 .await;
+            trace!(%piece_index, %added_to_cache, "Got piece from DSN L2 cache");
             return Some(piece);
         }
 
@@ -127,11 +127,11 @@ where
         trace!(%piece_index, "Getting piece from node");
         match inner.node_client.piece(piece_index).await {
             Ok(Some(piece)) => {
-                trace!(%piece_index, "Got piece from node successfully");
-                inner
+                let added_to_cache = inner
                     .farmer_caches
                     .maybe_store_additional_piece(piece_index, &piece)
                     .await;
+                trace!(%piece_index, %added_to_cache, "Got piece from node successfully");
                 return Some(piece);
             }
             Ok(None) => {
@@ -167,11 +167,11 @@ where
         if let Some(read_piece_fut) = maybe_read_piece_fut
             && let Some(piece) = read_piece_fut.await
         {
-            trace!(%piece_index, "Got piece from local plot successfully");
-            inner
+            let added_to_cache = inner
                 .farmer_caches
                 .maybe_store_additional_piece(piece_index, &piece)
                 .await;
+            trace!(%piece_index, %added_to_cache, "Got piece from local plot successfully");
             return Some(piece);
         }
 
@@ -184,11 +184,11 @@ where
             .await;
 
         if let Some(piece) = archival_storage_search_result {
-            trace!(%piece_index, "DSN L1 lookup succeeded");
-            inner
+            let added_to_cache = inner
                 .farmer_caches
                 .maybe_store_additional_piece(piece_index, &piece)
                 .await;
+            trace!(%piece_index, %added_to_cache, "DSN L1 lookup succeeded");
             return Some(piece);
         }
 
@@ -306,10 +306,12 @@ where
                     continue;
                 };
                 // TODO: Would be nice to have concurrency here
-                self.inner
+                let added_to_cache = self
+                    .inner
                     .farmer_caches
                     .maybe_store_additional_piece(piece_index, &piece)
                     .await;
+                trace!(%piece_index, %added_to_cache, "Got piece from DSN cache successfully");
                 tx.unbounded_send((piece_index, Ok(Some(piece))))
                     .expect("This future isn't polled after receiver is dropped; qed");
             }
@@ -327,11 +329,11 @@ where
                 .map(|piece_index| async move {
                     match self.inner.node_client.piece(piece_index).await {
                         Ok(Some(piece)) => {
-                            trace!(%piece_index, "Got piece from node successfully");
-                            self.inner
+                            let added_to_cache = self.inner
                                 .farmer_caches
                                 .maybe_store_additional_piece(piece_index, &piece)
                                 .await;
+                            trace!(%piece_index, %added_to_cache, "Got piece from node successfully");
 
                             tx.unbounded_send((piece_index, Ok(Some(piece))))
                                 .expect("This future isn't polled after receiver is dropped; qed");
