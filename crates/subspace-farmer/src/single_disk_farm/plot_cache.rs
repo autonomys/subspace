@@ -229,8 +229,16 @@ impl DiskPlotCache {
         }
 
         let Some(file) = self.file.upgrade() else {
+            // File has been dropped, farm or process is shutting down
             return Ok(false);
         };
+
+        trace!(
+            %offset,
+            ?piece_index,
+            %plotted_sectors_count,
+            "Found available piece cache free space offset, writing piece",
+        );
 
         let write_fut = tokio::task::spawn_blocking({
             let piece_index_bytes = piece_index.to_bytes();

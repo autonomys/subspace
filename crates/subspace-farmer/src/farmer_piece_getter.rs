@@ -271,7 +271,8 @@ where
         let fut = async move {
             let tx = &tx;
 
-            debug!("Getting pieces from farmer cache");
+            let piece_count = piece_indices.len();
+            debug!(%piece_count, "Getting pieces from farmer cache");
             let mut pieces_not_found_in_farmer_cache = Vec::new();
             let mut pieces_in_farmer_cache =
                 self.inner.farmer_caches.get_pieces(piece_indices).await;
@@ -291,7 +292,8 @@ where
 
             debug!(
                 remaining_piece_count = %pieces_not_found_in_farmer_cache.len(),
-                "Getting pieces from DSN cache"
+                %piece_count,
+                "Getting pieces from DSN cache",
             );
             let mut pieces_not_found_in_dsn_cache = Vec::new();
             let mut pieces_in_dsn_cache = self
@@ -322,7 +324,8 @@ where
 
             debug!(
                 remaining_piece_count = %pieces_not_found_in_dsn_cache.len(),
-                "Getting pieces from node"
+                %piece_count,
+                "Getting pieces from node",
             );
             let pieces_not_found_on_node = pieces_not_found_in_dsn_cache
                 .into_iter()
@@ -361,7 +364,8 @@ where
 
             debug!(
                 remaining_piece_count = %pieces_not_found_on_node.len(),
-                "Some pieces were not easily reachable"
+                %piece_count,
+                "Some pieces were not easily reachable",
             );
             pieces_not_found_on_node
                 .into_iter()
