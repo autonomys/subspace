@@ -1540,7 +1540,7 @@ impl NodeRunner {
     }
 
     fn ban_peer(&mut self, peer_id: PeerId) {
-        // Remove temporary ban if there is any before creating a permanent one
+        // Remove temporary ban if there is one, before creating a permanent one.
         self.temporary_bans.lock().remove(&peer_id);
 
         debug!(?peer_id, "Banning peer on network level");

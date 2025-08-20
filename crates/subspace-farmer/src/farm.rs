@@ -137,7 +137,7 @@ pub trait PieceCache: Send + Sync + fmt::Debug {
         FarmError,
     >;
 
-    /// Store piece in cache at specified offset, replacing existing piece if there is any.
+    /// Store piece in cache at specified offset, replacing existing piece if there is one.
     ///
     /// NOTE: it is possible to do concurrent reads and writes, higher level logic must ensure this
     /// doesn't happen for the same piece being accessed!

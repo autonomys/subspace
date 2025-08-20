@@ -57,7 +57,7 @@ where
         }
     }
 
-    /// Polls the next entry in `in_progress` and moves the next task from `queue` to `in_progress` if there is any.
+    /// Polls the next entry in `in_progress` and moves the next task from `queue` to `in_progress` if there is one.
     /// If there are no more tasks to execute, returns `None`.
     fn poll_next_entry(&mut self, cx: &mut Context<'_>) -> Poll<Option<(Index, R)>> {
         if let Some((index, res)) = std::task::ready!(self.in_progress.poll_next_unpin(cx)) {

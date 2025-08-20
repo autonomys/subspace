@@ -170,7 +170,7 @@ impl DiskPlotCache {
 
         // Make sure offset is after anything that is already plotted
         if element_offset < plotted_bytes {
-            // Remove entry since it was overridden with a sector already
+            // Remove entry since it was overwritten with a sector already
             self.cached_pieces.write().map.remove(key);
             MaybePieceStoredResult::No
         } else {
@@ -216,7 +216,7 @@ impl DiskPlotCache {
 
         // Make sure offset is after anything that is already plotted
         if element_offset < plotted_bytes {
-            // Just to be safe, avoid any overlap of write locks
+            // Just to be safe, avoid any overlap of read and write locks
             drop(sectors_metadata);
             let mut cached_pieces = self.cached_pieces.write();
             // No space to store more pieces anymore
@@ -256,7 +256,7 @@ impl DiskPlotCache {
 
         AsyncJoinOnDrop::new(write_fut, false).await??;
 
-        // Just to be safe, avoid any overlap of write locks
+        // Just to be safe, avoid any overlap of read and write locks
         drop(sectors_metadata);
         // Store newly written piece in the map
         self.cached_pieces
