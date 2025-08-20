@@ -183,6 +183,14 @@ impl DiskPlotCache {
         piece: &Piece,
     ) -> Result<bool, DiskPlotCacheError> {
         let offset = {
+            // First, do a quick concurrent check for free space with a read lock, dropping it
+            // immediately.
+            if self.cached_pieces.read().next_offset.is_none() {
+                return Ok(false);
+            };
+
+            // Then, if there was free space, acquire a write lock, and check for intervening
+            // writes.
             let mut cached_pieces = self.cached_pieces.write();
             let Some(next_offset) = cached_pieces.next_offset else {
                 return Ok(false);
