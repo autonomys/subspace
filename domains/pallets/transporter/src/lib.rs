@@ -46,6 +46,10 @@ use sp_runtime::traits::{CheckedAdd, CheckedSub, Get};
 use sp_std::vec;
 pub use weights::WeightInfo;
 
+/// Zero EVM address.
+/// Used to ensure dst_account is not ZERO address.
+const ZERO_EVM_ADDRESS: MultiAccountId = MultiAccountId::AccountId20([0; 20]);
+
 /// Location that either sends or receives transfers between chains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Location {
@@ -77,7 +81,10 @@ type MessageIdOf<T> = <<T as Config>::Sender as sp_messenger::endpoint::Sender<
 #[frame_support::pallet]
 mod pallet {
     use crate::weights::WeightInfo;
-    use crate::{BalanceOf, Location, MessageIdOf, MultiAccountId, Transfer, TryConvertBack};
+    use crate::{
+        BalanceOf, Location, MessageIdOf, MultiAccountId, Transfer, TryConvertBack,
+        ZERO_EVM_ADDRESS,
+    };
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
     use frame_support::pallet_prelude::*;
@@ -252,6 +259,11 @@ mod pallet {
             ensure!(
                 amount >= T::MinimumTransfer::get(),
                 Error::<T>::MinimumTransferAmount
+            );
+
+            ensure!(
+                dst_location.account_id != ZERO_EVM_ADDRESS,
+                Error::<T>::InvalidAccountId
             );
 
             // burn transfer amount

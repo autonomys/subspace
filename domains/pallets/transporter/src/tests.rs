@@ -3,6 +3,7 @@ use crate::mock::{
     SelfChainId, SelfEndpointId, System, Transporter, USER_ACCOUNT, new_test_ext,
 };
 use crate::{EndpointHandler, Error, Location, Transfer};
+use domain_runtime_primitives::MultiAccountId;
 use frame_support::dispatch::DispatchResult;
 use frame_support::{assert_err, assert_ok};
 use parity_scale_codec::Encode;
@@ -174,6 +175,23 @@ fn test_transfer_response_invalid_request() {
         .encode();
         let res = submit_response(dst_chain_id, encoded_payload, Ok(vec![]));
         assert_err!(res, Error::<MockRuntime>::InvalidTransferRequest)
+    })
+}
+
+#[test]
+fn test_transfer_invalid_account_id() {
+    new_test_ext().execute_with(|| {
+        let account = USER_ACCOUNT;
+        let amount: Balance = 500;
+        // transfer 500 to dst_chain id 100
+        let dst_chain_id: ChainId = 1.into();
+        let dst_location = Location {
+            chain_id: dst_chain_id,
+            account_id: MultiAccountId::AccountId20([0; 20]),
+        };
+
+        let res = Transporter::transfer(RuntimeOrigin::signed(account), dst_location, amount);
+        assert_err!(res, Error::<MockRuntime>::InvalidAccountId)
     })
 }
 
