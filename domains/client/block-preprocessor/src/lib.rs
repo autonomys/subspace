@@ -401,7 +401,7 @@ where
             maybe_invalid_bundle_type.replace(InvalidBundleType::IllegalTx(extrinsic_index));
         }
 
-        // If there is any invalid tx then return the error before checking the bundle weight,
+        // If there is any invalid tx, then return the error before checking the bundle weight,
         // which is a check of the whole bundle and should only perform when all tx are valid.
         if let Some(invalid_bundle_type) = maybe_invalid_bundle_type {
             return Ok(BundleValidity::Invalid(invalid_bundle_type));

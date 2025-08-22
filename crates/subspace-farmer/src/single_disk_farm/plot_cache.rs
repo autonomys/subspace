@@ -22,7 +22,7 @@ use subspace_networking::utils::multihash::ToMultihash;
 use subspace_process::AsyncJoinOnDrop;
 use thiserror::Error;
 use tokio::task;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 /// Disk plot cache open error
 #[derive(Debug, Error)]
@@ -64,6 +64,8 @@ impl PlotCache for DiskPlotCache {
         Ok(self.is_piece_maybe_stored(key))
     }
 
+    /// Store piece in cache if there is free space, and return `Ok(true)`.
+    /// Returns `Ok(false)` if there is no free space, or the farm or process is shutting down.
     async fn try_store_piece(
         &self,
         piece_index: PieceIndex,
@@ -168,7 +170,7 @@ impl DiskPlotCache {
 
         // Make sure offset is after anything that is already plotted
         if element_offset < plotted_bytes {
-            // Remove entry since it was overridden with a sector already
+            // Remove entry since it was overwritten with a sector already
             self.cached_pieces.write().map.remove(key);
             MaybePieceStoredResult::No
         } else {
@@ -176,13 +178,22 @@ impl DiskPlotCache {
         }
     }
 
-    /// Store piece in cache if there is free space, otherwise `Ok(false)` is returned
+    /// Store piece in cache if there is free space, and return `Ok(true)`.
+    /// Returns `Ok(false)` if there is no free space, or the farm or process is shutting down.
     pub(crate) async fn try_store_piece(
         &self,
         piece_index: PieceIndex,
         piece: &Piece,
     ) -> Result<bool, DiskPlotCacheError> {
         let offset = {
+            // First, do a quick concurrent check for free space with a read lock, dropping it
+            // immediately.
+            if self.cached_pieces.read().next_offset.is_none() {
+                return Ok(false);
+            };
+
+            // Then, if there was free space, acquire a write lock, and check for intervening
+            // writes.
             let mut cached_pieces = self.cached_pieces.write();
             let Some(next_offset) = cached_pieces.next_offset else {
                 return Ok(false);
@@ -194,6 +205,7 @@ impl DiskPlotCache {
         };
 
         let Some(sectors_metadata) = self.sectors_metadata.upgrade() else {
+            // Metadata has been dropped, farm or process is shutting down
             return Ok(false);
         };
 
@@ -204,7 +216,7 @@ impl DiskPlotCache {
 
         // Make sure offset is after anything that is already plotted
         if element_offset < plotted_bytes {
-            // Just to be safe, avoid any overlap of write locks
+            // Just to be safe, avoid any overlap of read and write locks
             drop(sectors_metadata);
             let mut cached_pieces = self.cached_pieces.write();
             // No space to store more pieces anymore
@@ -217,8 +229,16 @@ impl DiskPlotCache {
         }
 
         let Some(file) = self.file.upgrade() else {
+            // File has been dropped, farm or process is shutting down
             return Ok(false);
         };
+
+        trace!(
+            %offset,
+            ?piece_index,
+            %plotted_sectors_count,
+            "Found available piece cache free space offset, writing piece",
+        );
 
         let write_fut = tokio::task::spawn_blocking({
             let piece_index_bytes = piece_index.to_bytes();
@@ -236,7 +256,7 @@ impl DiskPlotCache {
 
         AsyncJoinOnDrop::new(write_fut, false).await??;
 
-        // Just to be safe, avoid any overlap of write locks
+        // Just to be safe, avoid any overlap of read and write locks
         drop(sectors_metadata);
         // Store newly written piece in the map
         self.cached_pieces

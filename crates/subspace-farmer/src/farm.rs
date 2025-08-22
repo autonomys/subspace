@@ -137,7 +137,7 @@ pub trait PieceCache: Send + Sync + fmt::Debug {
         FarmError,
     >;
 
-    /// Store piece in cache at specified offset, replacing existing piece if there is any.
+    /// Store piece in cache at specified offset, replacing existing piece if there is one.
     ///
     /// NOTE: it is possible to do concurrent reads and writes, higher level logic must ensure this
     /// doesn't happen for the same piece being accessed!
@@ -194,11 +194,13 @@ pub trait PieceCache: Send + Sync + fmt::Debug {
 /// Result of piece storing check
 #[derive(Debug, Copy, Clone, Encode, Decode)]
 pub enum MaybePieceStoredResult {
-    /// Definitely not stored
+    /// Piece is not stored already, and can't be added because the cache/plot is full.
     No,
-    /// Maybe has vacant slot to store
+    /// Cache might have a vacant slot to store this piece.
+    /// Vacant slots are not guaranteed, they can be overwritten by another piece or newly plotted
+    /// sector at any time.
     Vacant,
-    /// Maybe still stored
+    /// Piece is already stored in the cache.
     Yes,
 }
 
@@ -210,14 +212,16 @@ pub enum MaybePieceStoredResult {
 /// again, which is slower and uses a lot of Internet bandwidth.
 #[async_trait]
 pub trait PlotCache: Send + Sync + fmt::Debug {
-    /// Check if piece is potentially stored in this cache (not guaranteed to be because it might be
-    /// overridden with sector any time)
+    /// Check if a piece is already stored in this cache, or it can be added to this cache.
+    /// The piece is not guaranteed to be stored, because it might be overwritten with a new
+    /// sector any time.
     async fn is_piece_maybe_stored(
         &self,
         key: &RecordKey,
     ) -> Result<MaybePieceStoredResult, FarmError>;
 
-    /// Store piece in cache if there is free space, otherwise `Ok(false)` is returned
+    /// Store piece in cache if there is free space, and return `Ok(true)`.
+    /// Returns `Ok(false)` if there is no free space, or the farm or process is shutting down.
     async fn try_store_piece(
         &self,
         piece_index: PieceIndex,
