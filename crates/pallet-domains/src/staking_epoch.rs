@@ -1045,7 +1045,7 @@ mod tests {
             (0, OperatorPair::from_seed(&[0; 32])),
             (1, OperatorPair::from_seed(&[1; 32])),
             (2, OperatorPair::from_seed(&[2; 32])),
-            (3, OperatorPair::from_seed(&[2; 32])),
+            (3, OperatorPair::from_seed(&[3; 32])),
         ];
 
         let mut ext = new_test_ext();
@@ -1114,7 +1114,7 @@ mod tests {
 
             // operator 1, 2, 3 should have share price
             // 1 received epoch rewards and still part of next operators
-            // 2, 3 not part of next operators but they got rewards so they
+            // 2, 3 not part of next operators, but they got rewards so they
             // should have the epoch rewards
             operator_share_price_exists(domain_id, vec![1, 2, 3], 3);
 
