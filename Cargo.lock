@@ -12612,6 +12612,7 @@ dependencies = [
  "domain-block-builder",
  "domain-block-preprocessor",
  "domain-runtime-primitives",
+ "domain-test-primitives",
  "domain-test-service",
  "domain-test-utils",
  "ethereum",
