@@ -32,8 +32,8 @@ use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::pallet_prelude::TypeInfo;
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, IsInherent, OnFinalize, Time,
-    VariantCount,
+    ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, IsInherent, OnFinalize,
+    OnUnbalanced, Time, VariantCount,
 };
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, Weight};
@@ -717,7 +717,11 @@ parameter_types! {
 
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
 
-type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, ()>;
+/// UnbalancedHandler that will just burn any unbalanced funds
+pub struct UnbalancedHandler {}
+impl OnUnbalanced<NegativeImbalance> for UnbalancedHandler {}
+
+type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, UnbalancedHandler>;
 
 // Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges evm transaction
 // fees from the transaction sender and collect all the fees (including both the base fee and tip) in
@@ -756,9 +760,11 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
     }
 
     fn pay_priority_fee(tip: Self::LiquidityInfo) {
-        <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::pay_priority_fee(
-            tip,
-        );
+        if let Some(fee) = tip {
+            // handle the priority fee just like the base fee.
+            // for eip-1559, total fees will be base_fee + priority_fee
+            UnbalancedHandler::on_unbalanced(fee)
+        }
     }
 }
 
