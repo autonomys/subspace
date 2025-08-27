@@ -1,4 +1,5 @@
 use domain_runtime_primitives::{Balance, CheckExtrinsicsValidityError};
+use domain_test_primitives::OnchainStateApi;
 use domain_test_service::EcdsaKeyring::{Alice, Charlie};
 use domain_test_service::EvmDomainNode;
 use domain_test_service::Sr25519Keyring::Ferdie;
@@ -6,7 +7,8 @@ use domain_test_service::evm_domain_test_runtime::{
     Runtime as TestRuntime, RuntimeCall, Signature, UncheckedExtrinsic as EvmUncheckedExtrinsic,
 };
 use domain_test_utils::test_ethereum::{
-    generate_eip1559_tx, generate_eip2930_tx, generate_legacy_tx,
+    generate_eip1559_transfer_txn, generate_eip1559_tx, generate_eip2930_transfer_txn,
+    generate_eip2930_tx, generate_legacy_transfer_txn, generate_legacy_tx,
 };
 use domain_test_utils::test_ethereum_tx::{AccountInfo, address_build};
 use ethereum::TransactionV2 as EthereumTransaction;
@@ -18,14 +20,14 @@ use sc_client_api::{HeaderBackend, StorageProof};
 use sc_service::{BasePath, Role};
 use sp_api::{ApiExt, ProvideRuntimeApi, TransactionOutcome};
 use sp_core::ecdsa::Pair;
-use sp_core::{Pair as _, U256, keccak_256};
+use sp_core::{H160, Pair as _, U256, keccak_256};
 use sp_domains::core_api::DomainCoreApi;
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime::traits::Zero;
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
+use subspace_runtime_primitives::AI3;
 use subspace_test_service::{MockConsensusNode, produce_block_with, produce_blocks};
 use tempfile::TempDir;
-
 // This function depends on the macro-constructed `TestRuntime::RuntimeCall` enum, so it can't be
 // shared via `sp_domains::test_ethereum`.
 
@@ -719,6 +721,175 @@ async fn test_evm_domain_block_fee() {
     );
     assert!(!domain_block_fees.consensus_storage_fee.is_zero());
     assert_eq!(domain_block_fees, receipt.block_fees().clone());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_evm_domain_total_issuance() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // create and fund account from alice
+    let from_account_info = address_build(10);
+    let to_account_info = address_build(11);
+    let zero_account = H160::zero();
+    let alice_nonce = alice.account_nonce();
+    for (i, (acc, balance)) in [
+        (from_account_info.address.0.into(), 10 * AI3),
+        // we need to create zero account since priority fee
+        // is given to zero account if the account exists with balance >= ED
+        (zero_account.into(), 2 * AI3),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let alice_balance_transfer_extrinsic = alice.construct_extrinsic(
+            alice_nonce + i as u32,
+            pallet_balances::Call::transfer_allow_death {
+                dest: acc,
+                value: balance,
+            },
+        );
+        alice
+            .send_extrinsic(alice_balance_transfer_extrinsic)
+            .await
+            .expect("Failed to send extrinsic");
+    }
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let pre_from_account_balance = alice.free_balance(from_account_info.address.0.into());
+    let pre_to_account_balance = alice.free_balance(to_account_info.address.0.into());
+    let pre_zero_account_balance = alice.free_balance(zero_account.into());
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    let pre_total_issuance = alice
+        .client
+        .runtime_api()
+        .total_issuance(alice.client.info().best_hash)
+        .unwrap();
+
+    // Construct and send evm transaction
+    #[allow(clippy::type_complexity)]
+    let tx_generators: Vec<
+        Box<dyn Fn(AccountInfo, U256, U256, H160, U256) -> EthereumTransaction>,
+    > = vec![
+        Box::new(generate_legacy_transfer_txn::<TestRuntime>),
+        Box::new(generate_eip1559_transfer_txn::<TestRuntime>),
+        Box::new(generate_eip2930_transfer_txn::<TestRuntime>),
+    ];
+
+    let nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, from_account_info.address)
+        .unwrap()
+        .nonce;
+    let tx_count = tx_generators.len();
+    for (i, tx_generator) in tx_generators.into_iter().enumerate() {
+        // actual balance transfer back to alice
+        let tx = generate_eth_domain_sc_extrinsic(tx_generator(
+            from_account_info.clone(),
+            nonce + i as u32,
+            gas_price,
+            to_account_info.address,
+            (2 * AI3).into(),
+        ));
+        alice
+            .send_extrinsic(tx)
+            .await
+            .expect("Failed to send extrinsic");
+    }
+
+    // Produce a bundle that contains the just sent extrinsic
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.extrinsics().len(), tx_count);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contain the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.into_receipt();
+    assert_eq!(*receipt.consensus_block_hash(), consensus_block_hash);
+
+    // All the transaction fee is collected as operator reward
+    let domain_block_fees = alice
+        .client
+        .runtime_api()
+        .block_fees(*receipt.domain_block_hash())
+        .unwrap();
+
+    let post_total_issuance = alice
+        .client
+        .runtime_api()
+        .total_issuance(alice.client.info().best_hash)
+        .unwrap();
+
+    let post_from_account_balance: Balance = alice.free_balance(from_account_info.address.0.into());
+    let post_to_account_balance: Balance = alice.free_balance(to_account_info.address.0.into());
+    let post_zero_account_balance = alice.free_balance(zero_account.into());
+    // gas limit used for transfer of value.
+    let transfer_gas_limit: Balance = 21_000;
+    // to account should have +6 AI3 transferred
+    assert_eq!(post_to_account_balance, pre_to_account_balance + (6 * AI3));
+    // total fees paid by the from_account is (gas_limit * gas_price) + priority fee for eip1559
+    // since priority fee per gas is set as max_gas_price
+    // for 3 transactions, a total of 3 base_gas_fee * used_gas_limit
+    // for eip1559, max_gas_price * used_gas_limit
+    let fees_paid: Balance = (3u128 * gas_price.as_u128() * transfer_gas_limit)
+        + (gas_price.as_u128() * transfer_gas_limit);
+    assert_eq!(
+        post_from_account_balance,
+        // post from_account balance is fees_paid + 6 AI3 transferred
+        pre_from_account_balance - (6 * AI3) - fees_paid
+    );
+
+    // zero balance account balance should not change
+    assert_eq!(pre_zero_account_balance, post_zero_account_balance);
+
+    // fees paid are the fees we have collected
+    assert_eq!(
+        fees_paid,
+        domain_block_fees.domain_execution_fee + domain_block_fees.consensus_storage_fee
+    );
+
+    assert!(!domain_block_fees.consensus_storage_fee.is_zero());
+    assert_eq!(domain_block_fees, receipt.block_fees().clone());
+
+    // total issuance is pre_issuance - fees_paid
+    assert_eq!(
+        pre_total_issuance,
+        post_total_issuance
+            + domain_block_fees.domain_execution_fee
+            + domain_block_fees.consensus_storage_fee
+    );
 }
 
 // #[tokio::test(flavor = "multi_thread")]

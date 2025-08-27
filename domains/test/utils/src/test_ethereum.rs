@@ -9,7 +9,7 @@ use frame_support::pallet_prelude::DispatchClass;
 use frame_system::pallet_prelude::RuntimeCallFor;
 use hex_literal::hex;
 use pallet_evm::GasWeightMapping;
-use sp_core::{Get, U256};
+use sp_core::{Get, H160, U256};
 use sp_domains::PermissionedActionAllowedBy;
 
 /// The kind of account list to generate.
@@ -121,6 +121,24 @@ pub fn max_extrinsic_gas<TestRuntime: frame_system::Config + pallet_evm::Config>
     <TestRuntime as pallet_evm::Config>::GasWeightMapping::weight_to_gas(max_extrinsic)
 }
 
+pub fn generate_legacy_transfer_txn<TestRuntime: frame_system::Config + pallet_evm::Config>(
+    account_info: AccountInfo,
+    nonce: U256,
+    gas_price: U256,
+    to: H160,
+    value: U256,
+) -> Transaction {
+    LegacyUnsignedTransaction {
+        nonce,
+        gas_price,
+        gas_limit: U256::from(21000),
+        action: ethereum::TransactionAction::Call(to),
+        value,
+        input: vec![],
+    }
+    .sign(&account_info.private_key)
+}
+
 pub fn generate_legacy_tx<TestRuntime: frame_system::Config + pallet_evm::Config>(
     account_info: AccountInfo,
     nonce: U256,
@@ -139,6 +157,24 @@ pub fn generate_legacy_tx<TestRuntime: frame_system::Config + pallet_evm::Config
     .sign(&account_info.private_key)
 }
 
+pub fn generate_eip2930_transfer_txn<TestRuntime: frame_system::Config + pallet_evm::Config>(
+    account_info: AccountInfo,
+    nonce: U256,
+    gas_price: U256,
+    to: H160,
+    value: U256,
+) -> Transaction {
+    EIP2930UnsignedTransaction {
+        nonce,
+        gas_price,
+        gas_limit: U256::from(21000),
+        action: ethereum::TransactionAction::Call(to),
+        value,
+        input: vec![],
+    }
+    .sign(&account_info.private_key, None)
+}
+
 pub fn generate_eip2930_tx<TestRuntime: frame_system::Config + pallet_evm::Config>(
     account_info: AccountInfo,
     nonce: U256,
@@ -153,6 +189,25 @@ pub fn generate_eip2930_tx<TestRuntime: frame_system::Config + pallet_evm::Confi
         action,
         value: U256::one(),
         input,
+    }
+    .sign(&account_info.private_key, None)
+}
+
+pub fn generate_eip1559_transfer_txn<TestRuntime: frame_system::Config + pallet_evm::Config>(
+    account_info: AccountInfo,
+    nonce: U256,
+    gas_price: U256,
+    to: H160,
+    value: U256,
+) -> Transaction {
+    EIP1559UnsignedTransaction {
+        nonce,
+        max_priority_fee_per_gas: gas_price,
+        max_fee_per_gas: gas_price.saturating_mul(U256::from(2)),
+        gas_limit: U256::from(21000),
+        action: ethereum::TransactionAction::Call(to),
+        value,
+        input: vec![],
     }
     .sign(&account_info.private_key, None)
 }
