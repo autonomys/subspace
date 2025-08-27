@@ -12445,6 +12445,7 @@ dependencies = [
  "sp-runtime-interface",
  "sp-std",
  "sp-timestamp",
+ "sp-weights",
  "subspace-core-primitives",
  "subspace-kzg",
  "subspace-proof-of-space",

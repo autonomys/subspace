@@ -166,6 +166,10 @@ sp_api::impl_runtime_apis! {
         fn chain_constants() -> ChainConstants {
             unreachable!()
         }
+
+        fn block_weight() -> Weight {
+            unreachable!()
+        }
     }
 
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
