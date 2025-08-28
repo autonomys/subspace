@@ -35,8 +35,10 @@ use sp_consensus_subspace::{PotNextSlotInput, SubspaceApi, SubspaceJustification
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::Justifications;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One};
+use sp_weights::constants::WEIGHT_REF_TIME_PER_MILLIS;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::time::Instant;
 use subspace_core_primitives::sectors::SectorId;
 use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
 use subspace_core_primitives::solutions::SolutionRange;
@@ -702,10 +704,41 @@ where
             // Wait for all the acknowledgements to finish.
         }
 
-        self.inner
+        let start = Instant::now();
+
+        let result = self
+            .inner
             .import_block(block)
             .await
-            .map_err(Error::InnerBlockImportError)
+            .map_err(Error::InnerBlockImportError)?;
+
+        let actual_execution_time_ms = start.elapsed().as_millis();
+
+        let runtime_api = self.client.runtime_api();
+        let best_hash = self.client.info().best_hash;
+        let subspace_api_version = runtime_api
+            .api_version::<dyn SubspaceApi<Block, PublicKey>>(best_hash)
+            .ok()
+            .flatten()
+            // It is safe to return a default version of 1, since there will always be version 1.
+            .unwrap_or(1);
+
+        if subspace_api_version < 2 {
+            return Ok(result);
+        }
+
+        let reference_execution_time_ms =
+            runtime_api.block_weight(best_hash)?.ref_time() / WEIGHT_REF_TIME_PER_MILLIS;
+
+        if actual_execution_time_ms > reference_execution_time_ms as u128 {
+            warn!(
+                ?best_hash,
+                ?reference_execution_time_ms,
+                "Slow Consensus block execution, took {actual_execution_time_ms} ms"
+            );
+        }
+
+        Ok(result)
     }
 
     async fn check_block(

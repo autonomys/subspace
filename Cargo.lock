@@ -10573,6 +10573,7 @@ dependencies = [
  "sp-inherents",
  "sp-objects",
  "sp-runtime",
+ "sp-weights",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
