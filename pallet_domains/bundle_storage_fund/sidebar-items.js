@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["STORAGE_FEE_RESERVE"],"enum":["AccountType","Error"],"fn":["charge_bundle_storage_fee","deposit_reserve_for_storage_fund","refund_storage_fee","storage_fund_account","storage_fund_redeem_price","total_balance","transfer_all_to_treasury","withdraw_and_hold","withdraw_to"],"struct":["StorageFundRedeemPrice"]};
