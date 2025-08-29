@@ -1525,6 +1525,10 @@ impl_runtime_apis! {
                 min_sector_lifetime: MinSectorLifetime::get(),
             }
         }
+
+        fn block_weight() -> Weight {
+            System::block_weight().total()
+        }
     }
 
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {

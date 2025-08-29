@@ -23,6 +23,7 @@ use sp_runtime::{ConsensusEngineId, Justification};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::num::NonZeroU32;
+use sp_weights::Weight;
 use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_core_primitives::pot::{PotCheckpoints, PotOutput, PotSeed};
 use subspace_core_primitives::segments::{
@@ -573,6 +574,7 @@ impl PotParameters {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
+    #[api_version(2)]
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
         /// Proof of time parameters
         fn pot_parameters() -> PotParameters;
@@ -613,6 +615,10 @@ sp_api::decl_runtime_apis! {
 
         /// Get Subspace blockchain constants
         fn chain_constants() -> ChainConstants;
+
+        /// Returns the consumed weight of the block.
+        /// Available from api_version >= 2
+        fn block_weight() -> Weight;
     }
 }
 

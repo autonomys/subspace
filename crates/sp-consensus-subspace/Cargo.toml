@@ -29,6 +29,7 @@ sp-runtime.workspace = true
 sp-runtime-interface.workspace = true
 sp-std.workspace = true
 sp-timestamp.workspace = true
+sp-weights.workspace = true
 subspace-core-primitives.workspace = true
 subspace-kzg = { workspace = true, optional = true }
 subspace-proof-of-space.workspace = true
@@ -54,6 +55,7 @@ std = [
     "sp-runtime-interface/std",
     "sp-std/std",
     "sp-timestamp/std",
+    "sp-weights/std",
     "subspace-core-primitives/std",
     "subspace-kzg/std",
     "subspace-proof-of-space/std",

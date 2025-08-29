@@ -39,6 +39,7 @@ sp-core.workspace = true
 sp-inherents.workspace = true
 sp-objects = { workspace = true, features = ["std"] }
 sp-runtime.workspace = true
+sp-weights.workspace = true
 subspace-archiving.workspace = true
 subspace-core-primitives.workspace = true
 subspace-erasure-coding.workspace = true
