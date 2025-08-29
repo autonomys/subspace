@@ -556,8 +556,7 @@ pub(crate) fn do_slash_operator<T: Config>(
             let nominator_reward = nominator_staked_amount
                 .checked_add(&amount_ready_to_withdraw)
                 .ok_or(TransitionError::BalanceOverflow)?
-                .checked_sub(&amount_to_slash_in_holding)
-                .ok_or(TransitionError::BalanceUnderflow)?;
+                .saturating_sub(amount_to_slash_in_holding);
 
             mint_into_treasury::<T>(nominator_reward)?;
 
