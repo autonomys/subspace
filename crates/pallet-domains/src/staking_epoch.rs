@@ -630,16 +630,17 @@ mod tests {
     };
     use crate::staking::tests::{Share, register_operator};
     use crate::staking::{
-        DomainEpoch, Error as TransitionError, Error, do_deregister_operator, do_nominate_operator,
-        do_reward_operators, do_unlock_nominator, do_withdraw_stake,
+        DomainEpoch, Error as TransitionError, Error, do_deregister_operator,
+        do_mark_operators_as_slashed, do_nominate_operator, do_reward_operators,
+        do_unlock_nominator, do_withdraw_stake,
     };
     use crate::staking_epoch::{
-        do_finalize_domain_current_epoch, operator_take_reward_tax_and_stake,
+        do_finalize_domain_current_epoch, do_slash_operator, operator_take_reward_tax_and_stake,
     };
     use crate::tests::{RuntimeOrigin, Test, new_test_ext};
     use crate::{
-        BalanceOf, Config, HoldIdentifier, InvalidBundleAuthors, NominatorId,
-        OperatorEpochSharePrice,
+        BalanceOf, Config, HoldIdentifier, InvalidBundleAuthors, MAX_NOMINATORS_TO_SLASH,
+        NominatorId, OperatorEpochSharePrice, SlashedReason,
     };
     #[cfg(not(feature = "std"))]
     use alloc::vec;
@@ -1124,5 +1125,44 @@ mod tests {
 
             assert_eq!(get_current_epoch(), 4);
         })
+    }
+
+    #[test]
+    fn slash_operator_with_underflow() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let pair = OperatorPair::from_seed(&[0; 32]);
+        let nominator_account = 2;
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                600 * AI3, // operator free balance
+                483 * AI3, // operator stake
+                10 * AI3,  // min nominator stake
+                pair.public(),
+                Percent::from_percent(60),
+                BTreeMap::from_iter([(2, (22 * AI3, 0))]),
+            );
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            do_reward_operators::<Test>(
+                domain_id,
+                OperatorRewardSource::Dummy,
+                vec![operator_id].into_iter(),
+                20 * AI3,
+            )
+            .unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            do_nominate_operator::<Test>(operator_id, nominator_account, 21 * AI3).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            do_mark_operators_as_slashed::<Test>(
+                vec![operator_id],
+                SlashedReason::InvalidBundle(0),
+            )
+            .unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            do_slash_operator::<Test>(domain_id, MAX_NOMINATORS_TO_SLASH).unwrap();
+        });
     }
 }
