@@ -564,7 +564,7 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
     Ok(())
 }
 
-pub(crate) fn do_nominate_operator<T: Config>(
+pub fn do_nominate_operator<T: Config>(
     operator_id: OperatorId,
     nominator_id: T::AccountId,
     amount: BalanceOf<T>,
@@ -652,7 +652,7 @@ pub(crate) fn hold_deposit<T: Config>(
     Ok(())
 }
 
-pub(crate) fn do_deregister_operator<T: Config>(
+pub fn do_deregister_operator<T: Config>(
     operator_owner: T::AccountId,
     operator_id: OperatorId,
 ) -> Result<(), Error> {
@@ -732,7 +732,7 @@ pub(crate) fn current_share_price<T: Config>(
 /// Absolute stake amount and percentage withdrawals can be handled in the frontend.
 /// Full stake withdrawals are handled by withdrawing everything, if the remaining number of shares
 /// is less than the minimum nominator stake, and the nominator is not the operator.
-pub(crate) fn do_withdraw_stake<T: Config>(
+pub fn do_withdraw_stake<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
     to_withdraw: T::Share,
@@ -930,7 +930,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 /// Unlocks any withdraws that are ready to be unlocked.
 ///
 /// Return the number of withdrawals being unlocked
-pub(crate) fn do_unlock_funds<T: Config>(
+pub fn do_unlock_funds<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
 ) -> Result<u32, Error> {
@@ -1087,9 +1087,8 @@ pub(crate) fn do_unlock_funds<T: Config>(
         Ok(withdrawal_count)
     })
 }
-
 /// Unlocks an already de-registered operator's nominator given unlock wait period is complete.
-pub(crate) fn do_unlock_nominator<T: Config>(
+pub fn do_unlock_nominator<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
 ) -> Result<(), Error> {
@@ -1296,7 +1295,7 @@ pub(crate) fn do_cleanup_operator<T: Config>(
 }
 
 /// Distribute the reward to the operators equally and drop any dust to treasury.
-pub(crate) fn do_reward_operators<T: Config>(
+pub fn do_reward_operators<T: Config>(
     domain_id: DomainId,
     source: OperatorRewardSource<BlockNumberFor<T>>,
     operators: IntoIter<OperatorId>,
@@ -1354,10 +1353,9 @@ pub(crate) fn do_reward_operators<T: Config>(
         )
     })
 }
-
 /// Freezes the slashed operators and moves the operator to be removed once the domain they are
 /// operating finishes the epoch.
-pub(crate) fn do_mark_operators_as_slashed<T: Config>(
+pub fn do_mark_operators_as_slashed<T: Config>(
     operator_ids: impl AsRef<[OperatorId]>,
     slash_reason: SlashedReason<DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
 ) -> Result<(), Error> {
@@ -1414,9 +1412,9 @@ pub(crate) fn do_mark_operators_as_slashed<T: Config>(
 
     Ok(())
 }
-
 /// Mark all the invalid bundle authors from this ER and remove them from operator set.
-pub(crate) fn do_mark_invalid_bundle_authors<T: Config>(
+/// NOTE: any changes to this must be reflected in the fuzz_utils' equivalent
+pub fn do_mark_invalid_bundle_authors<T: Config>(
     domain_id: DomainId,
     er: &ExecutionReceiptOf<T>,
 ) -> Result<(), Error> {
@@ -1444,8 +1442,7 @@ pub(crate) fn do_mark_invalid_bundle_authors<T: Config>(
     InvalidBundleAuthors::<T>::insert(domain_id, invalid_bundle_authors_in_epoch);
     Ok(())
 }
-
-pub(crate) fn mark_invalid_bundle_author<T: Config>(
+pub fn mark_invalid_bundle_author<T: Config>(
     operator_id: OperatorId,
     er_hash: ReceiptHashFor<T>,
     stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,
@@ -1483,11 +1480,11 @@ pub(crate) fn mark_invalid_bundle_author<T: Config>(
         Ok(())
     })
 }
-
 /// Unmark all the invalid bundle authors from this ER that were marked invalid.
 /// Assumed the ER is invalid and add the marked operators as registered and add them
 /// back to next operator set.
-pub(crate) fn do_unmark_invalid_bundle_authors<T: Config>(
+/// NOTE: any changes to this must be reflected in the fuzz_utils' equivalent
+pub fn do_unmark_invalid_bundle_authors<T: Config>(
     domain_id: DomainId,
     er: &ExecutionReceiptOf<T>,
 ) -> Result<(), Error> {
@@ -1517,8 +1514,7 @@ pub(crate) fn do_unmark_invalid_bundle_authors<T: Config>(
     InvalidBundleAuthors::<T>::insert(domain_id, invalid_bundle_authors_in_epoch);
     Ok(())
 }
-
-fn unmark_invalid_bundle_author<T: Config>(
+pub fn unmark_invalid_bundle_author<T: Config>(
     operator_id: OperatorId,
     er_hash: ReceiptHashFor<T>,
     stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,

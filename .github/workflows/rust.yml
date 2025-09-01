@@ -372,6 +372,20 @@ jobs:
         run: |
           scripts/runtime-benchmark.sh check
 
+  staking-fuzzer-build:
+    name: staking-fuzzer-build (Linux x86-64)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      
+      - name: install ziggy
+        run: cargo install --force ziggy cargo-afl honggfuzz grcov
+
+      - name: build fuzzer
+        run: scripts/build-fuzzer.sh
+
   # This job checks all crates individually, including no_std and other featureless builds.
   # We need to check crates individually for missing features, because cargo does feature
   # unification, which hides missing features when crates are built together.
@@ -499,6 +513,7 @@ jobs:
       - check-runtime-benchmarks
       - cargo-check-individually
       - cargo-unused-deps
+      - staking-fuzzer-build
     steps:
       - name: Check job statuses
         # Another hack is to actually check the status of the dependencies or else it'll fall through
@@ -511,3 +526,4 @@ jobs:
           [[ "${{ needs.check-runtime-benchmarks.result }}" == "success" ]] || exit 1
           [[ "${{ needs.cargo-check-individually.result }}" == "success" ]] || exit 1
           [[ "${{ needs.cargo-unused-deps.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.staking-fuzzer-build.result }}" == "success" ]] || exit 1
