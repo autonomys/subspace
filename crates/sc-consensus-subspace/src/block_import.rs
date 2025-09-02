@@ -727,8 +727,11 @@ where
             return Ok(result);
         }
 
+        // this is the actual reference execution time for the given block weight.
+        // but we need add some buffer here to allow for block import processing
+        // apart from the actual execution. A 200ms should be good enough.
         let reference_execution_time_ms =
-            runtime_api.block_weight(best_hash)?.ref_time() / WEIGHT_REF_TIME_PER_MILLIS;
+            (runtime_api.block_weight(best_hash)?.ref_time() / WEIGHT_REF_TIME_PER_MILLIS) + 200;
 
         if actual_execution_time_ms > reference_execution_time_ms as u128 {
             warn!(
