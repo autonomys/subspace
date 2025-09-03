@@ -15,7 +15,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::Balance;
-use tracing::log;
+use tracing::{info, log};
 
 pub(super) struct BundleProducerElectionSolver<Block, CBlock, CClient> {
     keystore: KeystorePtr,
@@ -94,6 +94,7 @@ where
                         total_domain_stake,
                         bundle_slot_probability,
                     ) else {
+                        info!("failed to calculate threshold.");
                         return Ok(None);
                     };
 
@@ -106,6 +107,8 @@ where
                             operator_id,
                         };
                         return Ok(Some((proof_of_election, operator_signing_key)));
+                    } else {
+                        info!("Did not meet threshold[{threshold}]. Skipping slot claim...");
                     }
                 } else {
                     log::warn!(

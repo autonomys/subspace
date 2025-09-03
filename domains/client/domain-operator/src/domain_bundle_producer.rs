@@ -216,6 +216,8 @@ where
             .runtime_api()
             .head_receipt_number(consensus_chain_best_hash, self.domain_id)?;
 
+        tracing::info!("New slot received: {slot:?}");
+
         // Operator is lagging behind the receipt chain on its parent chain as another operator
         // already processed a block higher than the local best and submitted the receipt to
         // the parent chain, we ought to catch up with the consensus block processing before
@@ -231,6 +233,7 @@ where
             return Ok(None);
         }
 
+        tracing::info!("Trying to claim slot: {slot:?}");
         if let Some((proof_of_election, operator_signing_key)) =
             self.bundle_producer_election_solver.solve_challenge(
                 *slot,
