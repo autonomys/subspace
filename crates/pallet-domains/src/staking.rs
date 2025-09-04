@@ -564,68 +564,70 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
     Ok(())
 }
 
-pub(crate) fn do_nominate_operator<T: Config>(
-    operator_id: OperatorId,
-    nominator_id: T::AccountId,
-    amount: BalanceOf<T>,
-) -> Result<(), Error> {
-    ensure!(!amount.is_zero(), Error::ZeroDeposit);
+crate::vis_macro::make_pub_if_fuzz! {
+    fn do_nominate_operator<T: Config>(
+        operator_id: OperatorId,
+        nominator_id: T::AccountId,
+        amount: BalanceOf<T>,
+    ) -> Result<(), Error> {
+        ensure!(!amount.is_zero(), Error::ZeroDeposit);
 
-    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
-        let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
+        Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+            let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
 
-        ensure!(
-            *operator.status::<T>(operator_id) == OperatorStatus::Registered,
-            Error::OperatorNotRegistered
-        );
+            ensure!(
+                *operator.status::<T>(operator_id) == OperatorStatus::Registered,
+                Error::OperatorNotRegistered
+            );
 
-        // If this is the first staking request of this operator `note_pending_staking_operation` for it
-        if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
-            note_pending_staking_operation::<T>(operator.current_domain_id)?;
-        }
+            // If this is the first staking request of this operator `note_pending_staking_operation` for it
+            if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
+                note_pending_staking_operation::<T>(operator.current_domain_id)?;
+            }
 
-        let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
-            .ok_or(Error::DomainNotInitialized)?;
+            let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
+                .ok_or(Error::DomainNotInitialized)?;
 
-        // Reserve for the bundle storage fund
-        let new_deposit = deposit_reserve_for_storage_fund::<T>(operator_id, &nominator_id, amount)
-            .map_err(Error::BundleStorageFund)?;
+            // Reserve for the bundle storage fund
+            let new_deposit = deposit_reserve_for_storage_fund::<T>(operator_id, &nominator_id, amount)
+                .map_err(Error::BundleStorageFund)?;
 
-        hold_deposit::<T>(&nominator_id, operator_id, new_deposit.staking)?;
-        Pallet::<T>::deposit_event(Event::OperatorNominated {
-            operator_id,
-            nominator_id: nominator_id.clone(),
-            amount: new_deposit.staking,
-        });
+            hold_deposit::<T>(&nominator_id, operator_id, new_deposit.staking)?;
+            Pallet::<T>::deposit_event(Event::OperatorNominated {
+                operator_id,
+                nominator_id: nominator_id.clone(),
+                amount: new_deposit.staking,
+            });
 
-        // increment total deposit for operator pool within this epoch
-        operator.deposits_in_epoch = operator
-            .deposits_in_epoch
-            .checked_add(&new_deposit.staking)
-            .ok_or(Error::BalanceOverflow)?;
+            // increment total deposit for operator pool within this epoch
+            operator.deposits_in_epoch = operator
+                .deposits_in_epoch
+                .checked_add(&new_deposit.staking)
+                .ok_or(Error::BalanceOverflow)?;
 
-        // Increase total storage fee deposit as there is new deposit to the storage fund
-        operator.total_storage_fee_deposit = operator
-            .total_storage_fee_deposit
-            .checked_add(&new_deposit.storage_fee_deposit)
-            .ok_or(Error::BalanceOverflow)?;
+            // Increase total storage fee deposit as there is new deposit to the storage fund
+            operator.total_storage_fee_deposit = operator
+                .total_storage_fee_deposit
+                .checked_add(&new_deposit.storage_fee_deposit)
+                .ok_or(Error::BalanceOverflow)?;
 
-        let current_domain_epoch = (
-            operator.current_domain_id,
-            domain_stake_summary.current_epoch_index,
-        )
-            .into();
+            let current_domain_epoch = (
+                operator.current_domain_id,
+                domain_stake_summary.current_epoch_index,
+            )
+                .into();
 
-        do_calculate_previous_epoch_deposit_shares_and_add_new_deposit::<T>(
-            operator_id,
-            nominator_id,
-            current_domain_epoch,
-            new_deposit,
-            Some(operator.minimum_nominator_stake),
-        )?;
+            do_calculate_previous_epoch_deposit_shares_and_add_new_deposit::<T>(
+                operator_id,
+                nominator_id,
+                current_domain_epoch,
+                new_deposit,
+                Some(operator.minimum_nominator_stake),
+            )?;
 
-        Ok(())
-    })
+            Ok(())
+        })
+    }
 }
 
 pub(crate) fn hold_deposit<T: Config>(
@@ -652,52 +654,54 @@ pub(crate) fn hold_deposit<T: Config>(
     Ok(())
 }
 
-pub(crate) fn do_deregister_operator<T: Config>(
-    operator_owner: T::AccountId,
-    operator_id: OperatorId,
-) -> Result<(), Error> {
-    ensure!(
-        OperatorIdOwner::<T>::get(operator_id) == Some(operator_owner),
-        Error::NotOperatorOwner
-    );
-
-    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
-        let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
-
+crate::vis_macro::make_pub_if_fuzz! {
+    fn do_deregister_operator<T: Config>(
+        operator_owner: T::AccountId,
+        operator_id: OperatorId,
+    ) -> Result<(), Error> {
         ensure!(
-            *operator.status::<T>(operator_id) == OperatorStatus::Registered,
-            Error::OperatorNotRegistered
+            OperatorIdOwner::<T>::get(operator_id) == Some(operator_owner),
+            Error::NotOperatorOwner
         );
 
-        DomainStakingSummary::<T>::try_mutate(
-            operator.current_domain_id,
-            |maybe_domain_stake_summary| {
-                let stake_summary = maybe_domain_stake_summary
-                    .as_mut()
-                    .ok_or(Error::DomainNotInitialized)?;
+        Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+            let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
 
-                let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
-                let unlock_operator_at_domain_block_number = head_domain_number
-                    .checked_add(&T::StakeWithdrawalLockingPeriod::get())
-                    .ok_or(Error::BlockNumberOverflow)?;
-                let operator_deregister_info = (
-                    operator.current_domain_id,
-                    stake_summary.current_epoch_index,
-                    unlock_operator_at_domain_block_number,
-                )
-                    .into();
+            ensure!(
+                *operator.status::<T>(operator_id) == OperatorStatus::Registered,
+                Error::OperatorNotRegistered
+            );
 
-                operator.update_status(OperatorStatus::Deregistered(operator_deregister_info));
+            DomainStakingSummary::<T>::try_mutate(
+                operator.current_domain_id,
+                |maybe_domain_stake_summary| {
+                    let stake_summary = maybe_domain_stake_summary
+                        .as_mut()
+                        .ok_or(Error::DomainNotInitialized)?;
 
-                stake_summary.next_operators.remove(&operator_id);
+                    let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
+                    let unlock_operator_at_domain_block_number = head_domain_number
+                        .checked_add(&T::StakeWithdrawalLockingPeriod::get())
+                        .ok_or(Error::BlockNumberOverflow)?;
+                    let operator_deregister_info = (
+                        operator.current_domain_id,
+                        stake_summary.current_epoch_index,
+                        unlock_operator_at_domain_block_number,
+                    )
+                        .into();
 
-                DeregisteredOperators::<T>::mutate(operator.current_domain_id, |operators| {
-                    operators.insert(operator_id)
-                });
-                Ok(())
-            },
-        )
-    })
+                    operator.update_status(OperatorStatus::Deregistered(operator_deregister_info));
+
+                    stake_summary.next_operators.remove(&operator_id);
+
+                    DeregisteredOperators::<T>::mutate(operator.current_domain_id, |operators| {
+                        operators.insert(operator_id)
+                    });
+                    Ok(())
+                },
+            )
+        })
+    }
 }
 
 /// A helper function used to calculate the share price at this instant
@@ -724,551 +728,557 @@ pub(crate) fn current_share_price<T: Config>(
     SharePrice::new::<T>(operator.current_total_shares, total_stake)
 }
 
-/// Withdraw some or all of the stake, using an amount of shares.
-///
-/// Withdrawal validity depends on the current share price and number of shares, so requests can
-/// pass the initial checks, but fail because the most recent share amount is lower than expected.
-///
-/// Absolute stake amount and percentage withdrawals can be handled in the frontend.
-/// Full stake withdrawals are handled by withdrawing everything, if the remaining number of shares
-/// is less than the minimum nominator stake, and the nominator is not the operator.
-pub(crate) fn do_withdraw_stake<T: Config>(
-    operator_id: OperatorId,
-    nominator_id: NominatorId<T>,
-    to_withdraw: T::Share,
-) -> Result<(), Error> {
-    // Some withdraws are always zero, others require calculations to check if they are zero.
-    // So this check is redundant, but saves us some work if the request will always be rejected.
-    ensure!(!to_withdraw.is_zero(), Error::ZeroWithdraw);
+crate::vis_macro::make_pub_if_fuzz! {
+    /// Withdraw some or all of the stake, using an amount of shares.
+    ///
+    /// Withdrawal validity depends on the current share price and number of shares, so requests can
+    /// pass the initial checks, but fail because the most recent share amount is lower than expected.
+    ///
+    /// Absolute stake amount and percentage withdrawals can be handled in the frontend.
+    /// Full stake withdrawals are handled by withdrawing everything, if the remaining number of shares
+    /// is less than the minimum nominator stake, and the nominator is not the operator.
+    fn do_withdraw_stake<T: Config>(
+        operator_id: OperatorId,
+        nominator_id: NominatorId<T>,
+        to_withdraw: T::Share,
+    ) -> Result<(), Error> {
+        // Some withdraws are always zero, others require calculations to check if they are zero.
+        // So this check is redundant, but saves us some work if the request will always be rejected.
+        ensure!(!to_withdraw.is_zero(), Error::ZeroWithdraw);
 
-    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
-        let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
+        Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+            let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
+            ensure!(
+                *operator.status::<T>(operator_id) == OperatorStatus::Registered,
+                Error::OperatorNotRegistered
+            );
+
+            // If this is the first staking request of this operator `note_pending_staking_operation` for it
+            if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
+                note_pending_staking_operation::<T>(operator.current_domain_id)?;
+            }
+
+            // calculate shares for any previous epoch
+            let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
+                .ok_or(Error::DomainNotInitialized)?;
+            let domain_current_epoch = (
+                operator.current_domain_id,
+                domain_stake_summary.current_epoch_index,
+            )
+                .into();
+
+            let known_shares =
+                Deposits::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_deposit| {
+                    let deposit = maybe_deposit.as_mut().ok_or(Error::UnknownNominator)?;
+                    do_convert_previous_epoch_deposits::<T>(
+                        operator_id,
+                        deposit,
+                        domain_stake_summary.current_epoch_index,
+                    )?;
+                    Ok(deposit.known.shares)
+                })?;
+
+            Withdrawals::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_withdrawal| {
+                if let Some(withdrawal) = maybe_withdrawal {
+                    do_convert_previous_epoch_withdrawal::<T>(
+                        operator_id,
+                        withdrawal,
+                        domain_stake_summary.current_epoch_index,
+                    )?;
+                    if withdrawal.withdrawals.len() as u32 >= T::WithdrawalLimit::get() {
+                        return Err(Error::TooManyWithdrawals);
+                    }
+                }
+                Ok(())
+            })?;
+
+            let operator_owner =
+                OperatorIdOwner::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
+
+            let is_operator_owner = operator_owner == nominator_id;
+
+            Deposits::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_deposit| {
+                let deposit = maybe_deposit.as_mut().ok_or(Error::UnknownNominator)?;
+
+                let (remaining_shares, shares_withdrew) = {
+                    let remaining_shares = known_shares
+                        .checked_sub(&to_withdraw)
+                        .ok_or(Error::InsufficientShares)?;
+
+                    // short circuit to check if remaining shares can be zero
+                    if remaining_shares.is_zero() {
+                        if is_operator_owner {
+                            return Err(Error::MinimumOperatorStake);
+                        }
+
+                        (remaining_shares, to_withdraw)
+                    } else {
+                        let share_price =
+                            current_share_price::<T>(operator_id, operator, &domain_stake_summary)?;
+
+                        let remaining_storage_fee =
+                            Perquintill::from_rational(remaining_shares.into(), known_shares.into())
+                                .mul_floor(deposit.known.storage_fee_deposit);
+
+                        let remaining_stake = share_price
+                            .shares_to_stake::<T>(remaining_shares)
+                            .checked_add(&remaining_storage_fee)
+                            .ok_or(Error::BalanceOverflow)?;
+
+                        // ensure the remaining share value is at least the defined MinOperatorStake if
+                        // a nominator is the operator pool owner
+                        if is_operator_owner && remaining_stake.lt(&T::MinOperatorStake::get()) {
+                            return Err(Error::MinimumOperatorStake);
+                        }
+
+                        // if not an owner, if remaining balance < MinNominatorStake, then withdraw all shares.
+                        if !is_operator_owner && remaining_stake.lt(&operator.minimum_nominator_stake) {
+                            (T::Share::zero(), known_shares)
+                        } else {
+                            (remaining_shares, to_withdraw)
+                        }
+                    }
+                };
+
+                // Withdraw storage fund, the `withdraw_storage_fee` amount of fund will be transferred
+                // and hold on the nominator account
+                let storage_fee_to_withdraw =
+                    Perquintill::from_rational(shares_withdrew.into(), known_shares.into())
+                        .mul_floor(deposit.known.storage_fee_deposit);
+
+                let withdraw_storage_fee = {
+                    let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
+                        operator_id,
+                        operator.total_storage_fee_deposit,
+                    );
+                    bundle_storage_fund::withdraw_and_hold::<T>(
+                        operator_id,
+                        &nominator_id,
+                        storage_fund_redeem_price.redeem(storage_fee_to_withdraw),
+                    )
+                    .map_err(Error::BundleStorageFund)?
+                };
+
+                deposit.known.storage_fee_deposit = deposit
+                    .known
+                    .storage_fee_deposit
+                    .checked_sub(&storage_fee_to_withdraw)
+                    .ok_or(Error::BalanceOverflow)?;
+
+                operator.total_storage_fee_deposit = operator
+                    .total_storage_fee_deposit
+                    .checked_sub(&storage_fee_to_withdraw)
+                    .ok_or(Error::BalanceOverflow)?;
+
+                // update operator pool to note withdrew shares in the epoch
+                operator.withdrawals_in_epoch = operator
+                    .withdrawals_in_epoch
+                    .checked_add(&shares_withdrew)
+                    .ok_or(Error::ShareOverflow)?;
+
+                deposit.known.shares = remaining_shares;
+                if remaining_shares.is_zero()
+                    && let Some(pending_deposit) = deposit.pending
+                {
+                    // if there is a pending deposit, then ensure
+                    // the new deposit is atleast minimum nominator stake
+                    ensure!(
+                        pending_deposit.total()? >= operator.minimum_nominator_stake,
+                        Error::MinimumNominatorStake
+                    );
+                }
+
+                let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
+                let unlock_at_confirmed_domain_block_number = head_domain_number
+                    .checked_add(&T::StakeWithdrawalLockingPeriod::get())
+                    .ok_or(Error::BlockNumberOverflow)?;
+
+                Withdrawals::<T>::try_mutate(operator_id, nominator_id, |maybe_withdrawal| {
+                    let mut withdrawal = maybe_withdrawal.take().unwrap_or_default();
+                    // if this is some, then the withdrawal was initiated in this current epoch due to conversion
+                    // of previous epoch withdrawals from shares to balances above. So just update it instead
+                    let new_withdrawal_in_shares = match withdrawal.withdrawal_in_shares.take() {
+                        Some(WithdrawalInShares {
+                            shares,
+                            storage_fee_refund,
+                            ..
+                        }) => WithdrawalInShares {
+                            domain_epoch: domain_current_epoch,
+                            shares: shares
+                                .checked_add(&shares_withdrew)
+                                .ok_or(Error::ShareOverflow)?,
+                            unlock_at_confirmed_domain_block_number,
+                            storage_fee_refund: storage_fee_refund
+                                .checked_add(&withdraw_storage_fee)
+                                .ok_or(Error::BalanceOverflow)?,
+                        },
+                        None => WithdrawalInShares {
+                            domain_epoch: domain_current_epoch,
+                            unlock_at_confirmed_domain_block_number,
+                            shares: shares_withdrew,
+                            storage_fee_refund: withdraw_storage_fee,
+                        },
+                    };
+                    withdrawal.withdrawal_in_shares = Some(new_withdrawal_in_shares);
+                    withdrawal.total_storage_fee_withdrawal = withdrawal
+                        .total_storage_fee_withdrawal
+                        .checked_add(&withdraw_storage_fee)
+                        .ok_or(Error::BalanceOverflow)?;
+
+                    *maybe_withdrawal = Some(withdrawal);
+                    Ok(())
+                })
+            })
+        })
+    }
+}
+
+crate::vis_macro::make_pub_if_fuzz! {
+    /// Unlocks any withdraws that are ready to be unlocked.
+    ///
+    /// Return the number of withdrawals being unlocked
+    fn do_unlock_funds<T: Config>(
+        operator_id: OperatorId,
+        nominator_id: NominatorId<T>,
+    ) -> Result<u32, Error> {
+        let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
         ensure!(
             *operator.status::<T>(operator_id) == OperatorStatus::Registered,
             Error::OperatorNotRegistered
-        );
-
-        // If this is the first staking request of this operator `note_pending_staking_operation` for it
-        if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
-            note_pending_staking_operation::<T>(operator.current_domain_id)?;
-        }
-
-        // calculate shares for any previous epoch
-        let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
-            .ok_or(Error::DomainNotInitialized)?;
-        let domain_current_epoch = (
-            operator.current_domain_id,
-            domain_stake_summary.current_epoch_index,
-        )
-            .into();
-
-        let known_shares =
-            Deposits::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_deposit| {
-                let deposit = maybe_deposit.as_mut().ok_or(Error::UnknownNominator)?;
-                do_convert_previous_epoch_deposits::<T>(
-                    operator_id,
-                    deposit,
-                    domain_stake_summary.current_epoch_index,
-                )?;
-                Ok(deposit.known.shares)
-            })?;
-
-        Withdrawals::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_withdrawal| {
-            if let Some(withdrawal) = maybe_withdrawal {
-                do_convert_previous_epoch_withdrawal::<T>(
-                    operator_id,
-                    withdrawal,
-                    domain_stake_summary.current_epoch_index,
-                )?;
-                if withdrawal.withdrawals.len() as u32 >= T::WithdrawalLimit::get() {
-                    return Err(Error::TooManyWithdrawals);
-                }
-            }
-            Ok(())
-        })?;
-
-        let operator_owner =
-            OperatorIdOwner::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
-
-        let is_operator_owner = operator_owner == nominator_id;
-
-        Deposits::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_deposit| {
-            let deposit = maybe_deposit.as_mut().ok_or(Error::UnknownNominator)?;
-
-            let (remaining_shares, shares_withdrew) = {
-                let remaining_shares = known_shares
-                    .checked_sub(&to_withdraw)
-                    .ok_or(Error::InsufficientShares)?;
-
-                // short circuit to check if remaining shares can be zero
-                if remaining_shares.is_zero() {
-                    if is_operator_owner {
-                        return Err(Error::MinimumOperatorStake);
-                    }
-
-                    (remaining_shares, to_withdraw)
-                } else {
-                    let share_price =
-                        current_share_price::<T>(operator_id, operator, &domain_stake_summary)?;
-
-                    let remaining_storage_fee =
-                        Perquintill::from_rational(remaining_shares.into(), known_shares.into())
-                            .mul_floor(deposit.known.storage_fee_deposit);
-
-                    let remaining_stake = share_price
-                        .shares_to_stake::<T>(remaining_shares)
-                        .checked_add(&remaining_storage_fee)
-                        .ok_or(Error::BalanceOverflow)?;
-
-                    // ensure the remaining share value is at least the defined MinOperatorStake if
-                    // a nominator is the operator pool owner
-                    if is_operator_owner && remaining_stake.lt(&T::MinOperatorStake::get()) {
-                        return Err(Error::MinimumOperatorStake);
-                    }
-
-                    // if not an owner, if remaining balance < MinNominatorStake, then withdraw all shares.
-                    if !is_operator_owner && remaining_stake.lt(&operator.minimum_nominator_stake) {
-                        (T::Share::zero(), known_shares)
-                    } else {
-                        (remaining_shares, to_withdraw)
-                    }
-                }
-            };
-
-            // Withdraw storage fund, the `withdraw_storage_fee` amount of fund will be transferred
-            // and hold on the nominator account
-            let storage_fee_to_withdraw =
-                Perquintill::from_rational(shares_withdrew.into(), known_shares.into())
-                    .mul_floor(deposit.known.storage_fee_deposit);
-
-            let withdraw_storage_fee = {
-                let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
-                    operator_id,
-                    operator.total_storage_fee_deposit,
-                );
-                bundle_storage_fund::withdraw_and_hold::<T>(
-                    operator_id,
-                    &nominator_id,
-                    storage_fund_redeem_price.redeem(storage_fee_to_withdraw),
-                )
-                .map_err(Error::BundleStorageFund)?
-            };
-
-            deposit.known.storage_fee_deposit = deposit
-                .known
-                .storage_fee_deposit
-                .checked_sub(&storage_fee_to_withdraw)
-                .ok_or(Error::BalanceOverflow)?;
-
-            operator.total_storage_fee_deposit = operator
-                .total_storage_fee_deposit
-                .checked_sub(&storage_fee_to_withdraw)
-                .ok_or(Error::BalanceOverflow)?;
-
-            // update operator pool to note withdrew shares in the epoch
-            operator.withdrawals_in_epoch = operator
-                .withdrawals_in_epoch
-                .checked_add(&shares_withdrew)
-                .ok_or(Error::ShareOverflow)?;
-
-            deposit.known.shares = remaining_shares;
-            if remaining_shares.is_zero()
-                && let Some(pending_deposit) = deposit.pending
-            {
-                // if there is a pending deposit, then ensure
-                // the new deposit is atleast minimum nominator stake
-                ensure!(
-                    pending_deposit.total()? >= operator.minimum_nominator_stake,
-                    Error::MinimumNominatorStake
-                );
-            }
-
-            let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
-            let unlock_at_confirmed_domain_block_number = head_domain_number
-                .checked_add(&T::StakeWithdrawalLockingPeriod::get())
-                .ok_or(Error::BlockNumberOverflow)?;
-
-            Withdrawals::<T>::try_mutate(operator_id, nominator_id, |maybe_withdrawal| {
-                let mut withdrawal = maybe_withdrawal.take().unwrap_or_default();
-                // if this is some, then the withdrawal was initiated in this current epoch due to conversion
-                // of previous epoch withdrawals from shares to balances above. So just update it instead
-                let new_withdrawal_in_shares = match withdrawal.withdrawal_in_shares.take() {
-                    Some(WithdrawalInShares {
-                        shares,
-                        storage_fee_refund,
-                        ..
-                    }) => WithdrawalInShares {
-                        domain_epoch: domain_current_epoch,
-                        shares: shares
-                            .checked_add(&shares_withdrew)
-                            .ok_or(Error::ShareOverflow)?,
-                        unlock_at_confirmed_domain_block_number,
-                        storage_fee_refund: storage_fee_refund
-                            .checked_add(&withdraw_storage_fee)
-                            .ok_or(Error::BalanceOverflow)?,
-                    },
-                    None => WithdrawalInShares {
-                        domain_epoch: domain_current_epoch,
-                        unlock_at_confirmed_domain_block_number,
-                        shares: shares_withdrew,
-                        storage_fee_refund: withdraw_storage_fee,
-                    },
-                };
-                withdrawal.withdrawal_in_shares = Some(new_withdrawal_in_shares);
-                withdrawal.total_storage_fee_withdrawal = withdrawal
-                    .total_storage_fee_withdrawal
-                    .checked_add(&withdraw_storage_fee)
-                    .ok_or(Error::BalanceOverflow)?;
-
-                *maybe_withdrawal = Some(withdrawal);
-                Ok(())
-            })
-        })
-    })
-}
-
-/// Unlocks any withdraws that are ready to be unlocked.
-///
-/// Return the number of withdrawals being unlocked
-pub(crate) fn do_unlock_funds<T: Config>(
-    operator_id: OperatorId,
-    nominator_id: NominatorId<T>,
-) -> Result<u32, Error> {
-    let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
-    ensure!(
-        *operator.status::<T>(operator_id) == OperatorStatus::Registered,
-        Error::OperatorNotRegistered
-    );
-
-    let current_domain_epoch_index = DomainStakingSummary::<T>::get(operator.current_domain_id)
-        .ok_or(Error::DomainNotInitialized)?
-        .current_epoch_index;
-
-    Withdrawals::<T>::try_mutate_exists(operator_id, nominator_id.clone(), |maybe_withdrawal| {
-        let withdrawal = maybe_withdrawal.as_mut().ok_or(Error::MissingWithdrawal)?;
-        do_convert_previous_epoch_withdrawal::<T>(
-            operator_id,
-            withdrawal,
-            current_domain_epoch_index,
-        )?;
-
-        ensure!(!withdrawal.withdrawals.is_empty(), Error::MissingWithdrawal);
-
-        let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
-
-        let mut withdrawal_count = 0;
-        let mut total_unlocked_amount = BalanceOf::<T>::zero();
-        let mut total_storage_fee_refund = BalanceOf::<T>::zero();
-        loop {
-            if withdrawal
-                .withdrawals
-                .front()
-                .map(|w| w.unlock_at_confirmed_domain_block_number > head_domain_number)
-                .unwrap_or(true)
-            {
-                break;
-            }
-
-            let WithdrawalInBalance {
-                amount_to_unlock,
-                storage_fee_refund,
-                ..
-            } = withdrawal
-                .withdrawals
-                .pop_front()
-                .expect("Must not empty as checked above; qed");
-
-            total_unlocked_amount = total_unlocked_amount
-                .checked_add(&amount_to_unlock)
-                .ok_or(Error::BalanceOverflow)?;
-
-            total_storage_fee_refund = total_storage_fee_refund
-                .checked_add(&storage_fee_refund)
-                .ok_or(Error::BalanceOverflow)?;
-
-            withdrawal_count += 1;
-        }
-
-        // There is withdrawal but none being processed meaning the first withdrawal's unlock period has
-        // not completed yet
-        ensure!(
-            !total_unlocked_amount.is_zero() || !total_storage_fee_refund.is_zero(),
-            Error::UnlockPeriodNotComplete
-        );
-
-        // deduct the amount unlocked from total
-        withdrawal.total_withdrawal_amount = withdrawal
-            .total_withdrawal_amount
-            .checked_sub(&total_unlocked_amount)
-            .ok_or(Error::BalanceUnderflow)?;
-
-        withdrawal.total_storage_fee_withdrawal = withdrawal
-            .total_storage_fee_withdrawal
-            .checked_sub(&total_storage_fee_refund)
-            .ok_or(Error::BalanceUnderflow)?;
-
-        // If the amount to release is more than currently locked,
-        // mint the diff and release the rest
-        let (amount_to_mint, amount_to_release) = DepositOnHold::<T>::try_mutate(
-            (operator_id, nominator_id.clone()),
-            |deposit_on_hold| {
-                let amount_to_release = total_unlocked_amount.min(*deposit_on_hold);
-                let amount_to_mint = total_unlocked_amount.saturating_sub(*deposit_on_hold);
-
-                *deposit_on_hold = deposit_on_hold.saturating_sub(amount_to_release);
-
-                Ok((amount_to_mint, amount_to_release))
-            },
-        )?;
-
-        // Mint any gains
-        if !amount_to_mint.is_zero() {
-            mint_funds::<T>(&nominator_id, amount_to_mint)?;
-        }
-        // Release staking fund
-        if !amount_to_release.is_zero() {
-            let staked_hold_id = T::HoldIdentifier::staking_staked();
-            T::Currency::release(
-                &staked_hold_id,
-                &nominator_id,
-                amount_to_release,
-                Precision::Exact,
-            )
-            .map_err(|_| Error::RemoveLock)?;
-        }
-
-        Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
-            operator_id,
-            nominator_id: nominator_id.clone(),
-            unlocked_amount: total_unlocked_amount,
-        });
-
-        // Release storage fund
-        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal();
-        T::Currency::release(
-            &storage_fund_hold_id,
-            &nominator_id,
-            total_storage_fee_refund,
-            Precision::Exact,
-        )
-        .map_err(|_| Error::RemoveLock)?;
-
-        Pallet::<T>::deposit_event(Event::StorageFeeUnlocked {
-            operator_id,
-            nominator_id: nominator_id.clone(),
-            storage_fee: total_storage_fee_refund,
-        });
-
-        // if there are no withdrawals, then delete the storage as well
-        if withdrawal.withdrawals.is_empty() && withdrawal.withdrawal_in_shares.is_none() {
-            *maybe_withdrawal = None;
-            // if there is no deposit or pending deposits, then clean up the deposit state as well
-            Deposits::<T>::mutate_exists(operator_id, nominator_id.clone(), |maybe_deposit| {
-                if let Some(deposit) = maybe_deposit
-                    && deposit.known.shares.is_zero()
-                    && deposit.pending.is_none()
-                {
-                    *maybe_deposit = None;
-
-                    DepositOnHold::<T>::mutate_exists(
-                        (operator_id, nominator_id),
-                        |maybe_deposit_on_hold| {
-                            if let Some(deposit_on_hold) = maybe_deposit_on_hold
-                                && deposit_on_hold.is_zero()
-                            {
-                                *maybe_deposit_on_hold = None
-                            }
-                        },
-                    );
-                }
-            });
-        }
-
-        Ok(withdrawal_count)
-    })
-}
-
-/// Unlocks an already de-registered operator's nominator given unlock wait period is complete.
-pub(crate) fn do_unlock_nominator<T: Config>(
-    operator_id: OperatorId,
-    nominator_id: NominatorId<T>,
-) -> Result<(), Error> {
-    Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
-        // take the operator so this operator info is removed once we unlock the operator.
-        let mut operator = maybe_operator.take().ok_or(Error::UnknownOperator)?;
-        let OperatorDeregisteredInfo {
-            domain_epoch,
-            unlock_at_confirmed_domain_block_number,
-        } = match operator.status::<T>(operator_id) {
-            OperatorStatus::Deregistered(operator_deregistered_info) => operator_deregistered_info,
-            _ => return Err(Error::OperatorNotDeregistered),
-        };
-
-        let (domain_id, _) = domain_epoch.deconstruct();
-        let head_domain_number = HeadDomainNumber::<T>::get(domain_id);
-        ensure!(
-            *unlock_at_confirmed_domain_block_number <= head_domain_number,
-            Error::UnlockPeriodNotComplete
         );
 
         let current_domain_epoch_index = DomainStakingSummary::<T>::get(operator.current_domain_id)
             .ok_or(Error::DomainNotInitialized)?
             .current_epoch_index;
 
-        let mut total_shares = operator.current_total_shares;
-        let mut total_stake = operator.current_total_stake;
-        let share_price = SharePrice::new::<T>(total_shares, total_stake)?;
+        Withdrawals::<T>::try_mutate_exists(operator_id, nominator_id.clone(), |maybe_withdrawal| {
+            let withdrawal = maybe_withdrawal.as_mut().ok_or(Error::MissingWithdrawal)?;
+            do_convert_previous_epoch_withdrawal::<T>(
+                operator_id,
+                withdrawal,
+                current_domain_epoch_index,
+            )?;
 
-        let mut total_storage_fee_deposit = operator.total_storage_fee_deposit;
-        let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
-            operator_id,
-            total_storage_fee_deposit,
-        );
-        let mut deposit = Deposits::<T>::take(operator_id, nominator_id.clone())
-            .ok_or(Error::UnknownNominator)?;
+            ensure!(!withdrawal.withdrawals.is_empty(), Error::MissingWithdrawal);
 
-        // convert any deposits from the previous epoch to shares.
-        // share prices will always be present because
-        // - if there are any deposits before operator de-registered, we ensure to create a
-        //   share price for them at the time of epoch transition.
-        // - if the operator got rewarded after the being de-registered and due to nomination tax
-        //   operator self deposits said tax amount, we calculate share price at the time of epoch transition.
-        do_convert_previous_epoch_deposits::<T>(
-            operator_id,
-            &mut deposit,
-            current_domain_epoch_index,
-        )?;
+            let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
 
-        // if there are any withdrawals from this operator, account for them
-        // if the withdrawals has share price noted, then convert them to AI3
-        let (
-            amount_ready_to_withdraw,
-            total_storage_fee_withdrawal,
-            shares_withdrew_in_current_epoch,
-        ) = Withdrawals::<T>::take(operator_id, nominator_id.clone())
-            .map(|mut withdrawal| {
-                // convert any withdrawals from the previous epoch to stake.
-                // share prices will always be present because
-                // - if there are any withdrawals before operator de-registered, we ensure to create a
-                //   share price for them at the time of epoch transition.
-                do_convert_previous_epoch_withdrawal::<T>(
-                    operator_id,
-                    &mut withdrawal,
-                    current_domain_epoch_index,
-                )?;
-                Ok((
-                    withdrawal.total_withdrawal_amount,
-                    withdrawal.total_storage_fee_withdrawal,
-                    withdrawal
-                        .withdrawal_in_shares
-                        .map(|WithdrawalInShares { shares, .. }| shares)
-                        .unwrap_or_default(),
-                ))
-            })
-            .unwrap_or(Ok((Zero::zero(), Zero::zero(), Zero::zero())))?;
+            let mut withdrawal_count = 0;
+            let mut total_unlocked_amount = BalanceOf::<T>::zero();
+            let mut total_storage_fee_refund = BalanceOf::<T>::zero();
+            loop {
+                if withdrawal
+                    .withdrawals
+                    .front()
+                    .map(|w| w.unlock_at_confirmed_domain_block_number > head_domain_number)
+                    .unwrap_or(true)
+                {
+                    break;
+                }
 
-        // include all the known shares and shares that were withdrawn in the current epoch
-        let nominator_shares = deposit
-            .known
-            .shares
-            .checked_add(&shares_withdrew_in_current_epoch)
-            .ok_or(Error::ShareOverflow)?;
-        total_shares = total_shares
-            .checked_sub(&nominator_shares)
-            .ok_or(Error::ShareOverflow)?;
+                let WithdrawalInBalance {
+                    amount_to_unlock,
+                    storage_fee_refund,
+                    ..
+                } = withdrawal
+                    .withdrawals
+                    .pop_front()
+                    .expect("Must not empty as checked above; qed");
 
-        // current staked amount
-        let nominator_staked_amount = share_price.shares_to_stake::<T>(nominator_shares);
-        total_stake = total_stake
-            .checked_sub(&nominator_staked_amount)
-            .ok_or(Error::BalanceOverflow)?;
+                total_unlocked_amount = total_unlocked_amount
+                    .checked_add(&amount_to_unlock)
+                    .ok_or(Error::BalanceOverflow)?;
 
-        // amount deposited by this nominator before operator de-registered.
-        let amount_deposited_in_epoch = deposit
-            .pending
-            .map(|pending_deposit| pending_deposit.amount)
-            .unwrap_or_default();
+                total_storage_fee_refund = total_storage_fee_refund
+                    .checked_add(&storage_fee_refund)
+                    .ok_or(Error::BalanceOverflow)?;
 
-        let total_amount_to_unlock = nominator_staked_amount
-            .checked_add(&amount_ready_to_withdraw)
-            .and_then(|amount| amount.checked_add(&amount_deposited_in_epoch))
-            .ok_or(Error::BalanceOverflow)?;
+                withdrawal_count += 1;
+            }
 
-        // Remove the lock and mint any gains
-        let current_locked_amount = DepositOnHold::<T>::take((operator_id, nominator_id.clone()));
-        if let Some(amount_to_mint) = total_amount_to_unlock.checked_sub(&current_locked_amount) {
-            mint_funds::<T>(&nominator_id, amount_to_mint)?;
-        }
-        if !current_locked_amount.is_zero() {
-            let staked_hold_id = T::HoldIdentifier::staking_staked();
+            // There is withdrawal but none being processed meaning the first withdrawal's unlock period has
+            // not completed yet
+            ensure!(
+                !total_unlocked_amount.is_zero() || !total_storage_fee_refund.is_zero(),
+                Error::UnlockPeriodNotComplete
+            );
+
+            // deduct the amount unlocked from total
+            withdrawal.total_withdrawal_amount = withdrawal
+                .total_withdrawal_amount
+                .checked_sub(&total_unlocked_amount)
+                .ok_or(Error::BalanceUnderflow)?;
+
+            withdrawal.total_storage_fee_withdrawal = withdrawal
+                .total_storage_fee_withdrawal
+                .checked_sub(&total_storage_fee_refund)
+                .ok_or(Error::BalanceUnderflow)?;
+
+            // If the amount to release is more than currently locked,
+            // mint the diff and release the rest
+            let (amount_to_mint, amount_to_release) = DepositOnHold::<T>::try_mutate(
+                (operator_id, nominator_id.clone()),
+                |deposit_on_hold| {
+                    let amount_to_release = total_unlocked_amount.min(*deposit_on_hold);
+                    let amount_to_mint = total_unlocked_amount.saturating_sub(*deposit_on_hold);
+
+                    *deposit_on_hold = deposit_on_hold.saturating_sub(amount_to_release);
+
+                    Ok((amount_to_mint, amount_to_release))
+                },
+            )?;
+
+            // Mint any gains
+            if !amount_to_mint.is_zero() {
+                mint_funds::<T>(&nominator_id, amount_to_mint)?;
+            }
+            // Release staking fund
+            if !amount_to_release.is_zero() {
+                let staked_hold_id = T::HoldIdentifier::staking_staked();
+                T::Currency::release(
+                    &staked_hold_id,
+                    &nominator_id,
+                    amount_to_release,
+                    Precision::Exact,
+                )
+                .map_err(|_| Error::RemoveLock)?;
+            }
+
+            Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
+                operator_id,
+                nominator_id: nominator_id.clone(),
+                unlocked_amount: total_unlocked_amount,
+            });
+
+            // Release storage fund
+            let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal();
             T::Currency::release(
-                &staked_hold_id,
+                &storage_fund_hold_id,
                 &nominator_id,
-                current_locked_amount,
+                total_storage_fee_refund,
                 Precision::Exact,
             )
             .map_err(|_| Error::RemoveLock)?;
-        }
 
-        Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
-            operator_id,
-            nominator_id: nominator_id.clone(),
-            unlocked_amount: total_amount_to_unlock,
-        });
+            Pallet::<T>::deposit_event(Event::StorageFeeUnlocked {
+                operator_id,
+                nominator_id: nominator_id.clone(),
+                storage_fee: total_storage_fee_refund,
+            });
 
-        // Withdraw all storage fee for the nominator
-        let nominator_total_storage_fee_deposit = deposit
-            .pending
-            .map(|pending_deposit| pending_deposit.storage_fee_deposit)
-            .unwrap_or(Zero::zero())
-            .checked_add(&deposit.known.storage_fee_deposit)
-            .ok_or(Error::BalanceOverflow)?;
+            // if there are no withdrawals, then delete the storage as well
+            if withdrawal.withdrawals.is_empty() && withdrawal.withdrawal_in_shares.is_none() {
+                *maybe_withdrawal = None;
+                // if there is no deposit or pending deposits, then clean up the deposit state as well
+                Deposits::<T>::mutate_exists(operator_id, nominator_id.clone(), |maybe_deposit| {
+                    if let Some(deposit) = maybe_deposit
+                        && deposit.known.shares.is_zero()
+                        && deposit.pending.is_none()
+                    {
+                        *maybe_deposit = None;
 
-        bundle_storage_fund::withdraw_to::<T>(
-            operator_id,
-            &nominator_id,
-            storage_fund_redeem_price.redeem(nominator_total_storage_fee_deposit),
-        )
-        .map_err(Error::BundleStorageFund)?;
+                        DepositOnHold::<T>::mutate_exists(
+                            (operator_id, nominator_id),
+                            |maybe_deposit_on_hold| {
+                                if let Some(deposit_on_hold) = maybe_deposit_on_hold
+                                    && deposit_on_hold.is_zero()
+                                {
+                                    *maybe_deposit_on_hold = None
+                                }
+                            },
+                        );
+                    }
+                });
+            }
 
-        // Release all storage fee on withdraw of the nominator
-        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal();
-        T::Currency::release(
-            &storage_fund_hold_id,
-            &nominator_id,
-            total_storage_fee_withdrawal,
-            Precision::Exact,
-        )
-        .map_err(|_| Error::RemoveLock)?;
+            Ok(withdrawal_count)
+        })
+    }
+}
 
-        Pallet::<T>::deposit_event(Event::StorageFeeUnlocked {
-            operator_id,
-            nominator_id: nominator_id.clone(),
-            storage_fee: total_storage_fee_withdrawal,
-        });
+crate::vis_macro::make_pub_if_fuzz! {
+    /// Unlocks an already de-registered operator's nominator given unlock wait period is complete.
+    fn do_unlock_nominator<T: Config>(
+        operator_id: OperatorId,
+        nominator_id: NominatorId<T>,
+    ) -> Result<(), Error> {
+        Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
+            // take the operator so this operator info is removed once we unlock the operator.
+            let mut operator = maybe_operator.take().ok_or(Error::UnknownOperator)?;
+            let OperatorDeregisteredInfo {
+                domain_epoch,
+                unlock_at_confirmed_domain_block_number,
+            } = match operator.status::<T>(operator_id) {
+                OperatorStatus::Deregistered(operator_deregistered_info) => operator_deregistered_info,
+                _ => return Err(Error::OperatorNotDeregistered),
+            };
 
-        // reduce total storage fee deposit with nominator total fee deposit
-        total_storage_fee_deposit =
-            total_storage_fee_deposit.saturating_sub(nominator_total_storage_fee_deposit);
+            let (domain_id, _) = domain_epoch.deconstruct();
+            let head_domain_number = HeadDomainNumber::<T>::get(domain_id);
+            ensure!(
+                *unlock_at_confirmed_domain_block_number <= head_domain_number,
+                Error::UnlockPeriodNotComplete
+            );
 
-        // The operator state is safe to cleanup if there is no entry in `Deposits` and `Withdrawals`
-        // which means all nominator (including the operator owner) have unlocked their stake.
-        let cleanup_operator = !Deposits::<T>::contains_prefix(operator_id)
-            && !Withdrawals::<T>::contains_prefix(operator_id);
+            let current_domain_epoch_index = DomainStakingSummary::<T>::get(operator.current_domain_id)
+                .ok_or(Error::DomainNotInitialized)?
+                .current_epoch_index;
 
-        if cleanup_operator {
-            do_cleanup_operator::<T>(operator_id, total_stake)?
-        } else {
-            // set update total shares, total stake and total storage fee deposit for operator
-            operator.current_total_shares = total_shares;
-            operator.current_total_stake = total_stake;
-            operator.total_storage_fee_deposit = total_storage_fee_deposit;
+            let mut total_shares = operator.current_total_shares;
+            let mut total_stake = operator.current_total_stake;
+            let share_price = SharePrice::new::<T>(total_shares, total_stake)?;
 
-            *maybe_operator = Some(operator);
-        }
+            let mut total_storage_fee_deposit = operator.total_storage_fee_deposit;
+            let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
+                operator_id,
+                total_storage_fee_deposit,
+            );
+            let mut deposit = Deposits::<T>::take(operator_id, nominator_id.clone())
+                .ok_or(Error::UnknownNominator)?;
 
-        Ok(())
-    })
+            // convert any deposits from the previous epoch to shares.
+            // share prices will always be present because
+            // - if there are any deposits before operator de-registered, we ensure to create a
+            //   share price for them at the time of epoch transition.
+            // - if the operator got rewarded after the being de-registered and due to nomination tax
+            //   operator self deposits said tax amount, we calculate share price at the time of epoch transition.
+            do_convert_previous_epoch_deposits::<T>(
+                operator_id,
+                &mut deposit,
+                current_domain_epoch_index,
+            )?;
+
+            // if there are any withdrawals from this operator, account for them
+            // if the withdrawals has share price noted, then convert them to AI3
+            let (
+                amount_ready_to_withdraw,
+                total_storage_fee_withdrawal,
+                shares_withdrew_in_current_epoch,
+            ) = Withdrawals::<T>::take(operator_id, nominator_id.clone())
+                .map(|mut withdrawal| {
+                    // convert any withdrawals from the previous epoch to stake.
+                    // share prices will always be present because
+                    // - if there are any withdrawals before operator de-registered, we ensure to create a
+                    //   share price for them at the time of epoch transition.
+                    do_convert_previous_epoch_withdrawal::<T>(
+                        operator_id,
+                        &mut withdrawal,
+                        current_domain_epoch_index,
+                    )?;
+                    Ok((
+                        withdrawal.total_withdrawal_amount,
+                        withdrawal.total_storage_fee_withdrawal,
+                        withdrawal
+                            .withdrawal_in_shares
+                            .map(|WithdrawalInShares { shares, .. }| shares)
+                            .unwrap_or_default(),
+                    ))
+                })
+                .unwrap_or(Ok((Zero::zero(), Zero::zero(), Zero::zero())))?;
+
+            // include all the known shares and shares that were withdrawn in the current epoch
+            let nominator_shares = deposit
+                .known
+                .shares
+                .checked_add(&shares_withdrew_in_current_epoch)
+                .ok_or(Error::ShareOverflow)?;
+            total_shares = total_shares
+                .checked_sub(&nominator_shares)
+                .ok_or(Error::ShareOverflow)?;
+
+            // current staked amount
+            let nominator_staked_amount = share_price.shares_to_stake::<T>(nominator_shares);
+            total_stake = total_stake
+                .checked_sub(&nominator_staked_amount)
+                .ok_or(Error::BalanceOverflow)?;
+
+            // amount deposited by this nominator before operator de-registered.
+            let amount_deposited_in_epoch = deposit
+                .pending
+                .map(|pending_deposit| pending_deposit.amount)
+                .unwrap_or_default();
+
+            let total_amount_to_unlock = nominator_staked_amount
+                .checked_add(&amount_ready_to_withdraw)
+                .and_then(|amount| amount.checked_add(&amount_deposited_in_epoch))
+                .ok_or(Error::BalanceOverflow)?;
+
+            // Remove the lock and mint any gains
+            let current_locked_amount = DepositOnHold::<T>::take((operator_id, nominator_id.clone()));
+            if let Some(amount_to_mint) = total_amount_to_unlock.checked_sub(&current_locked_amount) {
+                mint_funds::<T>(&nominator_id, amount_to_mint)?;
+            }
+            if !current_locked_amount.is_zero() {
+                let staked_hold_id = T::HoldIdentifier::staking_staked();
+                T::Currency::release(
+                    &staked_hold_id,
+                    &nominator_id,
+                    current_locked_amount,
+                    Precision::Exact,
+                )
+                .map_err(|_| Error::RemoveLock)?;
+            }
+
+            Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
+                operator_id,
+                nominator_id: nominator_id.clone(),
+                unlocked_amount: total_amount_to_unlock,
+            });
+
+            // Withdraw all storage fee for the nominator
+            let nominator_total_storage_fee_deposit = deposit
+                .pending
+                .map(|pending_deposit| pending_deposit.storage_fee_deposit)
+                .unwrap_or(Zero::zero())
+                .checked_add(&deposit.known.storage_fee_deposit)
+                .ok_or(Error::BalanceOverflow)?;
+
+            bundle_storage_fund::withdraw_to::<T>(
+                operator_id,
+                &nominator_id,
+                storage_fund_redeem_price.redeem(nominator_total_storage_fee_deposit),
+            )
+            .map_err(Error::BundleStorageFund)?;
+
+            // Release all storage fee on withdraw of the nominator
+            let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal();
+            T::Currency::release(
+                &storage_fund_hold_id,
+                &nominator_id,
+                total_storage_fee_withdrawal,
+                Precision::Exact,
+            )
+            .map_err(|_| Error::RemoveLock)?;
+
+            Pallet::<T>::deposit_event(Event::StorageFeeUnlocked {
+                operator_id,
+                nominator_id: nominator_id.clone(),
+                storage_fee: total_storage_fee_withdrawal,
+            });
+
+            // reduce total storage fee deposit with nominator total fee deposit
+            total_storage_fee_deposit =
+                total_storage_fee_deposit.saturating_sub(nominator_total_storage_fee_deposit);
+
+            // The operator state is safe to cleanup if there is no entry in `Deposits` and `Withdrawals`
+            // which means all nominator (including the operator owner) have unlocked their stake.
+            let cleanup_operator = !Deposits::<T>::contains_prefix(operator_id)
+                && !Withdrawals::<T>::contains_prefix(operator_id);
+
+            if cleanup_operator {
+                do_cleanup_operator::<T>(operator_id, total_stake)?
+            } else {
+                // set update total shares, total stake and total storage fee deposit for operator
+                operator.current_total_shares = total_shares;
+                operator.current_total_stake = total_stake;
+                operator.total_storage_fee_deposit = total_storage_fee_deposit;
+
+                *maybe_operator = Some(operator);
+            }
+
+            Ok(())
+        })
+    }
 }
 
 /// Removes all operator storages and mints the total stake back to treasury.
@@ -1295,73 +1305,169 @@ pub(crate) fn do_cleanup_operator<T: Config>(
     Ok(())
 }
 
-/// Distribute the reward to the operators equally and drop any dust to treasury.
-pub(crate) fn do_reward_operators<T: Config>(
-    domain_id: DomainId,
-    source: OperatorRewardSource<BlockNumberFor<T>>,
-    operators: IntoIter<OperatorId>,
-    rewards: BalanceOf<T>,
-) -> Result<(), Error> {
-    if rewards.is_zero() {
-        return Ok(());
+crate::vis_macro::make_pub_if_fuzz! {
+    /// Distribute the reward to the operators equally and drop any dust to treasury.
+    fn do_reward_operators<T: Config>(
+        domain_id: DomainId,
+        source: OperatorRewardSource<BlockNumberFor<T>>,
+        operators: IntoIter<OperatorId>,
+        rewards: BalanceOf<T>,
+    ) -> Result<(), Error> {
+        if rewards.is_zero() {
+            return Ok(());
+        }
+        DomainStakingSummary::<T>::mutate(domain_id, |maybe_stake_summary| {
+            let stake_summary = maybe_stake_summary
+                .as_mut()
+                .ok_or(Error::DomainNotInitialized)?;
+
+            let total_count = operators.len() as u64;
+            // calculate the operator weights based on the number of times they are repeated in the original list.
+            let operator_weights = operators.into_iter().fold(
+                BTreeMap::<OperatorId, u64>::new(),
+                |mut acc, operator_id| {
+                    acc.entry(operator_id)
+                        .and_modify(|weight| *weight += 1)
+                        .or_insert(1);
+                    acc
+                },
+            );
+
+            let mut allocated_rewards = BalanceOf::<T>::zero();
+            for (operator_id, weight) in operator_weights {
+                let operator_reward = {
+                    let distribution = Perquintill::from_rational(weight, total_count);
+                    distribution.mul_floor(rewards)
+                };
+
+                stake_summary
+                    .current_epoch_rewards
+                    .entry(operator_id)
+                    .and_modify(|rewards| *rewards = rewards.saturating_add(operator_reward))
+                    .or_insert(operator_reward);
+
+                Pallet::<T>::deposit_event(Event::OperatorRewarded {
+                    source: source.clone(),
+                    operator_id,
+                    reward: operator_reward,
+                });
+
+                allocated_rewards = allocated_rewards
+                    .checked_add(&operator_reward)
+                    .ok_or(Error::BalanceOverflow)?;
+            }
+
+            // mint remaining funds to treasury
+            mint_into_treasury::<T>(
+                rewards
+                    .checked_sub(&allocated_rewards)
+                    .ok_or(Error::BalanceUnderflow)?,
+            )
+        })
     }
-    DomainStakingSummary::<T>::mutate(domain_id, |maybe_stake_summary| {
-        let stake_summary = maybe_stake_summary
-            .as_mut()
-            .ok_or(Error::DomainNotInitialized)?;
+}
+crate::vis_macro::make_pub_if_fuzz! {
+    /// Freezes the slashed operators and moves the operator to be removed once the domain they are
+    /// operating finishes the epoch.
+    fn do_mark_operators_as_slashed<T: Config>(
+        operator_ids: impl AsRef<[OperatorId]>,
+        slash_reason: SlashedReason<DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
+    ) -> Result<(), Error> {
+        for operator_id in operator_ids.as_ref() {
+            Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+                let operator = match maybe_operator.as_mut() {
+                    // If the operator is already slashed and removed due to fraud proof, when the operator
+                    // is slash again due to invalid bundle, which happen after the ER is confirmed, we can
+                    // not find the operator here thus just return.
+                    None => return Ok(()),
+                    Some(operator) => operator,
+                };
+                let mut pending_slashes =
+                    PendingSlashes::<T>::get(operator.current_domain_id).unwrap_or_default();
 
-        let total_count = operators.len() as u64;
-        // calculate the operator weights based on the number of times they are repeated in the original list.
-        let operator_weights = operators.into_iter().fold(
-            BTreeMap::<OperatorId, u64>::new(),
-            |mut acc, operator_id| {
-                acc.entry(operator_id)
-                    .and_modify(|weight| *weight += 1)
-                    .or_insert(1);
-                acc
-            },
-        );
+                if pending_slashes.contains(operator_id) {
+                    return Ok(());
+                }
 
-        let mut allocated_rewards = BalanceOf::<T>::zero();
-        for (operator_id, weight) in operator_weights {
-            let operator_reward = {
-                let distribution = Perquintill::from_rational(weight, total_count);
-                distribution.mul_floor(rewards)
-            };
+                DomainStakingSummary::<T>::try_mutate(
+                    operator.current_domain_id,
+                    |maybe_domain_stake_summary| {
+                        let stake_summary = maybe_domain_stake_summary
+                            .as_mut()
+                            .ok_or(Error::DomainNotInitialized)?;
 
-            stake_summary
-                .current_epoch_rewards
-                .entry(operator_id)
-                .and_modify(|rewards| *rewards = rewards.saturating_add(operator_reward))
-                .or_insert(operator_reward);
+                        // slash and remove operator from next and current epoch set
+                        operator.update_status(OperatorStatus::Slashed);
 
-            Pallet::<T>::deposit_event(Event::OperatorRewarded {
-                source: source.clone(),
-                operator_id,
-                reward: operator_reward,
-            });
-
-            allocated_rewards = allocated_rewards
-                .checked_add(&operator_reward)
-                .ok_or(Error::BalanceOverflow)?;
+                        // ensure to reduce the total stake if operator is actually present in the
+                        // current_operator set
+                        if stake_summary
+                            .current_operators
+                            .remove(operator_id)
+                            .is_some()
+                        {
+                            stake_summary.current_total_stake = stake_summary
+                                .current_total_stake
+                                .checked_sub(&operator.current_total_stake)
+                                .ok_or(Error::BalanceUnderflow)?;
+                        }
+                        stake_summary.next_operators.remove(operator_id);
+                        pending_slashes.insert(*operator_id);
+                        PendingSlashes::<T>::insert(operator.current_domain_id, pending_slashes);
+                        Pallet::<T>::deposit_event(Event::OperatorSlashed {
+                            operator_id: *operator_id,
+                            reason: slash_reason.clone(),
+                        });
+                        Ok(())
+                    },
+                )
+            })?
         }
 
-        // mint remaining funds to treasury
-        mint_into_treasury::<T>(
-            rewards
-                .checked_sub(&allocated_rewards)
-                .ok_or(Error::BalanceUnderflow)?,
-        )
-    })
+        Ok(())
+    }
 }
 
-/// Freezes the slashed operators and moves the operator to be removed once the domain they are
-/// operating finishes the epoch.
-pub(crate) fn do_mark_operators_as_slashed<T: Config>(
-    operator_ids: impl AsRef<[OperatorId]>,
-    slash_reason: SlashedReason<DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
-) -> Result<(), Error> {
-    for operator_id in operator_ids.as_ref() {
+crate::vis_macro::make_pub_if_fuzz! {
+    /// Mark all the invalid bundle authors from this ER and remove them from operator set.
+    /// NOTE: any changes to this must be reflected in the fuzz_utils' equivalent
+    fn do_mark_invalid_bundle_authors<T: Config>(
+        domain_id: DomainId,
+        er: &ExecutionReceiptOf<T>,
+    ) -> Result<(), Error> {
+        let invalid_bundle_authors = invalid_bundle_authors_for_receipt::<T>(domain_id, er);
+        let er_hash = er.hash::<DomainHashingFor<T>>();
+        let pending_slashes = PendingSlashes::<T>::get(domain_id).unwrap_or_default();
+        let mut invalid_bundle_authors_in_epoch = InvalidBundleAuthors::<T>::get(domain_id);
+        let mut stake_summary =
+            DomainStakingSummary::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
+
+        for operator_id in invalid_bundle_authors {
+            if pending_slashes.contains(&operator_id) {
+                continue;
+            }
+
+            mark_invalid_bundle_author::<T>(
+                operator_id,
+                er_hash,
+                &mut stake_summary,
+                &mut invalid_bundle_authors_in_epoch,
+            )?;
+        }
+
+        DomainStakingSummary::<T>::insert(domain_id, stake_summary);
+        InvalidBundleAuthors::<T>::insert(domain_id, invalid_bundle_authors_in_epoch);
+        Ok(())
+    }
+}
+
+crate::vis_macro::make_pub_if_fuzz! {
+    fn mark_invalid_bundle_author<T: Config>(
+        operator_id: OperatorId,
+        er_hash: ReceiptHashFor<T>,
+        stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,
+        invalid_bundle_authors: &mut BTreeSet<OperatorId>,
+    ) -> Result<(), Error> {
         Operators::<T>::try_mutate(operator_id, |maybe_operator| {
             let operator = match maybe_operator.as_mut() {
                 // If the operator is already slashed and removed due to fraud proof, when the operator
@@ -1370,180 +1476,97 @@ pub(crate) fn do_mark_operators_as_slashed<T: Config>(
                 None => return Ok(()),
                 Some(operator) => operator,
             };
-            let mut pending_slashes =
-                PendingSlashes::<T>::get(operator.current_domain_id).unwrap_or_default();
 
-            if pending_slashes.contains(operator_id) {
+            // operator must be in registered status.
+            // for other states, we anyway do not allow bundle submission.
+            if operator.status::<T>(operator_id) != &OperatorStatus::Registered {
                 return Ok(());
             }
 
-            DomainStakingSummary::<T>::try_mutate(
-                operator.current_domain_id,
-                |maybe_domain_stake_summary| {
-                    let stake_summary = maybe_domain_stake_summary
-                        .as_mut()
-                        .ok_or(Error::DomainNotInitialized)?;
-
-                    // slash and remove operator from next and current epoch set
-                    operator.update_status(OperatorStatus::Slashed);
-
-                    // ensure to reduce the total stake if operator is actually present in the
-                    // current_operator set
-                    if stake_summary
-                        .current_operators
-                        .remove(operator_id)
-                        .is_some()
-                    {
-                        stake_summary.current_total_stake = stake_summary
-                            .current_total_stake
-                            .checked_sub(&operator.current_total_stake)
-                            .ok_or(Error::BalanceUnderflow)?;
-                    }
-                    stake_summary.next_operators.remove(operator_id);
-                    pending_slashes.insert(*operator_id);
-                    PendingSlashes::<T>::insert(operator.current_domain_id, pending_slashes);
-                    Pallet::<T>::deposit_event(Event::OperatorSlashed {
-                        operator_id: *operator_id,
-                        reason: slash_reason.clone(),
-                    });
-                    Ok(())
-                },
-            )
-        })?
+            // slash and remove operator from next and current epoch set
+            operator.update_status(OperatorStatus::InvalidBundle(er_hash));
+            invalid_bundle_authors.insert(operator_id);
+            if stake_summary
+                .current_operators
+                .remove(&operator_id)
+                .is_some()
+            {
+                stake_summary.current_total_stake = stake_summary
+                    .current_total_stake
+                    .checked_sub(&operator.current_total_stake)
+                    .ok_or(Error::BalanceUnderflow)?;
+            }
+            stake_summary.next_operators.remove(&operator_id);
+            Ok(())
+        })
     }
-
-    Ok(())
 }
 
-/// Mark all the invalid bundle authors from this ER and remove them from operator set.
-pub(crate) fn do_mark_invalid_bundle_authors<T: Config>(
-    domain_id: DomainId,
-    er: &ExecutionReceiptOf<T>,
-) -> Result<(), Error> {
-    let invalid_bundle_authors = invalid_bundle_authors_for_receipt::<T>(domain_id, er);
-    let er_hash = er.hash::<DomainHashingFor<T>>();
-    let pending_slashes = PendingSlashes::<T>::get(domain_id).unwrap_or_default();
-    let mut invalid_bundle_authors_in_epoch = InvalidBundleAuthors::<T>::get(domain_id);
-    let mut stake_summary =
-        DomainStakingSummary::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
+crate::vis_macro::make_pub_if_fuzz! {
+    /// Unmark all the invalid bundle authors from this ER that were marked invalid.
+    /// Assumed the ER is invalid and add the marked operators as registered and add them
+    /// back to next operator set.
+    /// NOTE: any changes to this must be reflected in the fuzz_utils' equivalent
+    fn do_unmark_invalid_bundle_authors<T: Config>(
+        domain_id: DomainId,
+        er: &ExecutionReceiptOf<T>,
+    ) -> Result<(), Error> {
+        let invalid_bundle_authors = invalid_bundle_authors_for_receipt::<T>(domain_id, er);
+        let er_hash = er.hash::<DomainHashingFor<T>>();
+        let pending_slashes = PendingSlashes::<T>::get(domain_id).unwrap_or_default();
+        let mut invalid_bundle_authors_in_epoch = InvalidBundleAuthors::<T>::get(domain_id);
+        let mut stake_summary =
+            DomainStakingSummary::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
 
-    for operator_id in invalid_bundle_authors {
-        if pending_slashes.contains(&operator_id) {
-            continue;
+        for operator_id in invalid_bundle_authors {
+            if pending_slashes.contains(&operator_id)
+                || Pallet::<T>::is_operator_pending_to_slash(domain_id, operator_id)
+            {
+                continue;
+            }
+
+            unmark_invalid_bundle_author::<T>(
+                operator_id,
+                er_hash,
+                &mut stake_summary,
+                &mut invalid_bundle_authors_in_epoch,
+            )?;
         }
 
-        mark_invalid_bundle_author::<T>(
-            operator_id,
-            er_hash,
-            &mut stake_summary,
-            &mut invalid_bundle_authors_in_epoch,
-        )?;
-    }
-
-    DomainStakingSummary::<T>::insert(domain_id, stake_summary);
-    InvalidBundleAuthors::<T>::insert(domain_id, invalid_bundle_authors_in_epoch);
-    Ok(())
-}
-
-pub(crate) fn mark_invalid_bundle_author<T: Config>(
-    operator_id: OperatorId,
-    er_hash: ReceiptHashFor<T>,
-    stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,
-    invalid_bundle_authors: &mut BTreeSet<OperatorId>,
-) -> Result<(), Error> {
-    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
-        let operator = match maybe_operator.as_mut() {
-            // If the operator is already slashed and removed due to fraud proof, when the operator
-            // is slash again due to invalid bundle, which happen after the ER is confirmed, we can
-            // not find the operator here thus just return.
-            None => return Ok(()),
-            Some(operator) => operator,
-        };
-
-        // operator must be in registered status.
-        // for other states, we anyway do not allow bundle submission.
-        if operator.status::<T>(operator_id) != &OperatorStatus::Registered {
-            return Ok(());
-        }
-
-        // slash and remove operator from next and current epoch set
-        operator.update_status(OperatorStatus::InvalidBundle(er_hash));
-        invalid_bundle_authors.insert(operator_id);
-        if stake_summary
-            .current_operators
-            .remove(&operator_id)
-            .is_some()
-        {
-            stake_summary.current_total_stake = stake_summary
-                .current_total_stake
-                .checked_sub(&operator.current_total_stake)
-                .ok_or(Error::BalanceUnderflow)?;
-        }
-        stake_summary.next_operators.remove(&operator_id);
+        DomainStakingSummary::<T>::insert(domain_id, stake_summary);
+        InvalidBundleAuthors::<T>::insert(domain_id, invalid_bundle_authors_in_epoch);
         Ok(())
-    })
-}
-
-/// Unmark all the invalid bundle authors from this ER that were marked invalid.
-/// Assumed the ER is invalid and add the marked operators as registered and add them
-/// back to next operator set.
-pub(crate) fn do_unmark_invalid_bundle_authors<T: Config>(
-    domain_id: DomainId,
-    er: &ExecutionReceiptOf<T>,
-) -> Result<(), Error> {
-    let invalid_bundle_authors = invalid_bundle_authors_for_receipt::<T>(domain_id, er);
-    let er_hash = er.hash::<DomainHashingFor<T>>();
-    let pending_slashes = PendingSlashes::<T>::get(domain_id).unwrap_or_default();
-    let mut invalid_bundle_authors_in_epoch = InvalidBundleAuthors::<T>::get(domain_id);
-    let mut stake_summary =
-        DomainStakingSummary::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
-
-    for operator_id in invalid_bundle_authors {
-        if pending_slashes.contains(&operator_id)
-            || Pallet::<T>::is_operator_pending_to_slash(domain_id, operator_id)
-        {
-            continue;
-        }
-
-        unmark_invalid_bundle_author::<T>(
-            operator_id,
-            er_hash,
-            &mut stake_summary,
-            &mut invalid_bundle_authors_in_epoch,
-        )?;
     }
-
-    DomainStakingSummary::<T>::insert(domain_id, stake_summary);
-    InvalidBundleAuthors::<T>::insert(domain_id, invalid_bundle_authors_in_epoch);
-    Ok(())
 }
 
-fn unmark_invalid_bundle_author<T: Config>(
-    operator_id: OperatorId,
-    er_hash: ReceiptHashFor<T>,
-    stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,
-    invalid_bundle_authors: &mut BTreeSet<OperatorId>,
-) -> Result<(), Error> {
-    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
-        let operator = match maybe_operator.as_mut() {
-            // If the operator is already slashed and removed due to fraud proof, when the operator
-            // is slash again due to invalid bundle, which happen after the ER is confirmed, we can
-            // not find the operator here thus just return.
-            None => return Ok(()),
-            Some(operator) => operator,
-        };
+crate::vis_macro::make_pub_if_fuzz! {
+    fn unmark_invalid_bundle_author<T: Config>(
+        operator_id: OperatorId,
+        er_hash: ReceiptHashFor<T>,
+        stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,
+        invalid_bundle_authors: &mut BTreeSet<OperatorId>,
+    ) -> Result<(), Error> {
+        Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+            let operator = match maybe_operator.as_mut() {
+                // If the operator is already slashed and removed due to fraud proof, when the operator
+                // is slash again due to invalid bundle, which happen after the ER is confirmed, we can
+                // not find the operator here thus just return.
+                None => return Ok(()),
+                Some(operator) => operator,
+            };
 
-        // operator must be in invalid bundle state with the exact er
-        if operator.partial_status != OperatorStatus::InvalidBundle(er_hash) {
-            return Ok(());
-        }
+            // operator must be in invalid bundle state with the exact er
+            if operator.partial_status != OperatorStatus::InvalidBundle(er_hash) {
+                return Ok(());
+            }
 
-        // add operator to next set
-        operator.update_status(OperatorStatus::Registered);
-        invalid_bundle_authors.remove(&operator_id);
-        stake_summary.next_operators.insert(operator_id);
-        Ok(())
-    })
+            // add operator to next set
+            operator.update_status(OperatorStatus::Registered);
+            invalid_bundle_authors.remove(&operator_id);
+            stake_summary.next_operators.insert(operator_id);
+            Ok(())
+        })
+    }
 }
 
 #[cfg(test)]

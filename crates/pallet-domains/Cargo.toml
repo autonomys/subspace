@@ -35,6 +35,12 @@ sp-subspace-mmr.workspace = true
 sp-version = { workspace = true, features = ["serde"] }
 subspace-core-primitives.workspace = true
 subspace-runtime-primitives.workspace = true
+domain-pallet-executive = {workspace = true, optional = true}
+pallet-timestamp = {workspace = true, optional = true}
+pallet-block-fees = {workspace = true, optional = true}
+prop-test = {workspace = true, optional = true}
+sp-externalities = {workspace = true, optional = true}
+sp-keystore = {workspace = true, optional = true}
 
 [dev-dependencies]
 domain-pallet-executive.workspace = true
@@ -76,12 +82,20 @@ runtime-benchmarks = [
     "frame-system/runtime-benchmarks",
     "frame-benchmarking",
     "frame-benchmarking/runtime-benchmarks",
-    "hex-literal",
     "pallet-subspace/runtime-benchmarks",
     "schnorrkel",
+    "hex-literal",
     "sp-consensus-subspace/runtime-benchmarks",
     "sp-domains/runtime-benchmarks",
     "sp-domains-fraud-proof/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",
     "sp-subspace-mmr/runtime-benchmarks",
+]
+
+fuzz = [
+    "dep:domain-pallet-executive",
+    "dep:pallet-timestamp",
+    "dep:pallet-block-fees",
+    "dep:sp-externalities",
+    "dep:sp-keystore",
 ]
