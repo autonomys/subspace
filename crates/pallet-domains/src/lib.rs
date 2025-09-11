@@ -465,6 +465,10 @@ mod pallet {
         /// Current bundle version accepted by the runtime.
         #[pallet::constant]
         type CurrentBundleAndExecutionReceiptVersion: Get<BundleAndExecutionReceiptVersion>;
+
+        /// Operator activation delay after deactivation in Epochs.
+        #[pallet::constant]
+        type OperatorActivationDelayInEpochs: Get<EpochIndex>;
     }
 
     #[pallet::pallet]
@@ -760,6 +764,12 @@ mod pallet {
     /// Will be cleared once epoch is transitioned.
     #[pallet::storage]
     pub type InvalidBundleAuthors<T: Config> =
+        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, ValueQuery>;
+
+    /// Storage for operators who were de-activated during this epoch.
+    /// Will be cleared once epoch is transitioned.
+    #[pallet::storage]
+    pub type DeactivatedOperators<T: Config> =
         StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, ValueQuery>;
 
     /// Storage for operators who de-registered in the current epoch.
@@ -1093,6 +1103,11 @@ mod pallet {
         PrunedExecutionReceipt {
             domain_id: DomainId,
             new_head_receipt_number: Option<DomainBlockNumberFor<T>>,
+        },
+        OperatorDeactivated {
+            domain_id: DomainId,
+            operator_id: OperatorId,
+            reregister_after_epoch: EpochIndex,
         },
     }
 
@@ -1930,6 +1945,18 @@ mod pallet {
                 },
             );
 
+            Ok(())
+        }
+
+        #[pallet::call_index(23)]
+        // TODO: benchmark
+        #[pallet::weight(T::WeightInfo::deregister_operator())]
+        pub fn deactivate_operator(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            crate::staking::do_deactivate_operator::<T>(operator_id).map_err(Error::<T>::from)?;
             Ok(())
         }
     }
