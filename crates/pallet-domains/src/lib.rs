@@ -1109,6 +1109,10 @@ mod pallet {
             operator_id: OperatorId,
             reregister_after_epoch: EpochIndex,
         },
+        OperatorReactivated {
+            operator_id: OperatorId,
+            domain_id: DomainId,
+        },
     }
 
     #[pallet::origin]
@@ -1948,6 +1952,7 @@ mod pallet {
             Ok(())
         }
 
+        /// Deactivate an offline operator through Sudo or Governance.
         #[pallet::call_index(23)]
         // TODO: benchmark
         #[pallet::weight(T::WeightInfo::deregister_operator())]
@@ -1957,6 +1962,20 @@ mod pallet {
         ) -> DispatchResult {
             ensure_root(origin)?;
             crate::staking::do_deactivate_operator::<T>(operator_id).map_err(Error::<T>::from)?;
+            Ok(())
+        }
+
+        /// Reactivate a deactivated operator through Sudo or Governance given
+        /// activation delay has passed.
+        #[pallet::call_index(24)]
+        // TODO: benchmark
+        #[pallet::weight(T::WeightInfo::deregister_operator())]
+        pub fn reactivate_operator(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            crate::staking::do_reactivate_operator::<T>(operator_id).map_err(Error::<T>::from)?;
             Ok(())
         }
     }
