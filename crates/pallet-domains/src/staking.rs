@@ -2132,6 +2132,25 @@ pub(crate) mod tests {
                 res,
                 Error::<Test>::Staking(crate::staking::Error::OperatorNotRegistered)
             );
+
+            // nominator withdraw should not work since the operator is deactivated
+            let res = Domains::withdraw_stake(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+                nominator_stake,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::OperatorNotRegistered)
+            );
+
+            // deregistration should not work since the operator is deactivated
+            let res =
+                Domains::deregister_operator(RuntimeOrigin::signed(operator_account), operator_id);
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::OperatorNotRegistered)
+            );
         });
     }
 
@@ -3883,6 +3902,17 @@ pub(crate) mod tests {
                     bundle_storage_fund::total_balance::<Test>(operator_id)
                 );
             }
+
+            // deactivated operators can be slashed
+            let res = Domains::deactivate_operator(RuntimeOrigin::root(), operator_id_3);
+            assert_ok!(res);
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+
+            let operator = Operators::<Test>::get(operator_id_3).unwrap();
+            assert_eq!(
+                *operator.status::<Test>(operator_id_3),
+                OperatorStatus::Deactivated(7)
+            );
 
             do_mark_operators_as_slashed::<Test>(
                 vec![operator_id_1],
