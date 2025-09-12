@@ -220,6 +220,8 @@ pub trait WeightInfo {
     fn validate_submit_bundle() -> Weight;
     fn validate_singleton_receipt() -> Weight;
     fn fraud_proof_pre_check() -> Weight;
+    fn deactivate_operator() -> Weight;
+    fn reactivate_operator() -> Weight;
 }
 
 #[expect(clippy::useless_conversion, reason = "Macro-generated")]
@@ -1978,8 +1980,7 @@ mod pallet {
 
         /// Deactivate an offline operator through Sudo or Governance.
         #[pallet::call_index(23)]
-        // TODO: benchmark
-        #[pallet::weight(T::WeightInfo::deregister_operator())]
+        #[pallet::weight(T::WeightInfo::deactivate_operator())]
         pub fn deactivate_operator(
             origin: OriginFor<T>,
             operator_id: OperatorId,
@@ -1992,8 +1993,7 @@ mod pallet {
         /// Reactivate a deactivated operator through Sudo or Governance given
         /// activation delay has passed.
         #[pallet::call_index(24)]
-        // TODO: benchmark
-        #[pallet::weight(T::WeightInfo::deregister_operator())]
+        #[pallet::weight(T::WeightInfo::reactivate_operator())]
         pub fn reactivate_operator(
             origin: OriginFor<T>,
             operator_id: OperatorId,

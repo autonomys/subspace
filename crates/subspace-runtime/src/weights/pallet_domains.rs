@@ -687,4 +687,14 @@ impl<T: frame_system::Config> pallet_domains::WeightInfo for WeightInfo<T> {
 			.saturating_add(Weight::from_parts(0, 2489046))
 			.saturating_add(T::DbWeight::get().reads(6))
 	}
+
+    // TODO: generate through reference machine
+    fn deactivate_operator() -> Weight {
+        Weight::zero()
+    }
+
+    // TODO: generate through reference machine
+    fn reactivate_operator() -> Weight {
+        Weight::zero()
+    }
 }
