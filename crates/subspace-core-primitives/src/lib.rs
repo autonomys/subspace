@@ -130,7 +130,7 @@ pub type SlotNumber = u64;
 
 /// BlockWeight type for fork choice rules.
 ///
-/// The closer solution's tag is to the target, the heavier it is.
+/// The narrower the solution range, the heavier the block is.
 pub type BlockWeight = u128;
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.

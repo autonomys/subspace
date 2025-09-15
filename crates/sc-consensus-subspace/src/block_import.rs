@@ -601,7 +601,7 @@ where
         let block_hash = block.post_hash();
         let block_number = *block.header.number();
 
-        // Early exit if block already in chain
+        // Early exit if the block is already in the chain, and never treat it as the best block.
         match self.client.status(block_hash)? {
             sp_blockchain::BlockStatus::InChain => {
                 block.fork_choice = Some(ForkChoiceStrategy::Custom(false));
@@ -637,15 +637,26 @@ where
             .await?;
         }
 
+        // Find the solution range weight of the chain with the parent block at its tip.
         let parent_weight = if block_number.is_one() {
+            // The genesis block is given a zero fork weight.
             0
         } else {
-            // Parent block weight might be missing in special sync modes where block is imported in
-            // the middle of the blockchain history directly
+            // Parent block fork weight might be missing in special sync modes where the block is
+            // imported in the middle of the blockchain history directly. For forks off the same
+            // parent, this doesn't change the comparison outcome.
+            //
+            // For forks off different parents, this only changes the outcome if the fork is over an
+            // era transition. (Solution ranges are fixed within the same era.) In this case, the
+            // rest of the connected nodes will quickly converge, because they have weights starting
+            // further back. This convergence will overwhelm the inconsistent fork choices of any
+            // nodes that are currently snap syncing.
             aux_schema::load_block_weight(self.client.as_ref(), block.header.parent_hash())?
                 .unwrap_or_default()
         };
 
+        // We prioritise narrower (numerically smaller) solution ranges, using an inverse
+        // calculation.
         let added_weight = calculate_block_weight(subspace_digest_items.solution_range);
         let total_weight = parent_weight.saturating_add(added_weight);
 
@@ -672,18 +683,39 @@ where
             }
         }
 
-        // The fork choice rule is that we pick the heaviest chain (i.e. smallest solution range),
-        // if there's a tie we go with the longest chain
+        // The fork choice rule is the largest fork solution range weight.
+        //
+        // This almost always prioritises:
+        // - the longest chain (the largest number of solutions), and if there is a tie
+        // - the strictest solutions (the numerically smallest solution ranges).
+        //
+        // If these totals are equal:
+        // - each node keeps the block it already chose (the one that it processed first).
+        //
+        // If there is no previous best block, or the old best block is missing a weight, or has a
+        // zero weight:
+        // - the new block is chosen as the best block, as long as it has a non-zero weight.
+        // (The only blocks with zero weights are in the test runtime.)
+        //
+        // Solution ranges only change at the end of each era, where different block times can make
+        // the range in each fork different. This can lead to some edge cases:
+        // - one fork accepts a solution as within its range, but another with a narrower range
+        //   does not, or
+        // - a fork with a narrower range outweighs a fork with a wider range, leading to a reorg
+        //   to a fork with fewer blocks.
+        //
+        // But these will be resolved with very high probability after a few blocks, assuming the
+        // network is well-connected.
         let fork_choice = {
             let info = self.client.info();
 
             let last_best_weight = if &info.best_hash == block.header.parent_hash() {
-                // the parent=genesis case is already covered for loading parent weight, so we don't
-                // need to cover again here
+                // The "parent is genesis" case is already covered when loading parent weight, so we don't
+                // need to cover it again here.
                 parent_weight
             } else {
-                // Best block weight might be missing in special sync modes where block is imported
-                // in the middle of the blockchain history right after genesis
+                // The best block weight might be missing in special sync modes where the block is
+                // imported in the middle of the blockchain history, right after importing genesis.
                 aux_schema::load_block_weight(&*self.client, info.best_hash)?.unwrap_or_default()
             };
 

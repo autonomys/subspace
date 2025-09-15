@@ -186,7 +186,8 @@ pub struct VerifySolutionParams {
     pub piece_check_params: Option<PieceCheckParams>,
 }
 
-/// Calculate weight derived from provided solution range
+/// Calculate the block's contribution to the fork weight, which is derived from the provided
+/// solution range.
 pub fn calculate_block_weight(solution_range: SolutionRange) -> BlockWeight {
     BlockWeight::from(SolutionRange::MAX - solution_range)
 }
