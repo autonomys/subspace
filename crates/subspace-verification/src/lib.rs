@@ -189,6 +189,15 @@ pub struct VerifySolutionParams {
 /// Calculate the block's contribution to the fork weight, which is derived from the provided
 /// solution range.
 pub fn calculate_block_fork_weight(solution_range: SolutionRange) -> BlockForkWeight {
+    // Work around the test runtime accepting all solutions, which causes blocks to have zero
+    // fork weight. This makes each node keep its own blocks, and never reorg to a common chain.
+    #[cfg(feature = "testing")]
+    let solution_range = if solution_range == SolutionRange::MAX {
+        SolutionRange::MAX - 1
+    } else {
+        solution_range
+    };
+
     BlockForkWeight::from(SolutionRange::MAX - solution_range)
 }
 

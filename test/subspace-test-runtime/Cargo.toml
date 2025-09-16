@@ -63,6 +63,8 @@ static_assertions.workspace = true
 subspace-core-primitives.workspace = true
 subspace-runtime-primitives.workspace = true
 subspace-test-primitives.workspace = true
+# Activate a testing workaround for the fork choice rule
+subspace-verification = { workspace = true, features = ["testing"] }
 
 [build-dependencies]
 substrate-wasm-builder = { workspace = true, optional = true }
