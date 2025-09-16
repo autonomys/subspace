@@ -44,7 +44,7 @@ use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentInde
 use subspace_core_primitives::solutions::SolutionRange;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_proof_of_space::Table;
-use subspace_verification::{PieceCheckParams, VerifySolutionParams, calculate_block_weight};
+use subspace_verification::{PieceCheckParams, VerifySolutionParams, calculate_block_fork_weight};
 use tracing::warn;
 
 /// Notification with number of the block that is about to be imported and acknowledgement sender
@@ -657,7 +657,7 @@ where
 
         // We prioritise narrower (numerically smaller) solution ranges, using an inverse
         // calculation.
-        let added_weight = calculate_block_weight(subspace_digest_items.solution_range);
+        let added_weight = calculate_block_fork_weight(subspace_digest_items.solution_range);
         let total_weight = parent_weight.saturating_add(added_weight);
 
         aux_schema::write_block_weight(block_hash, total_weight, |values| {
