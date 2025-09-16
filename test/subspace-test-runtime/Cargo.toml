@@ -16,11 +16,11 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-parity-scale-codec = { workspace = true, features = ["derive"] }
 domain-runtime-primitives.workspace = true
 frame-executive.workspace = true
 frame-support.workspace = true
 frame-system.workspace = true
+frame-system-rpc-runtime-api.workspace = true
 pallet-balances.workspace = true
 pallet-domains.workspace = true
 pallet-messenger.workspace = true
@@ -34,8 +34,10 @@ pallet-sudo.workspace = true
 pallet-timestamp.workspace = true
 pallet-transaction-fees.workspace = true
 pallet-transaction-payment.workspace = true
+pallet-transaction-payment-rpc-runtime-api.workspace = true
 pallet-transporter.workspace = true
 pallet-utility.workspace = true
+parity-scale-codec = { workspace = true, features = ["derive"] }
 scale-info = { workspace = true, features = ["derive"] }
 sp-api.workspace = true
 sp-block-builder.workspace = true
@@ -61,8 +63,6 @@ static_assertions.workspace = true
 subspace-core-primitives.workspace = true
 subspace-runtime-primitives.workspace = true
 subspace-test-primitives.workspace = true
-frame-system-rpc-runtime-api.workspace = true
-pallet-transaction-payment-rpc-runtime-api.workspace = true
 
 [build-dependencies]
 substrate-wasm-builder = { workspace = true, optional = true }
