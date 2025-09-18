@@ -29,35 +29,10 @@
 use frame_support::{traits::Get, weights::{Weight, constants::ParityDbWeight}};
 use core::marker::PhantomData;
 
-/// Weight functions needed for pallet_domains.
-pub trait WeightInfo {
-	fn submit_bundle() -> Weight;
-	fn submit_fraud_proof() -> Weight;
-	fn handle_bad_receipt(n: u32, ) -> Weight;
-	fn confirm_domain_block(n: u32, s: u32, ) -> Weight;
-	fn operator_reward_tax_and_restake(n: u32, ) -> Weight;
-	fn slash_operator(n: u32, ) -> Weight;
-	fn finalize_domain_epoch_staking(p: u32, ) -> Weight;
-	fn register_domain_runtime() -> Weight;
-	fn upgrade_domain_runtime() -> Weight;
-	fn instantiate_domain() -> Weight;
-	fn register_operator() -> Weight;
-	fn nominate_operator() -> Weight;
-	fn deregister_operator() -> Weight;
-	fn withdraw_stake() -> Weight;
-	fn unlock_funds(w: u32) -> Weight;
-	fn unlock_nominator() -> Weight;
-	fn update_domain_operator_allow_list() -> Weight;
-	fn transfer_treasury_funds() -> Weight;
-	fn submit_receipt() -> Weight;
-	fn validate_submit_bundle() -> Weight;
-	fn validate_singleton_receipt() -> Weight;
-	fn fraud_proof_pre_check() -> Weight;
-}
 
 /// Weights for pallet_domains using the Substrate node and recommended hardware.
 pub struct SubstrateWeight<T>(PhantomData<T>);
-impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
+impl<T: frame_system::Config> crate::WeightInfo for SubstrateWeight<T> {
 	/// Storage: `Domains::HeadReceiptNumber` (r:1 w:1)
 	/// Proof: `Domains::HeadReceiptNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
 	/// Storage: `Domains::NewAddedHeadReceipt` (r:1 w:1)
@@ -656,7 +631,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 }
 
 // For backwards compatibility and tests
-impl WeightInfo for () {
+impl crate::WeightInfo for () {
 	/// Storage: `Domains::HeadReceiptNumber` (r:1 w:1)
 	/// Proof: `Domains::HeadReceiptNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
 	/// Storage: `Domains::NewAddedHeadReceipt` (r:1 w:1)

@@ -30,7 +30,6 @@ use crate::staking::OperatorStatus;
 #[cfg(feature = "runtime-benchmarks")]
 pub use crate::staking::do_register_operator;
 use crate::staking_epoch::EpochTransitionResult;
-pub use crate::weights::WeightInfo;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
@@ -197,6 +196,32 @@ const MAX_BUNDLE_PER_BLOCK: u32 = 100;
 
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 
+/// Weight functions needed for pallet_domains.
+pub trait WeightInfo {
+    fn submit_bundle() -> Weight;
+    fn submit_fraud_proof() -> Weight;
+    fn handle_bad_receipt(n: u32) -> Weight;
+    fn confirm_domain_block(n: u32, s: u32) -> Weight;
+    fn operator_reward_tax_and_restake(n: u32) -> Weight;
+    fn slash_operator(n: u32) -> Weight;
+    fn finalize_domain_epoch_staking(p: u32) -> Weight;
+    fn register_domain_runtime() -> Weight;
+    fn upgrade_domain_runtime() -> Weight;
+    fn instantiate_domain() -> Weight;
+    fn register_operator() -> Weight;
+    fn nominate_operator() -> Weight;
+    fn deregister_operator() -> Weight;
+    fn withdraw_stake() -> Weight;
+    fn unlock_funds(w: u32) -> Weight;
+    fn unlock_nominator() -> Weight;
+    fn update_domain_operator_allow_list() -> Weight;
+    fn transfer_treasury_funds() -> Weight;
+    fn submit_receipt() -> Weight;
+    fn validate_submit_bundle() -> Weight;
+    fn validate_singleton_receipt() -> Weight;
+    fn fraud_proof_pre_check() -> Weight;
+}
+
 #[expect(clippy::useless_conversion, reason = "Macro-generated")]
 #[frame_support::pallet]
 mod pallet {
@@ -232,12 +257,11 @@ mod pallet {
     use crate::staking_epoch::do_slash_operator;
     use crate::staking_epoch::{Error as StakingEpochError, do_finalize_domain_current_epoch};
     use crate::storage_proof::InherentExtrinsicData;
-    use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
         ExecutionReceiptOf, FraudProofFor, HoldIdentifier, MAX_BUNDLE_PER_BLOCK, NominatorId,
         OpaqueBundleOf, RawOrigin, ReceiptHashFor, STORAGE_VERSION, SingletonReceiptOf,
-        StateRootOf,
+        StateRootOf, WeightInfo,
     };
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
