@@ -708,7 +708,7 @@ pub(crate) fn do_deregister_operator<T: Config>(
 }
 
 /// Deactivates a given operator.
-/// Operator status is marked as Deactivated with epoch_index after which they can re-register back
+/// Operator status is marked as Deactivated with epoch_index after which they can reactivate back
 /// into operator set. Their stake is removed from the total domain stake since they will not be
 /// producing bundles anymore until re-registration.
 pub(crate) fn do_deactivate_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
@@ -728,11 +728,11 @@ pub(crate) fn do_deactivate_operator<T: Config>(operator_id: OperatorId) -> Resu
                     .ok_or(Error::DomainNotInitialized)?;
 
                 let current_epoch = stake_summary.current_epoch_index;
-                let activation_delay_until = current_epoch
+                let reactivation_delay = current_epoch
                     .checked_add(T::OperatorActivationDelayInEpochs::get())
                     .ok_or(Error::EpochOverflow)?;
 
-                operator.update_status(OperatorStatus::Deactivated(activation_delay_until));
+                operator.update_status(OperatorStatus::Deactivated(reactivation_delay));
 
                 // remove operator from the current and next operator set.
                 // ensure to reduce the total stake if operator is actually present in the
@@ -755,7 +755,7 @@ pub(crate) fn do_deactivate_operator<T: Config>(operator_id: OperatorId) -> Resu
                 Pallet::<T>::deposit_event(Event::OperatorDeactivated {
                     domain_id: operator.current_domain_id,
                     operator_id,
-                    reregister_after_epoch: activation_delay_until,
+                    reactivation_delay,
                 });
 
                 Ok(())
@@ -770,9 +770,9 @@ pub(crate) fn do_reactivate_operator<T: Config>(operator_id: OperatorId) -> Resu
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
         let operator_status = operator.status::<T>(operator_id);
-        let reregister_after_epoch =
-            if let OperatorStatus::Deactivated(reregister_epoch) = operator_status {
-                *reregister_epoch
+        let reactivation_delay =
+            if let OperatorStatus::Deactivated(reactivation_delay) = operator_status {
+                *reactivation_delay
             } else {
                 return Err(Error::OperatorNotDeactivated);
             };
@@ -786,7 +786,7 @@ pub(crate) fn do_reactivate_operator<T: Config>(operator_id: OperatorId) -> Resu
 
                 let current_epoch = stake_summary.current_epoch_index;
                 ensure!(
-                    current_epoch >= reregister_after_epoch,
+                    current_epoch >= reactivation_delay,
                     Error::ReactivationDelayPeriodIncomplete
                 );
 
@@ -2148,12 +2148,12 @@ pub(crate) mod tests {
             );
 
             let current_epoch_index = domain_stake_summary.current_epoch_index;
-            let reregister_cooldown_epoch =
+            let reactivation_delay =
                 current_epoch_index + <Test as Config>::OperatorActivationDelayInEpochs::get();
             let operator = Operators::<Test>::get(operator_id).unwrap();
             assert_eq!(
                 *operator.status::<Test>(operator_id),
-                OperatorStatus::Deactivated(reregister_cooldown_epoch)
+                OperatorStatus::Deactivated(reactivation_delay)
             );
 
             let operator_stake = operator.current_total_stake;
@@ -2197,7 +2197,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn operator_reregister() {
+    fn operator_reactivation() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let operator_stake = 200 * AI3;
@@ -2228,12 +2228,12 @@ pub(crate) mod tests {
             );
 
             let current_epoch_index = domain_stake_summary.current_epoch_index;
-            let reregister_cooldown_epoch =
+            let reactivation_delay =
                 current_epoch_index + <Test as Config>::OperatorActivationDelayInEpochs::get();
             let operator = Operators::<Test>::get(operator_id).unwrap();
             assert_eq!(
                 *operator.status::<Test>(operator_id),
-                OperatorStatus::Deactivated(reregister_cooldown_epoch)
+                OperatorStatus::Deactivated(reactivation_delay)
             );
 
             // reregistration should not work before cool off period
@@ -2243,7 +2243,7 @@ pub(crate) mod tests {
                 Error::<Test>::Staking(crate::staking::Error::ReactivationDelayPeriodIncomplete)
             );
 
-            for expected_epoch in (current_epoch_index + 1)..=reregister_cooldown_epoch {
+            for expected_epoch in (current_epoch_index + 1)..=reactivation_delay {
                 do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
                 let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
                 assert_eq!(domain_stake_summary.current_epoch_index, expected_epoch);

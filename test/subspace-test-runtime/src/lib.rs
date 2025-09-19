@@ -835,7 +835,7 @@ parameter_types! {
         bundle_version: BundleVersion::V0,
         execution_receipt_version: ExecutionReceiptVersion::V0,
     };
-    pub const CooldownReregisterOperatorInEpochs: EpochIndex = 5;
+    pub const OperatorActivationDelayInEpochs: EpochIndex = 5;
 }
 
 // `BlockSlotCount` must at least keep the slot for the current and the parent block, it also need to
@@ -927,7 +927,7 @@ impl pallet_domains::Config for Runtime {
     type OnChainRewards = OnChainRewards;
     type WithdrawalLimit = WithdrawalLimit;
     type CurrentBundleAndExecutionReceiptVersion = CurrentBundleAndExecutionReceiptVersion;
-    type OperatorActivationDelayInEpochs = CooldownReregisterOperatorInEpochs;
+    type OperatorActivationDelayInEpochs = OperatorActivationDelayInEpochs;
 }
 
 parameter_types! {

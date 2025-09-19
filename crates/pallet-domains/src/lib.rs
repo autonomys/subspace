@@ -1133,7 +1133,7 @@ mod pallet {
         OperatorDeactivated {
             domain_id: DomainId,
             operator_id: OperatorId,
-            reregister_after_epoch: EpochIndex,
+            reactivation_delay: EpochIndex,
         },
         OperatorReactivated {
             operator_id: OperatorId,

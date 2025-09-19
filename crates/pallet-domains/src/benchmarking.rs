@@ -1122,7 +1122,7 @@ mod benchmarks {
 
         let domain_stake_summary = DomainStakingSummary::<T>::get(domain_id).unwrap();
         let current_epoch_index = domain_stake_summary.current_epoch_index;
-        let reregister_cooldown_epoch =
+        let reactivation_delay =
             current_epoch_index + <T as Config>::OperatorActivationDelayInEpochs::get();
 
         #[extrinsic_call]
@@ -1131,7 +1131,7 @@ mod benchmarks {
         let operator = Operators::<T>::get(operator_id).expect("operator must exist");
         assert_eq!(
             *operator.status::<T>(operator_id),
-            OperatorStatus::Deactivated(reregister_cooldown_epoch),
+            OperatorStatus::Deactivated(reactivation_delay),
         );
     }
 
@@ -1153,10 +1153,10 @@ mod benchmarks {
 
         let domain_stake_summary = DomainStakingSummary::<T>::get(domain_id).unwrap();
         let current_epoch_index = domain_stake_summary.current_epoch_index;
-        let reregister_cooldown_epoch =
+        let reactivation_delay =
             current_epoch_index + <T as Config>::OperatorActivationDelayInEpochs::get();
 
-        for expected_epoch in (current_epoch_index + 1)..=reregister_cooldown_epoch {
+        for expected_epoch in (current_epoch_index + 1)..=reactivation_delay {
             do_finalize_domain_current_epoch::<T>(domain_id).unwrap();
             let domain_stake_summary = DomainStakingSummary::<T>::get(domain_id).unwrap();
             assert_eq!(domain_stake_summary.current_epoch_index, expected_epoch);
