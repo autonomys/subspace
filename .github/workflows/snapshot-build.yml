@@ -301,7 +301,6 @@ jobs:
         continue-on-error: ${{ github.repository_owner != 'autonomys' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'macOS'
 
-
       - name: Sign Application (Windows)
         run: |
           AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe"
@@ -309,7 +308,8 @@ jobs:
           AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ env.PRODUCTION_TARGET }}/subspace-node.exe"
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
         continue-on-error: ${{ github.repository_owner != 'autonomys' || github.event_name != 'push' || github.ref_type != 'tag' }}
-        if: runner.os == 'Windows'
+        # TODO: fix Windows code signing, then re-enable and update this step
+        if: runner.os == 'Windows' && false
 
       - name: Prepare executables for uploading (macOS)
         run: |
