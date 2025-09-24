@@ -1,8 +1,10 @@
 //! Extensions for unsigned general extrinsics
 
 use crate::pallet::Call as DomainsCall;
-use crate::weights::WeightInfo;
-use crate::{Config, FraudProofFor, OpaqueBundleOf, Origin, Pallet as Domains, SingletonReceiptOf};
+use crate::{
+    Config, FraudProofFor, OpaqueBundleOf, Origin, Pallet as Domains, SingletonReceiptOf,
+    WeightInfo,
+};
 use frame_support::ensure;
 use frame_support::pallet_prelude::{PhantomData, TypeInfo};
 use frame_support::weights::Weight;

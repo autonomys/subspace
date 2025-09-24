@@ -11,9 +11,10 @@ use crate::pallet::{
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
-    BalanceOf, Config, DepositOnHold, DeregisteredOperators, DomainBlockNumberFor,
-    DomainHashingFor, Event, ExecutionReceiptOf, HoldIdentifier, InvalidBundleAuthors, NominatorId,
-    OperatorEpochSharePrice, OperatorHighestSlot, Pallet, ReceiptHashFor, SlashedReason,
+    BalanceOf, Config, DeactivatedOperators, DepositOnHold, DeregisteredOperators,
+    DomainBlockNumberFor, DomainHashingFor, Event, ExecutionReceiptOf, HoldIdentifier,
+    InvalidBundleAuthors, NominatorId, OperatorEpochSharePrice, OperatorHighestSlot, Pallet,
+    ReceiptHashFor, SlashedReason,
 };
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
@@ -194,6 +195,10 @@ pub enum OperatorStatus<DomainBlockNumber, ReceiptHash> {
     PendingSlash,
     #[codec(index = 4)]
     InvalidBundle(ReceiptHash),
+    /// Operator was deactivated due to being offline.
+    /// Operator can be activated after given epoch_index.
+    #[codec(index = 5)]
+    Deactivated(EpochIndex),
 }
 
 /// Type that represents an operator details.
@@ -278,6 +283,7 @@ pub enum Error {
     BalanceUnderflow,
     NotOperatorOwner,
     OperatorNotRegistered,
+    OperatorNotDeactivated,
     UnknownNominator,
     MissingOperatorOwner,
     MintBalance,
@@ -299,6 +305,7 @@ pub enum Error {
     TooManyWithdrawals,
     ZeroDeposit,
     ZeroSharePrice,
+    ReactivationDelayPeriodIncomplete,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -694,6 +701,103 @@ pub(crate) fn do_deregister_operator<T: Config>(
                 DeregisteredOperators::<T>::mutate(operator.current_domain_id, |operators| {
                     operators.insert(operator_id)
                 });
+                Ok(())
+            },
+        )
+    })
+}
+
+/// Deactivates a given operator.
+/// Operator status is marked as Deactivated with epoch_index after which they can reactivate back
+/// into operator set. Their stake is removed from the total domain stake since they will not be
+/// producing bundles anymore until re-registration.
+pub(crate) fn do_deactivate_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
+    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+        let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
+
+        ensure!(
+            *operator.status::<T>(operator_id) == OperatorStatus::Registered,
+            Error::OperatorNotRegistered
+        );
+
+        DomainStakingSummary::<T>::try_mutate(
+            operator.current_domain_id,
+            |maybe_domain_stake_summary| {
+                let stake_summary = maybe_domain_stake_summary
+                    .as_mut()
+                    .ok_or(Error::DomainNotInitialized)?;
+
+                let current_epoch = stake_summary.current_epoch_index;
+                let reactivation_delay = current_epoch
+                    .checked_add(T::OperatorActivationDelayInEpochs::get())
+                    .ok_or(Error::EpochOverflow)?;
+
+                operator.update_status(OperatorStatus::Deactivated(reactivation_delay));
+
+                // remove operator from the current and next operator set.
+                // ensure to reduce the total stake if operator is actually present in the
+                // current_operator set
+                if stake_summary
+                    .current_operators
+                    .remove(&operator_id)
+                    .is_some()
+                {
+                    stake_summary.current_total_stake = stake_summary
+                        .current_total_stake
+                        .checked_sub(&operator.current_total_stake)
+                        .ok_or(Error::BalanceUnderflow)?;
+                }
+                stake_summary.next_operators.remove(&operator_id);
+
+                DeactivatedOperators::<T>::mutate(operator.current_domain_id, |operators| {
+                    operators.insert(operator_id)
+                });
+                Pallet::<T>::deposit_event(Event::OperatorDeactivated {
+                    domain_id: operator.current_domain_id,
+                    operator_id,
+                    reactivation_delay,
+                });
+
+                Ok(())
+            },
+        )
+    })
+}
+
+/// Reactivate a given deactivated operator if the activation delay in epochs has passed.
+/// The operator is added to next operator set and will be able to produce bundles from next epoch.
+pub(crate) fn do_reactivate_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
+    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+        let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
+        let operator_status = operator.status::<T>(operator_id);
+        let reactivation_delay =
+            if let OperatorStatus::Deactivated(reactivation_delay) = operator_status {
+                *reactivation_delay
+            } else {
+                return Err(Error::OperatorNotDeactivated);
+            };
+
+        DomainStakingSummary::<T>::try_mutate(
+            operator.current_domain_id,
+            |maybe_domain_stake_summary| {
+                let stake_summary = maybe_domain_stake_summary
+                    .as_mut()
+                    .ok_or(Error::DomainNotInitialized)?;
+
+                let current_epoch = stake_summary.current_epoch_index;
+                ensure!(
+                    current_epoch >= reactivation_delay,
+                    Error::ReactivationDelayPeriodIncomplete
+                );
+
+                operator.update_status(OperatorStatus::Registered);
+                stake_summary.next_operators.insert(operator_id);
+
+                Pallet::<T>::deposit_event(Event::OperatorReactivated {
+                    domain_id: operator.current_domain_id,
+                    operator_id,
+                });
+
                 Ok(())
             },
         )
@@ -2005,6 +2109,156 @@ pub(crate) mod tests {
             assert_err!(
                 res,
                 Error::<Test>::Staking(crate::staking::Error::OperatorNotRegistered)
+            );
+        });
+    }
+
+    #[test]
+    fn operator_deactivation() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_stake = 200 * AI3;
+        let operator_free_balance = 250 * AI3;
+        let pair = OperatorPair::from_seed(&[0; 32]);
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                AI3,
+                pair.public(),
+                Default::default(),
+                BTreeMap::new(),
+            );
+
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            let total_current_stake = domain_stake_summary.current_total_stake;
+
+            let res = Domains::deactivate_operator(RuntimeOrigin::root(), operator_id);
+            assert_ok!(res);
+
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert!(!domain_stake_summary.next_operators.contains(&operator_id));
+            assert!(
+                !domain_stake_summary
+                    .current_operators
+                    .contains_key(&operator_id)
+            );
+
+            let current_epoch_index = domain_stake_summary.current_epoch_index;
+            let reactivation_delay =
+                current_epoch_index + <Test as Config>::OperatorActivationDelayInEpochs::get();
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(
+                *operator.status::<Test>(operator_id),
+                OperatorStatus::Deactivated(reactivation_delay)
+            );
+
+            let operator_stake = operator.current_total_stake;
+            assert_eq!(
+                total_current_stake,
+                domain_stake_summary.current_total_stake + operator_stake
+            );
+
+            // operator nomination will not work since the operator is deactivated
+            let nominator_account = 100;
+            let nominator_stake = 100 * AI3;
+            let res = Domains::nominate_operator(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+                nominator_stake,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::OperatorNotRegistered)
+            );
+
+            // nominator withdraw should not work since the operator is deactivated
+            let res = Domains::withdraw_stake(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+                nominator_stake,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::OperatorNotRegistered)
+            );
+
+            // deregistration should not work since the operator is deactivated
+            let res =
+                Domains::deregister_operator(RuntimeOrigin::signed(operator_account), operator_id);
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::OperatorNotRegistered)
+            );
+        });
+    }
+
+    #[test]
+    fn operator_reactivation() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_stake = 200 * AI3;
+        let operator_free_balance = 250 * AI3;
+        let pair = OperatorPair::from_seed(&[0; 32]);
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                AI3,
+                pair.public(),
+                Default::default(),
+                BTreeMap::new(),
+            );
+
+            let res = Domains::deactivate_operator(RuntimeOrigin::root(), operator_id);
+            assert_ok!(res);
+
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert!(!domain_stake_summary.next_operators.contains(&operator_id));
+            assert!(
+                !domain_stake_summary
+                    .current_operators
+                    .contains_key(&operator_id)
+            );
+
+            let current_epoch_index = domain_stake_summary.current_epoch_index;
+            let reactivation_delay =
+                current_epoch_index + <Test as Config>::OperatorActivationDelayInEpochs::get();
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(
+                *operator.status::<Test>(operator_id),
+                OperatorStatus::Deactivated(reactivation_delay)
+            );
+
+            // reregistration should not work before cool off period
+            let res = Domains::reactivate_operator(RuntimeOrigin::root(), operator_id);
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::ReactivationDelayPeriodIncomplete)
+            );
+
+            for expected_epoch in (current_epoch_index + 1)..=reactivation_delay {
+                do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+                let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+                assert_eq!(domain_stake_summary.current_epoch_index, expected_epoch);
+            }
+
+            let res = Domains::reactivate_operator(RuntimeOrigin::root(), operator_id);
+            assert_ok!(res);
+
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert!(domain_stake_summary.next_operators.contains(&operator_id));
+
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(
+                *operator.status::<Test>(operator_id),
+                OperatorStatus::Registered
             );
         });
     }
@@ -3757,6 +4011,17 @@ pub(crate) mod tests {
                     bundle_storage_fund::total_balance::<Test>(operator_id)
                 );
             }
+
+            // deactivated operators can be slashed
+            let res = Domains::deactivate_operator(RuntimeOrigin::root(), operator_id_3);
+            assert_ok!(res);
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+
+            let operator = Operators::<Test>::get(operator_id_3).unwrap();
+            assert_eq!(
+                *operator.status::<Test>(operator_id_3),
+                OperatorStatus::Deactivated(7)
+            );
 
             do_mark_operators_as_slashed::<Test>(
                 vec![operator_id_1],

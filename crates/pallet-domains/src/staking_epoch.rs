@@ -9,8 +9,8 @@ use crate::staking::{
     do_cleanup_operator, do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal,
 };
 use crate::{
-    BalanceOf, Config, DepositOnHold, DeregisteredOperators, DomainChainRewards,
-    ElectionVerificationParams, Event, HoldIdentifier, InvalidBundleAuthors,
+    BalanceOf, Config, DeactivatedOperators, DepositOnHold, DeregisteredOperators,
+    DomainChainRewards, ElectionVerificationParams, Event, HoldIdentifier, InvalidBundleAuthors,
     OperatorEpochSharePrice, Pallet, bundle_storage_fund,
 };
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
@@ -267,6 +267,7 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
         // But there will be deposits/withdrawals for operators who are not part of the next operator set.
         // So they need to have share price for the previous epoch
         //  - Deregistered operators who got new deposits/withdrawals before they de-registered.
+        //  - Deactivated operators who got new deposits/withdrawals before they were deactivated.
         //  - InvalidBundle authors can have deposits or withdrawals before they are marked invalid.
         //  - Any operator who received rewards in the previous epoch
         let mut operators_to_calculate_share_price = operators_with_self_deposits;
@@ -274,6 +275,8 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
         operators_to_calculate_share_price.extend(InvalidBundleAuthors::<T>::take(domain_id));
         // include operators who de-registered in this epoch
         operators_to_calculate_share_price.extend(DeregisteredOperators::<T>::take(domain_id));
+        // include operators who we deactivated in this epoch
+        operators_to_calculate_share_price.extend(DeactivatedOperators::<T>::take(domain_id));
         // exclude operators who have already been processed as they are in next operator set.
         operators_to_calculate_share_price.retain(|&x| !stake_summary.next_operators.contains(&x));
 
@@ -1089,7 +1092,7 @@ mod tests {
             operator_share_price_does_not_exist(domain_id, vec![1], 2);
             assert_eq!(get_current_epoch(), 3);
 
-            // mark operator 2 as de-registered and 3 as Invalid Bundle author
+            // mark operator 1 as deactivated, 2 as de-registered, and 3 as Invalid Bundle author
             // they will still receive rewards in epoch 3
             // so they should have share price set as well
 
@@ -1101,6 +1104,10 @@ mod tests {
                 10 * AI3,
             )
             .unwrap();
+
+            // deactivate operator 1
+            let res = Domains::deactivate_operator(RuntimeOrigin::root(), 1);
+            assert_ok!(res);
 
             // de-register operator 2
             let res = Domains::deregister_operator(RuntimeOrigin::signed(2), 2);

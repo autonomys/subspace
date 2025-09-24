@@ -65,7 +65,7 @@ use sp_domains::execution_receipt::{
 };
 use sp_domains::{
     BundleAndExecutionReceiptVersion, ChannelId, DomainAllowlistUpdates, DomainId,
-    DomainInstanceData, INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey,
+    DomainInstanceData, EpochIndex, INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey,
     PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
@@ -887,6 +887,8 @@ parameter_types! {
         bundle_version: BundleVersion::V0,
         execution_receipt_version: ExecutionReceiptVersion::V0,
     };
+    /// Operator activation delay after deactivation in Epochs
+    pub const OperatorActivationDelayInEpochs: EpochIndex = 5;
 }
 
 // `BlockSlotCount` must at least keep the slot for the current and the parent block, it also need to
@@ -978,6 +980,7 @@ impl pallet_domains::Config for Runtime {
     type OnChainRewards = OnChainRewards;
     type WithdrawalLimit = WithdrawalLimit;
     type CurrentBundleAndExecutionReceiptVersion = CurrentBundleAndExecutionReceiptVersion;
+    type OperatorActivationDelayInEpochs = OperatorActivationDelayInEpochs;
 }
 
 parameter_types! {
