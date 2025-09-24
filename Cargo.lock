@@ -14117,6 +14117,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "subspace-test-primitives",
+ "subspace-verification",
  "substrate-wasm-builder",
 ]
 
