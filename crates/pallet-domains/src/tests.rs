@@ -35,8 +35,9 @@ use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptVersion, S
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleAndExecutionReceiptVersion, ChainId, DomainId, EMPTY_EXTRINSIC_ROOT, OperatorAllowList,
-    OperatorId, OperatorPair, OperatorSignature, ProofOfElection, RuntimeId, RuntimeType,
+    BundleAndExecutionReceiptVersion, ChainId, DomainId, EMPTY_EXTRINSIC_ROOT, EpochIndex,
+    OperatorAllowList, OperatorId, OperatorPair, OperatorSignature, ProofOfElection, RuntimeId,
+    RuntimeType,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_keystore::Keystore;
@@ -183,6 +184,7 @@ parameter_types! {
         bundle_version: BundleVersion::V0,
         execution_receipt_version: ExecutionReceiptVersion::V0,
     };
+    pub const OperatorActivationDelayInEpochs: EpochIndex = 5;
 }
 
 pub struct MockRandomness;
@@ -315,6 +317,7 @@ impl pallet_domains::Config for Test {
     type WithdrawalLimit = WithdrawalLimit;
     type DomainOrigin = crate::EnsureDomainOrigin;
     type CurrentBundleAndExecutionReceiptVersion = CurrentBundleAndExecutionReceiptVersion;
+    type OperatorActivationDelayInEpochs = OperatorActivationDelayInEpochs;
 }
 
 pub struct ExtrinsicStorageFees;

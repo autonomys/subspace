@@ -30,7 +30,6 @@ use crate::staking::OperatorStatus;
 #[cfg(feature = "runtime-benchmarks")]
 pub use crate::staking::do_register_operator;
 use crate::staking_epoch::EpochTransitionResult;
-pub use crate::weights::WeightInfo;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
@@ -197,6 +196,34 @@ const MAX_BUNDLE_PER_BLOCK: u32 = 100;
 
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 
+/// Weight functions needed for pallet_domains.
+pub trait WeightInfo {
+    fn submit_bundle() -> Weight;
+    fn submit_fraud_proof() -> Weight;
+    fn handle_bad_receipt(n: u32) -> Weight;
+    fn confirm_domain_block(n: u32, s: u32) -> Weight;
+    fn operator_reward_tax_and_restake(n: u32) -> Weight;
+    fn slash_operator(n: u32) -> Weight;
+    fn finalize_domain_epoch_staking(p: u32) -> Weight;
+    fn register_domain_runtime() -> Weight;
+    fn upgrade_domain_runtime() -> Weight;
+    fn instantiate_domain() -> Weight;
+    fn register_operator() -> Weight;
+    fn nominate_operator() -> Weight;
+    fn deregister_operator() -> Weight;
+    fn withdraw_stake() -> Weight;
+    fn unlock_funds(w: u32) -> Weight;
+    fn unlock_nominator() -> Weight;
+    fn update_domain_operator_allow_list() -> Weight;
+    fn transfer_treasury_funds() -> Weight;
+    fn submit_receipt() -> Weight;
+    fn validate_submit_bundle() -> Weight;
+    fn validate_singleton_receipt() -> Weight;
+    fn fraud_proof_pre_check() -> Weight;
+    fn deactivate_operator() -> Weight;
+    fn reactivate_operator() -> Weight;
+}
+
 #[expect(clippy::useless_conversion, reason = "Macro-generated")]
 #[frame_support::pallet]
 mod pallet {
@@ -232,12 +259,11 @@ mod pallet {
     use crate::staking_epoch::do_slash_operator;
     use crate::staking_epoch::{Error as StakingEpochError, do_finalize_domain_current_epoch};
     use crate::storage_proof::InherentExtrinsicData;
-    use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
         ExecutionReceiptOf, FraudProofFor, HoldIdentifier, MAX_BUNDLE_PER_BLOCK, NominatorId,
         OpaqueBundleOf, RawOrigin, ReceiptHashFor, STORAGE_VERSION, SingletonReceiptOf,
-        StateRootOf,
+        StateRootOf, WeightInfo,
     };
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
@@ -465,6 +491,10 @@ mod pallet {
         /// Current bundle version accepted by the runtime.
         #[pallet::constant]
         type CurrentBundleAndExecutionReceiptVersion: Get<BundleAndExecutionReceiptVersion>;
+
+        /// Operator activation delay after deactivation in Epochs.
+        #[pallet::constant]
+        type OperatorActivationDelayInEpochs: Get<EpochIndex>;
     }
 
     #[pallet::pallet]
@@ -760,6 +790,12 @@ mod pallet {
     /// Will be cleared once epoch is transitioned.
     #[pallet::storage]
     pub type InvalidBundleAuthors<T: Config> =
+        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, ValueQuery>;
+
+    /// Storage for operators who were de-activated during this epoch.
+    /// Will be cleared once epoch is transitioned.
+    #[pallet::storage]
+    pub type DeactivatedOperators<T: Config> =
         StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, ValueQuery>;
 
     /// Storage for operators who de-registered in the current epoch.
@@ -1093,6 +1129,15 @@ mod pallet {
         PrunedExecutionReceipt {
             domain_id: DomainId,
             new_head_receipt_number: Option<DomainBlockNumberFor<T>>,
+        },
+        OperatorDeactivated {
+            domain_id: DomainId,
+            operator_id: OperatorId,
+            reactivation_delay: EpochIndex,
+        },
+        OperatorReactivated {
+            operator_id: OperatorId,
+            domain_id: DomainId,
         },
     }
 
@@ -1930,6 +1975,31 @@ mod pallet {
                 },
             );
 
+            Ok(())
+        }
+
+        /// Deactivate an offline operator through Sudo or Governance.
+        #[pallet::call_index(23)]
+        #[pallet::weight(T::WeightInfo::deactivate_operator())]
+        pub fn deactivate_operator(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            crate::staking::do_deactivate_operator::<T>(operator_id).map_err(Error::<T>::from)?;
+            Ok(())
+        }
+
+        /// Reactivate a deactivated operator through Sudo or Governance given
+        /// activation delay has passed.
+        #[pallet::call_index(24)]
+        #[pallet::weight(T::WeightInfo::reactivate_operator())]
+        pub fn reactivate_operator(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            crate::staking::do_reactivate_operator::<T>(operator_id).map_err(Error::<T>::from)?;
             Ok(())
         }
     }

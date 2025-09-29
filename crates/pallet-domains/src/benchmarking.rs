@@ -1110,6 +1110,68 @@ mod benchmarks {
         }
     }
 
+    #[benchmark]
+    fn deactivate_operator() {
+        let domain_id = register_domain::<T>(20);
+
+        let (_, operator_id) =
+            register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
+
+        do_finalize_domain_epoch_staking::<T>(domain_id, Default::default())
+            .expect("finalize domain staking should success");
+
+        let domain_stake_summary = DomainStakingSummary::<T>::get(domain_id).unwrap();
+        let current_epoch_index = domain_stake_summary.current_epoch_index;
+        let reactivation_delay =
+            current_epoch_index + <T as Config>::OperatorActivationDelayInEpochs::get();
+
+        #[extrinsic_call]
+        _(RawOrigin::Root, operator_id);
+
+        let operator = Operators::<T>::get(operator_id).expect("operator must exist");
+        assert_eq!(
+            *operator.status::<T>(operator_id),
+            OperatorStatus::Deactivated(reactivation_delay),
+        );
+    }
+
+    #[benchmark]
+    fn reactivate_operator() {
+        let domain_id = register_domain::<T>(20);
+
+        let (_, operator_id) =
+            register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
+
+        do_finalize_domain_epoch_staking::<T>(domain_id, Default::default())
+            .expect("finalize domain staking should success");
+
+        // Deactivate operator
+        assert_ok!(Domains::<T>::deactivate_operator(
+            RawOrigin::Root.into(),
+            operator_id,
+        ));
+
+        let domain_stake_summary = DomainStakingSummary::<T>::get(domain_id).unwrap();
+        let current_epoch_index = domain_stake_summary.current_epoch_index;
+        let reactivation_delay =
+            current_epoch_index + <T as Config>::OperatorActivationDelayInEpochs::get();
+
+        for expected_epoch in (current_epoch_index + 1)..=reactivation_delay {
+            do_finalize_domain_current_epoch::<T>(domain_id).unwrap();
+            let domain_stake_summary = DomainStakingSummary::<T>::get(domain_id).unwrap();
+            assert_eq!(domain_stake_summary.current_epoch_index, expected_epoch);
+        }
+
+        #[extrinsic_call]
+        _(RawOrigin::Root, operator_id);
+
+        let operator = Operators::<T>::get(operator_id).expect("operator must exist");
+        assert_eq!(
+            *operator.status::<T>(operator_id),
+            OperatorStatus::Registered,
+        );
+    }
+
     fn register_runtime<T: Config>() -> RuntimeId {
         let genesis_storage = include_bytes!("../res/evm-domain-genesis-storage").to_vec();
         let runtime_id = NextRuntimeId::<T>::get();
