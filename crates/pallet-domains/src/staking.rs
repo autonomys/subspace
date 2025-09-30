@@ -14,7 +14,7 @@ use crate::{
     BalanceOf, Config, DeactivatedOperators, DepositOnHold, DeregisteredOperators,
     DomainBlockNumberFor, DomainHashingFor, Event, ExecutionReceiptOf, HoldIdentifier,
     InvalidBundleAuthors, NominatorId, OperatorEpochSharePrice, OperatorHighestSlot, Pallet,
-    ReceiptHashFor, SlashedReason,
+    ReceiptHashFor, SlashedReason, WeightInfo,
 };
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
@@ -25,7 +25,7 @@ use scale_info::TypeInfo;
 use sp_core::{Get, sr25519};
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey, OperatorRewardSource};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
-use sp_runtime::{PerThing, Percent, Perquintill, Saturating};
+use sp_runtime::{PerThing, Percent, Perquintill, Saturating, Weight};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::collections::vec_deque::VecDeque;
@@ -676,12 +676,13 @@ pub(crate) fn hold_deposit<T: Config>(
 pub(crate) fn do_deregister_operator<T: Config>(
     operator_owner: T::AccountId,
     operator_id: OperatorId,
-) -> Result<(), Error> {
+) -> Result<Weight, Error> {
     ensure!(
         OperatorIdOwner::<T>::get(operator_id) == Some(operator_owner),
         Error::NotOperatorOwner
     );
 
+    let mut weight = T::WeightInfo::deregister_operator();
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
 
@@ -715,6 +716,7 @@ pub(crate) fn do_deregister_operator<T: Config>(
                     DeactivatedOperators::<T>::mutate(operator.current_domain_id, |operators| {
                         operators.remove(&operator_id);
                     });
+                    weight = T::WeightInfo::deregister_deactivated_operator();
                 }
 
                 operator.update_status(OperatorStatus::Deregistered(operator_deregister_info));
@@ -727,7 +729,9 @@ pub(crate) fn do_deregister_operator<T: Config>(
                 Ok(())
             },
         )
-    })
+    })?;
+
+    Ok(weight)
 }
 
 /// Deactivates a given operator.
@@ -870,11 +874,12 @@ pub(crate) fn do_withdraw_stake<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
     to_withdraw: T::Share,
-) -> Result<(), Error> {
+) -> Result<Weight, Error> {
     // Some withdraws are always zero, others require calculations to check if they are zero.
     // So this check is redundant, but saves us some work if the request will always be rejected.
     ensure!(!to_withdraw.is_zero(), Error::ZeroWithdraw);
 
+    let mut weight = T::WeightInfo::withdraw_stake();
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
         ensure!(
@@ -927,6 +932,8 @@ pub(crate) fn do_withdraw_stake<T: Config>(
             DeactivatedOperators::<T>::mutate(operator.current_domain_id, |operators| {
                 operators.insert(operator_id)
             });
+
+            weight = T::WeightInfo::withdraw_stake_from_deactivated_operator();
         }
 
         let operator_owner =
@@ -1066,7 +1073,9 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                 Ok(())
             })
         })
-    })
+    })?;
+
+    Ok(weight)
 }
 
 /// Unlocks any withdraws that are ready to be unlocked.
@@ -2680,7 +2689,8 @@ pub(crate) mod tests {
                     RuntimeOrigin::signed(nominator_id),
                     operator_id,
                     withdraw_share_amount,
-                );
+                )
+                .map(|_| ());
                 if is_proptest {
                     prop_assert_eq!(
                         res,

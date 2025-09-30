@@ -726,4 +726,12 @@ impl<T: frame_system::Config> pallet_domains::WeightInfo for WeightInfo<T> {
 			.saturating_add(T::DbWeight::get().reads(3))
 			.saturating_add(T::DbWeight::get().writes(2))
 	}
+
+    fn deregister_deactivated_operator() -> Weight {
+        Weight::zero()
+    }
+
+    fn withdraw_stake_from_deactivated_operator() -> Weight {
+        Weight::zero()
+    }
 }

@@ -1137,7 +1137,7 @@ mod benchmarks {
 
     #[benchmark]
     fn reactivate_operator() {
-        let domain_id = register_domain::<T>(20);
+        let domain_id = register_domain::<T>(21);
 
         let (_, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
@@ -1170,6 +1170,97 @@ mod benchmarks {
             *operator.status::<T>(operator_id),
             OperatorStatus::Registered,
         );
+    }
+
+    #[benchmark]
+    fn deregister_deactivated_operator() {
+        let domain_id = register_domain::<T>(22);
+
+        let (operator_owner, operator_id) =
+            register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
+
+        do_finalize_domain_epoch_staking::<T>(domain_id, Default::default())
+            .expect("finalize domain staking should success");
+
+        // Deactivate operator
+        assert_ok!(Domains::<T>::deactivate_operator(
+            RawOrigin::Root.into(),
+            operator_id,
+        ));
+
+        #[block]
+        {
+            assert_ok!(Domains::<T>::deregister_operator(
+                RawOrigin::Signed(operator_owner.clone()).into(),
+                operator_id
+            ));
+        }
+
+        let operator = Operators::<T>::get(operator_id).expect("operator must exist");
+        assert_eq!(
+            *operator.status::<T>(operator_id),
+            OperatorStatus::Deregistered(
+                (domain_id, 1u32, T::StakeWithdrawalLockingPeriod::get()).into()
+            ),
+        );
+    }
+
+    /// Benchmark `withdraw_stake` extrinsic with the worst possible conditions:
+    /// - There is a pending withdrawal and a pending deposit from the previous epoch that
+    ///   need to convert into balance/share
+    /// - Only withdraw partial of the nominator's stake
+    /// - Operator is deactivated
+    #[benchmark]
+    fn withdraw_stake_from_deactivated_operator() {
+        let nominator = account("nominator", 1, SEED);
+        let minimum_nominator_stake = T::MinNominatorStake::get();
+        let withdraw_amount = T::MinOperatorStake::get();
+        T::Currency::set_balance(
+            &nominator,
+            withdraw_amount * 4u32.into() + T::MinNominatorStake::get(),
+        );
+
+        let domain_id = register_domain::<T>(23);
+        let (_, operator_id) = register_helper_operator::<T>(domain_id, minimum_nominator_stake);
+        assert_ok!(Domains::<T>::nominate_operator(
+            RawOrigin::Signed(nominator.clone()).into(),
+            operator_id,
+            withdraw_amount * 3u32.into(),
+        ));
+        do_finalize_domain_epoch_staking::<T>(domain_id, Default::default())
+            .expect("finalize domain staking should success");
+
+        // Add one more withdraw and deposit to the previous epoch
+        assert_ok!(Domains::<T>::withdraw_stake(
+            RawOrigin::Signed(nominator.clone()).into(),
+            operator_id,
+            withdraw_amount.into(),
+        ));
+        assert_ok!(Domains::<T>::nominate_operator(
+            RawOrigin::Signed(nominator.clone()).into(),
+            operator_id,
+            withdraw_amount,
+        ));
+        do_finalize_domain_epoch_staking::<T>(domain_id, Default::default())
+            .expect("finalize domain staking should success");
+
+        // Deactivate operator
+        assert_ok!(Domains::<T>::deactivate_operator(
+            RawOrigin::Root.into(),
+            operator_id,
+        ));
+
+        #[block]
+        {
+            assert_ok!(Domains::<T>::withdraw_stake(
+                RawOrigin::Signed(nominator.clone()).into(),
+                operator_id,
+                withdraw_amount.into(),
+            ));
+        }
+
+        let operator = Operators::<T>::get(operator_id).expect("operator must exist");
+        assert_eq!(operator.withdrawals_in_epoch, withdraw_amount.into());
     }
 
     fn register_runtime<T: Config>() -> RuntimeId {
