@@ -318,6 +318,7 @@ pub enum Error {
     ZeroDeposit,
     ZeroSharePrice,
     ReactivationDelayPeriodIncomplete,
+    OperatorNotRegisterdOrDeactivated,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -688,7 +689,7 @@ pub(crate) fn do_deregister_operator<T: Config>(
 
         ensure!(
             operator.is_operator_registered_or_deactivated::<T>(operator_id),
-            Error::OperatorNotAllowed
+            Error::OperatorNotRegisterdOrDeactivated
         );
 
         DomainStakingSummary::<T>::try_mutate(
@@ -710,7 +711,7 @@ pub(crate) fn do_deregister_operator<T: Config>(
                     .into();
 
                 // if the operator status is deactivated, then remove from DeactivatedOperator Storage
-                // since the operator epoch share price will be anyway calculated since they will be in
+                // since the operator epoch share price will be calculated anyway since they will be in
                 // DeregisteredOperators list.
                 if matches!(operator.partial_status, OperatorStatus::Deactivated(_)) {
                     DeactivatedOperators::<T>::mutate(operator.current_domain_id, |operators| {
@@ -821,7 +822,7 @@ pub(crate) fn do_reactivate_operator<T: Config>(operator_id: OperatorId) -> Resu
                 stake_summary.next_operators.insert(operator_id);
 
                 // since the operator is active again in this epoch and added to the next
-                // operator set, share price will be calculated the end of epoch.
+                // operator set, the share price will be calculated at the end of the epoch.
                 // Remove them from DeactivatedOperator storage.
                 DeactivatedOperators::<T>::mutate(operator.current_domain_id, |operators| {
                     operators.remove(&operator_id);
@@ -884,7 +885,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
         ensure!(
             operator.is_operator_registered_or_deactivated::<T>(operator_id),
-            Error::OperatorNotAllowed
+            Error::OperatorNotRegisterdOrDeactivated
         );
 
         // If this is the first staking request of this operator `note_pending_staking_operation` for it
@@ -1088,7 +1089,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
     let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
     ensure!(
         operator.is_operator_registered_or_deactivated::<T>(operator_id),
-        Error::OperatorNotAllowed
+        Error::OperatorNotRegisterdOrDeactivated
     );
 
     let current_domain_epoch_index = DomainStakingSummary::<T>::get(operator.current_domain_id)
