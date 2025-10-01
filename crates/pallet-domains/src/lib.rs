@@ -222,6 +222,8 @@ pub trait WeightInfo {
     fn fraud_proof_pre_check() -> Weight;
     fn deactivate_operator() -> Weight;
     fn reactivate_operator() -> Weight;
+    fn deregister_deactivated_operator() -> Weight;
+    fn withdraw_stake_from_deactivated_operator() -> Weight;
 }
 
 #[expect(clippy::useless_conversion, reason = "Macro-generated")]
@@ -1556,30 +1558,32 @@ mod pallet {
         }
 
         #[pallet::call_index(8)]
-        #[pallet::weight(T::WeightInfo::deregister_operator())]
+        #[pallet::weight(Pallet::<T>::max_deregister_operator())]
         pub fn deregister_operator(
             origin: OriginFor<T>,
             operator_id: OperatorId,
-        ) -> DispatchResult {
+        ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
-            do_deregister_operator::<T>(who, operator_id).map_err(Error::<T>::from)?;
+            let executed_weight =
+                do_deregister_operator::<T>(who, operator_id).map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::OperatorDeregistered { operator_id });
 
-            Ok(())
+            let actual_weight = executed_weight.min(Pallet::<T>::max_deregister_operator());
+            Ok(Some(actual_weight).into())
         }
 
         #[pallet::call_index(9)]
-        #[pallet::weight(T::WeightInfo::withdraw_stake())]
+        #[pallet::weight(Pallet::<T>::max_withdraw_stake())]
         pub fn withdraw_stake(
             origin: OriginFor<T>,
             operator_id: OperatorId,
             to_withdraw: T::Share,
-        ) -> DispatchResult {
+        ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
-            do_withdraw_stake::<T>(operator_id, who.clone(), to_withdraw)
+            let executed_weight = do_withdraw_stake::<T>(operator_id, who.clone(), to_withdraw)
                 .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::WithdrewStake {
@@ -1587,7 +1591,8 @@ mod pallet {
                 nominator_id: who,
             });
 
-            Ok(())
+            let actual_weight = executed_weight.min(Pallet::<T>::max_withdraw_stake());
+            Ok(Some(actual_weight).into())
         }
 
         /// Unlocks the first withdrawal given the unlocking period is complete.
@@ -3108,6 +3113,15 @@ impl<T: Config> Pallet<T> {
         T::WeightInfo::operator_reward_tax_and_restake(MAX_BUNDLE_PER_BLOCK).saturating_add(
             T::WeightInfo::finalize_domain_epoch_staking(T::MaxPendingStakingOperation::get()),
         )
+    }
+
+    pub fn max_deregister_operator() -> Weight {
+        T::WeightInfo::deregister_operator().max(T::WeightInfo::deregister_deactivated_operator())
+    }
+
+    pub fn max_withdraw_stake() -> Weight {
+        T::WeightInfo::withdraw_stake()
+            .max(T::WeightInfo::withdraw_stake_from_deactivated_operator())
     }
 
     pub fn max_prune_domain_execution_receipt() -> Weight {

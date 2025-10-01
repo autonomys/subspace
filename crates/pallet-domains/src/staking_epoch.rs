@@ -268,6 +268,7 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
         // So they need to have share price for the previous epoch
         //  - Deregistered operators who got new deposits/withdrawals before they de-registered.
         //  - Deactivated operators who got new deposits/withdrawals before they were deactivated.
+        //  - Deactivated operators who got new withdrawals after they were deactivated.
         //  - InvalidBundle authors can have deposits or withdrawals before they are marked invalid.
         //  - Any operator who received rewards in the previous epoch
         let mut operators_to_calculate_share_price = operators_with_self_deposits;
@@ -733,7 +734,7 @@ mod tests {
             );
             assert_err!(
                 do_withdraw_stake::<Test>(operator_id, operator_account, 1),
-                TransitionError::OperatorNotRegistered
+                TransitionError::OperatorNotRegisterdOrDeactivated
             );
 
             // finalize and add to pending operator unlocks
