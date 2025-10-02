@@ -299,7 +299,7 @@ where
             + RelayerApi<CBlock, NumberFor<CBlock>, NumberFor<CBlock>, CBlock::Hash>,
         Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
     {
-        // Since the block MMR leaf is included in the next block, we procees the XDM of block `confirmed_block_number - 1`
+        // Since the block MMR leaf is included in the next block, we process the XDM of block `confirmed_block_number - 1`
         // and use the block `confirmed_block_number` to generate the MMR proof of block `confirmed_block_number - 1`
         let mmr_consensus_block = (
             confirmed_block_number,

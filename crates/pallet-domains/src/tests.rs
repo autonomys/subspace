@@ -834,7 +834,7 @@ fn test_bundle_format_verification() {
             BundleError::InvalidExtrinsicRoot
         );
 
-        // Bundle with addtional extrinsic
+        // Bundle with additional extrinsics
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
         let mut extrinsics = valid_bundle.extrinsics().to_vec();
         extrinsics.push(opaque_extrinsic(4, 4));
