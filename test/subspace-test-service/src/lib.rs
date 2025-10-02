@@ -767,7 +767,7 @@ impl MockConsensusNode {
     /// Wait for the operator finish processing the consensus block before return
     pub async fn confirm_block_import_processed(&mut self) {
         // Send one more notification to ensure the previous consensus block import notification
-        // have received by the operator
+        // have been received by the operator
         let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
         {
             // Must drop `block_import_acknowledgement_sender` after the notification otherwise
@@ -1126,8 +1126,8 @@ impl MockConsensusNode {
 
         let res = match self.import_block(block, Some(storage_changes)).await {
             Ok(hash) => {
-                // Remove the tx of the imported block from the tx pool in case re-include them
-                // in the future block by accident.
+                // Remove the tx of the imported block from the tx pool, so we don't re-include
+                // them in future blocks by accident.
                 self.prune_txs_from_pool(tx_hashes.as_slice()).await?;
                 Ok(hash)
             }
