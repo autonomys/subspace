@@ -16,11 +16,11 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-parity-scale-codec = { workspace = true, features = ["derive"] }
 domain-runtime-primitives.workspace = true
 frame-executive.workspace = true
 frame-support.workspace = true
 frame-system.workspace = true
+frame-system-rpc-runtime-api.workspace = true
 pallet-balances.workspace = true
 pallet-domains.workspace = true
 pallet-messenger.workspace = true
@@ -34,8 +34,10 @@ pallet-sudo.workspace = true
 pallet-timestamp.workspace = true
 pallet-transaction-fees.workspace = true
 pallet-transaction-payment.workspace = true
+pallet-transaction-payment-rpc-runtime-api.workspace = true
 pallet-transporter.workspace = true
 pallet-utility.workspace = true
+parity-scale-codec = { workspace = true, features = ["derive"] }
 scale-info = { workspace = true, features = ["derive"] }
 sp-api.workspace = true
 sp-block-builder.workspace = true
@@ -61,8 +63,8 @@ static_assertions.workspace = true
 subspace-core-primitives.workspace = true
 subspace-runtime-primitives.workspace = true
 subspace-test-primitives.workspace = true
-frame-system-rpc-runtime-api.workspace = true
-pallet-transaction-payment-rpc-runtime-api.workspace = true
+# Activate a testing workaround for the fork choice rule
+subspace-verification = { workspace = true, features = ["testing"] }
 
 [build-dependencies]
 substrate-wasm-builder = { workspace = true, optional = true }
@@ -70,7 +72,6 @@ substrate-wasm-builder = { workspace = true, optional = true }
 [features]
 default = ["std"]
 std = [
-    "parity-scale-codec/std",
     "domain-runtime-primitives/std",
     "frame-executive/std",
     "frame-support/std",
@@ -88,10 +89,11 @@ std = [
     "pallet-sudo/std",
     "pallet-timestamp/std",
     "pallet-transaction-fees/std",
-    "pallet-transaction-payment-rpc-runtime-api/std",
     "pallet-transaction-payment/std",
+    "pallet-transaction-payment-rpc-runtime-api/std",
     "pallet-transporter/std",
     "pallet-utility/std",
+    "parity-scale-codec/std",
     "scale-info/std",
     "sp-api/std",
     "sp-block-builder/std",
@@ -112,7 +114,6 @@ std = [
     "sp-std/std",
     "sp-subspace-mmr/std",
     "sp-transaction-pool/std",
-    "sp-subspace-mmr/std",
     "sp-version/std",
     "subspace-core-primitives/std",
     "subspace-runtime-primitives/std",

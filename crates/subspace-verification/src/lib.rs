@@ -39,7 +39,7 @@ use subspace_core_primitives::segments::{HistorySize, SegmentCommitment};
 #[cfg(feature = "kzg")]
 use subspace_core_primitives::solutions::Solution;
 use subspace_core_primitives::solutions::{RewardSignature, SolutionRange};
-use subspace_core_primitives::{BlockNumber, BlockWeight, PublicKey, ScalarBytes, SlotNumber};
+use subspace_core_primitives::{BlockForkWeight, BlockNumber, PublicKey, ScalarBytes, SlotNumber};
 #[cfg(feature = "kzg")]
 use subspace_kzg::{Commitment, Kzg, Scalar, Witness};
 #[cfg(feature = "kzg")]
@@ -186,9 +186,19 @@ pub struct VerifySolutionParams {
     pub piece_check_params: Option<PieceCheckParams>,
 }
 
-/// Calculate weight derived from provided solution range
-pub fn calculate_block_weight(solution_range: SolutionRange) -> BlockWeight {
-    BlockWeight::from(SolutionRange::MAX - solution_range)
+/// Calculate the block's contribution to the fork weight, which is derived from the provided
+/// solution range.
+pub fn calculate_block_fork_weight(solution_range: SolutionRange) -> BlockForkWeight {
+    // Work around the test runtime accepting all solutions, which causes blocks to have zero
+    // fork weight. This makes each node keep its own blocks, and never reorg to a common chain.
+    #[cfg(feature = "testing")]
+    let solution_range = if solution_range == SolutionRange::MAX {
+        SolutionRange::MAX - 1
+    } else {
+        solution_range
+    };
+
+    BlockForkWeight::from(SolutionRange::MAX - solution_range)
 }
 
 /// Verify whether solution is valid, returns solution distance that is `<= solution_range/2` on
