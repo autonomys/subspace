@@ -318,7 +318,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: Cow::Borrowed("subspace-evm-domain"),
     impl_name: Cow::Borrowed("subspace-evm-domain"),
     authoring_version: 0,
-    spec_version: 0,
+    spec_version: 1,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -675,7 +675,11 @@ parameter_types! {
     pub PrecompilesValue: Precompiles = Precompiles::default();
 }
 
-type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, ()>;
+/// UnbalancedHandler that will just burn any unbalanced funds
+pub struct UnbalancedHandler {}
+impl OnUnbalanced<NegativeImbalance> for UnbalancedHandler {}
+
+type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, UnbalancedHandler>;
 
 // Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges evm transaction
 // fees from the transaction sender and collect all the fees (including both the base fee and tip) in
@@ -714,9 +718,11 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
     }
 
     fn pay_priority_fee(tip: Self::LiquidityInfo) {
-        <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::pay_priority_fee(
-            tip,
-        );
+        if let Some(fee) = tip {
+            // handle the priority fee just like the base fee.
+            // for eip-1559, total fees will be base_fee + priority_fee
+            UnbalancedHandler::on_unbalanced(fee)
+        }
     }
 }
 

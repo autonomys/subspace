@@ -44,6 +44,7 @@ thiserror.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 domain-block-preprocessor.workspace = true
+domain-test-primitives.workspace = true
 domain-test-service.workspace = true
 domain-test-utils.workspace = true
 ethereum.workspace = true

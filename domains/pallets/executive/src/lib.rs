@@ -83,8 +83,6 @@ type ExtrinsicOf<T> = <BlockOf<T> as BlockT>::Extrinsic;
 type BlockOf<T> = <T as frame_system::Config>::Block;
 type BlockHashOf<T> = <BlockOf<T> as BlockT>::Hash;
 
-// TODO: not store the intermediate storage root in the state but
-// calculate the storage root outside the runtime after executing the extrinsic directly.
 #[frame_support::pallet]
 mod pallet {
     use crate::weights::WeightInfo;
@@ -183,8 +181,7 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_block_number: BlockNumberFor<T>) -> Weight {
-            // TODO: Probably needs a different value
-            Weight::from_parts(1, 0)
+            Weight::zero()
         }
     }
 }

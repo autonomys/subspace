@@ -77,7 +77,8 @@ use sp_domains::execution_receipt::{
 };
 use sp_domains::{
     BundleAndExecutionReceiptVersion, DomainAllowlistUpdates, DomainId, DomainInstanceData,
-    INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey, PermissionedActionAllowedBy,
+    EpochIndex, INITIAL_DOMAIN_TX_RANGE, OperatorId, OperatorPublicKey,
+    PermissionedActionAllowedBy,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -834,6 +835,7 @@ parameter_types! {
         bundle_version: BundleVersion::V0,
         execution_receipt_version: ExecutionReceiptVersion::V0,
     };
+    pub const OperatorActivationDelayInEpochs: EpochIndex = 5;
 }
 
 // `BlockSlotCount` must at least keep the slot for the current and the parent block, it also need to
@@ -925,6 +927,7 @@ impl pallet_domains::Config for Runtime {
     type OnChainRewards = OnChainRewards;
     type WithdrawalLimit = WithdrawalLimit;
     type CurrentBundleAndExecutionReceiptVersion = CurrentBundleAndExecutionReceiptVersion;
+    type OperatorActivationDelayInEpochs = OperatorActivationDelayInEpochs;
 }
 
 parameter_types! {
@@ -1524,6 +1527,10 @@ impl_runtime_apis! {
                 recent_history_fraction: RecentHistoryFraction::get(),
                 min_sector_lifetime: MinSectorLifetime::get(),
             }
+        }
+
+        fn block_weight() -> Weight {
+            System::block_weight().total()
         }
     }
 

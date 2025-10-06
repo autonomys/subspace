@@ -9,8 +9,8 @@ use crate::staking::{
     do_cleanup_operator, do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal,
 };
 use crate::{
-    BalanceOf, Config, DepositOnHold, DeregisteredOperators, DomainChainRewards,
-    ElectionVerificationParams, Event, HoldIdentifier, InvalidBundleAuthors,
+    BalanceOf, Config, DeactivatedOperators, DepositOnHold, DeregisteredOperators,
+    DomainChainRewards, ElectionVerificationParams, Event, HoldIdentifier, InvalidBundleAuthors,
     OperatorEpochSharePrice, Pallet, bundle_storage_fund,
 };
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
@@ -267,6 +267,8 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
         // But there will be deposits/withdrawals for operators who are not part of the next operator set.
         // So they need to have share price for the previous epoch
         //  - Deregistered operators who got new deposits/withdrawals before they de-registered.
+        //  - Deactivated operators who got new deposits/withdrawals before they were deactivated.
+        //  - Deactivated operators who got new withdrawals after they were deactivated.
         //  - InvalidBundle authors can have deposits or withdrawals before they are marked invalid.
         //  - Any operator who received rewards in the previous epoch
         let mut operators_to_calculate_share_price = operators_with_self_deposits;
@@ -274,6 +276,8 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
         operators_to_calculate_share_price.extend(InvalidBundleAuthors::<T>::take(domain_id));
         // include operators who de-registered in this epoch
         operators_to_calculate_share_price.extend(DeregisteredOperators::<T>::take(domain_id));
+        // include operators who we deactivated in this epoch
+        operators_to_calculate_share_price.extend(DeactivatedOperators::<T>::take(domain_id));
         // exclude operators who have already been processed as they are in next operator set.
         operators_to_calculate_share_price.retain(|&x| !stake_summary.next_operators.contains(&x));
 
@@ -556,8 +560,7 @@ pub fn do_slash_operator<T: Config>(
             let nominator_reward = nominator_staked_amount
                 .checked_add(&amount_ready_to_withdraw)
                 .ok_or(TransitionError::BalanceOverflow)?
-                .checked_sub(&amount_to_slash_in_holding)
-                .ok_or(TransitionError::BalanceUnderflow)?;
+                .saturating_sub(amount_to_slash_in_holding);
 
             mint_into_treasury::<T>(nominator_reward)?;
 
@@ -630,16 +633,17 @@ mod tests {
     };
     use crate::staking::tests::{Share, register_operator};
     use crate::staking::{
-        DomainEpoch, Error as TransitionError, Error, do_deregister_operator, do_nominate_operator,
-        do_reward_operators, do_unlock_nominator, do_withdraw_stake,
+        DomainEpoch, Error as TransitionError, Error, do_deregister_operator,
+        do_mark_operators_as_slashed, do_nominate_operator, do_reward_operators,
+        do_unlock_nominator, do_withdraw_stake,
     };
     use crate::staking_epoch::{
-        do_finalize_domain_current_epoch, operator_take_reward_tax_and_stake,
+        do_finalize_domain_current_epoch, do_slash_operator, operator_take_reward_tax_and_stake,
     };
     use crate::tests::{RuntimeOrigin, Test, new_test_ext};
     use crate::{
-        BalanceOf, Config, HoldIdentifier, InvalidBundleAuthors, NominatorId,
-        OperatorEpochSharePrice,
+        BalanceOf, Config, HoldIdentifier, InvalidBundleAuthors, MAX_NOMINATORS_TO_SLASH,
+        NominatorId, OperatorEpochSharePrice, SlashedReason,
     };
     #[cfg(not(feature = "std"))]
     use alloc::vec;
@@ -730,7 +734,7 @@ mod tests {
             );
             assert_err!(
                 do_withdraw_stake::<Test>(operator_id, operator_account, 1),
-                TransitionError::OperatorNotRegistered
+                TransitionError::OperatorNotRegisterdOrDeactivated
             );
 
             // finalize and add to pending operator unlocks
@@ -1045,7 +1049,7 @@ mod tests {
             (0, OperatorPair::from_seed(&[0; 32])),
             (1, OperatorPair::from_seed(&[1; 32])),
             (2, OperatorPair::from_seed(&[2; 32])),
-            (3, OperatorPair::from_seed(&[2; 32])),
+            (3, OperatorPair::from_seed(&[3; 32])),
         ];
 
         let mut ext = new_test_ext();
@@ -1089,7 +1093,7 @@ mod tests {
             operator_share_price_does_not_exist(domain_id, vec![1], 2);
             assert_eq!(get_current_epoch(), 3);
 
-            // mark operator 2 as de-registered and 3 as Invalid Bundle author
+            // mark operator 1 as deactivated, 2 as de-registered, and 3 as Invalid Bundle author
             // they will still receive rewards in epoch 3
             // so they should have share price set as well
 
@@ -1101,6 +1105,10 @@ mod tests {
                 10 * AI3,
             )
             .unwrap();
+
+            // deactivate operator 1
+            let res = Domains::deactivate_operator(RuntimeOrigin::root(), 1);
+            assert_ok!(res);
 
             // de-register operator 2
             let res = Domains::deregister_operator(RuntimeOrigin::signed(2), 2);
@@ -1114,7 +1122,7 @@ mod tests {
 
             // operator 1, 2, 3 should have share price
             // 1 received epoch rewards and still part of next operators
-            // 2, 3 not part of next operators but they got rewards so they
+            // 2, 3 not part of next operators, but they got rewards so they
             // should have the epoch rewards
             operator_share_price_exists(domain_id, vec![1, 2, 3], 3);
 
@@ -1124,5 +1132,44 @@ mod tests {
 
             assert_eq!(get_current_epoch(), 4);
         })
+    }
+
+    #[test]
+    fn slash_operator_with_underflow() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let pair = OperatorPair::from_seed(&[0; 32]);
+        let nominator_account = 2;
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                600 * AI3, // operator free balance
+                483 * AI3, // operator stake
+                10 * AI3,  // min nominator stake
+                pair.public(),
+                Percent::from_percent(60),
+                BTreeMap::from_iter([(2, (22 * AI3, 0))]),
+            );
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            do_reward_operators::<Test>(
+                domain_id,
+                OperatorRewardSource::Dummy,
+                vec![operator_id].into_iter(),
+                20 * AI3,
+            )
+            .unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            do_nominate_operator::<Test>(operator_id, nominator_account, 21 * AI3).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            do_mark_operators_as_slashed::<Test>(
+                vec![operator_id],
+                SlashedReason::InvalidBundle(0),
+            )
+            .unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            do_slash_operator::<Test>(domain_id, MAX_NOMINATORS_TO_SLASH).unwrap();
+        });
     }
 }
