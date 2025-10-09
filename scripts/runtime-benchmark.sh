@@ -122,7 +122,7 @@ SUBSPACE_RUNTIME_PALLETS=$(cat ./crates/subspace-runtime/src/lib.rs | \
 )
 
 # Filter using filter_pallets()
-SUBSPACE_RUNTIME_PALLETS=($(filter_pallets "$SUBSPACE_RUNTIME_PALLETS"))
+SUBSPACE_RUNTIME_PALLETS=($(filter_pallets "${SUBSPACE_RUNTIME_PALLETS[@]}"))
 
 for PALLET in "${SUBSPACE_RUNTIME_PALLETS[@]}"; do
   echo "Generating benchmarks for ${PALLET}"
@@ -147,7 +147,7 @@ SUBSPACE_RUNTIME_PRIMITIVES=(
 BENCH_SETTINGS="$CORE_BENCH_SETTINGS $EXTRA_ITERATION_SETTINGS"
 
 # Filter using filter_pallets()
-SUBSPACE_RUNTIME_PRIMITIVES=($(filter_pallets "$SUBSPACE_RUNTIME_PRIMITIVES"))
+SUBSPACE_RUNTIME_PRIMITIVES=($(filter_pallets "${SUBSPACE_RUNTIME_PRIMITIVES[@]}"))
 echo "Primitives Pallet list: ${SUBSPACE_RUNTIME_PRIMITIVES[*]}"
 for PALLET in "${SUBSPACE_RUNTIME_PRIMITIVES[@]}"; do
   echo "Generating benchmarks for ${PALLET}"
@@ -169,7 +169,7 @@ EVM_DOMAIN_RUNTIME_PALLETS=$(cat domains/runtime/evm/src/lib.rs | \
 )
 
 # Filter using filter_pallets()
-EVM_DOMAIN_RUNTIME_PALLETS=($(filter_pallets "$EVM_DOMAIN_RUNTIME_PALLETS"))
+EVM_DOMAIN_RUNTIME_PALLETS=($(filter_pallets "${EVM_DOMAIN_RUNTIME_PALLETS[@]}"))
 echo "Pallet list: ${EVM_DOMAIN_RUNTIME_PALLETS[*]}"
 for PALLET in "${EVM_DOMAIN_RUNTIME_PALLETS[@]}"; do
   echo "Generating benchmarks for ${PALLET}"
@@ -185,7 +185,7 @@ done
 EVM_RUNTIME_PRIMITIVES=(
   "pallet_evm_tracker"
 )
-EVM_RUNTIME_PRIMITIVES=($(filter_pallets "$EVM_RUNTIME_PRIMITIVES"))
+EVM_RUNTIME_PRIMITIVES=($(filter_pallets "${EVM_RUNTIME_PRIMITIVES[@]}"))
 echo "EVM Primitives Pallet list: ${EVM_RUNTIME_PRIMITIVES[*]}"
 BENCH_SETTINGS="$CORE_BENCH_SETTINGS $ITERATION_SETTINGS"
 for PALLET in "${EVM_RUNTIME_PRIMITIVES[@]}"; do
@@ -208,7 +208,7 @@ AUTO_ID_DOMAIN_RUNTIME_PALLETS=$(cat domains/runtime/auto-id/src/lib.rs | \
 )
 
 # Filter using filter_pallets()
-AUTO_ID_DOMAIN_RUNTIME_PALLETS=($(filter_pallets "$AUTO_ID_DOMAIN_RUNTIME_PALLETS"))
+AUTO_ID_DOMAIN_RUNTIME_PALLETS=($(filter_pallets "${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"))
 echo "Pallet list: ${AUTO_ID_DOMAIN_RUNTIME_PALLETS[*]}"
 for PALLET in "${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"; do
   echo "Generating benchmarks for ${PALLET}"
