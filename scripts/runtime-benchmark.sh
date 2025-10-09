@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# Script supports generating weights for specific pallets taken from environment variable PALLETS or all the pallets.
+# If `PALLETS` is unset or empty, all pallets benchmarks are generated else specified pallet's benchmarks are generated.
+# Example usage:
+#   PALLETS="pallet_balances pallet_staking" ./scripts/runtime-benchmark.sh
+
 # http://redsymbol.net/articles/unofficial-bash-strict-mode/
 set -euo pipefail
 
@@ -44,6 +49,42 @@ function find_benchmarks () {
   grep '\[[a-z0-9_]*, [A-Za-z0-9:<>]*\]' | cut -d, -f1 | cut -d[ -f2
 }
 
+# This function filters the list of pallets based on the PALLETS environment variable
+# Takes a list of pallets as arguments (newline or space separated) and returns the filtered list.
+# If PALLETS env variable is empty, returns all pallets.
+function filter_pallets() {
+  local ALL_INPUT=("$@")
+  local ALL_PALLETS=()
+
+  # Flatten any newline-separated input into an array
+  while IFS= read -r PALLET; do
+    [[ -n "$PALLET" ]] && ALL_PALLETS+=("$PALLET")
+  done < <(printf '%s\n' "${ALL_INPUT[@]}")
+
+  local FILTERED=()
+
+  # If no filtering specified, return all pallets
+  if [[ -z "${PALLETS:-}" ]]; then
+    echo "${ALL_PALLETS[@]}"
+    return
+  fi
+
+  # Parse PALLETS environment variable into an array
+  IFS=$' \n' read -r -a PALLETS_LIST <<< "$PALLETS"
+
+  # Perform exact match filtering
+  for PALLET in "${ALL_PALLETS[@]}"; do
+    for TARGET in "${PALLETS_LIST[@]}"; do
+      if [[ "$PALLET" == "$TARGET" ]]; then
+        FILTERED+=("$PALLET")
+        break
+      fi
+    done
+  done
+
+  echo "${FILTERED[@]}"
+}
+
 echo "Current directory: $(pwd)"
 if [[ ! -d "./crates/subspace-runtime/src/weights" ]] || [[ ! -d "./domains/runtime/evm/src/weights" ]] || [[ ! -d "./domains/runtime/auto-id/src/weights" ]]; then
   echo "Changing to the root of the repository:"
@@ -79,8 +120,12 @@ SUBSPACE_RUNTIME_PALLETS=$(cat ./crates/subspace-runtime/src/lib.rs | \
   find_benchmarks | \
   grep -v -e "frame_benchmarking" -e "balance_transfer_check_extension" -e "pallet_democracy"
 )
-echo "Pallet list: $SUBSPACE_RUNTIME_PALLETS"
-for PALLET in $SUBSPACE_RUNTIME_PALLETS; do
+
+# Filter using filter_pallets()
+SUBSPACE_RUNTIME_PALLETS=($(filter_pallets "$SUBSPACE_RUNTIME_PALLETS"))
+
+for PALLET in "${SUBSPACE_RUNTIME_PALLETS[@]}"; do
+  echo "Generating benchmarks for ${PALLET}"
   ./target/$PROFILE/subspace-node benchmark pallet \
     --runtime=./target/$PROFILE/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm \
     $BENCH_SETTINGS \
@@ -101,8 +146,11 @@ SUBSPACE_RUNTIME_PRIMITIVES=(
 # We need to run extra iterations to get accurate linear values in these benchmarks.
 BENCH_SETTINGS="$CORE_BENCH_SETTINGS $EXTRA_ITERATION_SETTINGS"
 
-echo "Primitives Pallet list: ${SUBSPACE_RUNTIME_PRIMITIVES[@]}"
+# Filter using filter_pallets()
+SUBSPACE_RUNTIME_PRIMITIVES=($(filter_pallets "$SUBSPACE_RUNTIME_PRIMITIVES"))
+echo "Primitives Pallet list: ${SUBSPACE_RUNTIME_PRIMITIVES[*]}"
 for PALLET in "${SUBSPACE_RUNTIME_PRIMITIVES[@]}"; do
+  echo "Generating benchmarks for ${PALLET}"
   ./target/$PROFILE/subspace-node benchmark pallet \
     --runtime=./target/$PROFILE/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm \
     $BENCH_SETTINGS \
@@ -120,8 +168,11 @@ EVM_DOMAIN_RUNTIME_PALLETS=$(cat domains/runtime/evm/src/lib.rs | \
   grep -v -e "frame_benchmarking" -e "pallet_evm_tracker"
 )
 
-echo "Pallet list: $EVM_DOMAIN_RUNTIME_PALLETS"
-for PALLET in $EVM_DOMAIN_RUNTIME_PALLETS; do
+# Filter using filter_pallets()
+EVM_DOMAIN_RUNTIME_PALLETS=($(filter_pallets "$EVM_DOMAIN_RUNTIME_PALLETS"))
+echo "Pallet list: ${EVM_DOMAIN_RUNTIME_PALLETS[*]}"
+for PALLET in "${EVM_DOMAIN_RUNTIME_PALLETS[@]}"; do
+  echo "Generating benchmarks for ${PALLET}"
   ./target/$PROFILE/subspace-node domain benchmark pallet \
     --runtime=./target/$PROFILE/wbuild/evm-domain-runtime/evm_domain_runtime.compact.compressed.wasm \
     $BENCH_SETTINGS \
@@ -131,16 +182,21 @@ done
 # These extension weights are written to pallet-evm-tracker
 # TODO: move these weights to evm-domain-runtime, and use default weights in test runtimes
 # TODO: pallet_evm_tracker CheckNonce extension benchmarks
-PALLET="pallet_evm_tracker"
-echo "EVM Tracker Pallet name: $PALLET"
+EVM_RUNTIME_PRIMITIVES=(
+  "pallet_evm_tracker"
+)
+EVM_RUNTIME_PRIMITIVES=($(filter_pallets "$EVM_RUNTIME_PRIMITIVES"))
+echo "EVM Primitives Pallet list: ${EVM_RUNTIME_PRIMITIVES[*]}"
 BENCH_SETTINGS="$CORE_BENCH_SETTINGS $ITERATION_SETTINGS"
+for PALLET in "${EVM_RUNTIME_PRIMITIVES[@]}"; do
+  echo "Generating benchmarks for ${PALLET}"
+  ./target/$PROFILE/subspace-node domain benchmark pallet \
+    --runtime=./target/$PROFILE/wbuild/evm-domain-runtime/evm_domain_runtime.compact.compressed.wasm \
+    $BENCH_SETTINGS \
+    --pallet=$PALLET --output=./domains/pallets/evm-tracker/src/weights/$PALLET.rs
+done
 
-./target/$PROFILE/subspace-node domain benchmark pallet \
-  --runtime=./target/$PROFILE/wbuild/evm-domain-runtime/evm_domain_runtime.compact.compressed.wasm \
-  $BENCH_SETTINGS \
-  --pallet=$PALLET --output=./domains/pallets/evm-tracker/src/weights/$PALLET.rs
-
-echo "Fixing pallet names in weights for $PALLET..."
+echo "Fixing pallet names in weights for EVM primitives pallets..."
 "${SED_IN_PLACE[@]}" -e "s/pallet_evm_tracker::WeightInfo/crate::WeightInfo/g" \
   ./domains/pallets/evm-tracker/src/weights/pallet_evm_tracker.rs
 
@@ -151,8 +207,11 @@ AUTO_ID_DOMAIN_RUNTIME_PALLETS=$(cat domains/runtime/auto-id/src/lib.rs | \
   grep -v -e "frame_benchmarking"
 )
 
-echo "Pallet list: $AUTO_ID_DOMAIN_RUNTIME_PALLETS"
-for PALLET in $AUTO_ID_DOMAIN_RUNTIME_PALLETS; do
+# Filter using filter_pallets()
+AUTO_ID_DOMAIN_RUNTIME_PALLETS=($(filter_pallets "$AUTO_ID_DOMAIN_RUNTIME_PALLETS"))
+echo "Pallet list: ${AUTO_ID_DOMAIN_RUNTIME_PALLETS[*]}"
+for PALLET in "${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"; do
+  echo "Generating benchmarks for ${PALLET}"
   ./target/$PROFILE/subspace-node domain benchmark pallet \
     --runtime=./target/$PROFILE/wbuild/auto-id-domain-runtime/auto_id_domain_runtime.compact.compressed.wasm \
     $BENCH_SETTINGS \
