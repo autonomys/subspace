@@ -140,7 +140,7 @@ SUBSPACE_RUNTIME_PALLETS=$(cat ./crates/subspace-runtime/src/lib.rs | \
 
 # Filter using filter_pallets()
 SUBSPACE_RUNTIME_PALLETS=($(filter_pallets "${SUBSPACE_RUNTIME_PALLETS[@]}"))
-
+echo "Subspace Runtime Pallet list: ${SUBSPACE_RUNTIME_PALLETS[*]}"
 for PALLET in "${SUBSPACE_RUNTIME_PALLETS[@]}"; do
   echo "Generating benchmarks for ${PALLET}"
   ./target/$PROFILE/subspace-node benchmark pallet \
@@ -187,7 +187,7 @@ EVM_DOMAIN_RUNTIME_PALLETS=$(cat domains/runtime/evm/src/lib.rs | \
 
 # Filter using filter_pallets()
 EVM_DOMAIN_RUNTIME_PALLETS=($(filter_pallets "${EVM_DOMAIN_RUNTIME_PALLETS[@]}"))
-echo "Pallet list: ${EVM_DOMAIN_RUNTIME_PALLETS[*]}"
+echo "EVM Domain Pallet list: ${EVM_DOMAIN_RUNTIME_PALLETS[*]}"
 for PALLET in "${EVM_DOMAIN_RUNTIME_PALLETS[@]}"; do
   echo "Generating benchmarks for ${PALLET}"
   ./target/$PROFILE/subspace-node domain benchmark pallet \
@@ -226,7 +226,7 @@ AUTO_ID_DOMAIN_RUNTIME_PALLETS=$(cat domains/runtime/auto-id/src/lib.rs | \
 
 # Filter using filter_pallets()
 AUTO_ID_DOMAIN_RUNTIME_PALLETS=($(filter_pallets "${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"))
-echo "Pallet list: ${AUTO_ID_DOMAIN_RUNTIME_PALLETS[*]}"
+echo "AUTO_ID Domain Pallet list: ${AUTO_ID_DOMAIN_RUNTIME_PALLETS[*]}"
 for PALLET in "${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"; do
   echo "Generating benchmarks for ${PALLET}"
   ./target/$PROFILE/subspace-node domain benchmark pallet \
