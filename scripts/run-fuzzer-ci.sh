@@ -6,4 +6,4 @@ set -euo pipefail
 sudo apt install -y protobuf-compiler binutils-dev
 
 cd ./fuzz/staking && cargo ziggy build --no-honggfuzz
-timeout 5m cargo ziggy fuzz
+cargo ziggy fuzz --timeout 600 --release
