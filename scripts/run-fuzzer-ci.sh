@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+# http://redsymbol.net/articles/unofficial-bash-strict-mode/
+set -euo pipefail
+
 sudo apt install -y protobuf-compiler binutils-dev
+
 cd ./fuzz/staking && cargo ziggy build --no-honggfuzz
-AFL_SKIP_CPUFREQ=1 timeout 1m cargo ziggy fuzz
+timeout 5m cargo ziggy fuzz
