@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+# Environment variables:
+#   - PALLETS: (optional) limit benchmarks to specific pallets, separated by spaces
+#   - SKIP_BUILDS: (optional) if "true", skips rebuilding binaries; defaults to false.
+#   - BENCHMARK_TYPE: (optional) check|full. Full for production weights and check for CI and verification; defaults to full.
+#   - VERBOSE: (optional) if "true", will print commands that before executed and their outputs else only commands outputs are printed; defaults to "false".
+#
 # Script supports generating weights for specific pallets taken from environment variable PALLETS or all the pallets.
 # If `PALLETS` is unset or empty, all pallets benchmarks are generated else specified pallet's benchmarks are generated.
 # Example usage:
@@ -14,23 +20,37 @@ CORE_BENCH_SETTINGS="--extrinsic=* --wasm-execution=compiled --genesis-builder=n
 ITERATION_SETTINGS="--steps=50 --repeat=20"
 # Some benchmarks are quick (or noisy) and need extra iterations for accurate results
 EXTRA_ITERATION_SETTINGS="--steps=250 --repeat=100"
-# If you're sure the node and runtime binaries are up to date, set this to true to save rebuild and
-# linking time
-SKIP_BUILDS="false"
+# If you're sure the node and runtime binaries are up to date, pass SKIP_BUILDS=true env to skip the rebuilding binaries
+SKIP_BUILDS="${SKIP_BUILDS:-false}"
+# type of benchmark to run, either full or check
+# full[default] will run benchmarks with production settings and is slower, must be used while generating actual production weights
+# check will run benchmarks that are faster and is used only in CI or verify benchmarks. Must not be used for generating production weights
+BENCHMARK_TYPE="${BENCHMARK_TYPE:-full}"
+# verbose mode to print the commands to be executed. Useful when debugging
+VERBOSE="${VERBOSE:-false}"
+# pallets to generate weights for. If unset or empty, all pallet's weights are generated
+PALLETS="${PALLETS:-}"
 
-if [[ "$#" -eq 1 ]] && [[ "$1" == "check" ]]; then
+if [[ "${BENCHMARK_TYPE}" == "check" ]]; then
   # We don't need LTO for checking benchmark code runs correctly, but debug runtimes are too large
   # and fail with a memory limit error.
   PROFILE="release"
   ITERATION_SETTINGS="--steps=2 --repeat=1"
   EXTRA_ITERATION_SETTINGS="--steps=2 --repeat=1"
   MODE="check"
-elif [[ "$#" -eq 0 ]] || ([[ "$#" -eq 1 ]] && [[ "$1" == "full" ]]); then
+else
   # Default full benchmark mode
   MODE="full"
-else
-  echo "Usage: $0 [check|full]"
-  exit 1
+fi
+
+echo "Benchmarks config:"
+echo "  - PALLETS=${PALLETS}"
+echo "  - SKIP_BUILDS=${SKIP_BUILDS}"
+echo "  - BENCHMARK_TYPE=${BENCHMARK_TYPE}"
+echo "  - VERBOSE=${VERBOSE}"
+
+if [[ "${VERBOSE}" == 'true' ]]; then
+  set -x
 fi
 
 # Users can set their own SED_IN_PLACE, for example, if their GNU sed is `gsed`
@@ -101,15 +121,12 @@ if [[ "$SKIP_BUILDS" != 'true' ]]; then
   # The node builds all the runtimes, and generating weights will rebuild some runtimes, even though
   # those weights are not used in the benchmarks. So it is faster to build everything upfront.
   echo "Building subspace-node and runtimes with profile: '$PROFILE', features: '$FEATURES', and mode: '$MODE'..."
-  set -x
   cargo build --profile "$PROFILE" --bin subspace-node --features "$FEATURES"
   cargo build --profile "$PROFILE" --package subspace-runtime --features "$FEATURES"
   cargo build --profile "$PROFILE" --package evm-domain-runtime --features "$FEATURES"
   cargo build --profile "$PROFILE" --package auto-id-domain-runtime --features "$FEATURES"
 else
   echo "Skipping builds of subspace-node and runtimes"
-  # Show commands before executing them
-  set -x
 fi
 
 echo "Generating weights for Subspace runtime..."
@@ -232,7 +249,9 @@ cargo check --profile "$PROFILE" --package evm-domain-runtime --features "$FEATU
 cargo check --profile "$PROFILE" --package auto-id-domain-runtime --features "$FEATURES"
 
 # Stop showing executed commands
-set +x
+if [[ "${VERBOSE}" == 'true' ]]; then
+  set +x
+fi
 
 echo
 echo "==============================================================================="
