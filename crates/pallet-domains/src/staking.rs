@@ -256,6 +256,19 @@ impl<Balance, Share, DomainBlockNumber, ReceiptHash>
             OperatorStatus::Registered | OperatorStatus::Deactivated(_)
         )
     }
+
+    /// Returns true if the operator can submit a bundle.
+    pub fn can_operator_submit_bundle<T: Config>(&self, operator_id: OperatorId) -> bool {
+        let status = self.status::<T>(operator_id);
+        // negate result if the operator is slashed, pending_slash, deactivated, or InvalidBundle
+        !matches!(
+            status,
+            OperatorStatus::Slashed
+                | OperatorStatus::PendingSlash
+                | OperatorStatus::InvalidBundle(_)
+                | OperatorStatus::Deactivated(_)
+        )
+    }
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]

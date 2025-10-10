@@ -26,7 +26,6 @@ use crate::block_tree::{Error as BlockTreeError, verify_execution_receipt};
 use crate::bundle_storage_fund::{charge_bundle_storage_fee, storage_fund_account};
 use crate::domain_registry::{DomainConfig, Error as DomainRegistryError};
 use crate::runtime_registry::into_complete_raw_genesis;
-use crate::staking::OperatorStatus;
 #[cfg(feature = "runtime-benchmarks")]
 pub use crate::staking::do_register_operator;
 use crate::staking_epoch::EpochTransitionResult;
@@ -2410,13 +2409,8 @@ impl<T: Config> Pallet<T> {
 
         let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
 
-        let operator_status = operator.status::<T>(operator_id);
-        ensure!(
-            *operator_status != OperatorStatus::Slashed
-                && *operator_status != OperatorStatus::PendingSlash
-                && !matches!(operator_status, OperatorStatus::InvalidBundle(_)),
-            BundleError::BadOperator
-        );
+        let can_submit_bundle = operator.can_operator_submit_bundle::<T>(operator_id);
+        ensure!(can_submit_bundle, BundleError::BadOperator);
 
         if !operator.signing_key.verify(&to_sign, signature) {
             return Err(BundleError::BadBundleSignature);
