@@ -372,8 +372,8 @@ jobs:
         run: |
           scripts/runtime-benchmark.sh check
 
-  staking-fuzzer-build:
-    name: staking-fuzzer-build (Linux x86-64)
+  staking-fuzzer-test:
+    name: staking-fuzzer-test (Linux x86-64)
     runs-on: ubuntu-22.04
 
     steps:
@@ -383,7 +383,7 @@ jobs:
       - name: install ziggy
         run: cargo install --force ziggy cargo-afl honggfuzz grcov
 
-      - name: build fuzzer
+      - name: test fuzzer
         run: scripts/run-fuzzer-ci.sh
 
   # This job checks all crates individually, including no_std and other featureless builds.
@@ -513,7 +513,7 @@ jobs:
       - check-runtime-benchmarks
       - cargo-check-individually
       - cargo-unused-deps
-      - staking-fuzzer-build
+      - staking-fuzzer-test
     steps:
       - name: Check job statuses
         # Another hack is to actually check the status of the dependencies or else it'll fall through

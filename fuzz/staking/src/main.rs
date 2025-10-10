@@ -148,7 +148,7 @@ fn main() {
     let mint = (u16::MAX as u128) * 2 * AI3;
     let genesis = create_genesis_storage(&accounts, mint);
     ziggy::fuzz!(|data: &[u8]| {
-        let Ok(data) = bincode::deserialize(&data) else {
+        let Ok(data) = bincode::deserialize(data) else {
             return;
         };
         // Clone the genesis storage for this fuzz iteration

@@ -126,7 +126,7 @@ pub fn check_invariants_before_finalization<T: Config>(domain_id: DomainId) {
     let deactivated_operators = DeactivatedOperators::<T>::get(domain_id);
     let deregistered_operators = DeregisteredOperators::<T>::get(domain_id);
     for operator_id in &deregistered_operators {
-        assert!(deactivated_operators.contains(operator_id) == false);
+        assert!(!deactivated_operators.contains(operator_id));
     }
 }
 
@@ -146,10 +146,10 @@ pub fn check_invariants_after_finalization<T: Config<Balance = u128, Share = u12
 
     // INVARIANT: DeactivatedOperators is empty
     let deactivated_operators = DeactivatedOperators::<T>::get(domain_id);
-    assert!(deactivated_operators.len() == 0);
+    assert!(deactivated_operators.is_empty());
     // INVARIANT: DeregisteredOperators is empty
     let deregistered_operators = DeregisteredOperators::<T>::get(domain_id);
-    assert!(deregistered_operators.len() == 0);
+    assert!(deregistered_operators.is_empty());
 
     // INVARIANT: Total domain stake == accumulated operators' curent_stake.
     let aggregated_stake: BalanceOf<T> = domain_summary
