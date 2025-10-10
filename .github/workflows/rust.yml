@@ -32,6 +32,7 @@ env:
   SPOT: ${{ contains(github.ref, 'gh-readonly-queue') && '/spot=false' || '' }}
   # Run faster benchmark checks in CI
   BENCHMARK_TYPE: check
+  VERBOSE: true
 
 jobs:
   cargo-fmt:
