@@ -226,7 +226,7 @@ AUTO_ID_DOMAIN_RUNTIME_PALLETS=$(cat domains/runtime/auto-id/src/lib.rs | \
 
 # Filter using filter_pallets()
 AUTO_ID_DOMAIN_RUNTIME_PALLETS=($(filter_pallets "${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"))
-echo "AUTO_ID Domain Pallet list: ${AUTO_ID_DOMAIN_RUNTIME_PALLETS[*]}"
+echo "Auto ID Domain Pallet list: ${AUTO_ID_DOMAIN_RUNTIME_PALLETS[*]}"
 for PALLET in "${AUTO_ID_DOMAIN_RUNTIME_PALLETS[@]}"; do
   echo "Generating benchmarks for ${PALLET}"
   ./target/$PROFILE/subspace-node domain benchmark pallet \
