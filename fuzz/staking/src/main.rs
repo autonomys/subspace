@@ -37,8 +37,11 @@ use sp_state_machine::BasicExternalities;
 use std::collections::BTreeMap;
 use subspace_runtime_primitives::AI3;
 
+/// The amount of actions per domain epoch
 const ACTIONS_PER_EPOCH: usize = 5;
+/// The amount of epochs per fuzz-run
 const NUM_EPOCHS: usize = 5;
+/// Minimum amount a nominator must stake
 const MIN_NOMINATOR_STAKE: Balance = 20;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -53,6 +56,9 @@ pub struct Epoch {
     actions: [(u8, FuzzAction); ACTIONS_PER_EPOCH],
 }
 
+/// The actions the harness performs
+/// Each action roughly maps to each extrinsic in pallet-domains.
+/// Note that all amounts MUST be multiplied by AI3 to be sensible
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 enum FuzzAction {
     RegisterOperator {
@@ -103,6 +109,8 @@ enum FuzzAction {
     SlashOperator,
 }
 
+/// Creates the genesis for the consensus chain; pre-configuring one EVM domain
+/// and minting funds to all test accounts.
 fn create_genesis_storage(accounts: &[AccountId], mint: u128) -> Storage {
     let raw_genesis_storage = RawGenesis::dummy(vec![1, 2, 3, 4]).encode();
     let pair = OperatorPair::from_seed(&[*accounts.first().unwrap() as u8; 32]);
@@ -450,6 +458,7 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
     }
 }
 
+/// Registers an operator for staking with fuzzer provided tax and amount
 fn register_operator(operator: AccountId, amount: Balance, tax: u8) -> Option<OperatorId> {
     let pair = OperatorPair::from_seed(&[operator as u8; 32]);
     let config = OperatorConfig {
