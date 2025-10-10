@@ -739,7 +739,7 @@ pub fn do_deregister_operator<T: Config>(
 /// Operator status is marked as Deactivated with epoch_index after which they can reactivate back
 /// into operator set. Their stake is removed from the total domain stake since they will not be
 /// producing bundles anymore until re-registration.
-pub(crate) fn do_deactivate_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
+pub fn do_deactivate_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
 
@@ -794,7 +794,7 @@ pub(crate) fn do_deactivate_operator<T: Config>(operator_id: OperatorId) -> Resu
 
 /// Reactivate a given deactivated operator if the activation delay in epochs has passed.
 /// The operator is added to next operator set and will be able to produce bundles from next epoch.
-pub(crate) fn do_reactivate_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
+pub fn do_reactivate_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
         let operator_status = operator.status::<T>(operator_id);

@@ -17,9 +17,9 @@ use pallet_domains::fuzz_utils::{
     fuzz_unmark_invalid_bundle_authors, get_next_operators, get_pending_slashes,
 };
 use pallet_domains::staking::{
-    do_deregister_operator, do_mark_operators_as_slashed, do_nominate_operator,
-    do_register_operator, do_reward_operators, do_unlock_funds, do_unlock_nominator,
-    do_withdraw_stake,
+    do_deactivate_operator, do_deregister_operator, do_mark_operators_as_slashed,
+    do_nominate_operator, do_reactivate_operator, do_register_operator, do_reward_operators,
+    do_unlock_funds, do_unlock_nominator, do_withdraw_stake,
 };
 use pallet_domains::staking_epoch::do_slash_operator;
 use pallet_domains::tests::{AccountId, Balance, BalancesConfig, DOMAIN_ID, Test};
@@ -94,6 +94,12 @@ enum FuzzAction {
         operator_id: u8,
         amount: u16,
     },
+    DeactivateOperator {
+        operator_id: u8,
+    },
+    ReactivateOperator {
+        operator_id: u8,
+    },
     SlashOperator,
 }
 
@@ -134,7 +140,7 @@ fn main() {
     let mint = (u16::MAX as u128) * 2 * AI3;
     let genesis = create_genesis_storage(&accounts, mint);
     ziggy::fuzz!(|data: &[u8]| {
-        let Ok(data) = bincode::deserialize::<FuzzData>(data) else {
+        let Ok(data) = bincode::deserialize(&data) else {
             return;
         };
         // Clone the genesis storage for this fuzz iteration
@@ -159,7 +165,6 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
     for (skip, epoch) in &data.epochs {
         for (user, action) in epoch.actions.iter() {
             let user = accounts.get(*user as usize % accounts.len()).unwrap();
-
             match action {
                 FuzzAction::RegisterOperator { amount, tax } => {
                     let res = register_operator(*user, *amount as u128, *tax);
@@ -398,6 +403,38 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                         .unwrap();
                     fuzz_unmark_invalid_bundle_authors::<Test>(DOMAIN_ID, *operator, *er);
                 }
+                FuzzAction::DeactivateOperator { operator_id } => {
+                    if operators.is_empty() {
+                        #[cfg(not(feature = "fuzzing"))]
+                        println!("skipping DeactivateOperator");
+                        continue;
+                    }
+                    let operator = operators
+                        .iter()
+                        .collect::<Vec<_>>()
+                        .get(*operator_id as usize % operators.len())
+                        .unwrap()
+                        .1;
+                    let res = do_deactivate_operator::<Test>(*operator);
+                    #[cfg(not(feature = "fuzzing"))]
+                    println!("Deactivating {operator:?} \n-->{res:?}");
+                }
+                FuzzAction::ReactivateOperator { operator_id } => {
+                    if operators.is_empty() {
+                        #[cfg(not(feature = "fuzzing"))]
+                        println!("skipping ReactivateOperator");
+                        continue;
+                    }
+                    let operator = operators
+                        .iter()
+                        .collect::<Vec<_>>()
+                        .get(*operator_id as usize % operators.len())
+                        .unwrap()
+                        .1;
+                    let res = do_reactivate_operator::<Test>(*operator);
+                    #[cfg(not(feature = "fuzzing"))]
+                    println!("Deactivating {operator:?} \n-->{res:?}");
+                }
             }
             check_invariants_before_finalization::<Test>(DOMAIN_ID);
             let prev_validator_states = get_next_operators::<Test>(DOMAIN_ID);
@@ -417,7 +454,7 @@ fn register_operator(operator: AccountId, amount: Balance, tax: u8) -> Option<Op
     let pair = OperatorPair::from_seed(&[operator as u8; 32]);
     let config = OperatorConfig {
         signing_key: pair.public(),
-        minimum_nominator_stake: MIN_NOMINATOR_STAKE,
+        minimum_nominator_stake: MIN_NOMINATOR_STAKE * AI3,
         nomination_tax: sp_runtime::Percent::from_percent(tax.min(100)),
     };
     let res = do_register_operator::<Test>(operator, DOMAIN_ID, amount * AI3, config);

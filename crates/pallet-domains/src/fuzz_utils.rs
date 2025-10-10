@@ -22,8 +22,9 @@ use crate::staking::{
 };
 use crate::staking_epoch::do_finalize_domain_current_epoch;
 use crate::{
-    BalanceOf, Config, Deposits, DomainBlockNumberFor, DomainStakingSummary, HeadDomainNumber,
-    InvalidBundleAuthors, Operators, PendingSlashes, ReceiptHashFor,
+    BalanceOf, Config, DeactivatedOperators, Deposits, DeregisteredOperators, DomainBlockNumberFor,
+    DomainStakingSummary, HeadDomainNumber, InvalidBundleAuthors, Operators, PendingSlashes,
+    ReceiptHashFor,
 };
 
 /// Fetch the next epoch's operators from the DomainStakingSummary
@@ -121,6 +122,12 @@ pub fn check_invariants_before_finalization<T: Config>(domain_id: DomainId) {
             panic!("operator set violated");
         }
     }
+    // INVARIANT: No operator is common between DeactivatedOperator and DeregisteredOperator
+    let deactivated_operators = DeactivatedOperators::<T>::get(domain_id);
+    let deregistered_operators = DeregisteredOperators::<T>::get(domain_id);
+    for operator_id in &deregistered_operators {
+        assert!(deactivated_operators.contains(operator_id) == false);
+    }
 }
 
 /// Check staking invariants after epoch finalization
@@ -136,6 +143,13 @@ pub fn check_invariants_after_finalization<T: Config<Balance = u128, Share = u12
         SharePrice::new::<T>(operator.current_total_shares, operator.current_total_stake)
             .expect("SharePrice to be present");
     }
+
+    // INVARIANT: DeactivatedOperators is empty
+    let deactivated_operators = DeactivatedOperators::<T>::get(domain_id);
+    assert!(deactivated_operators.len() == 0);
+    // INVARIANT: DeregisteredOperators is empty
+    let deregistered_operators = DeregisteredOperators::<T>::get(domain_id);
+    assert!(deregistered_operators.len() == 0);
 
     // INVARIANT: Total domain stake == accumulated operators' curent_stake.
     let aggregated_stake: BalanceOf<T> = domain_summary
