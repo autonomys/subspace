@@ -532,4 +532,4 @@ jobs:
           [[ "${{ needs.check-runtime-benchmarks.result }}" == "success" ]] || exit 1
           [[ "${{ needs.cargo-check-individually.result }}" == "success" ]] || exit 1
           [[ "${{ needs.cargo-unused-deps.result }}" == "success" ]] || exit 1
-          [[ "${{ needs.staking-fuzzer-build.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.staking-fuzzer-test.result }}" == "success" ]] || exit 1
