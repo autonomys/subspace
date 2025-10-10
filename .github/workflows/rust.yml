@@ -375,8 +375,10 @@ jobs:
   staking-fuzzer-test:
     name: staking-fuzzer-test (Linux x86-64)
     # Fuzzing is most efficient on Linux, it doesn't matter if it fails on other OSes.
-    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
-      '"runs-on=${{ github.run_id }}-${{ github.run_attempt }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
+    # Our runs-on instances don't have the required packages
+    runs-on: ubuntu-22.04
+    # Don't use the full 6 hours if fuzzing hangs
+    timeout-minutes: 120
     env:
       AFL_SKIP_CPUFREQ: 1
       AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: 1
