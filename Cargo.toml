@@ -63,7 +63,7 @@ domain-test-primitives = { version = "0.1.0", path = "domains/test/primitives", 
 domain-test-service = { version = "0.1.0", path = "domains/test/service" }
 domain-test-utils = { version = "0.1.0", path = "domains/test/utils" }
 env_logger = "0.11.5"
-ethereum = { git = "https://github.com/rust-ethereum/ethereum", rev = "3be0d8fd4c2ad1ba216b69ef65b9382612efc8ba" }
+ethereum = { version = "0.15.0", git = "https://github.com/rust-ethereum/ethereum", rev = "3be0d8fd4c2ad1ba216b69ef65b9382612efc8ba", default-features = false, features = ["with-scale"] }
 event-listener = "5.3.1"
 event-listener-primitives = "2.0.1"
 evm-domain-runtime = { version = "0.1.0", path = "domains/runtime/evm" }
@@ -76,7 +76,7 @@ fc-rpc-core = { version = "1.1.0-dev", git = "https://github.com/autonomys/front
 fc-storage = { version = "1.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409" }
 fdlimit = "0.3.0"
 fp-account = { version = "1.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
-fp-evm = { version = "3.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409" }
+fp-evm = { version = "3.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
 fp-rpc = { version = "3.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
 fp-self-contained = { version = "1.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
 frame-benchmarking = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba", default-features = false }
@@ -119,7 +119,7 @@ pallet-democracy = { git = "https://github.com/subspace/polkadot-sdk", rev = "e8
 pallet-domain-id = { version = "0.1.0", path = "domains/pallets/domain-id", default-features = false }
 pallet-domain-sudo = { version = "0.1.0", path = "domains/pallets/domain-sudo", default-features = false }
 pallet-domains = { version = "0.1.0", path = "crates/pallet-domains", default-features = false }
-pallet-ethereum = { git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
+pallet-ethereum = { version = "4.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
 pallet-evm = { version = "6.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
 pallet-evm-chain-id = { version = "1.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
 pallet-evm-precompile-modexp = { version = "2.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
@@ -148,6 +148,8 @@ parity-scale-codec = { version = "3.6.12", default-features = false }
 parking_lot = "0.12.2"
 pem = "3.0.4"
 pin-project = "1.1.5"
+precompile-utils = { version = "0.1.0", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
+precompile-utils-macro = { version = "0.1.0", git = "https://github.com/autonomys/frontier", rev = "986eb1ad6ec69c16d05d142b7e731b4b69e3b409", default-features = false }
 prometheus = { version = "0.13.0", default-features = false }
 prometheus-client = "0.22.3"
 prop-test = "0.1.1"
