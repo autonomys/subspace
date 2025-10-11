@@ -51,6 +51,7 @@ sp-block-builder.workspace = true
 sp-core.workspace = true
 sp-domains.workspace = true
 sp-domain-sudo.workspace = true
+sp-evm-precompiles.workspace = true
 sp-evm-tracker.workspace = true
 sp-genesis-builder.workspace = true
 sp-inherents.workspace = true
@@ -111,6 +112,7 @@ std = [
     "sp-core/std",
     "sp-domains/std",
     "sp-domain-sudo/std",
+    "sp-evm-precompiles/std",
     "sp-evm-tracker/std",
     "sp-genesis-builder/std",
     "sp-inherents/std",
