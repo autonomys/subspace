@@ -71,7 +71,7 @@ pub struct Transfer<Balance> {
 }
 
 /// Balance type used by the pallet.
-pub(crate) type BalanceOf<T> =
+pub type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 type MessageIdOf<T> = <<T as Config>::Sender as sp_messenger::endpoint::Sender<

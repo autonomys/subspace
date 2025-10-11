@@ -111,6 +111,7 @@ multihash = "0.19.1"
 nohash-hasher = "0.2.0"
 num-traits = { version = "0.2.18", default-features = false }
 num_cpus = "1.16.0"
+num_enum = { version = "0.5.3", default-features = false }
 ouroboros = "0.18.4"
 pallet-auto-id = { version = "0.1.0", path = "domains/pallets/auto-id", default-features = false }
 pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba", default-features = false }
@@ -150,7 +151,6 @@ parking_lot = "0.12.2"
 pem = "3.0.4"
 pin-project = "1.1.5"
 precompile-utils = { version = "0.1.0", git = "https://github.com/autonomys/frontier", rev = "f735fc2e6d9d15af9b44d8fc26449d83ec854e5b", default-features = false }
-precompile-utils-macro = { version = "0.1.0", git = "https://github.com/autonomys/frontier", rev = "f735fc2e6d9d15af9b44d8fc26449d83ec854e5b", default-features = false }
 prometheus = { version = "0.13.0", default-features = false }
 prometheus-client = "0.22.3"
 prop-test = "0.1.1"
@@ -225,6 +225,7 @@ sp-domains-fraud-proof = { version = "0.1.0", path = "crates/sp-domains-fraud-pr
 sp-evm-tracker = { version = "0.1.0", path = "domains/primitives/evm-tracker", default-features = false }
 sp-executive = { version = "0.1.0", path = "domains/primitives/executive", default-features = false }
 sp-externalities = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba", default-features = false }
+sp-evm-precompiles = { version = "0.1.0", path = "domains/primitives/evm-precompiles", default-features = false }
 sp-genesis-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba", default-features = false }
 sp-inherents = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba", default-features = false }
 sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba", default-features = false }
@@ -289,6 +290,7 @@ tokio = "1.40.0"
 tokio-stream = "0.1.16"
 tracing = { version = "0.1.40", default-features = false }
 tracing-subscriber = "0.3.20"
+transporter-precompile = { version = "0.1.0", path = "domains/evm-precompiles/transporter", default-features = false }
 trie-db = { version = "0.29.1", default-features = false }
 uint = { version = "0.10.0", default-features = false }
 ulid = "1.1.3"
