@@ -1567,6 +1567,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "case"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd6c0e7b807d60291f42f33f58480c0bfafe28ed08286446f45e463728cf9c1c"
+
+[[package]]
 name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3503,7 +3509,7 @@ dependencies = [
 [[package]]
 name = "evm"
 version = "0.42.0"
-source = "git+https://github.com/rust-ethereum/evm?branch=v0.x#6d86fe2d3bcc14887c2575f62958a67ac2d523db"
+source = "git+https://github.com/rust-ethereum/evm?rev=6d86fe2d3bcc14887c2575f62958a67ac2d523db#6d86fe2d3bcc14887c2575f62958a67ac2d523db"
 dependencies = [
  "auto_impl",
  "environmental",
@@ -3523,7 +3529,7 @@ dependencies = [
 [[package]]
 name = "evm-core"
 version = "0.42.0"
-source = "git+https://github.com/rust-ethereum/evm?branch=v0.x#6d86fe2d3bcc14887c2575f62958a67ac2d523db"
+source = "git+https://github.com/rust-ethereum/evm?rev=6d86fe2d3bcc14887c2575f62958a67ac2d523db#6d86fe2d3bcc14887c2575f62958a67ac2d523db"
 dependencies = [
  "parity-scale-codec",
  "primitive-types 0.13.1",
@@ -3650,7 +3656,7 @@ dependencies = [
 [[package]]
 name = "evm-gasometer"
 version = "0.42.0"
-source = "git+https://github.com/rust-ethereum/evm?branch=v0.x#6d86fe2d3bcc14887c2575f62958a67ac2d523db"
+source = "git+https://github.com/rust-ethereum/evm?rev=6d86fe2d3bcc14887c2575f62958a67ac2d523db#6d86fe2d3bcc14887c2575f62958a67ac2d523db"
 dependencies = [
  "environmental",
  "evm-core",
@@ -3661,7 +3667,7 @@ dependencies = [
 [[package]]
 name = "evm-runtime"
 version = "0.42.0"
-source = "git+https://github.com/rust-ethereum/evm?branch=v0.x#6d86fe2d3bcc14887c2575f62958a67ac2d523db"
+source = "git+https://github.com/rust-ethereum/evm?rev=6d86fe2d3bcc14887c2575f62958a67ac2d523db#6d86fe2d3bcc14887c2575f62958a67ac2d523db"
 dependencies = [
  "auto_impl",
  "environmental",
@@ -3748,7 +3754,7 @@ dependencies = [
 [[package]]
 name = "fc-api"
 version = "1.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "async-trait",
  "fp-storage",
@@ -3760,7 +3766,7 @@ dependencies = [
 [[package]]
 name = "fc-consensus"
 version = "2.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "async-trait",
  "fp-consensus",
@@ -3776,7 +3782,7 @@ dependencies = [
 [[package]]
 name = "fc-db"
 version = "2.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "async-trait",
  "fc-api",
@@ -3795,7 +3801,7 @@ dependencies = [
 [[package]]
 name = "fc-mapping-sync"
 version = "2.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "fc-db",
  "fc-storage",
@@ -3816,7 +3822,7 @@ dependencies = [
 [[package]]
 name = "fc-rpc"
 version = "2.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -3866,7 +3872,7 @@ dependencies = [
 [[package]]
 name = "fc-rpc-core"
 version = "1.1.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -3881,7 +3887,7 @@ dependencies = [
 [[package]]
 name = "fc-storage"
 version = "1.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -4052,7 +4058,7 @@ dependencies = [
 [[package]]
 name = "fp-account"
 version = "1.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "hex",
  "impl-serde 0.5.0",
@@ -4071,7 +4077,7 @@ dependencies = [
 [[package]]
 name = "fp-consensus"
 version = "2.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "ethereum",
  "parity-scale-codec",
@@ -4082,7 +4088,7 @@ dependencies = [
 [[package]]
 name = "fp-ethereum"
 version = "1.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -4094,7 +4100,7 @@ dependencies = [
 [[package]]
 name = "fp-evm"
 version = "3.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "environmental",
  "evm",
@@ -4110,7 +4116,7 @@ dependencies = [
 [[package]]
 name = "fp-rpc"
 version = "3.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -4126,7 +4132,7 @@ dependencies = [
 [[package]]
 name = "fp-self-contained"
 version = "1.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "frame-support",
  "parity-scale-codec",
@@ -4138,7 +4144,7 @@ dependencies = [
 [[package]]
 name = "fp-storage"
 version = "2.0.0"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "parity-scale-codec",
  "serde",
@@ -7983,7 +7989,7 @@ dependencies = [
 [[package]]
 name = "pallet-ethereum"
 version = "4.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -8006,7 +8012,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm"
 version = "6.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "environmental",
  "evm",
@@ -8029,7 +8035,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm-chain-id"
 version = "1.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -8040,7 +8046,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm-precompile-modexp"
 version = "2.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "fp-evm",
  "num",
@@ -8049,7 +8055,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm-precompile-sha3fips"
 version = "2.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "fp-evm",
  "tiny-keccak",
@@ -8058,7 +8064,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm-precompile-simple"
 version = "2.0.0-dev"
-source = "git+https://github.com/autonomys/frontier?rev=986eb1ad6ec69c16d05d142b7e731b4b69e3b409#986eb1ad6ec69c16d05d142b7e731b4b69e3b409"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
 dependencies = [
  "fp-evm",
  "ripemd",
@@ -9076,6 +9082,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "precompile-utils"
+version = "0.1.0"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
+dependencies = [
+ "environmental",
+ "evm",
+ "fp-evm",
+ "frame-support",
+ "frame-system",
+ "hex",
+ "impl-trait-for-tuples",
+ "log",
+ "num_enum",
+ "pallet-evm",
+ "parity-scale-codec",
+ "precompile-utils-macro",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-weights",
+ "staging-xcm",
+]
+
+[[package]]
+name = "precompile-utils-macro"
+version = "0.1.0"
+source = "git+https://github.com/autonomys/frontier?rev=f735fc2e6d9d15af9b44d8fc26449d83ec854e5b#f735fc2e6d9d15af9b44d8fc26449d83ec854e5b"
+dependencies = [
+ "case",
+ "num_enum",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/subspace/polkadot-sdk?rev=e831132867930ca90a7088c7246301ab29f015ba)",
+ "syn 2.0.104",
+]
+
+[[package]]
 name = "predicates"
 version = "2.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9117,9 +9161,9 @@ dependencies = [
 
 [[package]]
 name = "prettyplease"
-version = "0.2.22"
+version = "0.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "479cf940fbbb3426c32c5d5176f62ad57549a0bb84773423ba8be9d089f5faba"
+checksum = "6924ced06e1f7dfe3fa48d57b9f74f55d8915f5036121bef647ef4b204895fac"
 dependencies = [
  "proc-macro2",
  "syn 2.0.104",
@@ -9337,7 +9381,7 @@ version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0f3e5beed80eb580c68e2c600937ac2c4eedabdfd5ef1e5b7ea4f3fba84497b"
 dependencies = [
- "heck 0.5.0",
+ "heck 0.4.1",
  "itertools 0.12.1",
  "log",
  "multimap",
@@ -15075,6 +15119,19 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
+]
+
+[[package]]
+name = "transporter-precompile"
+version = "0.1.0"
+dependencies = [
+ "fp-evm",
+ "log",
+ "parity-scale-codec",
+ "precompile-utils",
+ "precompile-utils-macro",
+ "scale-info",
+ "sp-core",
 ]
 
 [[package]]
