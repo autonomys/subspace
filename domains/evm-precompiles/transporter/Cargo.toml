@@ -13,21 +13,32 @@ include = [
 ]
 
 [dependencies]
+domain-runtime-primitives.workspace = true
 fp-evm.workspace = true
+frame-support.workspace = true
 log.workspace = true
 parity-scale-codec = { workspace = true, features = ["derive"] }
+pallet-evm.workspace = true
+pallet-transporter.workspace = true
 precompile-utils.workspace = true
-precompile-utils-macro.workspace = true
 scale-info = { workspace = true, features = ["derive"] }
 sp-core.workspace = true
+sp-messenger.workspace = true
+sp-runtime.workspace = true
 
 [features]
 default = ["std"]
 std = [
+    "domain-runtime-primitives/std",
     "fp-evm/std",
+    "frame-support/std",
     "log/std",
     "parity-scale-codec/std",
+    "pallet-evm/std",
+    "pallet-transporter/std",
     "precompile-utils/std",
     "scale-info/std",
     "sp-core/std",
+    "sp-messenger/std",
+    "sp-runtime/std",
 ]
