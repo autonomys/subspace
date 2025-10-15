@@ -1,3 +1,5 @@
+//! Types used in `chiapos` table implementation.
+
 #[cfg(feature = "alloc")]
 use crate::chiapos::constants::PARAM_BC;
 use crate::chiapos::constants::PARAM_EXT;

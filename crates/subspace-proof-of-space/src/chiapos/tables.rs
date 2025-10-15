@@ -1,3 +1,5 @@
+//! `chiapos` precalculated tables.
+
 #[cfg(all(feature = "alloc", test))]
 mod tests;
 

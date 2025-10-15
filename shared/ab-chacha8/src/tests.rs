@@ -1,3 +1,5 @@
+//! `ab-chacha8` tests.
+
 use crate::{ChaCha8State, block_to_bytes};
 use chacha20::cipher::{Iv, KeyIvInit, StreamCipher};
 use chacha20::{ChaCha8, Key};

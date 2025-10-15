@@ -1,3 +1,5 @@
+//! Virtual-to-physical mapping table tests.
+
 use crate::chiapos::table::rmap::Rmap;
 use crate::chiapos::table::types::{Position, R};
 

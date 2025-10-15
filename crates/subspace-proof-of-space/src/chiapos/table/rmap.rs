@@ -1,3 +1,5 @@
+//! Virtual-to-physical mapping table implementation.
+
 #[cfg(test)]
 mod tests;
 

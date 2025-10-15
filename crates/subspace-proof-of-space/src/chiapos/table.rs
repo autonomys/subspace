@@ -1,3 +1,5 @@
+//! `chiapos` table implementation.
+
 #[cfg(any(feature = "alloc", test))]
 mod rmap;
 #[cfg(test)]

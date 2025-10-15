@@ -1,3 +1,5 @@
+//! `chiapos` tables tests.
+
 #![cfg(not(miri))]
 
 use crate::chiapos::{Tables, TablesCache};
