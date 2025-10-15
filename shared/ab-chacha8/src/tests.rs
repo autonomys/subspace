@@ -1,6 +1,6 @@
 use crate::{ChaCha8State, block_to_bytes};
-use chacha20::cipher::{Iv, StreamCipher};
-use chacha20::{ChaCha8, Key, KeyIvInit};
+use chacha20::cipher::{Iv, KeyIvInit, StreamCipher};
+use chacha20::{ChaCha8, Key};
 
 #[test]
 fn chacha8_primitive() {
@@ -8,7 +8,7 @@ fn chacha8_primitive() {
 
     let mut expected_output = [[0u8; _]; 2];
     ChaCha8::new(&Key::from(seed), &Iv::<ChaCha8>::default())
-        .write_keystream(expected_output.as_flattened_mut());
+        .apply_keystream(expected_output.as_flattened_mut());
 
     let initial_state = ChaCha8State::init(&seed, &[0; _]);
 

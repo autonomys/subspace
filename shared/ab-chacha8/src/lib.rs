@@ -1,6 +1,7 @@
 //! Small GPU-friendly software implementation of ChaCha8
 
 #![no_std]
+#![feature(generic_arg_infer)]
 
 #[cfg(test)]
 mod tests;
