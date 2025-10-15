@@ -46,6 +46,7 @@ use subspace_core_primitives::hashes::blake3_hash;
 pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
 #[cfg(any(feature = "alloc", test))]
 const COMPUTE_FN_SIMD_FACTOR: usize = 16;
+#[allow(dead_code, reason = "unused when crate is compiled separately")]
 const MAX_BUCKET_SIZE: usize = 512;
 #[cfg(feature = "alloc")]
 const BUCKET_SIZE_UPPER_BOUND_SECURITY_BITS: u8 = 128;
@@ -54,12 +55,14 @@ const BUCKET_SIZE_UPPER_BOUND_SECURITY_BITS: u8 = 128;
 /// The number should be sufficient to produce enough proofs for sector encoding with high
 /// probability.
 // TODO: Statistical analysis if possible, confirming there will be enough proofs
+#[allow(dead_code, reason = "unused when crate is compiled separately")]
 const REDUCED_BUCKET_SIZE: usize = 272;
 /// Reducing matches count for better performance.
 ///
 /// The number should be sufficient to produce enough proofs for sector encoding with high
 /// probability.
 // TODO: Statistical analysis if possible, confirming there will be enough proofs
+#[allow(dead_code, reason = "unused when crate is compiled separately")]
 const REDUCED_MATCHES_COUNT: usize = 288;
 #[cfg(feature = "parallel")]
 const CACHE_LINE_SIZE: usize = 64;
