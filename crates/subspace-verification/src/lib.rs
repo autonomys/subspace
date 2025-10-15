@@ -213,6 +213,8 @@ pub fn verify_solution<'a, PosTable, RewardAddress>(
 where
     PosTable: Table,
 {
+    use subspace_core_primitives::solutions::SolutionPotVerifier;
+
     let VerifySolutionParams {
         proof_of_time,
         solution_range,
@@ -231,7 +233,7 @@ where
     let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
 
     // Check that proof of space is valid
-    if !PosTable::is_proof_valid(
+    if !<PosTable as SolutionPotVerifier>::is_proof_valid(
         &sector_id.derive_evaluation_seed(solution.piece_offset),
         s_bucket_audit_index.into(),
         &solution.proof_of_space,
