@@ -41,6 +41,7 @@ use seq_macro::seq;
 // TODO: Switch to `rclite` once https://github.com/fereidani/rclite/issues/11 is resolved
 #[cfg(feature = "alloc")]
 use alloc::sync::Arc;
+use subspace_core_primitives::hashes::blake3_hash;
 
 pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
 #[cfg(any(feature = "alloc", test))]
@@ -547,14 +548,12 @@ where
             let input = [input_a.to_be_bytes(), input_b.to_be_bytes()];
             let input_len =
                 size_of::<u128>() + right_bits_pushed_into_input_b.div_ceil(u8::BITS as usize);
-            ab_blake3::single_block_hash(&input.as_flattened()[..input_len])
-                .expect("Exactly a single block worth of bytes; qed")
+            blake3_hash(&input.as_flattened()[..input_len])
         } else {
             let right_bits_a = right_metadata << (right_bits_start_offset - y_and_left_bits);
             let input_a = y_bits | left_metadata_bits | right_bits_a;
 
-            ab_blake3::single_block_hash(&input_a.to_be_bytes()[..num_bytes_with_data])
-                .expect("Less than a single block worth of bytes; qed")
+            blake3_hash(&input_a.to_be_bytes()[..num_bytes_with_data])
         }
     };
 
@@ -665,14 +664,12 @@ where
                 let input = [input_a.to_be_bytes(), input_b.to_be_bytes()];
                 let input_len =
                     size_of::<u128>() + right_bits_pushed_into_input_b.div_ceil(u8::BITS as usize);
-                ab_blake3::single_block_hash(&input.as_flattened()[..input_len])
-                    .expect("Exactly a single block worth of bytes; qed")
+                blake3_hash(&input.as_flattened()[..input_len])
             } else {
                 let right_bits_a = right_metadata << (right_bits_start_offset - y_and_left_bits);
                 let input_a = y_bits | left_metadata_bits | right_bits_a;
 
-                ab_blake3::single_block_hash(&input_a.to_be_bytes()[..num_bytes_with_data])
-                    .expect("Exactly a single block worth of bytes; qed")
+                blake3_hash(&input_a.to_be_bytes()[..num_bytes_with_data])
             }
         },
         )*

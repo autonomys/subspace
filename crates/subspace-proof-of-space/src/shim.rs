@@ -4,8 +4,9 @@
 #[cfg(feature = "alloc")]
 use crate::TableGenerator;
 use crate::{PosTableType, Table};
-use ab_core_primitives::pos::{PosProof, PosSeed};
 use core::iter;
+use subspace_core_primitives::hashes::blake3_hash;
+use subspace_core_primitives::pos::{PosProof, PosSeed};
 
 /// Proof of space table generator.
 ///
@@ -30,7 +31,7 @@ pub struct ShimTable {
     seed: PosSeed,
 }
 
-impl ab_core_primitives::solutions::SolutionPotVerifier for ShimTable {
+impl subspace_core_primitives::solutions::SolutionPotVerifier for ShimTable {
     fn is_proof_valid(seed: &PosSeed, challenge_index: u32, proof: &PosProof) -> bool {
         let Some(correct_proof) = find_proof(seed, challenge_index) else {
             return false;
@@ -51,7 +52,7 @@ impl Table for ShimTable {
     }
 
     fn is_proof_valid(seed: &PosSeed, challenge_index: u32, proof: &PosProof) -> bool {
-        <Self as ab_core_primitives::solutions::SolutionPotVerifier>::is_proof_valid(
+        <Self as subspace_core_primitives::solutions::SolutionPotVerifier>::is_proof_valid(
             seed,
             challenge_index,
             proof,
@@ -60,8 +61,7 @@ impl Table for ShimTable {
 }
 
 fn find_proof(seed: &PosSeed, challenge_index: u32) -> Option<PosProof> {
-    let quality = ab_blake3::single_block_hash(&challenge_index.to_le_bytes())
-        .expect("Less than a single block worth of bytes; qed");
+    let quality = blake3_hash(&challenge_index.to_le_bytes());
     if !quality[0].is_multiple_of(3) {
         let mut proof = PosProof::default();
         proof

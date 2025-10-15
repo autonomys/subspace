@@ -1,19 +1,19 @@
 #![feature(const_trait_impl)]
 
 #[cfg(feature = "alloc")]
-use ab_core_primitives::pieces::Record;
-#[cfg(feature = "alloc")]
-use ab_core_primitives::pos::PosSeed;
-use ab_proof_of_space::Table;
-#[cfg(feature = "alloc")]
-use ab_proof_of_space::TableGenerator;
-#[cfg(feature = "alloc")]
 use criterion::Throughput;
 use criterion::{Criterion, criterion_group, criterion_main};
 #[cfg(feature = "parallel")]
 use rayon::ThreadPoolBuilder;
 #[cfg(feature = "alloc")]
 use std::hint::black_box;
+#[cfg(feature = "alloc")]
+use subspace_core_primitives::pieces::Record;
+#[cfg(feature = "alloc")]
+use subspace_core_primitives::pos::PosSeed;
+use subspace_proof_of_space::Table;
+#[cfg(feature = "alloc")]
+use subspace_proof_of_space::TableGenerator;
 
 #[cfg(not(feature = "alloc"))]
 #[expect(
@@ -254,7 +254,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         // This challenge index with above seed is known to have a solution
         let challenge_index_with_solution = 600426542;
 
-        pos_bench::<ab_proof_of_space::chia::ChiaTable>(
+        pos_bench::<subspace_proof_of_space::chia::ChiaTable>(
             c,
             "chia",
             challenge_index_without_solution,
@@ -267,7 +267,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         // This challenge index with above seed is known to have a solution
         let challenge_index_with_solution = 0;
 
-        pos_bench::<ab_proof_of_space::shim::ShimTable>(
+        pos_bench::<subspace_proof_of_space::shim::ShimTable>(
             c,
             "shim",
             challenge_index_without_solution,
