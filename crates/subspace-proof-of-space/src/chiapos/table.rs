@@ -119,7 +119,7 @@ fn partial_ys<const K: u8>(seed: Seed) -> Vec<u8> {
 
     let mut cipher = ChaCha8::new(&key, &iv);
 
-    cipher.write_keystream(&mut output);
+    cipher.apply_keystream(&mut output);
 
     output
 }
