@@ -1,0 +1,31 @@
+[package]
+name = "ab-chacha8"
+description = "Small GPU-friendly software implementation of ChaCha8"
+license = "0BSD"
+version = "0.1.0"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+edition = "2024"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+
+# TODO: Would be nice to have benchmarks here
+
+[dependencies]
+no-panic = { workspace = true, optional = true }
+
+[dev-dependencies]
+chacha20 = { workspace = true, features = ["cipher"] }
+
+[features]
+# Check that code can't panic under any conditions
+no-panic = [
+    "dep:no-panic",
+]
+
+[lints]
+workspace = true
