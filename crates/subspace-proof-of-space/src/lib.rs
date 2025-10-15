@@ -4,9 +4,9 @@
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![feature(
     array_windows,
-    const_convert,
     const_trait_impl,
     exact_size_is_empty,
+    generic_arg_infer,
     generic_const_exprs,
     get_mut_unchecked,
     maybe_uninit_fill,

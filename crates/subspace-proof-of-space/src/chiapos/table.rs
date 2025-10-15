@@ -97,7 +97,7 @@ pub(super) const fn metadata_size_bits(k: u8, table_number: u8) -> usize {
 pub const fn num_buckets(k: u8) -> usize {
     2_usize
         .pow(y_size_bits(k) as u32)
-        .div_ceil(usize::from(PARAM_BC))
+        .div_ceil(PARAM_BC as usize)
 }
 
 #[cfg(feature = "parallel")]
