@@ -9293,9 +9293,9 @@ dependencies = [
 
 [[package]]
 name = "proptest"
-version = "1.7.0"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fcdab19deb5195a31cf7726a210015ff1496ba1464fd42cb4f537b8b01b471f"
+checksum = "2bb0be07becd10686a0bb407298fb425360a5c44a663774406340c59a22de4ce"
 dependencies = [
  "bit-set",
  "bit-vec",
@@ -12564,6 +12564,7 @@ dependencies = [
  "memory-db",
  "num-traits",
  "parity-scale-codec",
+ "prop-test",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "rs_merkle",
@@ -12571,6 +12572,7 @@ dependencies = [
  "serde",
  "sp-api",
  "sp-application-crypto",
+ "sp-arithmetic",
  "sp-core",
  "sp-runtime",
  "sp-runtime-interface",

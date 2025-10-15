@@ -25,6 +25,7 @@ rs_merkle.workspace = true
 scale-info = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["alloc", "derive"] }
 sp-api.workspace = true
+sp-arithmetic.workspace = true
 sp-application-crypto.workspace = true
 sp-core.workspace = true
 sp-runtime.workspace = true
@@ -40,6 +41,7 @@ trie-db.workspace = true
 
 [dev-dependencies]
 num-traits.workspace = true
+prop-test.workspace = true
 rand = { workspace = true, features = ["min_const_gen"] }
 
 [features]
@@ -56,6 +58,7 @@ std = [
     "scale-info/std",
     "serde/std",
     "sp-api/std",
+    "sp-arithmetic/std",
     "sp-application-crypto/std",
     "sp-core/std",
     "sp-runtime/std",
