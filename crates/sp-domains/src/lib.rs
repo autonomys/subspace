@@ -8,7 +8,7 @@ pub mod core_api;
 pub mod execution_receipt;
 pub mod extrinsics;
 pub mod merkle_tree;
-mod offline_operators;
+pub mod offline_operators;
 pub mod proof_provider_and_verifier;
 pub mod storage;
 #[cfg(test)]

@@ -20,6 +20,16 @@ const LN_1_OVER_TAU_0_5_PERCENT: FixedU128 = FixedU128::from_inner(5_298_317_366
 const LN_1_OVER_TAU_0_1_PERCENT: FixedU128 = FixedU128::from_inner(6_907_755_278_982_137_000);
 
 #[test]
+fn test_ln_1_over_tau_1_value() {
+    // Dynamically compute ln(100) in floating point
+    // Convert to FixedU128 representation (scaled by 1e18)
+    let computed_ln_1_over_tau_1 = FixedU128::from_inner((f64::ln(100.0) * 1e18).round() as u128);
+
+    // Check equality of integer fixed-point representation
+    assert_eq!(LN_1_OVER_TAU_1_PERCENT, computed_ln_1_over_tau_1,);
+}
+
+#[test]
 fn test_chernoff_basic() {
     // S = 600, p = 0.05 (μ = 30). τ = 1% -> ln(100)
     let s = 600u64;

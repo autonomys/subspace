@@ -1,46 +1,42 @@
-// TODO: remove once components are connected
-#![allow(dead_code)]
-// Chernoff lower-tail threshold for Binomial(S, p).
-//
-// Threshold (additive Chernoff, lower tail):
-//   Let μ = S * p, where S is slots_in_epoch and p is per-slot win probability.
-//   t = sqrt( 2 * μ * ln(1/τ) )
-//   r = floor( μ - t ), clamped to [0, S]
-//
-// Property:
-//   For X ~ Binomial(S, p), P[ X < r ] <= τ  (conservative bound)
-//   This holds for all p in [0,1] and any S.
-//
-// Notes:
-// - Provide ln(1/τ) as a FixedU128 constant (precomputed off-chain).
-//   Examples:
-//     τ = 1%   => ln(100)   ≈ 4.605170185988092  -> inner ≈ 4_605_170_185_988_092_000
-//     τ = 0.5% => ln(200)   ≈ 5.298317366548036  -> inner ≈ 5_298_317_366_548_036_000
-//     τ = 0.1% => ln(1000)  ≈ 6.907755278982137  -> inner ≈ 6_907_755_278_982_137_000
-// - To decide throughput relevance before calling this (cheap filter), compute
-//   μ_floor = floor(S * p) and require μ_floor >= E_relevance (e.g., >= 10 for τ=1%).
+//! Chernoff lower-tail threshold for Binomial(S, p).
+//!
+//! Threshold (additive Chernoff, lower tail):
+//!   Let μ = S * p, where S is slots_in_epoch and p is per-slot win probability.
+//!   t = sqrt( 2 * μ * ln(1/τ) )
+//!   r = floor( μ - t ), clamped to [0, S]
+//!
+//! Property:
+//!   For X ~ Binomial(S, p), `P[ X < r ] <= τ`  (conservative bound)
+//!   This holds for all p in `[0,1]` and any S.
+//!
+//! Notes:
+//! - Provide ln(1/τ) as a FixedU128 constant (precomputed off-chain).
+//! - Examples:
+//!   τ = 1%   => ln(100)   ≈ 4.605170185988092  -> inner ≈ 4_605_170_185_988_091_904
+//!   τ = 0.5% => ln(200)   ≈ 5.298317366548036  -> inner ≈ 5_298_317_366_548_036_000
+//!   τ = 0.1% => ln(1000)  ≈ 6.907755278982137  -> inner ≈ 6_907_755_278_982_137_000
+//! - To decide throughput relevance before calling this (cheap filter), compute
+//!   μ_floor = floor(S * p) and require μ_floor >= E_relevance (e.g., >= 10 for τ=1%).
 
 #[cfg(test)]
 mod tests;
 
+use crate::StakeWeight;
 use crate::bundle_producer_election::calculate_threshold;
 use core::cmp::max;
+use frame_support::pallet_prelude::{Decode, Encode, TypeInfo};
+use frame_support::{Deserialize, Serialize};
 use sp_arithmetic::traits::{One, SaturatedConversion, Saturating, UniqueSaturatedInto, Zero};
 use sp_arithmetic::{FixedPointNumber, FixedU128};
 use sp_core::U256;
 
-// For τ = 1%: ln(1/τ) = ln(100) ≈ 4.605170185988092
-// Represent in FixedU128 by multiplying by 1e18 and rounding.
-pub const LN_1_OVER_TAU_1_PERCENT: FixedU128 = FixedU128::from_inner(4_605_170_185_988_092_000);
+/// For τ = 1%: ln(1/τ) = ln(100) ≈ 4.605170185988092
+/// Represent in FixedU128 by multiplying by 1e18 and rounding.
+pub const LN_1_OVER_TAU_1_PERCENT: FixedU128 = FixedU128::from_inner(4_605_170_185_988_091_904);
 
-// // For τ = 0.5%: ln(1/τ) = ln(200) ≈ 5.298317366548036
-// // Represent in FixedU128 by multiplying by 1e18 and rounding.
-// const LN_1_OVER_TAU_0_5_PERCENT: FixedU128 = FixedU128::from_inner(5_298_317_366_548_036_000);
-//
-// // For τ = 0.1%: ln(1/τ) = ln(1000) ≈ 6.907755278982137
-// // Represent in FixedU128 by multiplying by 1e18 and rounding.
-// const LN_1_OVER_TAU_0_1_PERCENT: FixedU128 = FixedU128::from_inner(6_907_755_278_982_137_000);
-
+/// Threshold for number of bundles operator can produce based on their stake share.
+/// Operators whose expected bundles from their threshold < E_BASE will not be checked
+/// since they are not throughput relevant.
 pub const E_BASE: u64 = 3;
 
 // Exact per-slot win probability is p = threshold / 2^128.
@@ -118,7 +114,7 @@ fn is_throughput_relevant_fp(slots_in_epoch: u64, p_slot: FixedU128, e_relevance
 }
 
 // Compute E_relevance = ceil( max( E_BASE, 2 * ln(1/τ) ) ) in integer bundles.
-pub fn compute_e_relevance(ln_one_over_tau: FixedU128, e_base: u64) -> u64 {
+fn compute_e_relevance(ln_one_over_tau: FixedU128, e_base: u64) -> u64 {
     let two_ln = FixedU128::saturating_from_integer(2)
         .saturating_mul(ln_one_over_tau)
         .into_inner()
@@ -128,7 +124,7 @@ pub fn compute_e_relevance(ln_one_over_tau: FixedU128, e_base: u64) -> u64 {
 }
 
 /// Expectations for one operator at epoch end (slots-based, Chernoff-calibrated).
-#[derive(Debug)]
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorEpochExpectations {
     /// floor(μ) = floor(S * p_slot_exact): integer expected bundles this epoch.
     pub expected_bundles: u64,
@@ -154,13 +150,13 @@ pub struct OperatorEpochExpectations {
 /// - e_base: soft relevance floor (e.g., E_BASE)
 pub fn operator_expected_bundles_in_epoch(
     slots_in_epoch: u64,
-    operator_stake: u128,
-    total_domain_stake: u128,
+    operator_stake: StakeWeight,
+    total_domain_stake: StakeWeight,
     bundle_slot_probability: (u64, u64), // (theta_num, theta_den)
     ln_one_over_tau: FixedU128,
     e_base: u64,
 ) -> Option<OperatorEpochExpectations> {
-    if slots_in_epoch == 0 {
+    if slots_in_epoch.is_zero() {
         return None;
     }
 
