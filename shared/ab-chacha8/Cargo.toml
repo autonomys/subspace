@@ -19,13 +19,10 @@ all-features = true
 no-panic = { workspace = true, optional = true }
 
 [dev-dependencies]
-chacha20 = { workspace = true, features = ["cipher"] }
+chacha20.workspace = true
 
 [features]
 # Check that code can't panic under any conditions
 no-panic = [
     "dep:no-panic",
 ]
-
-[lints]
-workspace = true

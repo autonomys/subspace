@@ -18,6 +18,7 @@ all-features = true
 bench = false
 
 [dependencies]
+ab-chacha8.workspace = true
 blake3 = { workspace = true, default-features = false }
 chacha20 = { workspace = true, optional = true }
 derive_more = { workspace = true, features = ["full"] }

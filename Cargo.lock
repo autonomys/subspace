@@ -13,6 +13,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ab-chacha8"
+version = "0.1.0"
+dependencies = [
+ "chacha20",
+ "no-panic",
+]
+
+[[package]]
 name = "actix-codec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7497,6 +7505,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "no-panic"
+version = "0.1.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "113d1abd5bb3dc25a75d9b3a973f40e31eb03e0bae23c172b32cca4bcb9cfad2"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
 name = "no-std-compat"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13793,6 +13812,7 @@ dependencies = [
 name = "subspace-proof-of-space"
 version = "0.1.0"
 dependencies = [
+ "ab-chacha8",
  "bitvec",
  "blake3",
  "chacha20",
