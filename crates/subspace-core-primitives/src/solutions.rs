@@ -227,6 +227,12 @@ impl ChunkWitness {
     pub const SIZE: usize = 48;
 }
 
+/// Proof-of-time verifier trait, used in abundance backports.
+pub trait SolutionPotVerifier {
+    /// Check whether proof created earlier is valid
+    fn is_proof_valid(seed: &PosSeed, s_bucket: SBucket, proof: &PosProof) -> bool;
+}
+
 /// Farmer solution for slot challenge.
 #[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
