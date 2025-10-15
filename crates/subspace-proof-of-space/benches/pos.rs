@@ -1,3 +1,5 @@
+//! Proof of space benchmarks
+
 #![feature(const_trait_impl)]
 
 #[cfg(feature = "alloc")]
