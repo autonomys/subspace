@@ -217,12 +217,16 @@ impl StorageFee<Balance> for DummyStorageFee {
 pub struct DummyBlockSlot;
 
 impl BlockSlot<Test> for DummyBlockSlot {
-    fn future_slot(_block_number: BlockNumberFor<Test>) -> Option<sp_consensus_slots::Slot> {
+    fn future_slot(_block_number: BlockNumberFor<Test>) -> Option<Slot> {
         None
     }
 
     fn slot_produced_after(_slot: sp_consensus_slots::Slot) -> Option<BlockNumberFor<Test>> {
         Some(0u32)
+    }
+
+    fn current_slot() -> Slot {
+        Slot::from(0)
     }
 }
 

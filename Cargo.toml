@@ -206,7 +206,7 @@ serde_json = "1.0.133"
 sha2 = { version = "0.10.7", default-features = false }
 sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba", default-features = false }
 sp-application-crypto = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba", default-features = false }
-sp-arithmetic = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba" }
+sp-arithmetic = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba", default-features = false }
 sp-auto-id = { version = "0.1.0", path = "domains/primitives/auto-id", default-features = false }
 sp-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba", default-features = false }
 sp-block-fees = { version = "0.1.0", path = "domains/primitives/block-fees", default-features = false }
