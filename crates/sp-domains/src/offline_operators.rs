@@ -39,6 +39,24 @@ pub const LN_1_OVER_TAU_1_PERCENT: FixedU128 = FixedU128::from_inner(4_605_170_1
 /// since they are not throughput relevant.
 pub const E_BASE: u64 = 3;
 
+/// Extension trait for FixedU128 providing rounding to u64.
+trait FixedU128Ext {
+    /// Floor FixedU128 to u64.
+    fn to_u64_floor(self) -> u64;
+    /// Ceil FixedU128 to u64.
+    fn to_u64_ceil(self) -> u64;
+}
+
+impl FixedU128Ext for FixedU128 {
+    fn to_u64_floor(self) -> u64 {
+        (self.into_inner() / FixedU128::DIV).saturated_into()
+    }
+
+    fn to_u64_ceil(self) -> u64 {
+        self.into_inner().div_ceil(FixedU128::DIV).saturated_into()
+    }
+}
+
 // Exact per-slot win probability is p = threshold / 2^128.
 // Convert that to FixedU128 (1e18 scaling) using U256 intermediates.
 fn p_from_threshold(threshold: u128) -> FixedU128 {
@@ -93,11 +111,10 @@ fn chernoff_threshold_fp(
     // r = floor( μ - t ), clamped to [0, S]
     Some(
         if mu > t {
-            mu.saturating_sub(t).into_inner() / FixedU128::DIV
+            mu.saturating_sub(t).to_u64_floor()
         } else {
             0
         }
-        .saturated_into::<u64>()
         .clamp(0, slots_in_epoch),
     )
 }
@@ -109,7 +126,7 @@ fn chernoff_threshold_fp(
 ///   E_relevance >= ceil( 2 * ln(1/τ) ) = ceil(9.21) = 10
 fn is_throughput_relevant_fp(slots_in_epoch: u64, p_slot: FixedU128, e_relevance: u64) -> bool {
     let mu = p_slot.saturating_mul(FixedU128::saturating_from_integer(slots_in_epoch));
-    let mu_floor: u64 = (mu.into_inner() / FixedU128::DIV).saturated_into();
+    let mu_floor = mu.to_u64_floor();
     mu_floor >= e_relevance
 }
 
@@ -117,9 +134,7 @@ fn is_throughput_relevant_fp(slots_in_epoch: u64, p_slot: FixedU128, e_relevance
 fn compute_e_relevance(ln_one_over_tau: FixedU128, e_base: u64) -> u64 {
     let two_ln = FixedU128::saturating_from_integer(2)
         .saturating_mul(ln_one_over_tau)
-        .into_inner()
-        .div_ceil(FixedU128::DIV)
-        .saturated_into();
+        .to_u64_ceil();
     max(e_base, two_ln)
 }
 
@@ -176,7 +191,7 @@ pub fn operator_expected_bundles_in_epoch(
 
     // Expected bundles (floor μ) and Chernoff lower-bound r
     let mu_fp = p_slot.saturating_mul(FixedU128::saturating_from_integer(slots_in_epoch));
-    let expected_bundles: u64 = (mu_fp.into_inner() / FixedU128::DIV).saturated_into();
+    let expected_bundles = mu_fp.to_u64_floor();
     let min_required_bundles = chernoff_threshold_fp(slots_in_epoch, p_slot, ln_one_over_tau)?;
 
     Some(OperatorEpochExpectations {
