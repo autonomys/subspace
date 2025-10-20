@@ -76,6 +76,7 @@ fc-rpc = { version = "2.0.0-dev", git = "https://github.com/autonomys/frontier",
 fc-rpc-core = { version = "1.1.0-dev", git = "https://github.com/autonomys/frontier", rev = "f735fc2e6d9d15af9b44d8fc26449d83ec854e5b" }
 fc-storage = { version = "1.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "f735fc2e6d9d15af9b44d8fc26449d83ec854e5b" }
 fdlimit = "0.3.0"
+fn-dsa = { version="0.3.0", default-features=false }
 fp-account = { version = "1.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "f735fc2e6d9d15af9b44d8fc26449d83ec854e5b", default-features = false }
 fp-evm = { version = "3.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "f735fc2e6d9d15af9b44d8fc26449d83ec854e5b", default-features = false }
 fp-rpc = { version = "3.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "f735fc2e6d9d15af9b44d8fc26449d83ec854e5b", default-features = false }
