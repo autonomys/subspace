@@ -8886,7 +8886,7 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
     let transfer_amount = U256::from(TRANSFER_AMOUNT);
 
     let mut call_data =
-        sp_core::hashing::keccak_256(b"transfer_to_consensus_v1(bytes32,u256)")[0..4].to_vec();
+        sp_core::hashing::keccak_256(b"transfer_to_consensus_v1(bytes32,uint256)")[0..4].to_vec();
     call_data.extend_from_slice(receiver_h256.as_bytes());
     call_data.extend_from_slice(&transfer_amount.to_big_endian());
 
@@ -8938,7 +8938,7 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
 
     // Check consensus receiver balance
     let receiver_balance_after = ferdie.free_balance(receiver_account_id);
-    let receiver_increase = receiver_balance_after.saturating_sub(receiver_balance_before.into());
+    let receiver_increase = receiver_balance_after.saturating_sub(receiver_balance_before);
 
     // Balance should increase by exactly the transfer amount
     assert_eq!(

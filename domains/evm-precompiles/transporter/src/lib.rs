@@ -22,7 +22,7 @@ pub struct TransporterPrecompile<Runtime>(PhantomData<Runtime>);
 
 /// Solidity selector of the Transfer to Consensus log.
 pub const SELECTOR_LOG_TRANSFER_TO_CONSENSUS: [u8; 32] =
-    keccak256!("TransferToConsensus(address,bytes32,u256)");
+    keccak256!("TransferToConsensus(address,bytes32,uint256)");
 
 pub fn log_transfer_to_consensus(address: H160, who: H160, receiver: H256, amount: U256) -> Log {
     log3(
@@ -43,7 +43,7 @@ where
     Runtime::RuntimeCall: From<pallet_transporter::Call<Runtime>>,
     BalanceOf<Runtime>: From<u128> + Into<u128>,
 {
-    #[precompile::public("transfer_to_consensus_v1(bytes32,u256)")]
+    #[precompile::public("transfer_to_consensus_v1(bytes32,uint256)")]
     fn transfer_to_consensus_v1(
         handle: &mut impl PrecompileHandle,
         receiver: H256,
