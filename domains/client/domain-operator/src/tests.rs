@@ -8847,7 +8847,7 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
         "minimum_transfer_amount() mismatch"
     );
 
-    // Fund an EVM account to transfer fromand fetch gas price/nonce
+    // Fund an EVM account to transfer from and fetch gas price/nonce
     let sender_account = address_build(123);
     let sender_evm_address = sender_account.address;
     let fund_tx = alice.construct_extrinsic(
@@ -8926,23 +8926,21 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
     .await
     .unwrap();
 
-    // Check EVM sender balance (using EVM runtime API, not substrate balances)
+    // Check EVM sender balance
     let sender_balance_after = alice.free_balance(sender_evm_address.into());
     let sender_balance_decrease = sender_balance_before.saturating_sub(sender_balance_after.into());
-    let gas_paid = sender_balance_decrease - transfer_amount;
 
-    // Exact balance check: should decrease by exactly (amount + gas)
-    assert_eq!(
-        sender_balance_decrease,
-        transfer_amount + gas_paid,
-        "Balance decrease should equal exactly transfer amount plus gas"
+    // Balance should decrease by more than the transfer amount due to transaction costs
+    assert!(
+        sender_balance_decrease > transfer_amount,
+        "Balance decrease should be greater than the transfer amount due to transaction costs"
     );
 
-    // Check consensus receiver balance (using substrate balances)
+    // Check consensus receiver balance
     let receiver_balance_after = ferdie.free_balance(receiver_account_id);
-    let receiver_increase = receiver_balance_after - receiver_balance_before;
+    let receiver_increase = receiver_balance_after.saturating_sub(receiver_balance_before.into());
 
-    // Balance increase checks for receiver
+    // Balance should increase by exactly the transfer amount
     assert_eq!(
         receiver_increase, TRANSFER_AMOUNT,
         "Receiver should get exactly the transfer amount (no gas deducted)"
