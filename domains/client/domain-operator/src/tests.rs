@@ -8904,24 +8904,9 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
         .await
         .expect("Failed to send evm tx to transporter precompile");
 
-    // Drive blocks until bundle submission contains XDM response from consensus side
-    let mut saw_response = false;
+    // Wait until receiver succesfully receives funds
     produce_blocks_until!(ferdie, alice, {
-        let alice_best_hash = alice.client.info().best_hash;
-        let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-        for tx in opaque_bundle.extrinsics().iter() {
-            if alice
-                .client
-                .runtime_api()
-                .extract_xdm_mmr_proof(alice_best_hash, tx)
-                .unwrap()
-                .is_some()
-            {
-                saw_response = true;
-                break;
-            }
-        }
-        saw_response
+        ferdie.free_balance(receiver_account_id.clone()) > receiver_balance_before
     })
     .await
     .unwrap();
@@ -8938,7 +8923,7 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
 
     // Check consensus receiver balance
     let receiver_balance_after = ferdie.free_balance(receiver_account_id);
-    let receiver_increase = receiver_balance_after.saturating_sub(receiver_balance_before);
+    let receiver_increase = receiver_balance_after - receiver_balance_before;
 
     // Balance should increase by exactly the transfer amount
     assert_eq!(
