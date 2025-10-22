@@ -8806,6 +8806,9 @@ fn proof_to_tx(
 async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
     const TRANSFER_AMOUNT: u128 = 10_000_000_000_000_000_000u128; // 10 tokens (10*10^18 wei)
     const FUNDING_AMOUNT: u128 = 100_000_000_000_000_000_000u128; // 100 tokens (100*10^18 wei)
+
+    let precompile_address: H160 = H160::from_low_u64_be(2048);
+
     // Setup EVM domain and consensus nodes
     let (_directory, mut ferdie, mut alice) =
         setup_evm_test_nodes(Sr25519Alice, /*private_evm*/ false, None).await;
@@ -8817,16 +8820,16 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
     // Open XDM channel between the consensus chain and the EVM domain
     open_xdm_channel(&mut ferdie, &mut alice).await;
 
-    //Check minimum_transfer_amount() = runtime minimum transfer amount
+    // Check minimum_transfer_amount() = runtime minimum transfer amount
     let minimum_transfer_amount_call_result = alice
         .client
         .runtime_api()
         .call(
             alice.client.info().best_hash,
-            sp_core::H160::zero(),                // from
-            sp_core::H160::from_low_u64_be(2048), // to
+            sp_core::H160::zero(), // from
+            precompile_address,    // to
             sp_core::hashing::keccak_256(b"minimum_transfer_amount()")[0..4].to_vec(), // data
-            sp_core::U256::zero(),
+            sp_core::U256::zero(), // value
             sp_core::U256::from(300_000u64), // gas_limit
             None,
             None,
@@ -8878,7 +8881,6 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
     let sender_balance_before = sender_account_before.balance;
 
     // Build calldata for transfer_to_consensus_v1(bytes32,u256)
-    let to = H160::from_low_u64_be(2048);
     let receiver_ss58 = receiver_account_id.encode();
     let mut receiver_bytes32 = [0u8; 32];
     receiver_bytes32.copy_from_slice(&receiver_ss58);
@@ -8894,7 +8896,7 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
     let evm_tx = domain_test_utils::test_ethereum::generate_eip1559_tx::<TestRuntime>(
         sender_account.clone(),
         sender_nonce,
-        ethereum::TransactionAction::Call(to),
+        ethereum::TransactionAction::Call(precompile_address),
         call_data,
         gas_price,
     );
@@ -8906,7 +8908,8 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
 
     // Wait until receiver succesfully receives funds
     produce_blocks_until!(ferdie, alice, {
-        ferdie.free_balance(receiver_account_id.clone()) > receiver_balance_before
+        ferdie.free_balance(receiver_account_id.clone())
+            == receiver_balance_before + TRANSFER_AMOUNT
     })
     .await
     .unwrap();
