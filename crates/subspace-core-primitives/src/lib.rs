@@ -13,6 +13,7 @@
 )]
 
 pub mod checksum;
+pub mod fn_dsa;
 pub mod hashes;
 pub mod objects;
 pub mod pieces;
@@ -485,3 +486,9 @@ impl Default for U256 {
         Self::zero()
     }
 }
+
+// Re-export FN-DSA types
+pub use fn_dsa::{
+    FnDsaError, FnDsaKeyGenerator, FnDsaPrivateKey, FnDsaPublicKey, FnDsaSignature, FnDsaSigner,
+    FnDsaVerifier,
+};
