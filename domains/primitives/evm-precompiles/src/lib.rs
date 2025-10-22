@@ -34,7 +34,7 @@ type PrecompilesAt<R> = (
 /// The PrecompileSet installed in the EVM Domain runtime.
 /// The following distribution has been decided for the precompiles
 /// 0-1023: Ethereum Mainnet Precompiles
-/// 1024-2047 Precompiles that are not in Ethereum Mainnet but are neither Subspace specific
+/// 1024-2047 Precompiles that are not in Ethereum Mainnet, and are not Subspace specific
 /// 2048-4095 Subspace specific precompiles
 pub type Precompiles<R> = PrecompileSetBuilder<
     R,

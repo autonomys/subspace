@@ -8802,7 +8802,7 @@ fn proof_to_tx(
 }
 
 // E2E test: call transporter precompile (0x0800) via EVM tx and observe XDM processing
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
     const TRANSFER_AMOUNT: u128 = 10_000_000_000_000_000_000u128; // 10 tokens (10*10^18 wei)
     const FUNDING_AMOUNT: u128 = 100_000_000_000_000_000_000u128; // 100 tokens (100*10^18 wei)
