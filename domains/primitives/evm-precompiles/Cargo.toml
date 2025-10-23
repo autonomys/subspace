@@ -1,0 +1,36 @@
+[package]
+name = "sp-evm-precompiles"
+version = "0.1.0"
+authors = ["Vedhavyas Singareddi <ved@subspace.network>"]
+edition.workspace = true
+license = "Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/autonomys/subspace"
+description = "EVM transporter precompile"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+num_enum.workspace = true
+pallet-evm-precompile-modexp.workspace = true
+pallet-evm-precompile-sha3fips.workspace = true
+pallet-evm-precompile-simple.workspace = true
+precompile-utils.workspace = true
+sp-core.workspace = true
+transporter-precompile.workspace = true
+
+[features]
+default = [
+    "std",
+]
+std = [
+    "num_enum/std",
+    "pallet-evm-precompile-modexp/std",
+    "pallet-evm-precompile-sha3fips/std",
+    "pallet-evm-precompile-simple/std",
+    "precompile-utils/std",
+    "sp-core/std",
+    "transporter-precompile/std"
+]

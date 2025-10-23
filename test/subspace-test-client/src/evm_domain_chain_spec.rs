@@ -68,10 +68,9 @@ pub fn testnet_evm_genesis() -> RuntimeGenesisConfig {
             // We need _some_ code inserted at the precompile address so that
             // the evm will actually call the address.
             accounts: Precompiles::used_addresses()
-                .into_iter()
                 .map(|addr| {
                     (
-                        addr,
+                        addr.into(),
                         fp_evm::GenesisAccount {
                             nonce: Default::default(),
                             balance: Default::default(),
