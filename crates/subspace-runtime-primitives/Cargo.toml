@@ -27,7 +27,7 @@ pallet-utility.workspace = true
 scale-info = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["alloc", "derive"] }
 sp-core.workspace = true
-sp-io = { workspace = true, optional = true }
+sp-io.workspace = true
 sp-runtime.workspace = true
 subspace-core-primitives.workspace = true
 
@@ -44,11 +44,13 @@ std = [
     "scale-info/std",
     "serde/std",
     "sp-core/std",
+    "sp-io/std",
     "sp-runtime/std",
     "subspace-core-primitives/std",
 ]
-testing = [
-    "sp-io"
+testing = []
+fn-dsa = [
+    "subspace-core-primitives/fn-dsa",
 ]
 
 runtime-benchmarks = [
