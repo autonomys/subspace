@@ -38,7 +38,7 @@ pub enum Error {
     OperatorRewardStaking(TransitionError),
 }
 
-pub(crate) struct EpochTransitionResult {
+pub struct EpochTransitionResult {
     pub rewarded_operator_count: u32,
     pub finalized_operator_count: u32,
     pub completed_epoch_index: EpochIndex,
@@ -46,7 +46,7 @@ pub(crate) struct EpochTransitionResult {
 
 /// Finalizes the domain's current epoch and begins the next epoch.
 /// Returns true of the epoch indeed was finished and the number of operator processed.
-pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
+pub fn do_finalize_domain_current_epoch<T: Config>(
     domain_id: DomainId,
 ) -> Result<EpochTransitionResult, Error> {
     // Reset pending staking operation count to 0
@@ -476,7 +476,7 @@ pub(crate) fn mint_into_treasury<T: Config>(amount: BalanceOf<T>) -> Result<(), 
 
 /// Slashes any pending slashed operators.
 /// At max slashes the `max_nominator_count` under given operator
-pub(crate) fn do_slash_operator<T: Config>(
+pub fn do_slash_operator<T: Config>(
     domain_id: DomainId,
     max_nominator_count: u32,
 ) -> Result<u32, TransitionError> {
