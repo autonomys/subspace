@@ -13,8 +13,12 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::prelude::fmt;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::SignedVote;
+use sp_runtime::Weight;
 use sp_runtime::traits::{AsSystemOriginSigner, Dispatchable, NumberFor};
-use sp_runtime::transaction_validity::TransactionSource;
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionSource, TransactionValidityError, UnknownTransaction,
+    ValidTransaction,
+};
 use sp_std::collections::btree_map::BTreeMap;
 use subspace_core_primitives::pieces::PieceOffset;
 use subspace_core_primitives::sectors::SectorIndex;
@@ -82,11 +86,14 @@ mod benchmarks {
             (Option<T::AccountId>, RewardSignature),
         >::default());
 
+        let result;
         #[block]
         {
-            SubspaceExtension::<T>::do_check_vote(&signed_vote, TransactionSource::InBlock)
-                .unwrap();
-        }
+            result =
+                SubspaceExtension::<T>::do_check_vote(&signed_vote, TransactionSource::InBlock);
+        };
+
+        handle_error(result);
     }
 
     #[benchmark]
@@ -132,11 +139,15 @@ mod benchmarks {
             *signed_vote.vote.slot(),
             Some(reward_address),
         ));
+
+        let result;
         #[block]
         {
-            SubspaceExtension::<T>::do_check_vote(&signed_vote, TransactionSource::InBlock)
-                .unwrap();
-        }
+            result =
+                SubspaceExtension::<T>::do_check_vote(&signed_vote, TransactionSource::InBlock);
+        };
+
+        handle_error(result);
     }
 
     impl_benchmark_test_suite!(
@@ -144,4 +155,66 @@ mod benchmarks {
         crate::mock::new_test_ext(crate::mock::allow_all_pot_extension()),
         crate::mock::Test
     );
+}
+
+fn handle_error(result: Result<(ValidTransaction, Weight), TransactionValidityError>) {
+    // This exhaustive match is required because the production runtime does not generate debug impls.
+    if let Err(e) = result {
+        match e {
+            TransactionValidityError::Invalid(e) => match e {
+                InvalidTransaction::Call => {
+                    log::error!("Invalid transaction: Call");
+                }
+                InvalidTransaction::Payment => {
+                    log::error!("Invalid transaction: Payment");
+                    panic!("Invalid transaction: Payment");
+                }
+                InvalidTransaction::Future => {
+                    log::error!("Invalid transaction: Future");
+                }
+                InvalidTransaction::Stale => {
+                    log::error!("Invalid transaction: Stale");
+                }
+                InvalidTransaction::BadProof => {
+                    log::error!("Invalid transaction: BadProof");
+                }
+                InvalidTransaction::AncientBirthBlock => {
+                    log::error!("Invalid transaction: AncientBirthBlock");
+                }
+                InvalidTransaction::ExhaustsResources => {
+                    log::error!("Invalid transaction: ExhaustsResources");
+                }
+                InvalidTransaction::Custom(e) => {
+                    log::error!("Invalid transaction: Custom({})", e);
+                }
+                InvalidTransaction::BadMandatory => {
+                    log::error!("Invalid transaction: BadMandatory");
+                }
+                InvalidTransaction::MandatoryValidation => {
+                    log::error!("Invalid transaction: MandatoryValidation");
+                }
+                InvalidTransaction::BadSigner => {
+                    log::error!("Invalid transaction: BadSigner");
+                }
+                InvalidTransaction::IndeterminateImplicit => {
+                    log::error!("Invalid transaction: IndeterminateImplicit");
+                }
+                InvalidTransaction::UnknownOrigin => {
+                    log::error!("Invalid transaction: UnknownOrigin");
+                }
+            },
+            TransactionValidityError::Unknown(e) => match e {
+                UnknownTransaction::CannotLookup => {
+                    log::error!("Unknown transaction: CannotLookup");
+                }
+                UnknownTransaction::NoUnsignedValidator => {
+                    log::error!("Unknown transaction: NoUnsignedValidator");
+                }
+                UnknownTransaction::Custom(e) => {
+                    log::error!("Unknown transaction: Custom({})", e);
+                }
+            },
+        }
+        panic!("Error: {e:?}");
+    }
 }
