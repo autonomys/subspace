@@ -30,6 +30,7 @@ subspace-core-primitives.workspace = true
 [dev-dependencies]
 chacha20.workspace = true
 criterion.workspace = true
+hex.workspace = true
 rayon.workspace = true
 seq-macro.workspace = true
 sha2.workspace = true
