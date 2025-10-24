@@ -4629,26 +4629,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuzz-staking"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "domain-runtime-primitives",
- "frame-support",
- "pallet-balances",
- "pallet-domains",
- "parity-scale-codec",
- "serde",
- "sp-core",
- "sp-domains",
- "sp-io",
- "sp-runtime",
- "sp-state-machine",
- "subspace-runtime-primitives",
- "ziggy",
-]
-
-[[package]]
 name = "fxhash"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7969,6 +7949,7 @@ dependencies = [
 name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "frame-benchmarking",
@@ -7984,6 +7965,7 @@ dependencies = [
  "prop-test",
  "scale-info",
  "schnorrkel",
+ "serde",
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
@@ -7993,6 +7975,7 @@ dependencies = [
  "sp-io",
  "sp-keystore",
  "sp-runtime",
+ "sp-state-machine",
  "sp-std",
  "sp-subspace-mmr",
  "sp-version",
@@ -14072,6 +14055,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-test-fuzzer"
+version = "0.1.0"
+dependencies = [
+ "pallet-domains",
+ "ziggy",
+]
+
+[[package]]
 name = "subspace-test-primitives"
 version = "0.1.0"
 dependencies = [
@@ -16533,9 +16524,9 @@ dependencies = [
 
 [[package]]
 name = "ziggy"
-version = "1.3.2"
+version = "1.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1ae470de366d6fd62f31423eb880c06c73b04bceaeedf87864891e9d32d51d9"
+checksum = "1ec0e3b65fea1a3b33ea6be638e233e3f2143ea30d78b7997f25bb44eb372494"
 
 [[package]]
 name = "zstd"
