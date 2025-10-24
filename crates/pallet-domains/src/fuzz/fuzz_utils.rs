@@ -27,11 +27,11 @@ use crate::{
     ReceiptHashFor,
 };
 
+type OperatorOf<T> =
+    Operator<BalanceOf<T>, <T as Config>::Share, DomainBlockNumberFor<T>, ReceiptHashFor<T>>;
+
 /// Fetch the next epoch's operators from the DomainStakingSummary
-#[allow(clippy::type_complexity)]
-pub fn get_next_operators<T: Config>(
-    domain_id: DomainId,
-) -> Vec<Operator<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>, ReceiptHashFor<T>>> {
+pub(crate) fn get_next_operators<T: Config>(domain_id: DomainId) -> Vec<OperatorOf<T>> {
     let domain_summary = DomainStakingSummary::<T>::get(domain_id)
         .expect("invariant violated: We must have DomainStakingSummary");
     let mut prev_ops = vec![];
@@ -45,7 +45,7 @@ pub fn get_next_operators<T: Config>(
 }
 
 /// Finalize the epoch and transition to the next one
-pub fn conclude_domain_epoch<T: Config>(domain_id: DomainId) {
+pub(crate) fn conclude_domain_epoch<T: Config>(domain_id: DomainId) {
     let head_domain_number = HeadDomainNumber::<T>::get(domain_id);
     HeadDomainNumber::<T>::set(domain_id, head_domain_number + One::one());
     do_finalize_domain_current_epoch::<T>(domain_id)
@@ -53,7 +53,7 @@ pub fn conclude_domain_epoch<T: Config>(domain_id: DomainId) {
 }
 
 /// Mark an operator as having produced an invalid bundle
-pub fn fuzz_mark_invalid_bundle_authors<T: Config<DomainHash = H256>>(
+pub(crate) fn fuzz_mark_invalid_bundle_authors<T: Config<DomainHash = H256>>(
     operator: OperatorId,
     domain_id: DomainId,
 ) -> Option<H256> {
@@ -77,7 +77,7 @@ pub fn fuzz_mark_invalid_bundle_authors<T: Config<DomainHash = H256>>(
 }
 
 /// Unmark an operator as having produced an invalid bundle
-pub fn fuzz_unmark_invalid_bundle_authors<T: Config<DomainHash = H256>>(
+pub(crate) fn fuzz_unmark_invalid_bundle_authors<T: Config<DomainHash = H256>>(
     domain_id: DomainId,
     operator: OperatorId,
     er: H256,
@@ -105,12 +105,12 @@ pub fn fuzz_unmark_invalid_bundle_authors<T: Config<DomainHash = H256>>(
 }
 
 /// Fetch operators who are pending slashing
-pub fn get_pending_slashes<T: Config>(domain_id: DomainId) -> BTreeSet<OperatorId> {
+pub(crate) fn get_pending_slashes<T: Config>(domain_id: DomainId) -> BTreeSet<OperatorId> {
     PendingSlashes::<T>::get(domain_id).unwrap_or_default()
 }
 
 /// Check staking invariants before epoch finalization
-pub fn check_invariants_before_finalization<T: Config>(domain_id: DomainId) {
+pub(crate) fn check_invariants_before_finalization<T: Config>(domain_id: DomainId) {
     let domain_summary = DomainStakingSummary::<T>::get(domain_id).unwrap();
     // INVARIANT: all current_operators are registered and not slashed nor have invalid bundles
     for operator_id in &domain_summary.next_operators {
@@ -131,10 +131,9 @@ pub fn check_invariants_before_finalization<T: Config>(domain_id: DomainId) {
 }
 
 /// Check staking invariants after epoch finalization
-#[allow(clippy::type_complexity)]
-pub fn check_invariants_after_finalization<T: Config<Balance = u128, Share = u128>>(
+pub(crate) fn check_invariants_after_finalization<T: Config<Balance = u128, Share = u128>>(
     domain_id: DomainId,
-    prev_ops: Vec<Operator<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>, ReceiptHashFor<T>>>,
+    prev_ops: Vec<OperatorOf<T>>,
 ) {
     let domain_summary = DomainStakingSummary::<T>::get(domain_id).unwrap();
     for operator_id in domain_summary.current_operators.keys() {
@@ -157,7 +156,7 @@ pub fn check_invariants_after_finalization<T: Config<Balance = u128, Share = u12
         .values()
         .fold(0, |acc, stake| acc.saturating_add(*stake));
 
-    assert!(aggregated_stake == domain_summary.current_total_stake);
+    assert_eq!(aggregated_stake, domain_summary.current_total_stake);
     // INVARIANT: all current_operators are registered and not slashed nor have invalid bundles
     for operator_id in domain_summary.current_operators.keys() {
         let operator = Operators::<T>::get(operator_id).unwrap();
@@ -182,7 +181,7 @@ pub fn check_invariants_after_finalization<T: Config<Balance = u128, Share = u12
 }
 
 /// Check general Substrate invariants that must always hold
-pub fn check_general_invariants<
+pub(crate) fn check_general_invariants<
     T: Config<Balance = u128>
         + pallet_balances::Config<Balance = u128>
         + frame_system::Config<AccountData = pallet_balances::AccountData<u128>>,

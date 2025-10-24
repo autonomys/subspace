@@ -37,11 +37,14 @@ subspace-core-primitives.workspace = true
 subspace-runtime-primitives.workspace = true
 
 # fuzz feature optional dependencies
-domain-pallet-executive = {workspace = true, optional = true}
-pallet-timestamp = {workspace = true, optional = true}
-pallet-block-fees = {workspace = true, optional = true}
-sp-externalities = {workspace = true, optional = true}
-sp-keystore = {workspace = true, optional = true}
+bincode = { workspace = true, optional = true }
+domain-pallet-executive = { workspace = true, optional = true, default-features = true }
+pallet-timestamp = { workspace = true, optional = true, default-features = true }
+pallet-block-fees = { workspace = true, optional = true, default-features = true }
+serde = { workspace = true, optional = true, features = ["derive"] }
+sp-externalities = { workspace = true, optional = true, default-features = true }
+sp-keystore = { workspace = true, optional = true, default-features = true }
+sp-state-machine = { workspace = true, optional = true, default-features = true }
 
 [dev-dependencies]
 domain-pallet-executive.workspace = true
@@ -94,9 +97,14 @@ runtime-benchmarks = [
 ]
 
 fuzz = [
-    "dep:domain-pallet-executive",
-    "dep:pallet-timestamp",
-    "dep:pallet-block-fees",
-    "dep:sp-externalities",
-    "dep:sp-keystore",
+    "bincode",
+    "domain-pallet-executive",
+    "hex-literal",
+    "pallet-timestamp",
+    "pallet-block-fees",
+    "serde",
+    "sp-externalities",
+    "sp-keystore",
+    "sp-state-machine",
+    "std",
 ]

@@ -1,120 +1,75 @@
-#[cfg(test)]
-use crate::block_tree::verify_execution_receipt;
-#[cfg(test)]
-use crate::domain_registry::{DomainConfig, DomainObject};
-
-#[cfg(test)]
-use crate::Config;
-#[cfg(test)]
+use crate::block_tree::{BlockTreeNode, verify_execution_receipt};
+use crate::domain_registry::{DomainConfig, DomainConfigParams, DomainObject};
+use crate::runtime_registry::ScheduledRuntimeUpgrade;
+use crate::staking_epoch::do_finalize_domain_current_epoch;
 use crate::tests::pallet_mock_version_store::MockPreviousBundleAndExecutionReceiptVersions;
-use crate::{self as pallet_domains, BlockSlot, FungibleHoldId};
-#[cfg(test)]
 use crate::{
-    BalanceOf, BlockTree, BlockTreeNodes, BundleError, ConsensusBlockHash, DomainBlockNumberFor,
-    DomainHashingFor, DomainRegistry, DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades,
-    ExecutionInbox, ExecutionReceiptOf, FraudProofError, HeadDomainNumber, HeadReceiptNumber,
-    NextDomainId, OperatorConfig, OperatorId, ProofOfElection, RawOrigin as DomainOrigin,
-    RuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades, block_tree::BlockTreeNode,
-    domain_registry::DomainConfigParams, runtime_registry::ScheduledRuntimeUpgrade,
-    staking_epoch::do_finalize_domain_current_epoch,
+    self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
+    ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry,
+    DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptOf,
+    FraudProofError, FungibleHoldId, HeadDomainNumber, HeadReceiptNumber, NextDomainId,
+    OperatorConfig, RawOrigin as DomainOrigin, RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
 use core::mem;
-use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
-#[cfg(test)]
-use domain_runtime_primitives::DEFAULT_EVM_CHAIN_ID;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
-#[cfg(test)]
-use frame_support::assert_err;
-use frame_support::dispatch::DispatchInfo;
-#[cfg(test)]
-use frame_support::dispatch::RawOrigin;
-use frame_support::traits::{ConstU64, VariantCount};
+use domain_runtime_primitives::{BlockNumber as DomainBlockNumber, DEFAULT_EVM_CHAIN_ID};
+use frame_support::dispatch::{DispatchInfo, RawOrigin};
+use frame_support::traits::{ConstU64, Currency, Hooks, VariantCount};
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{IdentityFee, Weight};
-use frame_support::{PalletId, derive_impl, parameter_types};
-#[cfg(test)]
-use frame_support::{
-    assert_ok,
-    traits::{Currency, Hooks},
-};
+use frame_support::{PalletId, assert_err, assert_ok, derive_impl, parameter_types};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
+use hex_literal::hex;
 use pallet_subspace::NormalEraChange;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
-#[cfg(test)]
 use sp_consensus_slots::Slot;
-#[cfg(test)]
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256};
-use sp_domains::bundle::BundleVersion;
-#[cfg(test)]
 use sp_domains::bundle::bundle_v0::{BundleHeaderV0, BundleV0, SealedBundleHeaderV0};
-use sp_domains::execution_receipt::ExecutionReceiptVersion;
-#[cfg(test)]
+use sp_domains::bundle::{BundleVersion, InboxedBundle, OpaqueBundle};
+use sp_domains::bundle_producer_election::make_transcript;
 use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
-use sp_domains::{BundleAndExecutionReceiptVersion, ChainId, DomainId};
-#[cfg(test)]
-use sp_domains::{EMPTY_EXTRINSIC_ROOT, OperatorSignature};
-#[cfg(test)]
-use sp_domains::{OperatorAllowList, bundle::OpaqueBundle};
-#[cfg(test)]
-use sp_domains::{OperatorPair, bundle::InboxedBundle, merkle_tree::MerkleTree};
-#[cfg(test)]
-use sp_domains::{RuntimeType, execution_receipt::ExecutionReceipt, storage::RawGenesis};
-#[cfg(test)]
-use sp_domains::{bundle_producer_election::make_transcript, execution_receipt::SingletonReceipt};
-#[cfg(test)]
+use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptVersion, SingletonReceipt};
+use sp_domains::merkle_tree::MerkleTree;
+use sp_domains::storage::RawGenesis;
+use sp_domains::{
+    BundleAndExecutionReceiptVersion, ChainId, DomainId, EMPTY_EXTRINSIC_ROOT, EpochIndex,
+    OperatorAllowList, OperatorId, OperatorPair, OperatorSignature, ProofOfElection, RuntimeId,
+    RuntimeType,
+};
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
-#[cfg(test)]
 use sp_keystore::Keystore;
-#[cfg(test)]
 use sp_keystore::testing::MemoryKeystore;
-use sp_runtime::BuildStorage;
-#[cfg(test)]
-use sp_runtime::OpaqueExtrinsic;
-#[cfg(test)]
 use sp_runtime::app_crypto::AppCrypto;
-#[cfg(test)]
-use sp_runtime::generic::EXTRINSIC_FORMAT_VERSION;
-#[cfg(test)]
-use sp_runtime::generic::Preamble;
-#[cfg(test)]
-use sp_runtime::traits::BlakeTwo256;
-#[cfg(test)]
-use sp_runtime::traits::Zero;
-use sp_runtime::traits::{AccountIdConversion, ConstU16, IdentityLookup};
-#[cfg(test)]
-use sp_runtime::traits::{BlockNumberProvider, Bounded, Hash as HashT, One};
+use sp_runtime::generic::{EXTRINSIC_FORMAT_VERSION, Preamble};
+use sp_runtime::traits::{
+    AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, ConstU16, Hash as HashT,
+    IdentityLookup, One, Zero,
+};
 use sp_runtime::transaction_validity::TransactionValidityError;
-#[cfg(test)]
 use sp_runtime::type_with_default::TypeWithDefault;
+use sp_runtime::{BuildStorage, OpaqueExtrinsic};
 use sp_version::{ApiId, RuntimeVersion, create_apis_vec};
 use std::num::NonZeroU64;
-use subspace_core_primitives::SlotNumber;
-#[cfg(test)]
-use subspace_core_primitives::U256 as P256;
 use subspace_core_primitives::pieces::Piece;
-#[cfg(test)]
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::segments::HistorySize;
 use subspace_core_primitives::solutions::SolutionRange;
+use subspace_core_primitives::{SlotNumber, U256 as P256};
 use subspace_runtime_primitives::{
-    AI3, ConsensusEventSegmentSize, HoldIdentifier, Moment, StorageFee,
+    AI3, BlockHashFor, ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee,
 };
-#[cfg(test)]
-use subspace_runtime_primitives::{BlockHashFor, Nonce};
 
-#[cfg(test)]
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlockU32<Test>;
-pub type Balance = u128;
+pub(crate) type Balance = u128;
 
 // TODO: Remove when DomainRegistry is usable.
-pub const DOMAIN_ID: DomainId = DomainId::new(0);
+pub(crate) const DOMAIN_ID: DomainId = DomainId::new(0);
 
 // Operator id used for testing
-#[cfg(test)]
 const OPERATOR_ID: OperatorId = 0u64;
 
 // Core Api version ID and default APIs
@@ -142,7 +97,7 @@ frame_support::construct_runtime!(
 
 type BlockNumber = u32;
 type Hash = H256;
-pub type AccountId = u128;
+pub(crate) type AccountId = u128;
 
 #[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for Test {
@@ -229,7 +184,7 @@ parameter_types! {
         bundle_version: BundleVersion::V0,
         execution_receipt_version: ExecutionReceiptVersion::V0,
     };
-    pub const OperatorActivationDelayInEpochs: sp_domains::EpochIndex = 5;
+    pub const OperatorActivationDelayInEpochs: EpochIndex = 5;
 }
 
 pub struct MockRandomness;
@@ -487,7 +442,7 @@ pub(crate) mod pallet_mock_version_store {
 
 impl pallet_mock_version_store::Config for Test {}
 
-pub fn new_test_ext() -> sp_io::TestExternalities {
+pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
     let t = frame_system::GenesisConfig::<Test>::default()
         .build_storage()
         .unwrap();
@@ -495,7 +450,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     t.into()
 }
 
-pub fn new_test_ext_with_extensions() -> sp_io::TestExternalities {
+pub(crate) fn new_test_ext_with_extensions() -> sp_io::TestExternalities {
     let version = RuntimeVersion {
         spec_name: "test".into(),
         impl_name: Default::default(),
@@ -514,7 +469,6 @@ pub fn new_test_ext_with_extensions() -> sp_io::TestExternalities {
     ext
 }
 
-#[cfg(test)]
 pub(crate) fn create_dummy_receipt(
     block_number: BlockNumber,
     consensus_block_hash: Hash,
@@ -555,7 +509,6 @@ pub(crate) fn create_dummy_receipt(
     })
 }
 
-#[cfg(test)]
 fn create_dummy_bundle(
     domain_id: DomainId,
     block_number: BlockNumber,
@@ -575,7 +528,6 @@ fn create_dummy_bundle(
     )
 }
 
-#[cfg(test)]
 pub(crate) fn create_dummy_bundle_with_receipts(
     domain_id: DomainId,
     operator_id: OperatorId,
@@ -611,7 +563,6 @@ impl sp_core::traits::ReadRuntimeVersion for ReadRuntimeVersion {
     }
 }
 
-#[cfg(test)]
 pub(crate) fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_hash: T::Hash) {
     // Finalize the previous block
     // on_finalize() does not run on the genesis block
@@ -629,7 +580,6 @@ pub(crate) fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_ha
     }
 }
 
-#[cfg(test)]
 pub(crate) fn register_genesis_domain(creator: u128, operator_number: usize) -> DomainId {
     let raw_genesis_storage = RawGenesis::dummy(vec![1, 2, 3, 4]).encode();
     assert_ok!(crate::Pallet::<Test>::set_permissioned_action_allowed_by(
@@ -684,7 +634,6 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_number: usize) -> 
 }
 
 // Submit new head receipt to extend the block tree from the genesis block
-#[cfg(test)]
 pub(crate) fn extend_block_tree_from_zero(
     domain_id: DomainId,
     operator_id: u64,
@@ -697,7 +646,6 @@ pub(crate) fn extend_block_tree_from_zero(
 }
 
 // Submit new head receipt to extend the block tree
-#[cfg(test)]
 pub(crate) fn extend_block_tree(
     domain_id: DomainId,
     operator_id: u64,
@@ -745,7 +693,6 @@ pub(crate) fn extend_block_tree(
 }
 
 #[allow(clippy::type_complexity)]
-#[cfg(test)]
 pub(crate) fn get_block_tree_node_at<T: Config>(
     domain_id: DomainId,
     block_number: DomainBlockNumberFor<T>,
@@ -1062,7 +1009,6 @@ fn test_basic_fraud_proof_processing() {
     }
 }
 
-#[cfg(test)]
 fn schedule_domain_runtime_upgrade<T: Config>(
     runtime_id: RuntimeId,
     scheduled_at: BlockNumberFor<T>,
@@ -1261,7 +1207,6 @@ fn test_type_with_default_nonce_encode() {
 /// Code is upgraded from block_number + 1 and any new version from new runtime is considered
 /// from that point which is block_number + 1
 /// until block_number, previous runtime's version is valid.
-#[cfg(test)]
 fn get_mock_upgrades() -> Vec<(u32, MockBundleAndExecutionReceiptVersion, bool)> {
     vec![
         // version from 0..100
@@ -1378,7 +1323,6 @@ fn get_mock_upgrades() -> Vec<(u32, MockBundleAndExecutionReceiptVersion, bool)>
 /// (block_number, current_version)
 /// block_number: Consensus block at which ER is derived
 /// current_version: Version defined at the consensus block number.
-#[cfg(test)]
 fn get_mock_version_queries() -> Vec<(u32, MockBundleAndExecutionReceiptVersion)> {
     vec![
         // version from 0..100
@@ -1580,8 +1524,7 @@ fn generate_fixtures_for_benchmarking() {
     };
 
     let mock_genesis_er_hash = H256::from_slice(
-        hex_literal::hex!("5207cc85cfd1f53e11f4b9e85bf2d0a4f33e24d0f0f18b818b935a6aa47d3930")
-            .as_slice(),
+        hex!("5207cc85cfd1f53e11f4b9e85bf2d0a4f33e24d0f0f18b818b935a6aa47d3930").as_slice(),
     );
 
     let trace: Vec<<Test as Config>::DomainHash> = vec![

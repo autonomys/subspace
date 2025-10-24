@@ -584,7 +584,7 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
     Ok(())
 }
 
-pub fn do_nominate_operator<T: Config>(
+pub(crate) fn do_nominate_operator<T: Config>(
     operator_id: OperatorId,
     nominator_id: T::AccountId,
     amount: BalanceOf<T>,
@@ -674,7 +674,7 @@ pub(crate) fn hold_deposit<T: Config>(
 
 /// Deregisters a given operator who is either registered or deactivated.
 /// Operator is removed from the next operator set.
-pub fn do_deregister_operator<T: Config>(
+pub(crate) fn do_deregister_operator<T: Config>(
     operator_owner: T::AccountId,
     operator_id: OperatorId,
 ) -> Result<Weight, Error> {
@@ -739,7 +739,7 @@ pub fn do_deregister_operator<T: Config>(
 /// Operator status is marked as Deactivated with epoch_index after which they can reactivate back
 /// into operator set. Their stake is removed from the total domain stake since they will not be
 /// producing bundles anymore until re-registration.
-pub fn do_deactivate_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
+pub(crate) fn do_deactivate_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
 
@@ -794,7 +794,7 @@ pub fn do_deactivate_operator<T: Config>(operator_id: OperatorId) -> Result<(), 
 
 /// Reactivate a given deactivated operator if the activation delay in epochs has passed.
 /// The operator is added to next operator set and will be able to produce bundles from next epoch.
-pub fn do_reactivate_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
+pub(crate) fn do_reactivate_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
         let operator_status = operator.status::<T>(operator_id);
@@ -871,7 +871,7 @@ pub(crate) fn current_share_price<T: Config>(
 /// Absolute stake amount and percentage withdrawals can be handled in the frontend.
 /// Full stake withdrawals are handled by withdrawing everything, if the remaining number of shares
 /// is less than the minimum nominator stake, and the nominator is not the operator.
-pub fn do_withdraw_stake<T: Config>(
+pub(crate) fn do_withdraw_stake<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
     to_withdraw: T::Share,
@@ -1082,7 +1082,7 @@ pub fn do_withdraw_stake<T: Config>(
 /// Unlocks any withdraws that are ready to be unlocked.
 ///
 /// Return the number of withdrawals being unlocked
-pub fn do_unlock_funds<T: Config>(
+pub(crate) fn do_unlock_funds<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
 ) -> Result<u32, Error> {
@@ -1239,8 +1239,9 @@ pub fn do_unlock_funds<T: Config>(
         Ok(withdrawal_count)
     })
 }
+
 /// Unlocks an already de-registered operator's nominator given unlock wait period is complete.
-pub fn do_unlock_nominator<T: Config>(
+pub(crate) fn do_unlock_nominator<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
 ) -> Result<(), Error> {
@@ -1447,7 +1448,7 @@ pub(crate) fn do_cleanup_operator<T: Config>(
 }
 
 /// Distribute the reward to the operators equally and drop any dust to treasury.
-pub fn do_reward_operators<T: Config>(
+pub(crate) fn do_reward_operators<T: Config>(
     domain_id: DomainId,
     source: OperatorRewardSource<BlockNumberFor<T>>,
     operators: IntoIter<OperatorId>,
@@ -1505,9 +1506,10 @@ pub fn do_reward_operators<T: Config>(
         )
     })
 }
+
 /// Freezes the slashed operators and moves the operator to be removed once the domain they are
 /// operating finishes the epoch.
-pub fn do_mark_operators_as_slashed<T: Config>(
+pub(crate) fn do_mark_operators_as_slashed<T: Config>(
     operator_ids: impl AsRef<[OperatorId]>,
     slash_reason: SlashedReason<DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
 ) -> Result<(), Error> {
@@ -1564,9 +1566,10 @@ pub fn do_mark_operators_as_slashed<T: Config>(
 
     Ok(())
 }
+
 /// Mark all the invalid bundle authors from this ER and remove them from operator set.
 /// NOTE: any changes to this must be reflected in the fuzz_utils' equivalent
-pub fn do_mark_invalid_bundle_authors<T: Config>(
+pub(crate) fn do_mark_invalid_bundle_authors<T: Config>(
     domain_id: DomainId,
     er: &ExecutionReceiptOf<T>,
 ) -> Result<(), Error> {
@@ -1594,7 +1597,8 @@ pub fn do_mark_invalid_bundle_authors<T: Config>(
     InvalidBundleAuthors::<T>::insert(domain_id, invalid_bundle_authors_in_epoch);
     Ok(())
 }
-pub fn mark_invalid_bundle_author<T: Config>(
+
+pub(crate) fn mark_invalid_bundle_author<T: Config>(
     operator_id: OperatorId,
     er_hash: ReceiptHashFor<T>,
     stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,
@@ -1632,11 +1636,12 @@ pub fn mark_invalid_bundle_author<T: Config>(
         Ok(())
     })
 }
+
 /// Unmark all the invalid bundle authors from this ER that were marked invalid.
 /// Assumed the ER is invalid and add the marked operators as registered and add them
 /// back to next operator set.
 /// NOTE: any changes to this must be reflected in the fuzz_utils' equivalent
-pub fn do_unmark_invalid_bundle_authors<T: Config>(
+pub(crate) fn do_unmark_invalid_bundle_authors<T: Config>(
     domain_id: DomainId,
     er: &ExecutionReceiptOf<T>,
 ) -> Result<(), Error> {
@@ -1666,7 +1671,8 @@ pub fn do_unmark_invalid_bundle_authors<T: Config>(
     InvalidBundleAuthors::<T>::insert(domain_id, invalid_bundle_authors_in_epoch);
     Ok(())
 }
-pub fn unmark_invalid_bundle_author<T: Config>(
+
+pub(crate) fn unmark_invalid_bundle_author<T: Config>(
     operator_id: OperatorId,
     er_hash: ReceiptHashFor<T>,
     stake_summary: &mut StakingSummary<OperatorId, BalanceOf<T>>,

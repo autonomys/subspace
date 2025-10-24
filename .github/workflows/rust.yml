@@ -385,12 +385,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-      
+
+      - name: install dependencies
+        run: sudo apt install -y protobuf-compiler binutils-dev coreutils
+
       - name: install ziggy
         run: cargo install --force ziggy cargo-afl honggfuzz grcov
 
       - name: test fuzzer
-        run: scripts/run-fuzzer-ci.sh
+        run: scripts/run-fuzzer.sh
 
   # This job checks all crates individually, including no_std and other featureless builds.
   # We need to check crates individually for missing features, because cargo does feature

@@ -1,4 +1,4 @@
 /.idea
 /target
-./fuzz/staking/target
-./fuzz/staking/output
+/test/subspace-test-fuzzer/target
+/test/subspace-test-fuzzer/output

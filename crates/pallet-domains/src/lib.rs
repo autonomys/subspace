@@ -6,25 +6,19 @@
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
-#[cfg(test)]
+#[cfg(any(feature = "fuzz", test))]
 mod tests;
-
-#[cfg(all(not(test), feature = "std", feature = "fuzz"))]
-pub mod tests;
 
 pub mod block_tree;
 pub mod bundle_storage_fund;
 pub mod domain_registry;
 pub mod extensions;
 #[cfg(feature = "fuzz")]
-pub mod fuzz_utils;
+pub mod fuzz;
 pub mod migrations;
 mod nominator_position;
 pub mod runtime_registry;
 pub mod staking;
-#[cfg(feature = "fuzz")]
-pub mod staking_epoch;
-#[cfg(not(feature = "fuzz"))]
 mod staking_epoch;
 pub mod weights;
 

@@ -10,20 +10,20 @@
 // AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
 // OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-use domain_runtime_primitives::DEFAULT_EVM_CHAIN_ID;
-use pallet_domains::fuzz_utils::{
+use crate::fuzz::fuzz_utils::{
     check_general_invariants, check_invariants_after_finalization,
     check_invariants_before_finalization, conclude_domain_epoch, fuzz_mark_invalid_bundle_authors,
     fuzz_unmark_invalid_bundle_authors, get_next_operators, get_pending_slashes,
 };
-use pallet_domains::staking::{
+use crate::staking::{
     do_deactivate_operator, do_deregister_operator, do_mark_operators_as_slashed,
     do_nominate_operator, do_reactivate_operator, do_register_operator, do_reward_operators,
     do_unlock_funds, do_unlock_nominator, do_withdraw_stake,
 };
-use pallet_domains::staking_epoch::do_slash_operator;
-use pallet_domains::tests::{AccountId, Balance, BalancesConfig, DOMAIN_ID, Test};
-use pallet_domains::{Config, OperatorConfig, SlashedReason};
+use crate::staking_epoch::do_slash_operator;
+use crate::tests::{AccountId, Balance, BalancesConfig, DOMAIN_ID, Test};
+use crate::{Config, OperatorConfig, SlashedReason};
+use domain_runtime_primitives::DEFAULT_EVM_CHAIN_ID;
 use parity_scale_codec::Encode;
 use sp_core::storage::Storage;
 use sp_core::{H256, Pair};
@@ -45,13 +45,13 @@ const NUM_EPOCHS: usize = 5;
 const MIN_NOMINATOR_STAKE: Balance = 20;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct FuzzData {
+struct FuzzData {
     /// NUM_EPOCHS epochs with N epochs skipped
     pub epochs: [(u8, Epoch); NUM_EPOCHS],
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Epoch {
+struct Epoch {
     /// ACTIONS_PER_EPOCH actions split between N users
     actions: [(u8, FuzzAction); ACTIONS_PER_EPOCH],
 }
@@ -114,11 +114,11 @@ enum FuzzAction {
 fn create_genesis_storage(accounts: &[AccountId], mint: u128) -> Storage {
     let raw_genesis_storage = RawGenesis::dummy(vec![1, 2, 3, 4]).encode();
     let pair = OperatorPair::from_seed(&[*accounts.first().unwrap() as u8; 32]);
-    pallet_domains::tests::RuntimeGenesisConfig {
+    crate::tests::RuntimeGenesisConfig {
         balances: BalancesConfig {
             balances: accounts.iter().cloned().map(|k| (k, mint)).collect(),
         },
-        domains: pallet_domains::tests::DomainsConfig {
+        domains: crate::tests::DomainsConfig {
             genesis_domains: vec![GenesisDomain {
                 runtime_name: "evm".to_owned(),
                 runtime_type: RuntimeType::Evm,
@@ -143,19 +143,17 @@ fn create_genesis_storage(accounts: &[AccountId], mint: u128) -> Storage {
     .unwrap()
 }
 
-fn main() {
+pub fn run_staking_fuzz(data: &[u8]) {
     let accounts: Vec<AccountId> = (0..5).map(|i| (i as u128)).collect();
     let mint = (u16::MAX as u128) * 2 * AI3;
     let genesis = create_genesis_storage(&accounts, mint);
-    ziggy::fuzz!(|data: &[u8]| {
-        let Ok(data) = bincode::deserialize(data) else {
-            return;
-        };
-        // Clone the genesis storage for this fuzz iteration
-        let mut ext = BasicExternalities::new(genesis.clone());
-        ext.execute_with(|| {
-            fuzz(&data, accounts.clone());
-        });
+    let Ok(data) = bincode::deserialize(data) else {
+        return;
+    };
+
+    let mut ext = BasicExternalities::new(genesis);
+    ext.execute_with(|| {
+        fuzz(&data, accounts.clone());
     });
 }
 
@@ -182,12 +180,11 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                             .entry(*user)
                             .and_modify(|list: &mut Vec<u64>| list.push(operator))
                             .or_insert(vec![operator]);
-                        #[cfg(not(feature = "fuzzing"))]
+
                         println!(
                             "Registering {user:?} as Operator {operator:?} with amount {amount:?}\n-->{res:?}"
                         );
                     } else {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!(
                             "Registering {user:?} as Operator (failed) with amount {amount:?} AI3 \n-->{res:?}"
                         );
@@ -198,7 +195,6 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                     amount,
                 } => {
                     if operators.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping NominateOperator");
                         continue;
                     }
@@ -216,14 +212,13 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                             .and_modify(|list: &mut Vec<u64>| list.push(*operator))
                             .or_insert(vec![*operator]);
                     }
-                    #[cfg(not(feature = "fuzzing"))]
+
                     println!(
                         "Nominating as Nominator {user:?} for Operator {operator:?} with amount {amount:?}\n-->{res:?}"
                     );
                 }
                 FuzzAction::DeregisterOperator { operator_id } => {
                     if operators.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping DeregisterOperator");
                         continue;
                     }
@@ -233,7 +228,7 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                         .get(*operator_id as usize % operators.len())
                         .unwrap();
                     let res = do_deregister_operator::<Test>(**owner, *operator);
-                    #[cfg(not(feature = "fuzzing"))]
+
                     println!("de-registering Operator {operator:?} \n-->{res:?}");
                 }
                 FuzzAction::WithdrawStake {
@@ -242,7 +237,6 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                     shares,
                 } => {
                     if operators.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping WithdrawStake");
                         continue;
                     }
@@ -256,7 +250,7 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                         .unwrap();
                     let res =
                         do_withdraw_stake::<Test>(*operator, *nominator, *shares as u128 * AI3);
-                    #[cfg(not(feature = "fuzzing"))]
+
                     println!(
                         "Withdrawing stake from Operator {operator:?}  as Nominator {nominator:?} of shares {shares:?}\n-->{res:?}"
                     );
@@ -266,7 +260,6 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                     nominator_id,
                 } => {
                     if operators.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping UnlockFunds");
                         continue;
                     }
@@ -279,7 +272,7 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                         .get(*operator_id as usize % operators.len())
                         .unwrap();
                     let res = do_unlock_funds::<Test>(*operator, *nominator);
-                    #[cfg(not(feature = "fuzzing"))]
+
                     println!(
                         "Unlocking funds as Nominator {nominator:?} from Operator {operator:?} \n-->{res:?}"
                     );
@@ -289,7 +282,6 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                     nominator_id,
                 } => {
                     if operators.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping UnlockNominator");
                         continue;
                     }
@@ -302,7 +294,7 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                         .get(*operator_id as usize % operators.len())
                         .unwrap();
                     let res = do_unlock_nominator::<Test>(*operator, *nominator);
-                    #[cfg(not(feature = "fuzzing"))]
+
                     println!(
                         "Unlocking funds as Nominator {nominator:?} from Operator {operator:?} \n-->{res:?}"
                     );
@@ -312,7 +304,6 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                     slash_reason,
                 } => {
                     if operators.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping MarkOperatorsAsSlashed");
                         continue;
                     }
@@ -327,19 +318,18 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                         _ => SlashedReason::BadExecutionReceipt(H256::from([0u8; 32])),
                     };
                     let res = do_mark_operators_as_slashed::<Test>(vec![*operator], slash_reason);
-                    #[cfg(not(feature = "fuzzing"))]
+
                     println!("Marking {operator:?} as slashed\n-->{res:?}");
                     do_slash_operator::<Test>(DOMAIN_ID, u32::MAX).unwrap();
                 }
                 FuzzAction::SlashOperator => {
                     if operators.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping SlashOperator");
                         continue;
                     }
                     let res = do_slash_operator::<Test>(DOMAIN_ID, u32::MAX);
                     assert!(res.is_ok());
-                    #[cfg(not(feature = "fuzzing"))]
+
                     {
                         let pending_slashes = get_pending_slashes::<Test>(DOMAIN_ID);
                         println!("Slashing: {pending_slashes:?} -->{res:?}");
@@ -350,7 +340,6 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                     amount,
                 } => {
                     if operators.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping RewardOperator");
                         continue;
                     }
@@ -368,12 +357,11 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                         reward_amount,
                     );
                     assert!(res.is_ok());
-                    #[cfg(not(feature = "fuzzing"))]
+
                     println!("Rewarding operator {operator:?} with {amount:?} AI3 \n-->{res:?}");
                 }
                 FuzzAction::MarkInvalidBundleAuthors { operator_id } => {
                     if operators.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping MarkInvalidBundleAuthors");
                         continue;
                     }
@@ -391,12 +379,10 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                 }
                 FuzzAction::UnmarkInvalidBundleAuthors { operator_id, er_id } => {
                     if operators.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping UnmarkInvalidBundleAuthors");
                         continue;
                     }
                     if invalid_ers.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping UnmarkInvalidBundleAuthors");
                         continue;
                     }
@@ -413,7 +399,6 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                 }
                 FuzzAction::DeactivateOperator { operator_id } => {
                     if operators.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping DeactivateOperator");
                         continue;
                     }
@@ -424,12 +409,11 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                         .unwrap()
                         .1;
                     let res = do_deactivate_operator::<Test>(*operator);
-                    #[cfg(not(feature = "fuzzing"))]
+
                     println!("Deactivating {operator:?} \n-->{res:?}");
                 }
                 FuzzAction::ReactivateOperator { operator_id } => {
                     if operators.is_empty() {
-                        #[cfg(not(feature = "fuzzing"))]
                         println!("skipping ReactivateOperator");
                         continue;
                     }
@@ -440,7 +424,7 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
                         .unwrap()
                         .1;
                     let res = do_reactivate_operator::<Test>(*operator);
-                    #[cfg(not(feature = "fuzzing"))]
+
                     println!("Deactivating {operator:?} \n-->{res:?}");
                 }
             }
@@ -449,7 +433,7 @@ fn fuzz(data: &FuzzData, accounts: Vec<AccountId>) {
             conclude_domain_epoch::<Test>(DOMAIN_ID);
             check_invariants_after_finalization::<Test>(DOMAIN_ID, prev_validator_states);
             check_general_invariants::<Test>(initial_issuance);
-            #[cfg(not(feature = "fuzzing"))]
+
             println!("skipping {skip:?} epochs");
             for _ in 0..*skip {
                 conclude_domain_epoch::<Test>(DOMAIN_ID);
