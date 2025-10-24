@@ -7,14 +7,30 @@ extern crate alloc;
 use alloc::{vec, vec::Vec};
 
 use parity_scale_codec::{Decode, Encode, Input, MaxEncodedLen};
-use scale_info::TypeInfo;
+use scale_info::{Type, TypeInfo};
+#[cfg(feature = "fn-dsa")]
+use scale_info::{Path, build::Fields, build::Variants};
 use serde::{Deserialize, Serialize};
 use sp_core::{ecdsa, ed25519, sr25519};
+#[cfg(feature = "fn-dsa")]
+use sp_core::hashing::blake2_256;
 use sp_runtime::MultiSignature;
 use sp_runtime::traits::{IdentifyAccount, Lazy, Verify};
 
 #[cfg(feature = "fn-dsa")]
 use subspace_core_primitives::{FnDsaPublicKey, FnDsaSignature, FnDsaVerifier};
+
+/// FN-DSA signature with embedded public key
+///
+/// Unlike standard signatures, FN-DSA signatures cannot recover the public key,
+/// so we embed it alongside the signature for verification.
+#[cfg(feature = "fn-dsa")]
+#[derive(Clone, Debug, Eq, PartialEq, TypeInfo, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct FnDsaSignatureWithKey {
+    pub public_key: FnDsaPublicKey,
+    pub signature: FnDsaSignature,
+}
 
 /// Extended MultiSignature supporting FN-DSA for post-quantum security
 ///
@@ -23,15 +39,60 @@ use subspace_core_primitives::{FnDsaPublicKey, FnDsaSignature, FnDsaVerifier};
 ///
 /// Uses a wrapper approach for better compatibility and maintainability.
 /// Custom encoding ensures backwards compatibility with standard MultiSignature.
-#[derive(Clone, Debug, Eq, PartialEq, TypeInfo, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ExtendedMultiSignature {
     /// Standard Substrate signatures (Ed25519, Sr25519, Ecdsa)
     Standard(MultiSignature),
-    /// FN-DSA signature (post-quantum)
+    /// FN-DSA signature with embedded public key (post-quantum)
     #[cfg(feature = "fn-dsa")]
-    #[codec(skip)]
-    #[serde(skip)]
-    FnDsa(FnDsaSignature),
+    FnDsa(FnDsaSignatureWithKey),
+}
+
+// Custom TypeInfo implementation to match the flattened encoding
+// This ensures Polkadot.js and other tools see the correct metadata
+impl TypeInfo for ExtendedMultiSignature {
+    type Identity = Self;
+
+    fn type_info() -> Type {
+        #[cfg(not(feature = "fn-dsa"))]
+        {
+            // Without fn-dsa, we're identical to MultiSignature, so just use its TypeInfo
+            MultiSignature::type_info()
+        }
+        #[cfg(feature = "fn-dsa")]
+        {
+            // With fn-dsa, we need to extend MultiSignature's variants with FnDsa
+            // Build all 4 variants manually to match the flattened encoding
+            let mut variants = Variants::new()
+                .variant("Ed25519", |v| {
+                    v.index(0).fields(Fields::unnamed().field(|f| {
+                        f.ty::<ed25519::Signature>()
+                    }))
+                })
+                .variant("Sr25519", |v| {
+                    v.index(1).fields(Fields::unnamed().field(|f| {
+                        f.ty::<sr25519::Signature>()
+                    }))
+                })
+                .variant("Ecdsa", |v| {
+                    v.index(2).fields(Fields::unnamed().field(|f| {
+                        f.ty::<ecdsa::Signature>()
+                    }))
+                });
+            
+            // Add FnDsa variant only when feature is enabled
+            variants = variants.variant("FnDsa", |v| {
+                v.index(3).fields(Fields::unnamed().field(|f| {
+                    f.ty::<FnDsaSignatureWithKey>()
+                }))
+            });
+
+            Type::builder()
+                .path(Path::new("ExtendedMultiSignature", module_path!()))
+                .variant(variants)
+        }
+    }
 }
 
 impl Encode for ExtendedMultiSignature {
@@ -59,10 +120,10 @@ impl Encode for ExtendedMultiSignature {
                 }
             }
             #[cfg(feature = "fn-dsa")]
-            Self::FnDsa(sig) => {
-                // FN-DSA uses variant 3
+            Self::FnDsa(sig_with_key) => {
+                // FN-DSA uses variant 3, encodes both public key and signature
                 let mut v = vec![3u8];
-                v.extend_from_slice(sig.as_bytes());
+                v.extend_from_slice(&sig_with_key.encode());
                 v
             }
         }
@@ -71,6 +132,8 @@ impl Encode for ExtendedMultiSignature {
 
 impl Decode for ExtendedMultiSignature {
     fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        // For backwards compatibility, we decode exactly like MultiSignature
+        // by treating variant bytes 0-2 as standard signatures
         let variant = input.read_byte()?;
         match variant {
             0 => {
@@ -99,12 +162,9 @@ impl Decode for ExtendedMultiSignature {
             }
             #[cfg(feature = "fn-dsa")]
             3 => {
-                // FN-DSA - variable length
-                let mut bytes = Vec::new();
-                while let Ok(b) = input.read_byte() {
-                    bytes.push(b);
-                }
-                Ok(Self::FnDsa(FnDsaSignature::new(bytes)))
+                // FN-DSA - decode signature with embedded public key
+                let sig_with_key = FnDsaSignatureWithKey::decode(input)?;
+                Ok(Self::FnDsa(sig_with_key))
             }
             _ => Err("Invalid signature variant".into()),
         }
@@ -117,7 +177,9 @@ impl MaxEncodedLen for ExtendedMultiSignature {
         // Standard MultiSignature is max 65 bytes (ECDSA)
         #[cfg(feature = "fn-dsa")]
         {
-            1 + MultiSignature::max_encoded_len().max(FnDsaSignature::max_encoded_len())
+            // FN-DSA: public key (1793 bytes max) + signature (1280 bytes max)
+            let fn_dsa_max = FnDsaPublicKey::max_encoded_len() + FnDsaSignature::max_encoded_len();
+            1 + MultiSignature::max_encoded_len().max(fn_dsa_max)
         }
         #[cfg(not(feature = "fn-dsa"))]
         {
@@ -145,9 +207,9 @@ impl From<ecdsa::Signature> for ExtendedMultiSignature {
 }
 
 #[cfg(feature = "fn-dsa")]
-impl From<FnDsaSignature> for ExtendedMultiSignature {
-    fn from(sig: FnDsaSignature) -> Self {
-        Self::FnDsa(sig)
+impl From<FnDsaSignatureWithKey> for ExtendedMultiSignature {
+    fn from(sig_with_key: FnDsaSignatureWithKey) -> Self {
+        Self::FnDsa(sig_with_key)
     }
 }
 
@@ -175,54 +237,80 @@ impl Verify for ExtendedMultiSignature {
     type Signer = ExtendedMultiSigner;
 
     #[cfg(feature = "std")]
-    fn verify<L: Lazy<[u8]>>(&self, msg: L, signer: &sp_runtime::AccountId32) -> bool {
+    #[allow(unused_mut)] // mut needed for FN-DSA path
+    fn verify<L: Lazy<[u8]>>(&self, mut msg: L, signer: &sp_runtime::AccountId32) -> bool {
         match self {
             // Delegate standard signatures to the standard MultiSignature
             Self::Standard(sig) => {
-                // Try to convert AccountId32 to each possible MultiSigner type
-                if let Ok(pk) = sr25519::Public::try_from(signer.as_ref()) {
-                    let multi_signer = sp_runtime::MultiSigner::Sr25519(pk);
-                    let account_id =
-                        <sp_runtime::MultiSigner as IdentifyAccount>::into_account(multi_signer);
-                    return sig.verify(msg, &account_id);
-                }
-                if let Ok(pk) = ed25519::Public::try_from(signer.as_ref()) {
-                    let multi_signer = sp_runtime::MultiSigner::Ed25519(pk);
-                    let account_id =
-                        <sp_runtime::MultiSigner as IdentifyAccount>::into_account(multi_signer);
-                    return sig.verify(msg, &account_id);
-                }
-                if let Ok(pk) = ecdsa::Public::try_from(signer.as_ref()) {
-                    let multi_signer = sp_runtime::MultiSigner::Ecdsa(pk);
-                    let account_id =
-                        <sp_runtime::MultiSigner as IdentifyAccount>::into_account(multi_signer);
-                    return sig.verify(msg, &account_id);
-                }
-                false
+                // The standard MultiSignature::verify knows how to verify against AccountId32
+                sig.verify(msg, signer)
             }
-            // Handle FN-DSA signature - requires explicit public key
+            // Handle FN-DSA signature with embedded public key
             #[cfg(feature = "fn-dsa")]
-            Self::FnDsa(_sig) => {
-                // Cannot verify FN-DSA with just AccountId32
-                // Must use verify_with_public_key instead
-                false
+            Self::FnDsa(FnDsaSignatureWithKey { public_key, signature }) => {
+                // Verify AccountId matches public key hash
+                let derived_account = blake2_256(public_key.as_bytes());
+                if derived_account.as_ref() != signer.as_ref() as &[u8] {
+                    return false;
+                }
+                // Verify signature with embedded public key
+                FnDsaSignature::verify(msg.get(), signature, public_key).is_ok()
             }
         }
     }
 
     #[cfg(not(feature = "std"))]
-    fn verify<L: Lazy<[u8]>>(&self, _msg: L, _signer: &sp_runtime::AccountId32) -> bool {
-        // In no_std environments, verification requires explicit public keys
-        // Use verify_with_public_key instead
-        false
+    #[allow(unused_mut)] // mut needed for FN-DSA path
+    fn verify<L: Lazy<[u8]>>(&self, mut msg: L, signer: &sp_runtime::AccountId32) -> bool {
+        match self {
+            Self::Standard(sig) => {
+                // In no_std environments, we can still verify standard signatures
+                // using similar logic but without explicit public key conversion
+                sig.verify(msg, signer)
+            }
+            #[cfg(feature = "fn-dsa")]
+            Self::FnDsa(FnDsaSignatureWithKey { public_key, signature }) => {
+                // Verify AccountId matches public key hash
+                let derived_account = blake2_256(public_key.as_bytes());
+                if derived_account.as_ref() != signer.as_ref() as &[u8] {
+                    return false;
+                }
+                // Verify signature with embedded public key
+                FnDsaSignature::verify(msg.get(), signature, public_key).is_ok()
+            }
+        }
     }
 }
 
 impl ExtendedMultiSignature {
+    /// Create an Sr25519 signature wrapper
+    ///
+    /// This provides backwards compatibility with the old API.
+    #[allow(non_snake_case)]
+    pub fn Sr25519(sig: sr25519::Signature) -> Self {
+        Self::Standard(MultiSignature::Sr25519(sig))
+    }
+
+    /// Create an Ed25519 signature wrapper
+    ///
+    /// This provides backwards compatibility with the old API.
+    #[allow(non_snake_case)]
+    pub fn Ed25519(sig: ed25519::Signature) -> Self {
+        Self::Standard(MultiSignature::Ed25519(sig))
+    }
+
+    /// Create an Ecdsa signature wrapper
+    ///
+    /// This provides backwards compatibility with the old API.
+    #[allow(non_snake_case)]
+    pub fn Ecdsa(sig: ecdsa::Signature) -> Self {
+        Self::Standard(MultiSignature::Ecdsa(sig))
+    }
+
     /// Verify signature with an explicit public key signer
     ///
-    /// This is useful for FN-DSA signatures where the public key cannot be
-    /// reconstructed from the account ID or recovered from the signature.
+    /// This method extracts the embedded public key from FN-DSA signatures
+    /// and verifies it matches the provided signer.
     #[cfg(feature = "fn-dsa")]
     pub fn verify_with_public_key<L: Lazy<[u8]>>(
         &self,
@@ -236,9 +324,14 @@ impl ExtendedMultiSignature {
                 let account_id = who.clone().into_account();
                 sig.verify(msg, &account_id)
             }
-            // FN-DSA verification using direct verification (no host function)
-            (Self::FnDsa(sig), ExtendedMultiSigner::FnDsa(pk)) => {
-                FnDsaSignature::verify(msg.get(), sig, pk).is_ok()
+            // FN-DSA verification - extract embedded public key and verify
+            (Self::FnDsa(FnDsaSignatureWithKey { public_key, signature }), ExtendedMultiSigner::FnDsa(expected_pk)) => {
+                // Verify embedded public key matches expected signer
+                if public_key.as_bytes() != expected_pk.as_bytes() {
+                    return false;
+                }
+                // Verify signature with embedded public key
+                FnDsaSignature::verify(msg.get(), signature, public_key).is_ok()
             }
             // Mismatched signature and signer types
             _ => false,
@@ -361,19 +454,27 @@ mod tests {
     #[test]
     fn test_fn_dsa_encoding() {
         let fn_dsa_sig = FnDsaSignature::new(vec![0xAA, 0xBB, 0xCC]);
-        let ext_sig = ExtendedMultiSignature::FnDsa(fn_dsa_sig.clone());
+        let fn_dsa_pk = FnDsaPublicKey::new(vec![0xDD, 0xEE, 0xFF]);
+        let sig_with_key = FnDsaSignatureWithKey {
+            public_key: fn_dsa_pk.clone(),
+            signature: fn_dsa_sig.clone(),
+        };
+        let ext_sig = ExtendedMultiSignature::FnDsa(sig_with_key.clone());
 
         let encoded = ext_sig.encode();
 
         // Should start with variant 3 (FN-DSA)
         assert_eq!(encoded[0], 3);
 
-        // Should contain the signature bytes
-        assert_eq!(&encoded[1..], fn_dsa_sig.as_bytes());
-
         // Decode should work
         let decoded = ExtendedMultiSignature::decode(&mut &encoded[..]).unwrap();
         assert!(matches!(decoded, ExtendedMultiSignature::FnDsa(_)));
+        
+        // Verify contents match
+        if let ExtendedMultiSignature::FnDsa(decoded_sig_with_key) = decoded {
+            assert_eq!(decoded_sig_with_key.public_key, sig_with_key.public_key);
+            assert_eq!(decoded_sig_with_key.signature, sig_with_key.signature);
+        }
     }
 
     #[cfg(feature = "fn-dsa")]
@@ -391,7 +492,10 @@ mod tests {
         ));
 
         // FN-DSA sig can be created but won't serialize/deserialize in standard tests
-        let _fn_dsa_sig = ExtendedMultiSignature::FnDsa(FnDsaSignature::new(vec![0u8; 666]));
+        let _fn_dsa_sig = ExtendedMultiSignature::FnDsa(FnDsaSignatureWithKey {
+            public_key: FnDsaPublicKey::new(vec![0u8; 897]),
+            signature: FnDsaSignature::new(vec![0u8; 666]),
+        });
 
         // Test encoding/decoding (without FN-DSA due to skip attribute)
         let sr25519_sig = ExtendedMultiSignature::Standard(MultiSignature::Sr25519(
@@ -468,7 +572,10 @@ mod tests {
         assert!(std_sig.is_ok());
 
         // FN-DSA should fail to convert
-        let fn_dsa_sig = ExtendedMultiSignature::FnDsa(FnDsaSignature::new(vec![0u8; 666]));
+        let fn_dsa_sig = ExtendedMultiSignature::FnDsa(FnDsaSignatureWithKey {
+            public_key: FnDsaPublicKey::new(vec![0u8; 897]),
+            signature: FnDsaSignature::new(vec![0u8; 666]),
+        });
         let std_sig = MultiSignature::try_from(fn_dsa_sig);
         assert!(std_sig.is_err());
     }
@@ -492,6 +599,8 @@ mod tests {
     #[test]
     fn test_fn_dsa_signature_verify() {
         use subspace_core_primitives::fn_dsa::{FnDsaKeyGenerator, FnDsaPrivateKey, FnDsaSigner};
+        use sp_core::hashing::blake2_256;
+        use sp_runtime::AccountId32;
 
         // Generate a key pair
         let (private_key, public_key) = FnDsaPrivateKey::generate_keypair(9u32).unwrap();
@@ -500,17 +609,28 @@ mod tests {
         let message = b"test message for FN-DSA verification";
         let signature = FnDsaSignature::sign(message, &private_key).unwrap();
 
-        // Create extended types
-        let ext_sig = ExtendedMultiSignature::FnDsa(signature);
-        let ext_signer = ExtendedMultiSigner::FnDsa(public_key);
+        // Create extended types with embedded public key
+        let sig_with_key = FnDsaSignatureWithKey {
+            public_key: public_key.clone(),
+            signature,
+        };
+        let ext_sig = ExtendedMultiSignature::FnDsa(sig_with_key);
 
-        // Verify should succeed with explicit public key
-        let result = ext_sig.verify_with_public_key(&message[..], &ext_signer);
+        // Derive AccountId from public key
+        let account_id = AccountId32::from(blake2_256(public_key.as_bytes()));
+
+        // Verify should succeed with embedded public key
+        let result = ext_sig.verify(&message[..], &account_id);
         assert!(result);
 
         // Verify with wrong message should fail
         let wrong_message = b"wrong message";
-        let result = ext_sig.verify_with_public_key(&wrong_message[..], &ext_signer);
+        let result = ext_sig.verify(&wrong_message[..], &account_id);
+        assert!(!result);
+
+        // Verify with wrong AccountId should fail
+        let wrong_account = AccountId32::from([0u8; 32]);
+        let result = ext_sig.verify(&message[..], &wrong_account);
         assert!(!result);
     }
 }

@@ -94,7 +94,7 @@ use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_runtime_primitives::extension::BalanceTransferCheckExtension;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockHashFor, ExtrinsicFor, Hash, HeaderFor, Signature,
+    AccountId, Balance, BlockHashFor, ExtrinsicFor, Hash, HeaderFor, MultiSignature,
 };
 use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{Backend, Client, chain_spec};
@@ -1511,7 +1511,7 @@ where
     UncheckedExtrinsic::new_signed(
         function,
         MultiAddress::Id(caller.to_account_id()),
-        Signature::Sr25519(signature),
+        MultiSignature::Sr25519(signature),
         extra,
     )
 }

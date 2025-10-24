@@ -30,7 +30,7 @@ use parity_scale_codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::parameter_types;
 use sp_runtime::traits::{Block as BlockT, Bounded, Header as HeaderT, IdentifyAccount, Verify};
-use sp_runtime::{FixedPointNumber, MultiSignature, Perbill, Perquintill};
+use sp_runtime::{FixedPointNumber, Perbill, Perquintill};
 pub use subspace_core_primitives::BlockNumber;
 
 /// Minimum desired number of replicas of the blockchain to be stored by the network,
@@ -70,12 +70,21 @@ pub fn maximum_normal_block_length() -> BlockLength {
 /// (Some code does unlimited heap-based recursion via `nested_utility_call_iter()`.)
 pub const MAX_CALL_RECURSION_DEPTH: u32 = 10;
 
-/// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
-pub type Signature = MultiSignature;
-
 /// Extended signature supporting FN-DSA (post-quantum) in addition to standard signatures.
 /// This is available as an opt-in feature for applications requiring post-quantum security.
+#[cfg(feature = "fn-dsa")]
 pub use multisignature::{ExtendedMultiSignature, ExtendedMultiSigner};
+
+#[cfg(feature = "fn-dsa")]
+pub use multisignature::FnDsaSignatureWithKey;
+
+/// Standard signature type - use MultiSignature for backwards compatibility.
+/// ExtendedMultiSignature is available as an opt-in feature via ExtendedMultiSignature type.
+pub type Signature = multisignature::ExtendedMultiSignature;
+
+/// Type alias for backwards compatibility with sp_runtime::MultiSignature API.
+/// This allows using MultiSignature::Sr25519(), MultiSignature::Ed25519(), etc.
+pub type MultiSignature = multisignature::ExtendedMultiSignature;
 
 /// Some way of identifying an account on the chain. We intentionally make it equivalent
 /// to the public key of our transaction signing scheme.

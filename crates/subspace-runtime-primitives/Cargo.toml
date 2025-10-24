@@ -49,6 +49,7 @@ std = [
     "subspace-core-primitives/std",
 ]
 testing = []
+serde = ["serde/std"]
 fn-dsa = [
     "subspace-core-primitives/fn-dsa",
 ]
