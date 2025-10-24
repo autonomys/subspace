@@ -13807,6 +13807,7 @@ dependencies = [
  "chacha20",
  "criterion",
  "derive_more 1.0.0",
+ "hex",
  "rayon",
  "seq-macro",
  "sha2 0.10.8",

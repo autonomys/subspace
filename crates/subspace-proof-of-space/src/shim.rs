@@ -5,6 +5,7 @@
 use crate::TableGenerator;
 use crate::{PosTableType, Table};
 use core::iter;
+use subspace_core_primitives::U256;
 use subspace_core_primitives::hashes::blake3_hash;
 use subspace_core_primitives::pos::{PosProof, PosSeed};
 
@@ -62,7 +63,8 @@ impl Table for ShimTable {
 
 fn find_proof(seed: &PosSeed, challenge_index: u32) -> Option<PosProof> {
     let quality = blake3_hash(&challenge_index.to_le_bytes());
-    if !quality[0].is_multiple_of(3) {
+    // Note: this is different to the ab-proof-of-space ShimTable implementation
+    if U256::from_le_bytes(*quality) % U256::from(3u32) > U256::zero() {
         let mut proof = PosProof::default();
         proof
             .iter_mut()
@@ -80,6 +82,9 @@ fn find_proof(seed: &PosSeed, challenge_index: u32) -> Option<PosProof> {
 #[cfg(all(feature = "alloc", test))]
 mod tests {
     use super::*;
+    use hex::FromHex;
+
+    type RawProof = [u8; PosProof::SIZE];
 
     #[test]
     fn basic() {
@@ -90,12 +95,58 @@ mod tests {
 
         let table = ShimTable::generator().generate(&seed);
 
-        assert!(table.find_proof(1).is_none());
+        let expected_results = [
+            (0, None),
+            (
+                1,
+                Some(PosProof::from(
+                    RawProof::from_hex(
+                        "23023404333717545b0a6f0c0dde9710e4d3fe2d5cc6cc0a090a0b818bab0f17c610e85212d0697cb161d4ba431ba603f273feee7dcb7927c9ff5d74ae6cbfa3c610e85212d0697cb161d4ba431ba603f273feee7dcb7927c9ff5d74ae6cbfa3c610e85212d0697cb161d4ba431ba603f273feee7dcb7927c9ff5d74ae6cbfa3c610e85212d0697cb161d4ba431ba603f273feee7dcb7927c9ff5d74ae6cbfa3",
+                    )
+                    .unwrap(),
+                )),
+            ),
+            (2, Some(PosProof::from(
+                RawProof::from_hex(
+                    "23023404333717545b0a6f0c0dde9710e4d3fe2d5cc6cc0a090a0b818bab0f17f03bf86f79d121cbfd774dec4a65912e99f5f17c33852bbc45e819160e62b53bf03bf86f79d121cbfd774dec4a65912e99f5f17c33852bbc45e819160e62b53bf03bf86f79d121cbfd774dec4a65912e99f5f17c33852bbc45e819160e62b53bf03bf86f79d121cbfd774dec4a65912e99f5f17c33852bbc45e819160e62b53b",
+                )
+                .unwrap(),
+            ))),
+            (3, None),
+            (4, Some(PosProof::from(
+                RawProof::from_hex(
+                    "23023404333717545b0a6f0c0dde9710e4d3fe2d5cc6cc0a090a0b818bab0f17669c13550a3e727bb53d0d458f2e96e48571aa045dfabcfb4b7de16809484f11669c13550a3e727bb53d0d458f2e96e48571aa045dfabcfb4b7de16809484f11669c13550a3e727bb53d0d458f2e96e48571aa045dfabcfb4b7de16809484f11669c13550a3e727bb53d0d458f2e96e48571aa045dfabcfb4b7de16809484f11",
+                )
+                .unwrap(),
+            ))),
+            (5, Some(PosProof::from(
+                RawProof::from_hex(
+                    "23023404333717545b0a6f0c0dde9710e4d3fe2d5cc6cc0a090a0b818bab0f17e84248fb50d0833361d0417df114b0b3b34408fff97c39cd0de963b09a9aebb8e84248fb50d0833361d0417df114b0b3b34408fff97c39cd0de963b09a9aebb8e84248fb50d0833361d0417df114b0b3b34408fff97c39cd0de963b09a9aebb8e84248fb50d0833361d0417df114b0b3b34408fff97c39cd0de963b09a9aebb8",
+                )
+                .unwrap(),
+            ))),
+            (6, Some(PosProof::from(
+                RawProof::from_hex(
+                    "23023404333717545b0a6f0c0dde9710e4d3fe2d5cc6cc0a090a0b818bab0f17edaf1bd3d1c2ffcc44df55829c002f262426de2ffbea9be2cdf0075ec12c528dedaf1bd3d1c2ffcc44df55829c002f262426de2ffbea9be2cdf0075ec12c528dedaf1bd3d1c2ffcc44df55829c002f262426de2ffbea9be2cdf0075ec12c528dedaf1bd3d1c2ffcc44df55829c002f262426de2ffbea9be2cdf0075ec12c528d",
+                )
+                .unwrap(),
+            ))),
+            (7, None),
+        ];
 
-        {
-            let challenge_index = 0;
-            let proof = table.find_proof(challenge_index).unwrap();
-            assert!(ShimTable::is_proof_valid(&seed, challenge_index, &proof));
+        for (challenge_index, expected_proof) in expected_results {
+            let proof = table.find_proof(challenge_index);
+            assert_eq!(
+                proof, expected_proof,
+                "proof mismatch for challenge_index: {challenge_index}",
+            );
+
+            if let Some(proof) = proof {
+                assert!(
+                    ShimTable::is_proof_valid(&seed, challenge_index, &proof),
+                    "proof is not valid for challenge_index: {challenge_index}",
+                );
+            }
         }
     }
 }
