@@ -30,6 +30,9 @@ env:
   # runner config. This environment variable helps us avoid nested strings inside complex actions
   # expressions.
   SPOT: ${{ contains(github.ref, 'gh-readonly-queue') && '/spot=false' || '' }}
+  # Run faster benchmark checks in CI
+  BENCHMARK_TYPE: check
+  VERBOSE: true
 
 jobs:
   cargo-fmt:
@@ -370,7 +373,7 @@ jobs:
 
       - name: runtime-benchmark.sh check
         run: |
-          scripts/runtime-benchmark.sh check
+          scripts/runtime-benchmark.sh
 
   staking-fuzzer-test:
     name: staking-fuzzer-test (Linux x86-64)

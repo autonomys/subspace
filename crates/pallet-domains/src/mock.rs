@@ -11,6 +11,7 @@ use frame_support::{PalletId, derive_impl, parameter_types};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::BlockNumberFor;
 use pallet_subspace::NormalEraChange;
+use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_domains::bundle::BundleVersion;
 use sp_domains::execution_receipt::ExecutionReceiptVersion;
@@ -173,6 +174,10 @@ impl BlockSlot<Test> for DummyBlockSlot {
 
     fn slot_produced_after(_slot: sp_consensus_slots::Slot) -> Option<BlockNumberFor<Test>> {
         Some(0u32)
+    }
+
+    fn current_slot() -> Slot {
+        Slot::from(0)
     }
 }
 

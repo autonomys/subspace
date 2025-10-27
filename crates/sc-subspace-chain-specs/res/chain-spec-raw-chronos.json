@@ -5,8 +5,7 @@
     "Custom": "Autonomys Chronos Testnet"
   },
   "bootNodes": [
-    "/dns/bootstrap-0.chronos.autonomys.xyz/tcp/30333/p2p/12D3KooWFf1TpfEFPQ6cun4dg2VkF3kiDNzzx7tJKe2AXbtkfmPq",
-    "/dns/bootstrap-1.chronos.autonomys.xyz/tcp/30333/p2p/12D3KooWEroye8oyKBaUeG75gieACsuqp7xLeuiP4EBrJjSs1GQw"
+    "/dns/bootstrap-0.chronos.autonomys.xyz/tcp/30333/p2p/12D3KooWFf1TpfEFPQ6cun4dg2VkF3kiDNzzx7tJKe2AXbtkfmPq"
   ],
   "telemetryEndpoints": [
     [
@@ -18,13 +17,11 @@
   "properties": {
     "domainsBootstrapNodes": {
       "0": [
-        "/dns/bootstrap-0.auto-evm.chronos.autonomys.xyz/tcp/30334/p2p/12D3KooWHNLN7sgAF1r2HDo3zh62Znv58BANxjqJ1RqEKHK38Bkg",
-        "/dns/bootstrap-1.auto-evm.chronos.autonomys.xyz/tcp/30334/p2p/12D3KooWS544NucYd6RMuV86P66jtur3X6N1GGVojz3jDRiJrLcu"
+        "/dns/bootstrap-0.auto-evm.chronos.autonomys.xyz/tcp/30334/p2p/12D3KooWHNLN7sgAF1r2HDo3zh62Znv58BANxjqJ1RqEKHK38Bkg"
       ]
     },
     "dsnBootstrapNodes": [
-      "/dns/bootstrap-0.chronos.autonomys.xyz/tcp/30533/p2p/12D3KooWN5eUiDCN3bozUJZizuvETfnz96Qg6wS27ixXARgRVVGd",
-      "/dns/bootstrap-1.chronos.autonomys.xyz/tcp/30533/p2p/12D3KooWQ4CQ7zbt6GSpiYwAjERtQVhNXrqTsS22iSLjjXqHPzuX"
+      "/dns/bootstrap-0.chronos.autonomys.xyz/tcp/30533/p2p/12D3KooWN5eUiDCN3bozUJZizuvETfnz96Qg6wS27ixXARgRVVGd"
     ],
     "potExternalEntropy": "000000000000000000002d7e53dd67e5db28b6d07e3a4b301b1fd9c8865da8c7",
     "ss58Format": 6094,

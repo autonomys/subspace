@@ -5,7 +5,6 @@ extern crate alloc;
 
 use crate::bundle::InboxedBundle;
 use crate::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
-use crate::runtime_decl_for_bundle_producer_election_api::HashT;
 use crate::{
     ChainId, DomainId, HeaderHashFor, HeaderHashingFor, HeaderNumberFor, OperatorId,
     OperatorSignature, ProofOfElection,
@@ -19,7 +18,7 @@ use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
-use sp_runtime::traits::{CheckedAdd, Header as HeaderT, NumberFor, Zero};
+use sp_runtime::traits::{CheckedAdd, Hash as HashT, Header as HeaderT, NumberFor, Zero};
 use sp_std::collections::btree_map::BTreeMap;
 use subspace_runtime_primitives::BlockHashFor;
 

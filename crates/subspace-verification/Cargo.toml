@@ -33,3 +33,5 @@ std = [
     "subspace-kzg?/std",
     "thiserror/std"
 ]
+# Activate test APIs and workarounds
+testing = []

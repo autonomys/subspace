@@ -3,7 +3,7 @@
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
-use subspace_core_primitives::BlockWeight;
+use subspace_core_primitives::BlockForkWeight;
 
 fn load_decode<B, T>(backend: &B, key: &[u8]) -> ClientResult<Option<T>>
 where
@@ -28,7 +28,7 @@ fn block_weight_key<H: Encode>(block_hash: H) -> Vec<u8> {
 /// Write the cumulative chain-weight of a block to aux storage.
 pub(crate) fn write_block_weight<H, F, R>(
     block_hash: H,
-    block_weight: BlockWeight,
+    block_weight: BlockForkWeight,
     write_aux: F,
 ) -> R
 where
@@ -43,6 +43,6 @@ where
 pub(crate) fn load_block_weight<H: Encode, B: AuxStore>(
     backend: &B,
     block_hash: H,
-) -> ClientResult<Option<BlockWeight>> {
+) -> ClientResult<Option<BlockForkWeight>> {
     load_decode(backend, block_weight_key(block_hash).as_slice())
 }

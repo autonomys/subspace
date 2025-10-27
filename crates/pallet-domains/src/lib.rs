@@ -29,7 +29,6 @@ use crate::block_tree::{Error as BlockTreeError, verify_execution_receipt};
 use crate::bundle_storage_fund::{charge_bundle_storage_fee, storage_fund_account};
 use crate::domain_registry::{DomainConfig, Error as DomainRegistryError};
 use crate::runtime_registry::into_complete_raw_genesis;
-use crate::staking::OperatorStatus;
 #[cfg(feature = "runtime-benchmarks")]
 pub use crate::staking::do_register_operator;
 use crate::staking_epoch::EpochTransitionResult;
@@ -101,11 +100,15 @@ pub trait HoldIdentifier<T: Config> {
 }
 
 pub trait BlockSlot<T: frame_system::Config> {
-    // Return the future slot of the given `block_number`
+    /// Returns the highest valid slot for the given `block_number`.
+    /// Returns `None` if that block number is too far in the past, or too far in the future.
     fn future_slot(block_number: BlockNumberFor<T>) -> Option<sp_consensus_slots::Slot>;
 
-    // Return the latest block number whose slot is less than the given `to_check` slot
+    /// Returns the latest block number whose slot is less than the given `to_check` slot
     fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> Option<BlockNumberFor<T>>;
+
+    /// Returns the slot at the current block height
+    fn current_slot() -> sp_consensus_slots::Slot;
 }
 
 pub type ExecutionReceiptOf<T> = ExecutionReceipt<
@@ -285,9 +288,11 @@ mod pallet {
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use parity_scale_codec::FullCodec;
+    use sp_consensus_slots::Slot;
     use sp_core::H256;
     use sp_domains::bundle::BundleDigest;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
+    use sp_domains::offline_operators::OperatorEpochExpectations;
     use sp_domains::{
         BundleAndExecutionReceiptVersion, DomainBundleSubmitted, DomainId, DomainOwner,
         DomainSudoCall, DomainsTransfersTracker, EpochIndex,
@@ -820,6 +825,15 @@ mod pallet {
     pub type PreviousBundleAndExecutionReceiptVersions<T> =
         StorageValue<_, BTreeMap<BlockNumberFor<T>, BundleAndExecutionReceiptVersion>, ValueQuery>;
 
+    /// Stores the slot at which a new epoch has started.
+    #[pallet::storage]
+    pub type EpochStartSlot<T> = StorageValue<_, Slot, OptionQuery>;
+
+    /// Stores the number of bundles each operator submitted in a given epoch.
+    /// Storage is cleared at the end of epoch.
+    #[pallet::storage]
+    pub type OperatorBundleCountInEpoch<T> = StorageMap<_, Identity, OperatorId, u64, ValueQuery>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.
@@ -1144,6 +1158,12 @@ mod pallet {
             operator_id: OperatorId,
             domain_id: DomainId,
         },
+        OperatorOffline {
+            operator_id: OperatorId,
+            domain_id: DomainId,
+            submitted_bundles: u64,
+            expectations: OperatorEpochExpectations,
+        },
     }
 
     #[pallet::origin]
@@ -1195,6 +1215,9 @@ mod pallet {
             let receipt = opaque_bundle.into_receipt();
             #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
             let receipt_block_number = *receipt.domain_block_number();
+
+            // increment the operator bundle count in the epoch.
+            OperatorBundleCountInEpoch::<T>::mutate(operator_id, |c| c.saturating_add(1));
 
             #[cfg(not(feature = "runtime-benchmarks"))]
             let mut actual_weight = T::WeightInfo::submit_bundle();
@@ -2413,13 +2436,8 @@ impl<T: Config> Pallet<T> {
 
         let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
 
-        let operator_status = operator.status::<T>(operator_id);
-        ensure!(
-            *operator_status != OperatorStatus::Slashed
-                && *operator_status != OperatorStatus::PendingSlash
-                && !matches!(operator_status, OperatorStatus::InvalidBundle(_)),
-            BundleError::BadOperator
-        );
+        let can_submit_bundle = operator.can_operator_submit_bundle::<T>(operator_id);
+        ensure!(can_submit_bundle, BundleError::BadOperator);
 
         if !operator.signing_key.verify(&to_sign, signature) {
             return Err(BundleError::BadBundleSignature);
