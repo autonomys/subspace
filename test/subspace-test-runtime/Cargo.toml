@@ -71,6 +71,7 @@ substrate-wasm-builder = { workspace = true, optional = true }
 
 [features]
 default = ["std"]
+fn-dsa = ["subspace-core-primitives/fn-dsa", "subspace-runtime-primitives/fn-dsa"]
 std = [
     "domain-runtime-primitives/std",
     "frame-executive/std",
