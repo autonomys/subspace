@@ -6,9 +6,6 @@
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
-#[cfg(any(feature = "fuzz", test))]
-mod tests;
-
 pub mod block_tree;
 pub mod bundle_storage_fund;
 pub mod domain_registry;
@@ -16,10 +13,14 @@ pub mod extensions;
 #[cfg(feature = "fuzz")]
 pub mod fuzz;
 pub mod migrations;
+#[cfg(any(feature = "fuzz", test,))]
+pub(crate) mod mock;
 mod nominator_position;
 pub mod runtime_registry;
 pub mod staking;
 mod staking_epoch;
+#[cfg(test)]
+mod tests;
 pub mod weights;
 
 extern crate alloc;

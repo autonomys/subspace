@@ -1703,6 +1703,9 @@ pub(crate) fn unmark_invalid_bundle_author<T: Config>(
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
+    use crate::mock::{
+        AccountId, ExistentialDeposit, MinOperatorStake, RuntimeOrigin, Test, TreasuryAccount,
+    };
     use crate::pallet::{
         Config, DepositOnHold, Deposits, DomainRegistry, DomainStakingSummary, HeadDomainNumber,
         NextOperatorId, OperatorIdOwner, Operators, PendingSlashes, Withdrawals,
@@ -1714,7 +1717,7 @@ pub(crate) mod tests {
         do_withdraw_stake,
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
-    use crate::tests::{ExistentialDeposit, MinOperatorStake, RuntimeOrigin, Test, new_test_ext};
+    use crate::tests::new_test_ext;
     use crate::{
         BalanceOf, DeactivatedOperators, DeregisteredOperators, Error, MAX_NOMINATORS_TO_SLASH,
         NominatorId, OperatorEpochSharePrice, SlashedReason, bundle_storage_fund,
@@ -2723,8 +2726,8 @@ pub(crate) mod tests {
                 assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_id));
 
                 let expected_balance = if include_ed {
-                    total_balance += crate::tests::ExistentialDeposit::get();
-                    previous_usable_balance + withdraw + crate::tests::ExistentialDeposit::get()
+                    total_balance += ExistentialDeposit::get();
+                    previous_usable_balance + withdraw + ExistentialDeposit::get()
                 } else {
                     previous_usable_balance + withdraw
                 };
@@ -4015,10 +4018,7 @@ pub(crate) mod tests {
             let pending_slashes = PendingSlashes::<Test>::get(domain_id).unwrap();
             assert!(pending_slashes.contains(&operator_id));
 
-            assert_eq!(
-                Balances::total_balance(&crate::tests::TreasuryAccount::get()),
-                0
-            );
+            assert_eq!(Balances::total_balance(&TreasuryAccount::get()), 0);
 
             do_slash_operator::<Test>(domain_id, MAX_NOMINATORS_TO_SLASH).unwrap();
             assert_eq!(PendingSlashes::<Test>::get(domain_id), None);
@@ -4034,7 +4034,7 @@ pub(crate) mod tests {
                 nominator_free_balance - nominator_stake
             );
 
-            assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 320 * AI3);
+            assert!(Balances::total_balance(&TreasuryAccount::get()) >= 320 * AI3);
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
         });
     }
@@ -4049,7 +4049,7 @@ pub(crate) mod tests {
         let operator_extra_withdraw = 5 * AI3;
         let pair = OperatorPair::from_seed(&[0; 32]);
 
-        let nominator_accounts: Vec<crate::tests::AccountId> = (2..22).collect();
+        let nominator_accounts: Vec<AccountId> = (2..22).collect();
         let nominator_free_balance = 150 * AI3;
         let nominator_stake = 100 * AI3;
         let nominator_extra_deposit = 40 * AI3;
@@ -4195,10 +4195,7 @@ pub(crate) mod tests {
             let pending_slashes = PendingSlashes::<Test>::get(domain_id).unwrap();
             assert!(pending_slashes.contains(&operator_id));
 
-            assert_eq!(
-                Balances::total_balance(&crate::tests::TreasuryAccount::get()),
-                0
-            );
+            assert_eq!(Balances::total_balance(&TreasuryAccount::get()), 0);
 
             // since we only slash 10 nominators a time but we have a total of 21 nominators,
             // do 3 iterations
@@ -4221,10 +4218,7 @@ pub(crate) mod tests {
                 );
             }
 
-            assert_eq!(
-                Balances::total_balance(&crate::tests::TreasuryAccount::get()),
-                2220 * AI3
-            );
+            assert_eq!(Balances::total_balance(&TreasuryAccount::get()), 2220 * AI3);
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
         });
     }
@@ -4349,10 +4343,7 @@ pub(crate) mod tests {
                 OperatorStatus::Slashed
             );
 
-            assert_eq!(
-                Balances::total_balance(&crate::tests::TreasuryAccount::get()),
-                0
-            );
+            assert_eq!(Balances::total_balance(&TreasuryAccount::get()), 0);
 
             let slashed_operators = PendingSlashes::<Test>::get(domain_id).unwrap();
             slashed_operators.into_iter().for_each(|_| {
@@ -4367,10 +4358,7 @@ pub(crate) mod tests {
             assert_eq!(Operators::<Test>::get(operator_id_3), None);
             assert_eq!(OperatorIdOwner::<Test>::get(operator_id_3), None);
 
-            assert_eq!(
-                Balances::total_balance(&crate::tests::TreasuryAccount::get()),
-                600 * AI3
-            );
+            assert_eq!(Balances::total_balance(&TreasuryAccount::get()), 600 * AI3);
             for operator_id in [operator_id_1, operator_id_2, operator_id_3] {
                 assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
             }
@@ -4449,10 +4437,7 @@ pub(crate) mod tests {
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), AI3);
 
             // The operator `operator_id + 1` not exist thus the refund storage fee added to treasury
-            assert_eq!(
-                Balances::total_balance(&crate::tests::TreasuryAccount::get()),
-                9 * AI3
-            );
+            assert_eq!(Balances::total_balance(&TreasuryAccount::get()), 9 * AI3);
 
             bundle_storage_fund::charge_bundle_storage_fee::<Test>(operator_id, 1).unwrap();
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);

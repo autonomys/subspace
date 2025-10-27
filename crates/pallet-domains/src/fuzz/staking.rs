@@ -15,13 +15,15 @@ use crate::fuzz::fuzz_utils::{
     check_invariants_before_finalization, conclude_domain_epoch, fuzz_mark_invalid_bundle_authors,
     fuzz_unmark_invalid_bundle_authors, get_next_operators, get_pending_slashes,
 };
+use crate::mock::{
+    AccountId, Balance, BalancesConfig, DOMAIN_ID, DomainsConfig, RuntimeGenesisConfig, Test,
+};
 use crate::staking::{
     do_deactivate_operator, do_deregister_operator, do_mark_operators_as_slashed,
     do_nominate_operator, do_reactivate_operator, do_register_operator, do_reward_operators,
     do_unlock_funds, do_unlock_nominator, do_withdraw_stake,
 };
 use crate::staking_epoch::do_slash_operator;
-use crate::tests::{AccountId, Balance, BalancesConfig, DOMAIN_ID, Test};
 use crate::{Config, OperatorConfig, SlashedReason};
 use domain_runtime_primitives::DEFAULT_EVM_CHAIN_ID;
 use parity_scale_codec::Encode;
@@ -114,11 +116,11 @@ enum FuzzAction {
 fn create_genesis_storage(accounts: &[AccountId], mint: u128) -> Storage {
     let raw_genesis_storage = RawGenesis::dummy(vec![1, 2, 3, 4]).encode();
     let pair = OperatorPair::from_seed(&[*accounts.first().unwrap() as u8; 32]);
-    crate::tests::RuntimeGenesisConfig {
+    RuntimeGenesisConfig {
         balances: BalancesConfig {
             balances: accounts.iter().cloned().map(|k| (k, mint)).collect(),
         },
-        domains: crate::tests::DomainsConfig {
+        domains: DomainsConfig {
             genesis_domains: vec![GenesisDomain {
                 runtime_name: "evm".to_owned(),
                 runtime_type: RuntimeType::Evm,

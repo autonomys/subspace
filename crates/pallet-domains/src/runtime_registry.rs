@@ -326,11 +326,10 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
 #[cfg(test)]
 mod tests {
     use crate::Error;
+    use crate::mock::{Domains, System, Test};
     use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
     use crate::runtime_registry::Error as RuntimeRegistryError;
-    use crate::tests::{
-        Domains, ReadRuntimeVersion, System, TEST_RUNTIME_APIS, Test, new_test_ext,
-    };
+    use crate::tests::{ReadRuntimeVersion, TEST_RUNTIME_APIS, new_test_ext};
     use domain_runtime_primitives::Hash;
     use frame_support::dispatch::RawOrigin;
     use frame_support::traits::OnInitialize;

@@ -1487,6 +1487,6 @@ mod benchmarks {
     impl_benchmark_test_suite!(
         Domains,
         crate::tests::new_test_ext_with_extensions(),
-        crate::tests::Test
+        crate::mock::Test
     );
 }
