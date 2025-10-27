@@ -7,13 +7,13 @@ extern crate alloc;
 use alloc::{vec, vec::Vec};
 
 use parity_scale_codec::{Decode, Encode, Input, MaxEncodedLen};
-use scale_info::{Type, TypeInfo};
 #[cfg(feature = "fn-dsa")]
 use scale_info::{Path, build::Fields, build::Variants};
+use scale_info::{Type, TypeInfo};
 use serde::{Deserialize, Serialize};
-use sp_core::{ecdsa, ed25519, sr25519};
 #[cfg(feature = "fn-dsa")]
-use sp_core::hashing::blake2_256;
+use sp_core::blake2_256;
+use sp_core::{ecdsa, ed25519, sr25519};
 use sp_runtime::MultiSignature;
 use sp_runtime::traits::{IdentifyAccount, Lazy, Verify};
 
@@ -66,26 +66,22 @@ impl TypeInfo for ExtendedMultiSignature {
             // Build all 4 variants manually to match the flattened encoding
             let mut variants = Variants::new()
                 .variant("Ed25519", |v| {
-                    v.index(0).fields(Fields::unnamed().field(|f| {
-                        f.ty::<ed25519::Signature>()
-                    }))
+                    v.index(0)
+                        .fields(Fields::unnamed().field(|f| f.ty::<ed25519::Signature>()))
                 })
                 .variant("Sr25519", |v| {
-                    v.index(1).fields(Fields::unnamed().field(|f| {
-                        f.ty::<sr25519::Signature>()
-                    }))
+                    v.index(1)
+                        .fields(Fields::unnamed().field(|f| f.ty::<sr25519::Signature>()))
                 })
                 .variant("Ecdsa", |v| {
-                    v.index(2).fields(Fields::unnamed().field(|f| {
-                        f.ty::<ecdsa::Signature>()
-                    }))
+                    v.index(2)
+                        .fields(Fields::unnamed().field(|f| f.ty::<ecdsa::Signature>()))
                 });
-            
+
             // Add FnDsa variant only when feature is enabled
             variants = variants.variant("FnDsa", |v| {
-                v.index(3).fields(Fields::unnamed().field(|f| {
-                    f.ty::<FnDsaSignatureWithKey>()
-                }))
+                v.index(3)
+                    .fields(Fields::unnamed().field(|f| f.ty::<FnDsaSignatureWithKey>()))
             });
 
             Type::builder()
@@ -236,7 +232,6 @@ impl TryFrom<ExtendedMultiSignature> for MultiSignature {
 impl Verify for ExtendedMultiSignature {
     type Signer = ExtendedMultiSigner;
 
-    #[cfg(feature = "std")]
     #[allow(unused_mut)] // mut needed for FN-DSA path
     fn verify<L: Lazy<[u8]>>(&self, mut msg: L, signer: &sp_runtime::AccountId32) -> bool {
         match self {
@@ -247,36 +242,21 @@ impl Verify for ExtendedMultiSignature {
             }
             // Handle FN-DSA signature with embedded public key
             #[cfg(feature = "fn-dsa")]
-            Self::FnDsa(FnDsaSignatureWithKey { public_key, signature }) => {
-                // Verify AccountId matches public key hash
+            Self::FnDsa(FnDsaSignatureWithKey {
+                public_key,
+                signature,
+            }) => {
                 let derived_account = blake2_256(public_key.as_bytes());
                 if derived_account.as_ref() != signer.as_ref() as &[u8] {
                     return false;
                 }
-                // Verify signature with embedded public key
-                FnDsaSignature::verify(msg.get(), signature, public_key).is_ok()
-            }
-        }
-    }
 
-    #[cfg(not(feature = "std"))]
-    #[allow(unused_mut)] // mut needed for FN-DSA path
-    fn verify<L: Lazy<[u8]>>(&self, mut msg: L, signer: &sp_runtime::AccountId32) -> bool {
-        match self {
-            Self::Standard(sig) => {
-                // In no_std environments, we can still verify standard signatures
-                // using similar logic but without explicit public key conversion
-                sig.verify(msg, signer)
-            }
-            #[cfg(feature = "fn-dsa")]
-            Self::FnDsa(FnDsaSignatureWithKey { public_key, signature }) => {
-                // Verify AccountId matches public key hash
-                let derived_account = blake2_256(public_key.as_bytes());
-                if derived_account.as_ref() != signer.as_ref() as &[u8] {
-                    return false;
+                match FnDsaSignature::verify(msg.get(), signature, public_key) {
+                    Ok(()) => true,
+                    Err(_error) => {
+                        return false;
+                    }
                 }
-                // Verify signature with embedded public key
-                FnDsaSignature::verify(msg.get(), signature, public_key).is_ok()
             }
         }
     }
@@ -325,7 +305,13 @@ impl ExtendedMultiSignature {
                 sig.verify(msg, &account_id)
             }
             // FN-DSA verification - extract embedded public key and verify
-            (Self::FnDsa(FnDsaSignatureWithKey { public_key, signature }), ExtendedMultiSigner::FnDsa(expected_pk)) => {
+            (
+                Self::FnDsa(FnDsaSignatureWithKey {
+                    public_key,
+                    signature,
+                }),
+                ExtendedMultiSigner::FnDsa(expected_pk),
+            ) => {
                 // Verify embedded public key matches expected signer
                 if public_key.as_bytes() != expected_pk.as_bytes() {
                     return false;
@@ -469,7 +455,7 @@ mod tests {
         // Decode should work
         let decoded = ExtendedMultiSignature::decode(&mut &encoded[..]).unwrap();
         assert!(matches!(decoded, ExtendedMultiSignature::FnDsa(_)));
-        
+
         // Verify contents match
         if let ExtendedMultiSignature::FnDsa(decoded_sig_with_key) = decoded {
             assert_eq!(decoded_sig_with_key.public_key, sig_with_key.public_key);
@@ -598,9 +584,9 @@ mod tests {
     #[cfg(all(feature = "fn-dsa", feature = "std"))]
     #[test]
     fn test_fn_dsa_signature_verify() {
-        use subspace_core_primitives::fn_dsa::{FnDsaKeyGenerator, FnDsaPrivateKey, FnDsaSigner};
         use sp_core::hashing::blake2_256;
         use sp_runtime::AccountId32;
+        use subspace_core_primitives::fn_dsa::{FnDsaKeyGenerator, FnDsaPrivateKey, FnDsaSigner};
 
         // Generate a key pair
         let (private_key, public_key) = FnDsaPrivateKey::generate_keypair(9u32).unwrap();
