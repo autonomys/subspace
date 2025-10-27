@@ -94,7 +94,7 @@ echo "✅ Fuzzing completed with exit code: ${FUZZ_EXIT_CODE}."
 # We need to do this since ziggy does not exit if it encounters any crash
 # Hopefully this PR should fix it: https://github.com/srlabs/ziggy/pull/113
 #---------------------------------------
-CRASH_DIR="./output/subspace-test-fuzzer/crashes"
+CRASH_DIR="./output/target/afl/release/subspace-test-fuzzer/crashes"
 
 if [[ -d "$CRASH_DIR" ]]; then
     CRASH_COUNT=$(find "$CRASH_DIR" -type f | wc -l | tr -d ' ')
