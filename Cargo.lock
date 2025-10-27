@@ -6163,7 +6163,7 @@ dependencies = [
 [[package]]
 name = "kzg"
 version = "0.1.0"
-source = "git+https://github.com/grandinetech/rust-kzg?rev=6c8fcc623df3d7e8c0f30951a49bfea764f90bf4#6c8fcc623df3d7e8c0f30951a49bfea764f90bf4"
+source = "git+https://github.com/grandinetech/rust-kzg?rev=8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac#8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac"
 dependencies = [
  "blst",
  "num_cpus",
@@ -10011,7 +10011,7 @@ dependencies = [
 [[package]]
 name = "rust-kzg-blst"
 version = "0.1.0"
-source = "git+https://github.com/grandinetech/rust-kzg?rev=6c8fcc623df3d7e8c0f30951a49bfea764f90bf4#6c8fcc623df3d7e8c0f30951a49bfea764f90bf4"
+source = "git+https://github.com/grandinetech/rust-kzg?rev=8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac#8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac"
 dependencies = [
  "blst",
  "hex",
