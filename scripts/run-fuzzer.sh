@@ -63,11 +63,42 @@ FUZZ_TIME="${FUZZ_TIME:-"5m"}"
 #---------------------------------------
 cd ./test/subspace-test-fuzzer
 
+# remove existing afl output so that previous run is not continued
+rm -rf output
+
 echo "🚀 Running Ziggy fuzzing for $FUZZ_TIME..."
+
+# run behind a timeout since ziggy by itself one
+# TODO: https://github.com/srlabs/ziggy/issues/115
 if $IS_DARWIN; then
+    set +e
     gtimeout --preserve-status "$FUZZ_TIME" cargo ziggy fuzz --release --no-honggfuzz
+    FUZZ_EXIT_CODE=$?
+    set -e
 else
+    set +e
     timeout --preserve-status "$FUZZ_TIME" cargo ziggy fuzz --release --no-honggfuzz
+    FUZZ_EXIT_CODE=$?
+    set -e
 fi
 
-echo "✅ Fuzzing complete."
+echo "✅ Fuzzing completed with exit code: ${FUZZ_EXIT_CODE}."
+
+#---------------------------------------
+# Check for crashes
+# We need to do this since ziggy does not exit if it encounters any crash
+# Hopefully this PR should fix it: https://github.com/srlabs/ziggy/pull/113
+#---------------------------------------
+CRASH_DIR="./output/subspace-test-fuzzer/crashes"
+
+if [[ -d "$CRASH_DIR" ]]; then
+    CRASH_COUNT=$(find "$CRASH_DIR" -type f | wc -l | tr -d ' ')
+    if [[ "$CRASH_COUNT" -gt 0 ]]; then
+        echo "⚠️  Found $CRASH_COUNT crashes from this fuzzing run."
+    else
+        echo "✅ No crashes detected."
+    fi
+else
+    echo "⚠️  Crash directory not found: $CRASH_DIR"
+    echo "    (Fuzzer output structure may have changed)"
+fi
