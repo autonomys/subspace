@@ -56,7 +56,7 @@ elif $IS_DARWIN; then
     check_command gtimeout "brew install coreutils"
 fi
 
-FUZZ_TIME="${FUZZ_TIME:-"5m"}"
+FUZZ_TIME="${FUZZ_TIME:-"10m"}"
 
 #---------------------------------------
 # Run fuzz test
@@ -66,18 +66,23 @@ cd ./test/subspace-test-fuzzer
 # remove existing afl output so that previous run is not continued
 rm -rf output
 
+# build binary
+cargo ziggy build --release --no-honggfuzz
+
+BINARY="./target/afl/release/subspace-test-fuzzer"
+
 echo "🚀 Running Ziggy fuzzing for $FUZZ_TIME..."
 
 # run behind a timeout since ziggy by itself one
 # TODO: https://github.com/srlabs/ziggy/issues/115
 if $IS_DARWIN; then
     set +e
-    gtimeout --preserve-status "$FUZZ_TIME" cargo ziggy fuzz --release --no-honggfuzz
+    gtimeout --preserve-status "$FUZZ_TIME" cargo ziggy fuzz -b ${BINARY}
     FUZZ_EXIT_CODE=$?
     set -e
 else
     set +e
-    timeout --preserve-status "$FUZZ_TIME" cargo ziggy fuzz --release --no-honggfuzz
+    timeout --preserve-status "$FUZZ_TIME" cargo ziggy fuzz -b ${BINARY}
     FUZZ_EXIT_CODE=$?
     set -e
 fi
@@ -95,10 +100,13 @@ if [[ -d "$CRASH_DIR" ]]; then
     CRASH_COUNT=$(find "$CRASH_DIR" -type f | wc -l | tr -d ' ')
     if [[ "$CRASH_COUNT" -gt 0 ]]; then
         echo "⚠️  Found $CRASH_COUNT crashes from this fuzzing run."
+        exit 1
     else
         echo "✅ No crashes detected."
+        exit 0
     fi
 else
-    echo "⚠️  Crash directory not found: $CRASH_DIR"
-    echo "    (Fuzzer output structure may have changed)"
+    echo "❌ Crash directory not found: $CRASH_DIR"
+    echo "    (Fuzzer output structure may have changed or fuzzing failed)"
+    exit 2
 fi
