@@ -31,6 +31,7 @@ pallet-messenger.workspace = true
 pallet-subspace.workspace = true
 parking_lot.workspace = true
 sc-block-builder.workspace = true
+sc-cli = { workspace = true, optional = true }
 sc-client-api.workspace = true
 sc-consensus.workspace = true
 sc-domains.workspace = true
@@ -72,3 +73,8 @@ tracing.workspace = true
 
 [dev-dependencies]
 sp-keyring.workspace = true
+tempfile.workspace = true
+
+[features]
+default = []
+fn-dsa = ["subspace-core-primitives/fn-dsa", "subspace-runtime-primitives/fn-dsa", "sc-cli"]

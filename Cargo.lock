@@ -14275,6 +14275,7 @@ dependencies = [
  "parking_lot 0.12.3",
  "rand 0.8.5",
  "sc-block-builder",
+ "sc-cli",
  "sc-client-api",
  "sc-consensus",
  "sc-domains",
@@ -14311,6 +14312,7 @@ dependencies = [
  "subspace-test-runtime",
  "substrate-frame-rpc-system",
  "substrate-test-client",
+ "tempfile",
  "tokio",
  "tracing",
 ]

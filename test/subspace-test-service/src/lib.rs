@@ -106,6 +106,12 @@ use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{RpcHandlersExt, RpcTransactionError, RpcTransactionOutput};
 use tokio::time::sleep;
 
+#[cfg(feature = "fn-dsa")]
+pub mod extended_signature_tests;
+
+#[cfg(feature = "fn-dsa")]
+use tempfile as _;
+
 /// Helper type alias
 pub type FraudProofFor<Block, DomainBlock> =
     FraudProof<NumberFor<Block>, BlockHashFor<Block>, HeaderFor<DomainBlock>, H256>;
