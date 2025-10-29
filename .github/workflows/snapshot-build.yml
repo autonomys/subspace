@@ -253,6 +253,7 @@ jobs:
         env:
           # Why `PROGRA~1` instead of `Program Files`? Because Windows!
           HIPCC: C:\PROGRA~1\AMD\ROCm\6.1\bin\hipcc.bin.exe
+          HIP_PLATFORM: amd
         run: |
           cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --features rocm
           move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe ${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm.exe
