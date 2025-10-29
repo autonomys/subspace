@@ -312,7 +312,6 @@ blake2 = { opt-level = 3 }
 blake3 = { opt-level = 3 }
 blake2b_simd = { opt-level = 3 }
 blst = { opt-level = 3 }
-rust-kzg-blst = { opt-level = 3 }
 chacha20 = { opt-level = 3 }
 chacha20poly1305 = { opt-level = 3 }
 cranelift-codegen = { opt-level = 3 }
@@ -359,6 +358,15 @@ uint = { opt-level = 3 }
 x25519-dalek = { opt-level = 3 }
 yamux = { opt-level = 3 }
 zeroize = { opt-level = 3 }
+
+# These crates are always compiled with small code size, to mitigate farmer stack overflows.
+# For details, see: https://github.com/autonomys/subspace/issues/3698
+rust-kzg-blst = { opt-level = "s" }
+rayon-core = { opt-level = "s" }
+
+[profile.release.package]
+rust-kzg-blst = { opt-level = "s" }
+rayon-core = { opt-level = "s" }
 
 [profile.release]
 # Substrate runtime requires unwinding.
