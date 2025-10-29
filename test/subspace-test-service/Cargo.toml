@@ -60,7 +60,7 @@ sp-subspace-mmr.workspace = true
 sp-timestamp.workspace = true
 sp-inherents.workspace = true
 sp-runtime.workspace = true
-subspace-core-primitives.workspace = true
+subspace-core-primitives = { workspace = true, features = ["rand"] }
 subspace-runtime-primitives.workspace = true
 subspace-service.workspace = true
 subspace-test-client.workspace = true
@@ -77,4 +77,3 @@ tempfile.workspace = true
 
 [features]
 default = []
-fn-dsa = ["subspace-core-primitives/fn-dsa", "subspace-runtime-primitives/fn-dsa", "sc-cli"]

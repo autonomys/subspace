@@ -71,11 +71,8 @@ pub fn maximum_normal_block_length() -> BlockLength {
 pub const MAX_CALL_RECURSION_DEPTH: u32 = 10;
 
 /// Extended signature supporting FN-DSA (post-quantum) in addition to standard signatures.
-/// This is available as an opt-in feature for applications requiring post-quantum security.
-#[cfg(feature = "fn-dsa")]
 pub use multisignature::{ExtendedMultiSignature, ExtendedMultiSigner};
 
-#[cfg(feature = "fn-dsa")]
 pub use multisignature::FnDsaSignatureWithKey;
 
 /// Standard signature type - use MultiSignature for backwards compatibility.

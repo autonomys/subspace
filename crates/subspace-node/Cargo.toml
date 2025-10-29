@@ -88,11 +88,6 @@ substrate-build-script-utils.workspace = true
 
 [features]
 default = []
-fn-dsa = [
-    "subspace-core-primitives/fn-dsa",
-    "subspace-runtime/fn-dsa",
-    "subspace-runtime-primitives/fn-dsa",
-]
 runtime-benchmarks = [
     "auto-id-domain-runtime/runtime-benchmarks",
     "domain-service/runtime-benchmarks",

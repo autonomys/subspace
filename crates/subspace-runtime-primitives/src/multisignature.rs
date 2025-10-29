@@ -7,24 +7,19 @@ extern crate alloc;
 use alloc::{vec, vec::Vec};
 
 use parity_scale_codec::{Decode, Encode, Input, MaxEncodedLen};
-#[cfg(feature = "fn-dsa")]
-use scale_info::{Path, build::Fields, build::Variants};
-use scale_info::{Type, TypeInfo};
+use scale_info::{Path, build::Fields, build::Variants, Type, TypeInfo};
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "fn-dsa")]
 use sp_core::blake2_256;
 use sp_core::{ecdsa, ed25519, sr25519};
 use sp_runtime::MultiSignature;
 use sp_runtime::traits::{IdentifyAccount, Lazy, Verify};
 
-#[cfg(feature = "fn-dsa")]
 use subspace_core_primitives::{FnDsaPublicKey, FnDsaSignature, FnDsaVerifier};
 
 /// FN-DSA signature with embedded public key
 ///
 /// Unlike standard signatures, FN-DSA signatures cannot recover the public key,
 /// so we embed it alongside the signature for verification.
-#[cfg(feature = "fn-dsa")]
 #[derive(Clone, Debug, Eq, PartialEq, TypeInfo, Encode, Decode)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FnDsaSignatureWithKey {
@@ -45,7 +40,6 @@ pub enum ExtendedMultiSignature {
     /// Standard Substrate signatures (Ed25519, Sr25519, Ecdsa)
     Standard(MultiSignature),
     /// FN-DSA signature with embedded public key (post-quantum)
-    #[cfg(feature = "fn-dsa")]
     FnDsa(FnDsaSignatureWithKey),
 }
 
@@ -55,39 +49,31 @@ impl TypeInfo for ExtendedMultiSignature {
     type Identity = Self;
 
     fn type_info() -> Type {
-        #[cfg(not(feature = "fn-dsa"))]
-        {
-            // Without fn-dsa, we're identical to MultiSignature, so just use its TypeInfo
-            MultiSignature::type_info()
-        }
-        #[cfg(feature = "fn-dsa")]
-        {
-            // With fn-dsa, we need to extend MultiSignature's variants with FnDsa
-            // Build all 4 variants manually to match the flattened encoding
-            let mut variants = Variants::new()
-                .variant("Ed25519", |v| {
-                    v.index(0)
-                        .fields(Fields::unnamed().field(|f| f.ty::<ed25519::Signature>()))
-                })
-                .variant("Sr25519", |v| {
-                    v.index(1)
-                        .fields(Fields::unnamed().field(|f| f.ty::<sr25519::Signature>()))
-                })
-                .variant("Ecdsa", |v| {
-                    v.index(2)
-                        .fields(Fields::unnamed().field(|f| f.ty::<ecdsa::Signature>()))
-                });
-
-            // Add FnDsa variant only when feature is enabled
-            variants = variants.variant("FnDsa", |v| {
-                v.index(3)
-                    .fields(Fields::unnamed().field(|f| f.ty::<FnDsaSignatureWithKey>()))
+        // With fn-dsa, we need to extend MultiSignature's variants with FnDsa
+        // Build all 4 variants manually to match the flattened encoding
+        let mut variants = Variants::new()
+            .variant("Ed25519", |v| {
+                v.index(0)
+                    .fields(Fields::unnamed().field(|f| f.ty::<ed25519::Signature>()))
+            })
+            .variant("Sr25519", |v| {
+                v.index(1)
+                    .fields(Fields::unnamed().field(|f| f.ty::<sr25519::Signature>()))
+            })
+            .variant("Ecdsa", |v| {
+                v.index(2)
+                    .fields(Fields::unnamed().field(|f| f.ty::<ecdsa::Signature>()))
             });
 
-            Type::builder()
-                .path(Path::new("ExtendedMultiSignature", module_path!()))
-                .variant(variants)
-        }
+        // Add FnDsa variant
+        variants = variants.variant("FnDsa", |v| {
+            v.index(3)
+                .fields(Fields::unnamed().field(|f| f.ty::<FnDsaSignatureWithKey>()))
+        });
+
+        Type::builder()
+            .path(Path::new("ExtendedMultiSignature", module_path!()))
+            .variant(variants)
     }
 }
 
@@ -115,7 +101,6 @@ impl Encode for ExtendedMultiSignature {
                     }
                 }
             }
-            #[cfg(feature = "fn-dsa")]
             Self::FnDsa(sig_with_key) => {
                 // FN-DSA uses variant 3, encodes both public key and signature
                 let mut v = vec![3u8];
@@ -156,7 +141,6 @@ impl Decode for ExtendedMultiSignature {
                     ecdsa::Signature::from_raw(sig),
                 )))
             }
-            #[cfg(feature = "fn-dsa")]
             3 => {
                 // FN-DSA - decode signature with embedded public key
                 let sig_with_key = FnDsaSignatureWithKey::decode(input)?;
@@ -171,16 +155,9 @@ impl MaxEncodedLen for ExtendedMultiSignature {
     fn max_encoded_len() -> usize {
         // Enum discriminant (1 byte) + max variant size
         // Standard MultiSignature is max 65 bytes (ECDSA)
-        #[cfg(feature = "fn-dsa")]
-        {
-            // FN-DSA: public key (1793 bytes max) + signature (1280 bytes max)
-            let fn_dsa_max = FnDsaPublicKey::max_encoded_len() + FnDsaSignature::max_encoded_len();
-            1 + MultiSignature::max_encoded_len().max(fn_dsa_max)
-        }
-        #[cfg(not(feature = "fn-dsa"))]
-        {
-            1 + MultiSignature::max_encoded_len()
-        }
+        // FN-DSA: public key (1793 bytes max) + signature (1280 bytes max)
+        let fn_dsa_max = FnDsaPublicKey::max_encoded_len() + FnDsaSignature::max_encoded_len();
+        1 + MultiSignature::max_encoded_len().max(fn_dsa_max)
     }
 }
 
@@ -202,7 +179,6 @@ impl From<ecdsa::Signature> for ExtendedMultiSignature {
     }
 }
 
-#[cfg(feature = "fn-dsa")]
 impl From<FnDsaSignatureWithKey> for ExtendedMultiSignature {
     fn from(sig_with_key: FnDsaSignatureWithKey) -> Self {
         Self::FnDsa(sig_with_key)
@@ -221,7 +197,6 @@ impl TryFrom<ExtendedMultiSignature> for MultiSignature {
     fn try_from(ext_sig: ExtendedMultiSignature) -> Result<Self, Self::Error> {
         match ext_sig {
             ExtendedMultiSignature::Standard(sig) => Ok(sig),
-            #[cfg(feature = "fn-dsa")]
             ExtendedMultiSignature::FnDsa(_) => {
                 Err("FN-DSA signature cannot be converted to standard MultiSignature")
             }
@@ -241,7 +216,6 @@ impl Verify for ExtendedMultiSignature {
                 sig.verify(msg, signer)
             }
             // Handle FN-DSA signature with embedded public key
-            #[cfg(feature = "fn-dsa")]
             Self::FnDsa(FnDsaSignatureWithKey {
                 public_key,
                 signature,
@@ -291,7 +265,6 @@ impl ExtendedMultiSignature {
     ///
     /// This method extracts the embedded public key from FN-DSA signatures
     /// and verifies it matches the provided signer.
-    #[cfg(feature = "fn-dsa")]
     pub fn verify_with_public_key<L: Lazy<[u8]>>(
         &self,
         mut msg: L,
@@ -336,7 +309,6 @@ pub enum ExtendedMultiSigner {
     /// Standard Substrate signers (Ed25519, Sr25519, Ecdsa)
     Standard(sp_runtime::MultiSigner),
     /// FN-DSA public key (post-quantum)
-    #[cfg(feature = "fn-dsa")]
     #[codec(skip)]
     #[serde(skip)]
     FnDsa(FnDsaPublicKey),
@@ -346,14 +318,7 @@ impl MaxEncodedLen for ExtendedMultiSigner {
     fn max_encoded_len() -> usize {
         // Enum discriminant (1 byte) + max variant size
         // MultiSigner doesn't have MaxEncodedLen, so we estimate based on ECDSA (33 bytes)
-        #[cfg(feature = "fn-dsa")]
-        {
-            1 + 33.max(FnDsaPublicKey::max_encoded_len())
-        }
-        #[cfg(not(feature = "fn-dsa"))]
-        {
-            1 + 33
-        }
+        1 + 33.max(FnDsaPublicKey::max_encoded_len())
     }
 }
 
@@ -375,7 +340,6 @@ impl From<ecdsa::Public> for ExtendedMultiSigner {
     }
 }
 
-#[cfg(feature = "fn-dsa")]
 impl From<FnDsaPublicKey> for ExtendedMultiSigner {
     fn from(pk: FnDsaPublicKey) -> Self {
         Self::FnDsa(pk)
@@ -394,7 +358,6 @@ impl IdentifyAccount for ExtendedMultiSigner {
     fn into_account(self) -> Self::AccountId {
         match self {
             Self::Standard(signer) => signer.into_account(),
-            #[cfg(feature = "fn-dsa")]
             Self::FnDsa(pk) => {
                 // For FN-DSA, we hash the public key to create a 32-byte AccountId
                 // This is consistent with how other signature schemes work
@@ -436,7 +399,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "fn-dsa")]
     #[test]
     fn test_fn_dsa_encoding() {
         let fn_dsa_sig = FnDsaSignature::new(vec![0xAA, 0xBB, 0xCC]);
@@ -463,7 +425,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "fn-dsa")]
     #[test]
     fn test_extended_multisignature_variants() {
         // Test that each variant can be created
@@ -495,7 +456,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "fn-dsa")]
     #[test]
     fn test_extended_multisigner_variants() {
         // Test that each variant can be created
@@ -524,7 +484,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "fn-dsa")]
     #[test]
     fn test_fn_dsa_signer_into_account() {
         let fn_dsa_pk = FnDsaPublicKey::new(vec![1u8; 897]);
@@ -547,7 +506,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "fn-dsa")]
     #[test]
     fn test_conversion_to_multisignature() {
         // Standard signatures should convert successfully
@@ -566,7 +524,6 @@ mod tests {
         assert!(std_sig.is_err());
     }
 
-    #[cfg(feature = "fn-dsa")]
     #[test]
     fn test_verify_mismatched_types() {
         // Create mismatched signature and signer
@@ -581,7 +538,7 @@ mod tests {
         assert!(!result);
     }
 
-    #[cfg(all(feature = "fn-dsa", feature = "std"))]
+    #[cfg(feature = "std")]
     #[test]
     fn test_fn_dsa_signature_verify() {
         use sp_core::hashing::blake2_256;

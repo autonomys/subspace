@@ -14,7 +14,7 @@ include = [
 blake3.workspace = true
 bytes.workspace = true
 derive_more = { workspace = true, features = ["full"] }
-fn-dsa = { workspace = true, optional = true }
+fn-dsa.workspace = true
 hex = { workspace = true, features = ["alloc"] }
 num-traits.workspace = true
 parity-scale-codec = { workspace = true, features = ["bytes", "derive", "max-encoded-len"] }
@@ -35,9 +35,8 @@ default = [
     "std",
     "parallel",
 ]
-# Enables FN-DSA signature support
-fn-dsa = [
-    "dep:fn-dsa",
+# Enables random number generation
+rand = [
     "dep:rand",
 ]
 # Enables some APIs

@@ -135,7 +135,7 @@ fn create_genesis_config(
         runtime_configs: RuntimeConfigsConfig {
             enable_domains: true,
             enable_dynamic_cost_of_storage: false,
-            enable_balance_transfers: false,
+            enable_balance_transfers: true,
             confirmation_depth_k: 100u32,
             council_democracy_config_params: CouncilDemocracyConfigParams::default(),
             domain_block_pruning_depth: 10u32,

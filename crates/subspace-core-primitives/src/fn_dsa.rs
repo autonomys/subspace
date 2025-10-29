@@ -300,27 +300,31 @@ pub trait FnDsaVerifier {
     ) -> Result<(), FnDsaError>;
 }
 
-#[cfg(feature = "fn-dsa")]
 impl FnDsaKeyGenerator for FnDsaPrivateKey {
-    fn generate_keypair(logn: u32) -> Result<(FnDsaPrivateKey, FnDsaPublicKey), FnDsaError> {
-        use fn_dsa::{KeyPairGenerator, KeyPairGeneratorStandard, sign_key_size, vrfy_key_size};
-
+    fn generate_keypair(_logn: u32) -> Result<(FnDsaPrivateKey, FnDsaPublicKey), FnDsaError> {
         #[cfg(feature = "std")]
         {
-            use rand::rngs::OsRng;
+            #[cfg(feature = "rand")]
+            {
+                use fn_dsa::{KeyPairGenerator, KeyPairGeneratorStandard, sign_key_size, vrfy_key_size};
+                use rand::rngs::OsRng;
 
-            let mut sign_key = vec![0u8; sign_key_size(logn)];
-            let mut vrfy_key = vec![0u8; vrfy_key_size(logn)];
+                let mut sign_key = vec![0u8; sign_key_size(_logn)];
+                let mut vrfy_key = vec![0u8; vrfy_key_size(_logn)];
 
-            let mut kg = KeyPairGeneratorStandard::default();
-            kg.keygen(logn, &mut OsRng, &mut sign_key, &mut vrfy_key);
+                let mut kg = KeyPairGeneratorStandard::default();
+                kg.keygen(_logn, &mut OsRng, &mut sign_key, &mut vrfy_key);
 
-            Ok((
-                FnDsaPrivateKey::new(sign_key),
-                FnDsaPublicKey::new(vrfy_key),
-            ))
+                Ok((
+                    FnDsaPrivateKey::new(sign_key),
+                    FnDsaPublicKey::new(vrfy_key),
+                ))
+            }
+            #[cfg(not(feature = "rand"))]
+            {
+                Err(FnDsaError::UnsupportedOperation)
+            }
         }
-
         #[cfg(not(feature = "std"))]
         {
             Err(FnDsaError::UnsupportedOperation)
@@ -328,28 +332,32 @@ impl FnDsaKeyGenerator for FnDsaPrivateKey {
     }
 }
 
-#[cfg(feature = "fn-dsa")]
 impl FnDsaSigner for FnDsaSignature {
-    fn sign(message: &[u8], signing_key: &FnDsaPrivateKey) -> Result<FnDsaSignature, FnDsaError> {
-        use fn_dsa::{DOMAIN_NONE, HASH_ID_RAW, SigningKey, SigningKeyStandard, signature_size};
-
+    fn sign(_message: &[u8], _signing_key: &FnDsaPrivateKey) -> Result<FnDsaSignature, FnDsaError> {
         #[cfg(feature = "std")]
         {
-            use rand::rngs::OsRng;
+            #[cfg(feature = "rand")]
+            {
+                use fn_dsa::{DOMAIN_NONE, HASH_ID_RAW, SigningKey, SigningKeyStandard, signature_size};
+                use rand::rngs::OsRng;
 
-            // Decode the signing key
-            let mut sk =
-                SigningKeyStandard::decode(&signing_key.0).ok_or(FnDsaError::InvalidSignature)?;
+                // Decode the signing key
+                let mut sk =
+                    SigningKeyStandard::decode(&_signing_key.0).ok_or(FnDsaError::InvalidSignature)?;
 
-            // Create signature buffer
-            let mut sig = vec![0u8; signature_size(sk.get_logn())];
+                // Create signature buffer
+                let mut sig = vec![0u8; signature_size(sk.get_logn())];
 
-            // Sign the message
-            sk.sign(&mut OsRng, &DOMAIN_NONE, &HASH_ID_RAW, message, &mut sig);
+                // Sign the message
+                sk.sign(&mut OsRng, &DOMAIN_NONE, &HASH_ID_RAW, _message, &mut sig);
 
-            Ok(FnDsaSignature::new(sig))
+                Ok(FnDsaSignature::new(sig))
+            }
+            #[cfg(not(feature = "rand"))]
+            {
+                Err(FnDsaError::UnsupportedOperation)
+            }
         }
-
         #[cfg(not(feature = "std"))]
         {
             Err(FnDsaError::UnsupportedOperation)
@@ -357,7 +365,6 @@ impl FnDsaSigner for FnDsaSignature {
     }
 }
 
-#[cfg(feature = "fn-dsa")]
 impl FnDsaVerifier for FnDsaSignature {
     fn verify(
         message: &[u8],
@@ -442,7 +449,6 @@ mod tests {
         assert_eq!(private_key, decoded);
     }
 
-    #[cfg(feature = "fn-dsa")]
     #[test]
     fn test_fn_dsa_key_generation() {
         use crate::fn_dsa::FnDsaKeyGenerator;
@@ -456,7 +462,6 @@ mod tests {
         assert_eq!(public_key.len(), FN_DSA_512_PUBLIC_KEY_SIZE);
     }
 
-    #[cfg(feature = "fn-dsa")]
     #[test]
     fn test_fn_dsa_sign_and_verify() {
         use crate::fn_dsa::{FnDsaKeyGenerator, FnDsaSigner, FnDsaVerifier};

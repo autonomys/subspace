@@ -1,6 +1,5 @@
 //! Extended MultiSignature and FN-DSA tests for the consensus chain.
 
-#[cfg(feature = "fn-dsa")]
 #[allow(unused)]
 mod fn_dsa_keyring {
     use sp_core::hashing::blake2_256;
@@ -60,7 +59,7 @@ mod fn_dsa_keyring {
     }
 }
 
-#[cfg(all(feature = "fn-dsa", test))]
+#[cfg(test)]
 #[allow(unused)]
 mod tests {
     use super::fn_dsa_keyring::FnDsaKeyring;
@@ -118,7 +117,7 @@ mod tests {
     async fn test_fn_dsa_signature_on_consensus_chain() {
         let directory = TempDir::new().expect("Must be able to create temporary directory");
 
-        let mut builder = sc_cli::LoggerBuilder::new("");
+        let mut builder = sc_tracing::logging::LoggerBuilder::new("");
         builder.with_colors(false);
         let _ = builder.init();
 
@@ -133,9 +132,9 @@ mod tests {
 
         // Generate FN-DSA account
         let fn_dsa_alice = FnDsaKeyring::Alice;
-        let fn_dsa_account = fn_dsa_alice.to_account_id();
+        let fn_dsa_account = fn_dsa_alice.to_account_id();        
 
-        // Verify FN-DSA account nonce (it should exist due to pre-funding in genesis)
+        // Verify FN-DSA account nonce
         let fn_dsa_nonce = ferdie.account_nonce_of(fn_dsa_account);
         tracing::info!("FN-DSA account nonce: {}", fn_dsa_nonce);
 
