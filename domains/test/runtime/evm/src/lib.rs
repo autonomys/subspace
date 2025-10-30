@@ -3,8 +3,6 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
-mod precompiles;
-
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
@@ -114,7 +112,7 @@ pub type SignedBlock = generic::SignedBlock<Block>;
 pub type BlockId = generic::BlockId<Block>;
 
 /// Precompiles we use for EVM
-pub type Precompiles = crate::precompiles::Precompiles<Runtime>;
+pub type Precompiles = sp_evm_precompiles::Precompiles<Runtime>;
 
 /// The SignedExtension to the basic transaction logic.
 pub type SignedExtra = (

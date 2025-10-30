@@ -1,17 +1,19 @@
 //! Staking epoch transition for domain
 use crate::bundle_storage_fund::deposit_reserve_for_storage_fund;
 use crate::pallet::{
-    AccumulatedTreasuryFunds, Deposits, DomainStakingSummary, LastEpochStakingDistribution,
-    OperatorIdOwner, Operators, PendingSlashes, PendingStakingOperationCount, Withdrawals,
+    AccumulatedTreasuryFunds, Deposits, DomainRegistry, DomainStakingSummary,
+    LastEpochStakingDistribution, OperatorIdOwner, Operators, PendingSlashes,
+    PendingStakingOperationCount, Withdrawals,
 };
 use crate::staking::{
     DomainEpoch, Error as TransitionError, OperatorStatus, SharePrice, WithdrawalInShares,
     do_cleanup_operator, do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal,
 };
 use crate::{
-    BalanceOf, Config, DeactivatedOperators, DepositOnHold, DeregisteredOperators,
-    DomainChainRewards, ElectionVerificationParams, Event, HoldIdentifier, InvalidBundleAuthors,
-    OperatorEpochSharePrice, Pallet, bundle_storage_fund,
+    BalanceOf, BlockSlot, Config, DeactivatedOperators, DepositOnHold, DeregisteredOperators,
+    DomainChainRewards, ElectionVerificationParams, EpochStartSlot, Event, HoldIdentifier,
+    InvalidBundleAuthors, OperatorBundleCountInEpoch, OperatorEpochSharePrice, Pallet,
+    bundle_storage_fund,
 };
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
 use frame_support::traits::tokens::{
@@ -21,9 +23,12 @@ use frame_support::{PalletError, StorageDoubleMap};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
+use sp_domains::offline_operators::{
+    E_BASE, LN_1_OVER_TAU_1_PERCENT, operator_expected_bundles_in_epoch,
+};
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorRewardSource};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
-use sp_runtime::{Perquintill, Saturating};
+use sp_runtime::{Perquintill, SaturatedConversion, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 
@@ -237,12 +242,49 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
         let mut total_domain_stake = BalanceOf::<T>::zero();
         let mut current_operators = BTreeMap::new();
         let mut next_operators = BTreeSet::new();
+        let current_slot = T::BlockSlot::current_slot();
+        let total_epoch_slots = EpochStartSlot::<T>::get()
+            .map(|start_slot| current_slot - start_slot + 1)
+            .unwrap_or_default();
+        let epoch_total_stake = stake_summary.current_total_stake;
+        let operators_total_bundle_count =
+            OperatorBundleCountInEpoch::<T>::drain().collect::<BTreeMap<_, _>>();
+        let bundle_slot_probability = DomainRegistry::<T>::get(domain_id)
+            .ok_or(TransitionError::DomainNotInitialized)?
+            .domain_config
+            .bundle_slot_probability;
         for next_operator_id in &stake_summary.next_operators {
             // If an operator is pending to slash then similar to the slashed operator it should not be added
             // into the `next_operators/current_operators` and we should not `do_finalize_operator_epoch_staking`
             // for it.
             if Pallet::<T>::is_operator_pending_to_slash(domain_id, *next_operator_id) {
                 continue;
+            }
+
+            // check operator performance in the previous epoch if the operator was part of the previous epoch set
+            // if they are not part of the previous epoch set, their performance will be checked in the next epoch.
+            if let Some(operator_stake) = stake_summary.current_operators.get(next_operator_id)
+                && let Some(bundle_count) = operators_total_bundle_count.get(next_operator_id)
+            {
+                let maybe_operator_epoch_expectations = operator_expected_bundles_in_epoch(
+                    total_epoch_slots.into(),
+                    (*operator_stake).saturated_into(),
+                    epoch_total_stake.saturated_into(),
+                    bundle_slot_probability,
+                    LN_1_OVER_TAU_1_PERCENT,
+                    E_BASE,
+                );
+
+                if let Some(operator_epoch_expectations) = maybe_operator_epoch_expectations
+                    && bundle_count < &operator_epoch_expectations.min_required_bundles
+                {
+                    Pallet::<T>::deposit_event(Event::OperatorOffline {
+                        operator_id: *next_operator_id,
+                        domain_id,
+                        submitted_bundles: *bundle_count,
+                        expectations: operator_epoch_expectations,
+                    });
+                };
             }
 
             let (operator_stake, stake_changed) = do_finalize_operator_epoch_staking::<T>(
@@ -262,6 +304,9 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
                 finalized_operator_count += 1;
             }
         }
+
+        // set epoch start slot
+        EpochStartSlot::<T>::put(current_slot);
 
         // we finalized the operators who are in the next operator set.
         // But there will be deposits/withdrawals for operators who are not part of the next operator set.

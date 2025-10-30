@@ -8800,3 +8800,137 @@ fn proof_to_tx(
         .construct_unsigned_extrinsic(pallet_domains::Call::submit_fraud_proof { fraud_proof })
         .into()
 }
+
+// E2E test: call transporter precompile (0x0800) via EVM tx and observe XDM processing
+#[tokio::test(flavor = "multi_thread")]
+async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
+    const TRANSFER_AMOUNT: u128 = 10_000_000_000_000_000_000u128; // 10 tokens (10*10^18 wei)
+    const FUNDING_AMOUNT: u128 = 100_000_000_000_000_000_000u128; // 100 tokens (100*10^18 wei)
+
+    let precompile_address: H160 = H160::from_low_u64_be(2048);
+
+    // Setup EVM domain and consensus nodes
+    let (_directory, mut ferdie, mut alice) =
+        setup_evm_test_nodes(Sr25519Alice, /*private_evm*/ false, None).await;
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+    produce_blocks!(ferdie, alice, 2).await.unwrap();
+
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
+
+    // Check minimum_transfer_amount() = runtime minimum transfer amount
+    let minimum_transfer_amount_call_result = alice
+        .client
+        .runtime_api()
+        .call(
+            alice.client.info().best_hash,
+            sp_core::H160::zero(), // from
+            precompile_address,    // to
+            sp_core::hashing::keccak_256(b"minimum_transfer_amount()")[0..4].to_vec(), // data
+            sp_core::U256::zero(), // value
+            sp_core::U256::from(300_000u64), // gas_limit
+            None,
+            None,
+            None,
+            false,
+            None,
+        )
+        .expect("EVM runtime call must succeed")
+        .expect("EVM call info must succeed")
+        .value;
+
+    let minimum_transfer_amount =
+        sp_core::U256::from_big_endian(&minimum_transfer_amount_call_result[0..32]);
+    // In evm-domain-test-runtime MinimumTransfer is 1
+    assert_eq!(
+        minimum_transfer_amount,
+        sp_core::U256::from(1u64),
+        "minimum_transfer_amount() mismatch"
+    );
+
+    // Fund an EVM account to transfer from and fetch gas price/nonce
+    let sender_account = address_build(123);
+    let sender_evm_address = sender_account.address;
+    let fund_tx = alice.construct_extrinsic(
+        alice.account_nonce(),
+        pallet_balances::Call::transfer_allow_death {
+            dest: sender_evm_address.0.into(),
+            value: FUNDING_AMOUNT,
+        },
+    );
+    alice.send_extrinsic(fund_tx).await.expect("funding failed");
+
+    let receiver_account_id = Sr25519Keyring::Bob.to_account_id();
+    let receiver_balance_before = ferdie.free_balance(receiver_account_id.clone());
+
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+    let sender_account_before = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, sender_evm_address)
+        .unwrap();
+    let sender_nonce = sender_account_before.nonce;
+    let sender_balance_before = sender_account_before.balance;
+
+    // Build calldata for transfer_to_consensus_v1(bytes32,u256)
+    let receiver_ss58 = receiver_account_id.encode();
+    let mut receiver_bytes32 = [0u8; 32];
+    receiver_bytes32.copy_from_slice(&receiver_ss58);
+    let receiver_h256 = sp_core::H256::from_slice(&receiver_bytes32);
+    let transfer_amount = U256::from(TRANSFER_AMOUNT);
+
+    let mut call_data =
+        sp_core::hashing::keccak_256(b"transfer_to_consensus_v1(bytes32,uint256)")[0..4].to_vec();
+    call_data.extend_from_slice(receiver_h256.as_bytes());
+    call_data.extend_from_slice(&transfer_amount.to_big_endian());
+
+    // Create EIP-1559 tx that calls precompile
+    let evm_tx = domain_test_utils::test_ethereum::generate_eip1559_tx::<TestRuntime>(
+        sender_account.clone(),
+        sender_nonce,
+        ethereum::TransactionAction::Call(precompile_address),
+        call_data,
+        gas_price,
+    );
+    let eth_ex = generate_eth_domain_sc_extrinsic(evm_tx);
+    alice
+        .send_extrinsic(eth_ex)
+        .await
+        .expect("Failed to send evm tx to transporter precompile");
+
+    // Wait until receiver succesfully receives funds
+    produce_blocks_until!(ferdie, alice, {
+        ferdie.free_balance(receiver_account_id.clone())
+            == receiver_balance_before + TRANSFER_AMOUNT
+    })
+    .await
+    .unwrap();
+
+    // Check EVM sender balance
+    let sender_balance_after = alice.free_balance(sender_evm_address.into());
+    let sender_balance_decrease = sender_balance_before.saturating_sub(sender_balance_after.into());
+
+    // Balance should decrease by more than the transfer amount due to transaction costs
+    assert!(
+        sender_balance_decrease > transfer_amount,
+        "Balance decrease should be greater than the transfer amount due to transaction costs"
+    );
+
+    // Check consensus receiver balance
+    let receiver_balance_after = ferdie.free_balance(receiver_account_id);
+    let receiver_increase = receiver_balance_after - receiver_balance_before;
+
+    // Balance should increase by exactly the transfer amount
+    assert_eq!(
+        receiver_increase, TRANSFER_AMOUNT,
+        "Receiver should get exactly the transfer amount (no gas deducted)"
+    );
+}

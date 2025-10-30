@@ -868,6 +868,10 @@ impl pallet_domains::BlockSlot<Runtime> for BlockSlot {
         }
         None
     }
+
+    fn current_slot() -> Slot {
+        Subspace::current_slot()
+    }
 }
 
 pub struct OnChainRewards;

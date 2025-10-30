@@ -5,8 +5,7 @@
     "Custom": "Testnet"
   },
   "bootNodes": [
-    "/dns/bootstrap-0.devnet.subspace.network/tcp/30333/p2p/12D3KooWLdPnDksKX43hEgV4N9EeJzm6x8wPWkHCvRaFBZvj4GBg",
-    "/dns/bootstrap-1.devnet.subspace.network/tcp/30333/p2p/12D3KooWM4PT6vTWji9y9BmHc1dZKH7EE6nSfX1bZMUejFviJypz"
+    "/dns/bootstrap-0.devnet.autonomys.xyz/tcp/30333/p2p/12D3KooWLdPnDksKX43hEgV4N9EeJzm6x8wPWkHCvRaFBZvj4GBg"
   ],
   "telemetryEndpoints": [
     [
@@ -18,12 +17,11 @@
   "properties": {
     "domainsBootstrapNodes": {
       "0": [
-        "/dns/bootstrap-0.auto-evm.devnet.subspace.network/tcp/30334/p2p/12D3KooWH1erywk3TmZZL1bUmt4kmfbc6yx7whPjsVkt9mdjm2sg"
+        "/dns/bootstrap-0.auto-evm.devnet.autonomys.xyz/tcp/30334/p2p/12D3KooWH1erywk3TmZZL1bUmt4kmfbc6yx7whPjsVkt9mdjm2sg"
       ]
     },
     "dsnBootstrapNodes": [
-      "/dns/bootstrap-0.devnet.subspace.network/tcp/30533/p2p/12D3KooWJgLU8DmkXwBpQtHgSURFfJ4f2SyuNVBgVY96aDJsDWFK",
-      "/dns/bootstrap-1.devnet.subspace.network/tcp/30533/p2p/12D3KooWEaTUuF6H36UWu1WrxE3ccGVB8UXavQ2FF1xmJ8SNC38V"
+      "/dns/bootstrap-0.devnet.autonomys.xyz/tcp/30533/p2p/12D3KooWJgLU8DmkXwBpQtHgSURFfJ4f2SyuNVBgVY96aDJsDWFK"
     ],
     "potExternalEntropy": null,
     "ss58Format": 6094,
