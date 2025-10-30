@@ -1,7 +1,7 @@
 //! Solutions-related data structures and functions.
 
 use crate::pieces::{PieceOffset, Record, RecordCommitment, RecordWitness};
-use crate::pos::PosProof;
+use crate::pos::{PosProof, PosSeed};
 use crate::sectors::SectorIndex;
 use crate::segments::{HistorySize, SegmentIndex};
 use crate::{PublicKey, ScalarBytes};
@@ -225,6 +225,12 @@ impl AsMut<[u8]> for ChunkWitness {
 impl ChunkWitness {
     /// Size of chunk witness in bytes.
     pub const SIZE: usize = 48;
+}
+
+/// Proof-of-time verifier trait, used in abundance backports.
+pub trait SolutionPotVerifier {
+    /// Check whether proof created earlier is valid
+    fn is_proof_valid(seed: &PosSeed, challenge_index: u32, proof: &PosProof) -> bool;
 }
 
 /// Farmer solution for slot challenge.
