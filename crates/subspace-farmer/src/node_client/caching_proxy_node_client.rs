@@ -119,7 +119,9 @@ impl SegmentHeaders {
 
     /// Write the sync results to the cache, and reset the sync rate-limit timer.
     fn write_cache(&mut self, extra_segment_headers: Vec<SegmentHeader>) {
-        self.segment_headers.extend(extra_segment_headers);
+        for segment_header in extra_segment_headers {
+            self.push(segment_header);
+        }
         self.last_synced.replace(Instant::now());
     }
 }
