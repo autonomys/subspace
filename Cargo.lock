@@ -7987,6 +7987,7 @@ dependencies = [
 name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "frame-benchmarking",
@@ -8002,6 +8003,7 @@ dependencies = [
  "prop-test",
  "scale-info",
  "schnorrkel",
+ "serde",
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
@@ -8011,6 +8013,7 @@ dependencies = [
  "sp-io",
  "sp-keystore",
  "sp-runtime",
+ "sp-state-machine",
  "sp-std",
  "sp-subspace-mmr",
  "sp-version",
@@ -14142,6 +14145,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-test-fuzzer"
+version = "0.1.0"
+dependencies = [
+ "pallet-domains",
+ "ziggy",
+]
+
+[[package]]
 name = "subspace-test-primitives"
 version = "0.1.0"
 dependencies = [
@@ -16619,6 +16630,12 @@ dependencies = [
  "quote",
  "syn 2.0.104",
 ]
+
+[[package]]
+name = "ziggy"
+version = "1.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ec0e3b65fea1a3b33ea6be638e233e3f2143ea30d78b7997f25bb44eb372494"
 
 [[package]]
 name = "zstd"

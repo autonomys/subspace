@@ -17,6 +17,7 @@ members = [
     "domains/test/utils",
     "shared/*",
     "test/subspace-test-client",
+    "test/subspace-test-fuzzer",
     "test/subspace-test-runtime",
     "test/subspace-test-service",
 ]
@@ -36,6 +37,7 @@ auto-id-domain-runtime = { version = "0.1.0", path = "domains/runtime/auto-id" }
 auto-id-domain-test-runtime = { version = "0.1.0", path = "domains/test/runtime/auto-id" }
 backoff = "0.4.0"
 base58 = "0.2.0"
+bincode = { version = "1.3.3" }
 bip39 = "2.0.0"
 bitvec = "1.0.1"
 blake2 = { version = "0.10.6", default-features = false }
@@ -300,6 +302,7 @@ unsigned-varint = "0.8.0"
 void = "1.0.2"
 x509-parser = "0.16.0"
 zeroize = "1.8.1"
+ziggy = { version = "1.3.4", default-features = false }
 
 # The list of dependencies below (which can be both direct and indirect dependencies) are crates
 # that are suspected to be CPU-intensive, and that are unlikely to require debugging (as some of

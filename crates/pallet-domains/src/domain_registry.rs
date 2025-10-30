@@ -398,7 +398,8 @@ pub(crate) fn do_update_domain_allow_list<T: Config>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::{TEST_RUNTIME_APIS, Test, new_test_ext};
+    use crate::mock::Test;
+    use crate::tests::{TEST_RUNTIME_APIS, new_test_ext};
     use domain_runtime_primitives::{AccountId20, AccountId20Converter, DEFAULT_EVM_CHAIN_ID};
     use frame_support::traits::Currency;
     use frame_support::{assert_err, assert_ok};

@@ -672,6 +672,7 @@ pub(crate) fn do_slash_operator<T: Config>(
 #[cfg(test)]
 mod tests {
     use crate::bundle_storage_fund::STORAGE_FEE_RESERVE;
+    use crate::mock::{HoldIdentifierWrapper, RuntimeOrigin, Test};
     use crate::pallet::{
         DepositOnHold, Deposits, DomainStakingSummary, HeadDomainNumber,
         LastEpochStakingDistribution, OperatorIdOwner, Operators, Withdrawals,
@@ -685,7 +686,7 @@ mod tests {
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, do_slash_operator, operator_take_reward_tax_and_stake,
     };
-    use crate::tests::{RuntimeOrigin, Test, new_test_ext};
+    use crate::tests::new_test_ext;
     use crate::{
         BalanceOf, Config, HoldIdentifier, InvalidBundleAuthors, MAX_NOMINATORS_TO_SLASH,
         NominatorId, OperatorEpochSharePrice, SlashedReason,
@@ -797,7 +798,7 @@ mod tests {
 
             assert_ok!(do_unlock_nominator::<Test>(operator_id, operator_account));
 
-            let hold_id = crate::tests::HoldIdentifierWrapper::staking_staked();
+            let hold_id = HoldIdentifierWrapper::staking_staked();
             for (nominator_id, mut expected_usable_balance) in expected_usable_balances {
                 expected_usable_balance += minimum_free_balance;
                 assert_eq!(Deposits::<Test>::get(operator_id, nominator_id), None);

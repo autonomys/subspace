@@ -1,73 +1,59 @@
 use crate::block_tree::{BlockTreeNode, verify_execution_receipt};
 use crate::domain_registry::{DomainConfig, DomainConfigParams, DomainObject};
+use crate::mock::pallet_mock_version_store::MockPreviousBundleAndExecutionReceiptVersions;
+use crate::mock::{
+    Balance, Block, BlockNumber, BlockTreePruningDepth, DOMAIN_ID, Domains, Hash,
+    MockBundleAndExecutionReceiptVersion, MockBundleVersion, MockExecutionReceiptVersion,
+    RuntimeCall, System, Test,
+};
 use crate::runtime_registry::ScheduledRuntimeUpgrade;
 use crate::staking_epoch::do_finalize_domain_current_epoch;
-use crate::tests::pallet_mock_version_store::MockPreviousBundleAndExecutionReceiptVersions;
 use crate::{
-    self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
+    self as pallet_domains, BalanceOf, BlockTree, BlockTreeNodes, BundleError, Config,
     ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry,
     DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptOf,
-    FraudProofError, FungibleHoldId, HeadDomainNumber, HeadReceiptNumber, NextDomainId,
-    OperatorConfig, RawOrigin as DomainOrigin, RuntimeRegistry, ScheduledRuntimeUpgrades,
+    FraudProofError, HeadDomainNumber, HeadReceiptNumber, NextDomainId, OperatorConfig,
+    RawOrigin as DomainOrigin, RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
-use core::mem;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{BlockNumber as DomainBlockNumber, DEFAULT_EVM_CHAIN_ID};
-use frame_support::dispatch::{DispatchInfo, RawOrigin};
-use frame_support::traits::{ConstU64, Currency, Hooks, VariantCount};
-use frame_support::weights::constants::ParityDbWeight;
-use frame_support::weights::{IdentityFee, Weight};
-use frame_support::{PalletId, assert_err, assert_ok, derive_impl, parameter_types};
+use frame_support::dispatch::RawOrigin;
+use frame_support::traits::{Currency, Hooks};
+use frame_support::weights::Weight;
+use frame_support::{assert_err, assert_ok};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
 use hex_literal::hex;
-use pallet_subspace::NormalEraChange;
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256};
 use sp_domains::bundle::bundle_v0::{BundleHeaderV0, BundleV0, SealedBundleHeaderV0};
-use sp_domains::bundle::{BundleVersion, InboxedBundle, OpaqueBundle};
+use sp_domains::bundle::{InboxedBundle, OpaqueBundle};
 use sp_domains::bundle_producer_election::make_transcript;
 use sp_domains::execution_receipt::execution_receipt_v0::ExecutionReceiptV0;
-use sp_domains::execution_receipt::{ExecutionReceipt, ExecutionReceiptVersion, SingletonReceipt};
+use sp_domains::execution_receipt::{ExecutionReceipt, SingletonReceipt};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleAndExecutionReceiptVersion, ChainId, DomainId, EMPTY_EXTRINSIC_ROOT, EpochIndex,
-    OperatorAllowList, OperatorId, OperatorPair, OperatorSignature, ProofOfElection, RuntimeId,
-    RuntimeType,
+    DomainId, EMPTY_EXTRINSIC_ROOT, OperatorAllowList, OperatorId, OperatorPair, OperatorSignature,
+    ProofOfElection, RuntimeId, RuntimeType,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_keystore::Keystore;
 use sp_keystore::testing::MemoryKeystore;
 use sp_runtime::app_crypto::AppCrypto;
 use sp_runtime::generic::{EXTRINSIC_FORMAT_VERSION, Preamble};
-use sp_runtime::traits::{
-    AccountIdConversion, BlakeTwo256, BlockNumberProvider, Bounded, ConstU16, Hash as HashT,
-    IdentityLookup, One, Zero,
-};
-use sp_runtime::transaction_validity::TransactionValidityError;
+use sp_runtime::traits::{BlakeTwo256, BlockNumberProvider, Bounded, Hash as HashT, One, Zero};
 use sp_runtime::type_with_default::TypeWithDefault;
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
 use sp_version::{ApiId, RuntimeVersion, create_apis_vec};
-use std::num::NonZeroU64;
-use subspace_core_primitives::pieces::Piece;
+use subspace_core_primitives::U256 as P256;
 use subspace_core_primitives::pot::PotOutput;
-use subspace_core_primitives::segments::HistorySize;
-use subspace_core_primitives::solutions::SolutionRange;
-use subspace_core_primitives::{SlotNumber, U256 as P256};
-use subspace_runtime_primitives::{
-    AI3, BlockHashFor, ConsensusEventSegmentSize, HoldIdentifier, Moment, Nonce, StorageFee,
-};
+use subspace_runtime_primitives::{AI3, BlockHashFor, Nonce};
 
-type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
-type Block = frame_system::mocking::MockBlockU32<Test>;
-type Balance = u128;
-
-// TODO: Remove when DomainRegistry is usable.
-const DOMAIN_ID: DomainId = DomainId::new(0);
+type UncheckedExtrinsic = MockUncheckedExtrinsic<Test>;
 
 // Operator id used for testing
 const OPERATOR_ID: OperatorId = 0u64;
@@ -79,372 +65,8 @@ const OPERATOR_ID: OperatorId = 0u64;
 // to derive the correct TransactionVersion and SystemVersion.
 // So we should always add the TEST_RUNTIME_APIS to the RuntimeVersion to ensure it is decoded correctly.
 // More here - https://github.com/paritytech/polkadot-sdk/blob/master/substrate/primitives/version/src/lib.rs#L637
-pub(crate) const CORE_API_ID: [u8; 8] = [223, 106, 203, 104, 153, 7, 96, 155];
+const CORE_API_ID: [u8; 8] = [223, 106, 203, 104, 153, 7, 96, 155];
 pub(crate) const TEST_RUNTIME_APIS: [(ApiId, u32); 1] = [(CORE_API_ID, 5)];
-
-frame_support::construct_runtime!(
-    pub struct Test {
-        System: frame_system,
-        Timestamp: pallet_timestamp,
-        Balances: pallet_balances,
-        Subspace: pallet_subspace,
-        Domains: pallet_domains,
-        DomainExecutive: domain_pallet_executive,
-        BlockFees: pallet_block_fees,
-        MockVersionStore: pallet_mock_version_store,
-    }
-);
-
-type BlockNumber = u32;
-type Hash = H256;
-pub(crate) type AccountId = u128;
-
-#[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
-impl frame_system::Config for Test {
-    type Block = Block;
-    type Hash = Hash;
-    type AccountId = AccountId;
-    type Lookup = IdentityLookup<Self::AccountId>;
-    type AccountData = pallet_balances::AccountData<Balance>;
-    type DbWeight = ParityDbWeight;
-    type EventSegmentSize = ConsensusEventSegmentSize;
-}
-
-parameter_types! {
-    pub const MaximumReceiptDrift: BlockNumber = 128;
-    pub const InitialDomainTxRange: u64 = 3;
-    pub const DomainTxRangeAdjustmentInterval: u64 = 100;
-    pub const MaxDomainBlockSize: u32 = 1024 * 1024;
-    pub const MaxDomainBlockWeight: Weight = Weight::from_parts(1024 * 1024, 0);
-    pub const DomainInstantiationDeposit: Balance = 100;
-    pub const MaxDomainNameLength: u32 = 16;
-    pub const BlockTreePruningDepth: u32 = 16;
-    pub const SlotProbability: (u64, u64) = (1, 6);
-}
-
-pub struct ConfirmationDepthK;
-
-impl Get<BlockNumber> for ConfirmationDepthK {
-    fn get() -> BlockNumber {
-        10
-    }
-}
-
-#[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
-)]
-pub struct HoldIdentifierWrapper(HoldIdentifier);
-
-impl pallet_domains::HoldIdentifier<Test> for HoldIdentifierWrapper {
-    fn staking_staked() -> FungibleHoldId<Test> {
-        Self(HoldIdentifier::DomainStaking)
-    }
-
-    fn domain_instantiation_id() -> FungibleHoldId<Test> {
-        Self(HoldIdentifier::DomainInstantiation)
-    }
-
-    fn storage_fund_withdrawal() -> Self {
-        Self(HoldIdentifier::DomainStorageFund)
-    }
-}
-
-impl VariantCount for HoldIdentifierWrapper {
-    const VARIANT_COUNT: u32 = mem::variant_count::<HoldIdentifier>() as u32;
-}
-
-parameter_types! {
-    pub const ExistentialDeposit: Balance = 1;
-}
-
-#[derive_impl(pallet_balances::config_preludes::TestDefaultConfig as pallet_balances::DefaultConfig)]
-impl pallet_balances::Config for Test {
-    type Balance = Balance;
-    type ExistentialDeposit = ExistentialDeposit;
-    type AccountStore = System;
-    type RuntimeHoldReason = HoldIdentifierWrapper;
-    type DustRemoval = ();
-}
-
-parameter_types! {
-    pub const MinOperatorStake: Balance = 100 * AI3;
-    pub const MinNominatorStake: Balance = AI3;
-    pub const StakeWithdrawalLockingPeriod: DomainBlockNumber = 5;
-    pub const StakeEpochDuration: DomainBlockNumber = 5;
-    pub TreasuryAccount: u128 = PalletId(*b"treasury").into_account_truncating();
-    pub const BlockReward: Balance = 10 * AI3;
-    pub const MaxPendingStakingOperation: u32 = 512;
-    pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
-    pub const DomainChainByteFee: Balance = 1;
-    pub const MaxInitialDomainAccounts: u32 = 5;
-    pub const MinInitialDomainAccountBalance: Balance = AI3;
-    pub const BundleLongevity: u32 = 5;
-    pub const WithdrawalLimit: u32 = 10;
-    pub const CurrentBundleAndExecutionReceiptVersion: BundleAndExecutionReceiptVersion = BundleAndExecutionReceiptVersion {
-        bundle_version: BundleVersion::V0,
-        execution_receipt_version: ExecutionReceiptVersion::V0,
-    };
-    pub const OperatorActivationDelayInEpochs: EpochIndex = 5;
-}
-
-pub struct MockRandomness;
-
-impl frame_support::traits::Randomness<Hash, BlockNumber> for MockRandomness {
-    fn random(_: &[u8]) -> (Hash, BlockNumber) {
-        (Default::default(), Default::default())
-    }
-}
-
-const SLOT_DURATION: u64 = 1000;
-
-impl pallet_timestamp::Config for Test {
-    /// A timestamp: milliseconds since the unix epoch.
-    type Moment = Moment;
-    type OnTimestampSet = ();
-    type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
-    type WeightInfo = ();
-}
-
-pub struct DummyStorageFee;
-
-impl StorageFee<Balance> for DummyStorageFee {
-    fn transaction_byte_fee() -> Balance {
-        AI3
-    }
-    fn note_storage_fees(_fee: Balance) {}
-}
-
-pub struct DummyBlockSlot;
-
-impl BlockSlot<Test> for DummyBlockSlot {
-    fn future_slot(_block_number: BlockNumberFor<Test>) -> Option<Slot> {
-        None
-    }
-
-    fn slot_produced_after(_slot: sp_consensus_slots::Slot) -> Option<BlockNumberFor<Test>> {
-        Some(0u32)
-    }
-
-    fn current_slot() -> Slot {
-        Slot::from(0)
-    }
-}
-
-pub struct MockDomainsTransfersTracker;
-
-impl sp_domains::DomainsTransfersTracker<Balance> for MockDomainsTransfersTracker {
-    type Error = ();
-
-    fn initialize_domain_balance(
-        _domain_id: DomainId,
-        _amount: Balance,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn note_transfer(
-        _from_chain_id: ChainId,
-        _to_chain_id: ChainId,
-        _amount: Balance,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn confirm_transfer(
-        _from_chain_id: ChainId,
-        _to_chain_id: ChainId,
-        _amount: Balance,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn claim_rejected_transfer(
-        _from_chain_id: ChainId,
-        _to_chain_id: ChainId,
-        _amount: Balance,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn reject_transfer(
-        _from_chain_id: ChainId,
-        _to_chain_id: ChainId,
-        _amount: Balance,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn reduce_domain_balance(_domain_id: DomainId, _amount: Balance) -> Result<(), Self::Error> {
-        Ok(())
-    }
-}
-
-impl pallet_domains::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
-    type DomainHash = sp_core::H256;
-    type Balance = Balance;
-    type DomainHeader = DomainHeader;
-    type ConfirmationDepthK = ConfirmationDepthK;
-    type Currency = Balances;
-    type Share = Balance;
-    type HoldIdentifier = HoldIdentifierWrapper;
-    type BlockTreePruningDepth = BlockTreePruningDepth;
-    type ConsensusSlotProbability = SlotProbability;
-    type MaxDomainBlockSize = MaxDomainBlockSize;
-    type MaxDomainBlockWeight = MaxDomainBlockWeight;
-    type MaxDomainNameLength = MaxDomainNameLength;
-    type DomainInstantiationDeposit = DomainInstantiationDeposit;
-    type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
-    type InitialDomainTxRange = InitialDomainTxRange;
-    type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
-    type MinOperatorStake = MinOperatorStake;
-    type MinNominatorStake = MinNominatorStake;
-    type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
-    type StakeEpochDuration = StakeEpochDuration;
-    type TreasuryAccount = TreasuryAccount;
-    type MaxPendingStakingOperation = MaxPendingStakingOperation;
-    type Randomness = MockRandomness;
-    type PalletId = DomainsPalletId;
-    type StorageFee = DummyStorageFee;
-    type BlockTimestamp = pallet_timestamp::Pallet<Test>;
-    type BlockSlot = DummyBlockSlot;
-    type DomainsTransfersTracker = MockDomainsTransfersTracker;
-    type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
-    type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
-    type BundleLongevity = BundleLongevity;
-    type DomainBundleSubmitted = ();
-    type OnDomainInstantiated = ();
-    type MmrHash = H256;
-    type MmrProofVerifier = ();
-    type FraudProofStorageKeyProvider = ();
-    type OnChainRewards = ();
-    type WithdrawalLimit = WithdrawalLimit;
-    type DomainOrigin = crate::EnsureDomainOrigin;
-    type CurrentBundleAndExecutionReceiptVersion = CurrentBundleAndExecutionReceiptVersion;
-    type OperatorActivationDelayInEpochs = OperatorActivationDelayInEpochs;
-}
-
-pub struct ExtrinsicStorageFees;
-
-impl domain_pallet_executive::ExtrinsicStorageFees<Test> for ExtrinsicStorageFees {
-    fn extract_signer(_xt: MockUncheckedExtrinsic<Test>) -> (Option<AccountId>, DispatchInfo) {
-        (None, DispatchInfo::default())
-    }
-
-    fn on_storage_fees_charged(
-        _charged_fees: Balance,
-        _tx_size: u32,
-    ) -> Result<(), TransactionValidityError> {
-        Ok(())
-    }
-}
-
-impl domain_pallet_executive::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
-    type WeightInfo = ();
-    type Currency = Balances;
-    type LengthToFee = IdentityFee<Balance>;
-    type ExtrinsicStorageFees = ExtrinsicStorageFees;
-}
-
-impl pallet_block_fees::Config for Test {
-    type Balance = Balance;
-    type DomainChainByteFee = DomainChainByteFee;
-}
-
-pub const INITIAL_SOLUTION_RANGE: SolutionRange =
-    u64::MAX / (1024 * 1024 * 1024 / Piece::SIZE as u64) * 3 / 10;
-
-parameter_types! {
-    pub const BlockAuthoringDelay: SlotNumber = 2;
-    pub const PotEntropyInjectionInterval: BlockNumber = 5;
-    pub const PotEntropyInjectionLookbackDepth: u8 = 2;
-    pub const PotEntropyInjectionDelay: SlotNumber = 4;
-    pub const EraDuration: u32 = 4;
-    // 1GB
-    pub const InitialSolutionRange: SolutionRange = INITIAL_SOLUTION_RANGE;
-    pub const RecentSegments: HistorySize = HistorySize::new(NonZeroU64::new(5).unwrap());
-    pub const RecentHistoryFraction: (HistorySize, HistorySize) = (
-        HistorySize::new(NonZeroU64::new(1).unwrap()),
-        HistorySize::new(NonZeroU64::new(10).unwrap()),
-    );
-    pub const MinSectorLifetime: HistorySize = HistorySize::new(NonZeroU64::new(4).unwrap());
-    pub const RecordSize: u32 = 3840;
-    pub const ExpectedVotesPerBlock: u32 = 9;
-    pub const ReplicationFactor: u16 = 1;
-    pub const ReportLongevity: u64 = 34;
-    pub const ShouldAdjustSolutionRange: bool = false;
-    pub const BlockSlotCount: u32 = 6;
-}
-
-impl pallet_subspace::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
-    type SubspaceOrigin = pallet_subspace::EnsureSubspaceOrigin;
-    type BlockAuthoringDelay = BlockAuthoringDelay;
-    type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
-    type PotEntropyInjectionLookbackDepth = PotEntropyInjectionLookbackDepth;
-    type PotEntropyInjectionDelay = PotEntropyInjectionDelay;
-    type EraDuration = EraDuration;
-    type InitialSolutionRange = InitialSolutionRange;
-    type SlotProbability = SlotProbability;
-    type ConfirmationDepthK = ConfirmationDepthK;
-    type RecentSegments = RecentSegments;
-    type RecentHistoryFraction = RecentHistoryFraction;
-    type MinSectorLifetime = MinSectorLifetime;
-    type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
-    type MaxPiecesInSector = ConstU16<1>;
-    type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
-    type EraChangeTrigger = NormalEraChange;
-    type WeightInfo = ();
-    type BlockSlotCount = BlockSlotCount;
-    type ExtensionWeightInfo = pallet_subspace::extensions::weights::SubstrateWeight<Self>;
-}
-
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
-pub enum MockBundleVersion {
-    V0,
-    V1,
-    V2,
-    V3,
-}
-
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
-pub enum MockExecutionReceiptVersion {
-    V0,
-    V1,
-    V2,
-    V3,
-}
-
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Copy)]
-pub struct MockBundleAndExecutionReceiptVersion {
-    pub bundle_version: MockBundleVersion,
-    pub execution_receipt_version: MockExecutionReceiptVersion,
-}
-
-#[frame_support::pallet]
-pub(crate) mod pallet_mock_version_store {
-    use super::{BlockNumberFor, MockBundleAndExecutionReceiptVersion};
-    use frame_support::pallet_prelude::*;
-    use std::collections::BTreeMap;
-
-    #[pallet::config]
-    pub trait Config: frame_system::Config {}
-
-    /// Pallet domain-id to store self domain id.
-    #[pallet::pallet]
-    #[pallet::without_storage_info]
-    pub struct Pallet<T>(_);
-
-    #[pallet::storage]
-    pub type MockPreviousBundleAndExecutionReceiptVersions<T: Config> = StorageValue<
-        _,
-        BTreeMap<BlockNumberFor<T>, MockBundleAndExecutionReceiptVersion>,
-        ValueQuery,
-    >;
-}
-
-impl pallet_mock_version_store::Config for Test {}
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
     let t = frame_system::GenesisConfig::<Test>::default()

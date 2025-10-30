@@ -61,8 +61,9 @@ mod tests {
     use crate::migrations::v5_to_v6::migrate_evm_chain_id::{
         NextEVMChainId, migrate_evm_chain_ids,
     };
+    use crate::mock::{AccountId, Test};
     use crate::pallet::DomainRegistry;
-    use crate::tests::{AccountId, Test, new_test_ext};
+    use crate::tests::new_test_ext;
     use domain_runtime_primitives::{Balance, DEFAULT_EVM_CHAIN_ID};
     use frame_support::weights::RuntimeDbWeight;
     use sp_domains::{DomainId, EvmDomainRuntimeConfig, OperatorAllowList};
