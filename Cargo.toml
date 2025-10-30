@@ -97,7 +97,7 @@ hex = { version = "0.4.3", default-features = false }
 hex-literal = "0.4.1"
 hwlocality = "1.0.0-alpha.6"
 jsonrpsee = "0.24.5"
-kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
+kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac", default-features = false }
 libc = "0.2.159"
 libp2p = { version = "0.54.2", git = "https://github.com/subspace/rust-libp2p", rev = "4ff21ede371f14ea0b90075f676ae21239ef8fbf", default-features = false }
 libp2p-swarm-test = { version = "0.5.0", git = "https://github.com/subspace/rust-libp2p", rev = "4ff21ede371f14ea0b90075f676ae21239ef8fbf" }
@@ -164,7 +164,7 @@ reqwest = { version = "0.12.9", default-features = false }
 ring = "0.17.8"
 rlp = "0.6"
 rs_merkle = { version = "1.4.2", default-features = false }
-rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
+rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac", default-features = false }
 sc-basic-authorship = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba" }
 sc-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba" }
 sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba" }
@@ -314,7 +314,6 @@ blake2 = { opt-level = 3 }
 blake3 = { opt-level = 3 }
 blake2b_simd = { opt-level = 3 }
 blst = { opt-level = 3 }
-rust-kzg-blst = { opt-level = 3 }
 chacha20 = { opt-level = 3 }
 chacha20poly1305 = { opt-level = 3 }
 cranelift-codegen = { opt-level = 3 }
@@ -361,6 +360,15 @@ uint = { opt-level = 3 }
 x25519-dalek = { opt-level = 3 }
 yamux = { opt-level = 3 }
 zeroize = { opt-level = 3 }
+
+# These crates are always compiled with small code size, to mitigate farmer stack overflows.
+# For details, see: https://github.com/autonomys/subspace/issues/3698
+rust-kzg-blst = { opt-level = "s" }
+rayon-core = { opt-level = "s" }
+
+[profile.release.package]
+rust-kzg-blst = { opt-level = "s" }
+rayon-core = { opt-level = "s" }
 
 [profile.release]
 # Substrate runtime requires unwinding.
