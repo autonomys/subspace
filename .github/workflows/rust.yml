@@ -197,6 +197,7 @@ jobs:
         env:
           # Why `PROGRA~1` instead of `Program Files`? Because Windows!
           HIPCC: C:\PROGRA~1\AMD\ROCm\6.1\bin\hipcc.bin.exe
+          HIP_PLATFORM: amd
         run: |
           cargo -Zgitoxide -Zgit clippy --locked --all-targets --features rocm -- -D warnings
         if: runner.os == 'Windows'
