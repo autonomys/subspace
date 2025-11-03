@@ -100,6 +100,8 @@ if [[ -d "$CRASH_DIR" ]]; then
     CRASH_COUNT=$(find "$CRASH_DIR" -type f | wc -l | tr -d ' ')
     if [[ "$CRASH_COUNT" -gt 0 ]]; then
         echo "⚠️  Found $CRASH_COUNT crashes from this fuzzing run."
+        echo "🧩 Replaying crashes to print stack traces..."
+        find "$CRASH_DIR" -type f -exec "$BINARY" {} \;
         exit 1
     else
         echo "✅ No crashes detected."
