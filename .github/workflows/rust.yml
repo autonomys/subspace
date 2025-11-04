@@ -376,6 +376,32 @@ jobs:
         run: |
           scripts/runtime-benchmark.sh
 
+  staking-fuzzer-test:
+    name: staking-fuzzer-test (Linux x86-64)
+    # Fuzzing is most efficient on Linux, it doesn't matter if it fails on other OSes.
+    # Our runs-on instances don't have the required packages
+    runs-on: ubuntu-22.04
+    # Don't use the full 6 hours if fuzzing hangs
+    timeout-minutes: 120
+    env:
+      AFL_SKIP_CPUFREQ: 1
+      AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Apt update
+        run: sudo apt-get update
+
+      - name: install dependencies
+        run: sudo apt install -y protobuf-compiler binutils-dev coreutils
+
+      - name: install ziggy
+        run: cargo install --force ziggy cargo-afl honggfuzz grcov
+
+      - name: test fuzzer
+        run: scripts/run-fuzzer.sh
+
   # This job checks all crates individually, including no_std and other featureless builds.
   # We need to check crates individually for missing features, because cargo does feature
   # unification, which hides missing features when crates are built together.
@@ -503,6 +529,7 @@ jobs:
       - check-runtime-benchmarks
       - cargo-check-individually
       - cargo-unused-deps
+      - staking-fuzzer-test
     steps:
       - name: Check job statuses
         # Another hack is to actually check the status of the dependencies or else it'll fall through
@@ -515,3 +542,4 @@ jobs:
           [[ "${{ needs.check-runtime-benchmarks.result }}" == "success" ]] || exit 1
           [[ "${{ needs.cargo-check-individually.result }}" == "success" ]] || exit 1
           [[ "${{ needs.cargo-unused-deps.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.staking-fuzzer-test.result }}" == "success" ]] || exit 1

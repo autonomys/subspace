@@ -20,7 +20,7 @@ fi
 # `--all-features --exclude-feature rocm`
 # <https://github.com/rust-lang/cargo/issues/11467>
 # <https://internals.rust-lang.org/t/pre-rfc-mutually-excusive-global-features/19618>
-BASE_FEATURES="async-trait,binary,cluster,default-library,domain-block-builder,domain-block-preprocessor,frame-benchmarking-cli,frame-system-benchmarking,hex-literal,kzg,numa,pallet-subspace,pallet-timestamp,pallet-utility,parallel,parking_lot,rand,runtime-benchmarks,sc-client-api,sc-executor,schnorrkel,serde,sp-blockchain,sp-core,sp-io,sp-state-machine,sp-std,sp-storage,static_assertions,std,subspace-proof-of-space-gpu,substrate-wasm-builder,testing,wasm-builder,with-tracing,x509-parser"
+BASE_FEATURES="async-trait,binary,cluster,default-library,domain-block-builder,domain-block-preprocessor,frame-benchmarking-cli,frame-system-benchmarking,hex-literal,kzg,numa,pallet-subspace,pallet-timestamp,pallet-utility,parallel,parking_lot,rand,runtime-benchmarks,sc-client-api,sc-executor,schnorrkel,serde,sp-blockchain,sp-core,sp-io,sp-state-machine,sp-std,sp-storage,static_assertions,std,subspace-proof-of-space-gpu,substrate-wasm-builder,testing,wasm-builder,with-tracing,x509-parser,fuzz"
 if [[ "$(uname)" == "Darwin" ]]; then
   echo "Skipping GPU features because we're on macOS"
   EXTRA_FEATURES=("")

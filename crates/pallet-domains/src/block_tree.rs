@@ -639,11 +639,11 @@ pub(crate) fn invalid_bundle_authors_for_receipt<T: Config>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mock::{BlockTreePruningDepth, Domains, Test};
     use crate::tests::{
-        BlockTreePruningDepth, Domains, Test, create_dummy_bundle_with_receipts,
-        create_dummy_receipt, extend_block_tree, extend_block_tree_from_zero,
-        get_block_tree_node_at, new_test_ext_with_extensions, register_genesis_domain,
-        run_to_block,
+        create_dummy_bundle_with_receipts, create_dummy_receipt, extend_block_tree,
+        extend_block_tree_from_zero, get_block_tree_node_at, new_test_ext_with_extensions,
+        register_genesis_domain, run_to_block,
     };
     use crate::{FrozenDomains, RawOrigin as DomainOrigin};
     use frame_support::dispatch::RawOrigin;

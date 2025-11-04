@@ -233,6 +233,7 @@ pub fn nominator_position<T: Config>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mock::{Balances, Test};
     use crate::staking::tests::{
         PROP_FREE_BALANCE_RANGE, PROP_NOMINATOR_STAKE_RANGE, PROP_OPERATOR_STAKE_RANGE,
         prop_assert_approx,
