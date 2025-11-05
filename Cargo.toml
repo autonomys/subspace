@@ -23,7 +23,6 @@ members = [
 ]
 
 [workspace.dependencies]
-ab-chacha8 = { version = "0.1.0", path = "shared/ab-chacha8" }
 actix-web = { version = "4.9.0", default-features = false }
 aes = "0.9.0-pre.2"
 anyhow = "1.0.89"
@@ -112,7 +111,6 @@ mmr-gadget = { git = "https://github.com/subspace/polkadot-sdk", rev = "e8311328
 mmr-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "e831132867930ca90a7088c7246301ab29f015ba" }
 multihash = "0.19.1"
 nohash-hasher = "0.2.0"
-no-panic = "0.1.35"
 num-traits = { version = "0.2.18", default-features = false }
 num_cpus = "1.16.0"
 num_enum = { version = "0.5.3", default-features = false }

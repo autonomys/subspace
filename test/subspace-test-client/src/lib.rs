@@ -150,7 +150,7 @@ async fn start_farming<PosTable, Client>(
         }
     });
 
-    let (sector, plotted_sector, table_generator) = plotting_result_receiver.await.unwrap();
+    let (sector, plotted_sector, mut table_generator) = plotting_result_receiver.await.unwrap();
     let public_key = PublicKey::from(keypair.public.to_bytes());
 
     let mut new_slot_notification_stream = new_slot_notification_stream.subscribe();
