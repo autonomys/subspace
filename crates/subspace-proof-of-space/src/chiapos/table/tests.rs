@@ -2,25 +2,15 @@
 //! https://github.com/Chia-Network/chiapos/blob/a2049c5367fe60930533a995f7ffded538f04dc4/tests/test.cpp
 
 use crate::chiapos::Seed;
-#[cfg(feature = "alloc")]
 use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT};
-#[cfg(feature = "alloc")]
-use crate::chiapos::table::types::Position;
-use crate::chiapos::table::types::{Metadata, X, Y};
+use crate::chiapos::table::types::{Metadata, Position, X, Y};
 use crate::chiapos::table::{
-    COMPUTE_F1_SIMD_FACTOR, compute_f1, compute_f1_simd, compute_fn, compute_fn_simd,
-    metadata_size_bytes,
+    COMPUTE_F1_SIMD_FACTOR, calculate_left_targets, compute_f1, compute_f1_simd, compute_fn,
+    find_matches, metadata_size_bytes, partial_y,
 };
-#[cfg(feature = "alloc")]
-use crate::chiapos::table::{calculate_left_targets, find_matches_in_buckets};
 use crate::chiapos::utils::EvaluatableUsize;
-#[cfg(feature = "alloc")]
-use alloc::collections::BTreeMap;
-#[cfg(feature = "alloc")]
-use alloc::vec::Vec;
-#[cfg(feature = "alloc")]
-use core::mem::MaybeUninit;
-use core::simd::prelude::*;
+use bitvec::prelude::*;
+use std::collections::BTreeMap;
 
 /// Chia does this for some reason 🤷
 fn to_chia_seed(seed: &Seed) -> Seed {
@@ -42,14 +32,15 @@ fn test_compute_f1_k25() {
 
     for (x, expected_y) in xs.into_iter().zip(expected_ys) {
         let x = X::from(x);
-        let y = compute_f1::<K>(x, &seed);
+        let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
+        let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
         assert_eq!(y, Y::from(expected_y));
 
         // Make sure SIMD matches non-SIMD version
         let mut partial_ys = [0; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize];
-        let starts_with_partial_y_bits = y.first_k_bits() << (u32::BITS - u32::from(K));
-        partial_ys[..size_of::<u32>()].copy_from_slice(&starts_with_partial_y_bits.to_be_bytes());
-        let y = compute_f1_simd::<K>(Simd::splat(x.into()), &partial_ys);
+        partial_ys.view_bits_mut::<Msb0>()[..usize::from(K)]
+            .copy_from_bitslice(&partial_y.view_bits()[partial_y_offset..][..usize::from(K)]);
+        let y = compute_f1_simd::<K>([x.into(); COMPUTE_F1_SIMD_FACTOR], &partial_ys);
         assert_eq!(y[0], Y::from(expected_y));
     }
 }
@@ -67,19 +58,19 @@ fn test_compute_f1_k22() {
 
     for (x, expected_y) in xs.into_iter().zip(expected_ys) {
         let x = X::from(x);
-        let y = compute_f1::<K>(x, &seed);
+        let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
+        let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
         assert_eq!(y, Y::from(expected_y));
 
         // Make sure SIMD matches non-SIMD version
         let mut partial_ys = [0; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize];
-        let starts_with_partial_y_bits = y.first_k_bits() << (u32::BITS - u32::from(K));
-        partial_ys[..size_of::<u32>()].copy_from_slice(&starts_with_partial_y_bits.to_be_bytes());
-        let y = compute_f1_simd::<K>(Simd::splat(x.into()), &partial_ys);
+        partial_ys.view_bits_mut::<Msb0>()[..usize::from(K)]
+            .copy_from_bitslice(&partial_y.view_bits()[partial_y_offset..][..usize::from(K)]);
+        let y = compute_f1_simd::<K>([x.into(); COMPUTE_F1_SIMD_FACTOR], &partial_ys);
         assert_eq!(y[0], Y::from(expected_y));
     }
 }
 
-#[cfg(feature = "alloc")]
 fn check_match(yl: usize, yr: usize) -> bool {
     let yl = yl as i64;
     let yr = yr as i64;
@@ -108,9 +99,7 @@ fn check_match(yl: usize, yr: usize) -> bool {
 
 // TODO: This test should be rewritten into something more readable, currently it is more or less
 //  direct translation from C++
-#[cfg(feature = "alloc")]
 #[test]
-#[cfg_attr(miri, ignore)]
 fn test_matches() {
     const K: u8 = 12;
     let seed = to_chia_seed(&[
@@ -122,7 +111,8 @@ fn test_matches() {
     let mut x = X::from(0);
     for _ in 0..=1 << (K - 4) {
         for _ in 0..16 {
-            let y = compute_f1::<K>(x, &seed);
+            let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
+            let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
             let bucket_index = usize::from(y) / usize::from(PARAM_BC);
 
             bucket_ys.entry(bucket_index).or_default().push(y);
@@ -140,53 +130,29 @@ fn test_matches() {
     }
 
     let left_targets = calculate_left_targets();
+    let mut rmap_scratch = Vec::new();
     let bucket_ys = bucket_ys.into_values().collect::<Vec<_>>();
     let mut total_matches = 0_usize;
-    for (left_bucket_index, [left_bucket_ys, right_bucket_ys]) in
-        bucket_ys.array_windows::<2>().enumerate()
-    {
-        let mut left_bucket = [(Position::SENTINEL, Y::SENTINEL); _];
-        assert!(left_bucket_ys.len() <= left_bucket.len());
-        for ((output, &y), index) in left_bucket
-            .iter_mut()
-            .zip(left_bucket_ys)
-            .zip(0..left_bucket_ys.len())
-        {
-            let position = Position::from(index as u32);
-            *output = (position, y);
-        }
-        let mut right_bucket = [(Position::SENTINEL, Y::SENTINEL); _];
-        assert!(right_bucket_ys.len() <= right_bucket.len());
-        for ((output, &y), index) in right_bucket
-            .iter_mut()
-            .zip(right_bucket_ys)
-            .zip((left_bucket_ys.len()..).take(right_bucket_ys.len()))
-        {
-            let position = Position::from(index as u32);
-            *output = (position, y);
-        }
-        let parent_table_ys = left_bucket_ys
-            .iter()
-            .copied()
-            .chain(right_bucket_ys.iter().copied())
-            .collect::<Vec<_>>();
+    for [mut left_bucket_ys, mut right_bucket_ys] in bucket_ys.array_windows::<2>().cloned() {
+        left_bucket_ys.sort_unstable();
+        left_bucket_ys.reverse();
+        right_bucket_ys.sort_unstable();
+        right_bucket_ys.reverse();
 
-        let mut matches = [MaybeUninit::uninit(); _];
-        // SAFETY: Positions correspond to `y`s
-        let matches = unsafe {
-            find_matches_in_buckets(
-                left_bucket_index as u32,
-                &left_bucket,
-                &right_bucket,
-                &mut matches,
-                &left_targets,
-            )
-        };
+        let mut matches = Vec::new();
+        find_matches(
+            &left_bucket_ys,
+            Position::ZERO,
+            &right_bucket_ys,
+            Position::ZERO,
+            &mut rmap_scratch,
+            &left_targets,
+            |m| m,
+            &mut matches,
+        );
         for m in matches {
-            // SAFETY: All `y`s are initialized
-            let yl = usize::from(parent_table_ys[usize::from(m.left_position)]);
-            // SAFETY: All `y`s are initialized
-            let yr = usize::from(parent_table_ys[usize::from(m.right_position)]);
+            let yl = usize::from(*left_bucket_ys.get(usize::from(m.left_position)).unwrap());
+            let yr = usize::from(*right_bucket_ys.get(usize::from(m.right_position)).unwrap());
 
             assert!(check_match(yl, yr));
             total_matches += 1;
@@ -221,16 +187,6 @@ fn verify_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>
     assert_eq!(y_output, Y::from(y_output_expected));
     if metadata_expected != 0 {
         assert_eq!(metadata, Metadata::from(metadata_expected));
-    }
-
-    let (y_outputs, metadatas) = compute_fn_simd::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-        [Y::from(y); _],
-        [Metadata::from(left_metadata); _],
-        [Metadata::from(right_metadata); _],
-    );
-    assert_eq!([y_output; _], y_outputs);
-    if metadata_expected != 0 {
-        assert_eq!([metadata; _], metadatas);
     }
 }
 

@@ -6,51 +6,52 @@ version = "0.1.0"
 authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
 edition.workspace = true
 include = [
+    "/benches",
     "/src",
     "/Cargo.toml",
 ]
-
-[package.metadata.docs.rs]
-all-features = true
 
 [lib]
 # Necessary for CLI options to work on benches
 bench = false
 
 [dependencies]
-ab-chacha8.workspace = true
 blake3 = { workspace = true, default-features = false }
-chacha20 = { workspace = true, optional = true }
+chacha20.workspace = true
 derive_more = { workspace = true, features = ["full"] }
+parking_lot = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
-seq-macro = { workspace = true, optional = true }
-sha2 = { workspace = true, optional = true }
+seq-macro.workspace = true
+sha2.workspace = true
+spin.workspace = true
 subspace-core-primitives.workspace = true
 
 [dev-dependencies]
-chacha20.workspace = true
+bitvec.workspace = true
 criterion.workspace = true
-hex.workspace = true
 rayon.workspace = true
-seq-macro.workspace = true
-sha2.workspace = true
 
 [[bench]]
 name = "pos"
 harness = false
 
 [features]
-default = []
-alloc = [
-    "dep:chacha20",
-    "dep:seq-macro",
-]
-# Enabling this feature exposes quality search on `chiapos` module as well as enables support for K=15..=25 (by default
-# only K=20 is exposed)
-full-chiapos = [
-    "dep:sha2",
+default = ["std"]
+std = [
+    # TODO: `std` will not be necessary once 1.8.3+ is released with https://github.com/BLAKE3-team/BLAKE3/pull/469
+    "blake3/std",
+    "chacha20/std",
+    "derive_more/std",
+    # In no-std environment we use `spin`
+    "parking_lot",
+    "sha2/std",
+    "subspace-core-primitives/std",
 ]
 parallel = [
-    "alloc",
     "dep:rayon",
 ]
+
+# The std and no_std features are mutually exclusive, so when checking for unused dependencies,
+# ignore the `spin` dependency, which is only used in no_std.
+[package.metadata.cargo-udeps.ignore]
+normal = ["spin"]

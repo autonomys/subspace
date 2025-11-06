@@ -1,5 +1,3 @@
-//! `chiapos` constants.
-
 /// PRNG extension parameter to avoid collisions
 pub(super) const PARAM_EXT: u8 = 6;
 pub(super) const PARAM_M: u16 = 1 << PARAM_EXT;

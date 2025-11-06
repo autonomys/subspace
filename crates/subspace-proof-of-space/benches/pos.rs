@@ -1,42 +1,11 @@
-//! Proof of space benchmarks
-
 #![feature(const_trait_impl)]
 
-#[cfg(feature = "alloc")]
-use criterion::Throughput;
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 #[cfg(feature = "parallel")]
 use rayon::ThreadPoolBuilder;
-#[cfg(feature = "alloc")]
-use std::hint::black_box;
-#[cfg(feature = "alloc")]
-use subspace_core_primitives::pieces::Record;
-#[cfg(feature = "alloc")]
 use subspace_core_primitives::pos::PosSeed;
-use subspace_proof_of_space::Table;
-#[cfg(feature = "alloc")]
-use subspace_proof_of_space::TableGenerator;
+use subspace_proof_of_space::{Table, TableGenerator};
 
-#[cfg(not(feature = "alloc"))]
-#[expect(
-    clippy::extra_unused_type_parameters,
-    reason = "Needs to match the normal version of the function"
-)]
-fn pos_bench<PosTable>(
-    _c: &mut Criterion,
-    _name: &'static str,
-    _challenge_index_without_solution: u32,
-    _challenge_index_with_solution: u32,
-) where
-    PosTable: Table,
-{
-    panic!(
-        "`alloc` feature needs to be enabled to run benchmarks (`parallel` for benchmarking \
-        parallel version)"
-    )
-}
-
-#[cfg(feature = "alloc")]
 fn pos_bench<PosTable>(
     c: &mut Criterion,
     name: &'static str,
@@ -61,132 +30,38 @@ fn pos_bench<PosTable>(
 
     let mut group = c.benchmark_group(name);
 
-    let generator = PosTable::generator();
-    group.throughput(Throughput::Elements(1));
-    group.bench_function("table/single/1x", |b| {
+    let mut generator_instance = PosTable::generator();
+    group.bench_function("table/single", |b| {
         b.iter(|| {
-            generator.generate(black_box(&seed));
+            generator_instance.generate(black_box(&seed));
         });
     });
 
     #[cfg(feature = "parallel")]
     {
-        {
-            group.throughput(Throughput::Elements(2));
-            group.bench_function("table/single/2x", |b| {
-                b.iter(|| {
-                    rayon::scope(|scope| {
-                        for _ in 0..2 {
-                            scope.spawn(|_scope| {
-                                generator.generate(black_box(&seed));
-                            });
-                        }
-                    });
-                });
-            });
-        }
-
-        {
-            group.throughput(Throughput::Elements(4));
-            group.bench_function("table/single/4x", |b| {
-                b.iter(|| {
-                    rayon::scope(|scope| {
-                        for _ in 0..4 {
-                            scope.spawn(|_scope| {
-                                generator.generate(black_box(&seed));
-                            });
-                        }
-                    });
-                });
-            });
-        }
-
-        {
-            group.throughput(Throughput::Elements(8));
-            group.bench_function("table/single/8x", |b| {
-                b.iter(|| {
-                    rayon::scope(|scope| {
-                        for _ in 0..8 {
-                            scope.spawn(|_scope| {
-                                generator.generate(black_box(&seed));
-                            });
-                        }
-                    });
-                });
-            });
-        }
-
-        {
-            group.throughput(Throughput::Elements(16));
-            group.bench_function("table/single/16x", |b| {
-                b.iter(|| {
-                    rayon::scope(|scope| {
-                        for _ in 0..16 {
-                            scope.spawn(|_scope| {
-                                generator.generate(black_box(&seed));
-                            });
-                        }
-                    });
-                });
-            });
-        }
-    }
-
-    #[cfg(feature = "parallel")]
-    {
-        group.throughput(Throughput::Elements(1));
+        let mut generator_instance = PosTable::generator();
         group.bench_function("table/parallel/1x", |b| {
             b.iter(|| {
-                generator.generate_parallel(black_box(&seed));
+                generator_instance.generate_parallel(black_box(&seed));
             });
         });
 
-        group.throughput(Throughput::Elements(2));
-        group.bench_function("table/parallel/2x", |b| {
-            b.iter(|| {
-                rayon::scope(|scope| {
-                    for _ in 0..2 {
-                        scope.spawn(|_scope| {
-                            generator.generate_parallel(black_box(&seed));
-                        });
-                    }
-                });
-            });
-        });
-
-        group.throughput(Throughput::Elements(4));
-        group.bench_function("table/parallel/4x", |b| {
-            b.iter(|| {
-                rayon::scope(|scope| {
-                    for _ in 0..4 {
-                        scope.spawn(|_scope| {
-                            generator.generate_parallel(black_box(&seed));
-                        });
-                    }
-                });
-            });
-        });
-
-        group.throughput(Throughput::Elements(8));
+        let mut generator_instances = [
+            PosTable::generator(),
+            PosTable::generator(),
+            PosTable::generator(),
+            PosTable::generator(),
+            PosTable::generator(),
+            PosTable::generator(),
+            PosTable::generator(),
+            PosTable::generator(),
+        ];
         group.bench_function("table/parallel/8x", |b| {
             b.iter(|| {
                 rayon::scope(|scope| {
-                    for _ in 0..8 {
+                    for g in &mut generator_instances {
                         scope.spawn(|_scope| {
-                            generator.generate_parallel(black_box(&seed));
-                        });
-                    }
-                });
-            });
-        });
-
-        group.throughput(Throughput::Elements(16));
-        group.bench_function("table/parallel/16x", |b| {
-            b.iter(|| {
-                rayon::scope(|scope| {
-                    for _ in 0..16 {
-                        scope.spawn(|_scope| {
-                            generator.generate_parallel(black_box(&seed));
+                            g.generate_parallel(black_box(&seed));
                         });
                     }
                 });
@@ -194,9 +69,8 @@ fn pos_bench<PosTable>(
         });
     }
 
-    let table = generator.generate(&seed);
+    let table = generator_instance.generate(&seed);
 
-    group.throughput(Throughput::Elements(1));
     group.bench_function("proof/missing", |b| {
         b.iter(|| {
             assert!(
@@ -207,7 +81,6 @@ fn pos_bench<PosTable>(
         });
     });
 
-    group.throughput(Throughput::Elements(1));
     group.bench_function("proof/present", |b| {
         b.iter(|| {
             assert!(
@@ -218,28 +91,11 @@ fn pos_bench<PosTable>(
         });
     });
 
-    group.throughput(Throughput::Elements(1));
-    group.bench_function("proof/for-record", |b| {
-        b.iter(|| {
-            let mut found_proofs = 0_usize;
-            for challenge_index in 0..Record::NUM_S_BUCKETS as u32 {
-                if table.find_proof(black_box(challenge_index)).is_some() {
-                    found_proofs += 1;
-
-                    if found_proofs == Record::NUM_CHUNKS {
-                        break;
-                    }
-                }
-            }
-        });
-    });
-
     let proof = table.find_proof(challenge_index_with_solution).unwrap();
 
-    group.throughput(Throughput::Elements(1));
     group.bench_function("verification", |b| {
         b.iter(|| {
-            assert!(<PosTable as Table>::is_proof_valid(
+            assert!(PosTable::is_proof_valid(
                 &seed,
                 challenge_index_with_solution,
                 &proof
@@ -265,9 +121,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     }
     {
         // This challenge index with above seed is known to not have a solution
-        let challenge_index_without_solution = 1;
+        let challenge_index_without_solution = 0;
         // This challenge index with above seed is known to have a solution
-        let challenge_index_with_solution = 0;
+        let challenge_index_with_solution = 2;
 
         pos_bench::<subspace_proof_of_space::shim::ShimTable>(
             c,
