@@ -4,16 +4,17 @@ use crate::mock::pallet_mock_version_store::MockPreviousBundleAndExecutionReceip
 use crate::mock::{
     Balance, Block, BlockNumber, BlockTreePruningDepth, DOMAIN_ID, Domains, Hash,
     MockBundleAndExecutionReceiptVersion, MockBundleVersion, MockExecutionReceiptVersion,
-    RuntimeCall, System, Test,
+    RuntimeCall, StakeEpochDuration, System, Test,
 };
+use crate::pallet::DomainStakingSummary;
 use crate::runtime_registry::ScheduledRuntimeUpgrade;
 use crate::staking_epoch::do_finalize_domain_current_epoch;
 use crate::{
     self as pallet_domains, BalanceOf, BlockTree, BlockTreeNodes, BundleError, Config,
     ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry,
     DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptOf,
-    FraudProofError, HeadDomainNumber, HeadReceiptNumber, NextDomainId, OperatorConfig,
-    RawOrigin as DomainOrigin, RuntimeRegistry, ScheduledRuntimeUpgrades,
+    FraudProofError, HeadDomainNumber, HeadReceiptNumber, NextDomainId, OperatorBundleCountInEpoch,
+    OperatorConfig, RawOrigin as DomainOrigin, RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{BlockNumber as DomainBlockNumber, DEFAULT_EVM_CHAIN_ID};
@@ -633,6 +634,42 @@ fn test_basic_fraud_proof_processing() {
             }
         });
     }
+}
+
+#[test]
+fn test_bundle_count_increments() {
+    let creator = 0u128;
+    let operator = 0u64;
+    let epoch_duration = StakeEpochDuration::get();
+    let mut ext = new_test_ext_with_extensions();
+    ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, 1);
+        // extend block until epoch duration
+        // Bundle count for operator must be equal to number of block extended
+        let receipt = extend_block_tree_from_zero(domain_id, operator, epoch_duration);
+        let epoch_index = DomainStakingSummary::<Test>::get(domain_id)
+            .unwrap()
+            .current_epoch_index;
+
+        assert_eq!(
+            OperatorBundleCountInEpoch::<Test>::get(operator),
+            // -1 here since first receipt is genesis and is created at the time of domain
+            // instantiation
+            epoch_duration as u64 - 1
+        );
+
+        // extend blocks to trigger epoch transition and should
+        // reset operator bundle count.
+        // + 2 here since extend block will extend one block and initialize another block.
+        extend_block_tree(domain_id, operator, epoch_duration + 2, receipt);
+        assert_eq!(OperatorBundleCountInEpoch::<Test>::get(operator), 0);
+        assert_eq!(
+            DomainStakingSummary::<Test>::get(domain_id)
+                .unwrap()
+                .current_epoch_index,
+            epoch_index + 1
+        );
+    });
 }
 
 fn schedule_domain_runtime_upgrade<T: Config>(
