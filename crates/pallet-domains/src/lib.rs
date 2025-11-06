@@ -1217,7 +1217,9 @@ mod pallet {
             let receipt_block_number = *receipt.domain_block_number();
 
             // increment the operator bundle count in the epoch.
-            OperatorBundleCountInEpoch::<T>::mutate(operator_id, |c| c.saturating_add(1));
+            OperatorBundleCountInEpoch::<T>::mutate(operator_id, |c| {
+                *c = c.saturating_add(1);
+            });
 
             #[cfg(not(feature = "runtime-benchmarks"))]
             let mut actual_weight = T::WeightInfo::submit_bundle();
