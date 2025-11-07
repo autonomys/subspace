@@ -26,10 +26,6 @@ env:
   # For slow tests, this can be reduced using `#[property_test(config = "ProptestConfig { .. }")]`.
   PROPTEST_CASES: 10000
   PROPTEST_MAX_GLOBAL_REJECTS: 100000
-  # Disable spot instances in the GitHub merge queue. Otherwise, inherit the spot setting from the
-  # runner config. This environment variable helps us avoid nested strings inside complex actions
-  # expressions.
-  SPOT: ${{ contains(github.ref, 'gh-readonly-queue') && '/spot=false' || '' }}
   # Run faster benchmark checks in CI
   BENCHMARK_TYPE: check
   VERBOSE: true
@@ -37,7 +33,6 @@ env:
 jobs:
   cargo-fmt:
     name: cargo-fmt (Linux x86-64)
-    # Format checks do not require significant resources, so we use a free runner.
     runs-on: ubuntu-22.04
 
     steps:
@@ -51,14 +46,7 @@ jobs:
     name: cargo-clippy (${{ strategy.job-index == 0 && 'Linux x86-64' || (strategy.job-index == 1 && 'Windows x86-64' || 'macOS arm64') }})
     strategy:
       matrix:
-        # Disable spot instances in the GitHub merge queue, and disable runs-on entirely for forks
-        os: ${{ fromJson(github.repository_owner == 'autonomys' &&
-          '[
-            "runs-on=${{ github.run_id }}-${{ github.run_attempt }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}",
-            ["self-hosted", "windows-server-2022-x86-64"],
-            ["self-hosted", "macos-14-arm64"]
-          ]' ||
-          '["ubuntu-22.04", "windows-2022", "macos-14"]') }}
+        os: ["ubuntu-22.04", "windows-2022", "macos-14"]
 
     runs-on: ${{ matrix.os }}
 
@@ -205,8 +193,7 @@ jobs:
   cargo-runtime-build:
     name: cargo-runtime-build (Linux x86-64)
     # If clippy and tests pass on all OSes, it is unlikely that a runtime build will pass on Linux, but fail on other OSes.
-    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
-      '"runs-on=${{ github.run_id }}-${{ github.run_attempt }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
@@ -255,13 +242,7 @@ jobs:
     name: cargo-test (${{ strategy.job-index == 0 && 'Linux x86-64' || (strategy.job-index == 1 && 'Windows x86-64' || 'macOS arm64') }})
     strategy:
       matrix:
-        os: ${{ fromJson(github.repository_owner == 'autonomys' &&
-          '[
-            "runs-on=${{ github.run_id }}-${{ github.run_attempt }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}",
-            ["self-hosted", "windows-server-2022-x86-64"],
-            ["self-hosted", "macos-14-arm64"]
-          ]' ||
-          '["ubuntu-22.04", "windows-2022", "macos-14"]') }}
+        os: ["ubuntu-22.04", "windows-2022", "macos-14"]
     runs-on: ${{ matrix.os }}
     # Don't use the full 6 hours if a test hangs
     timeout-minutes: 120
@@ -335,8 +316,7 @@ jobs:
   check-runtime-benchmarks:
     name: check-runtime-benchmarks (Linux x86-64)
     # We always run benchmarks on our Linux reference machine
-    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
-      '"runs-on=${{ github.run_id }}-${{ github.run_attempt }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
+    runs-on: ubuntu-22.04
 
     # Don't use the full 6 hours if a benchmark hangs
     timeout-minutes: 120
@@ -408,8 +388,7 @@ jobs:
   cargo-check-individually:
     name: cargo-check-individually (Linux x86-64)
     # If clippy and tests pass on all OSes, it is unlikely that a crate build will pass on Linux but fail on other OSes.
-    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
-      '"runs-on=${{ github.run_id }}-${{ github.run_attempt }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
@@ -451,8 +430,7 @@ jobs:
   cargo-unused-deps:
     name: cargo-unused-deps (Linux x86-64)
     # We need to use Linux to check GPU dependencies (or Windows, but it's slow)
-    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
-      '"runs-on=${{ github.run_id }}-${{ github.run_attempt }}/runner=self-hosted-ubuntu-22.04-x86-64/extras=s3-cache${{ env.SPOT }}"' || '"ubuntu-22.04"') }}
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
