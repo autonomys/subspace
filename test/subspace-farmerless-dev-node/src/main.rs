@@ -1,5 +1,11 @@
+mod manual_rpc;
+
 use clap::Parser;
 use domain_test_service::{DomainNodeBuilder, EcdsaKeyring};
+use manual_rpc::{
+    ConsensusControl, consensus_control_channel, manual_block_production_rpc,
+    spawn_consensus_worker,
+};
 use sc_cli::LoggerBuilder;
 use sc_service::{BasePath, Role};
 use sp_keyring::Sr25519Keyring;
@@ -9,6 +15,7 @@ use std::time::Duration;
 use subspace_test_service::{MockConsensusNode, MockConsensusNodeRpcConfig};
 use tempfile::TempDir;
 use tokio::runtime::Builder as TokioBuilder;
+use tracing::error;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -78,6 +85,7 @@ fn start_consensus_node(
     finalize_depth: Option<u32>,
     rpc_host: IpAddr,
     rpc_port: u16,
+    consensus_control: ConsensusControl,
 ) -> MockConsensusNode {
     let private_evm = false;
     let consensus_key = Sr25519Keyring::Alice;
@@ -90,7 +98,13 @@ fn start_consensus_node(
         rpc_addr: Some(rpc_addr),
         rpc_port: Some(rpc_port),
     };
-    let mut node = MockConsensusNode::run_with_rpc_options(tokio_handle, consensus_key, rpc_config);
+
+    let mut node = MockConsensusNode::run_with_rpc_builder(
+        tokio_handle,
+        consensus_key,
+        rpc_config,
+        Box::new(move || Ok(manual_block_production_rpc(consensus_control.clone()))),
+    );
     node.start_network();
     node
 }
@@ -106,6 +120,8 @@ fn main() {
     let _enter = runtime.enter();
     let tokio_handle = runtime.handle().clone();
 
+    let (consensus_control, command_rx) = consensus_control_channel();
+
     // Start consensus
     let consensus_base = base_path.join("consensus");
     let mut consensus = start_consensus_node(
@@ -114,6 +130,7 @@ fn main() {
         cli.finalize_depth,
         cli.rpc_host,
         cli.rpc_port,
+        consensus_control.clone(),
     );
 
     // Optionally start domain (EVM)
@@ -130,28 +147,35 @@ fn main() {
     } else {
         None
     };
+
     consensus.start_cross_domain_gossip_message_worker();
 
-    if block_interval_ms > 0 {
-        // Keep domain node alive - move it into the async block but don't move consensus
+    let worker_handle = spawn_consensus_worker(consensus, command_rx);
+
+    let consensus_for_loop = consensus_control.clone();
+    runtime.block_on(async move {
         let _domain_guard = domain;
-        runtime.block_on(async {
+        if block_interval_ms > 0 {
             loop {
                 tokio::select! {
                     _ = tokio::signal::ctrl_c() => break,
                     _ = tokio::time::sleep(Duration::from_millis(block_interval_ms)) => {
-                            let slot = consensus.produce_slot();
-                            let _ = consensus.notify_new_slot_and_wait_for_bundle(slot).await;
-                            let _ = consensus.produce_block_with_slot(slot).await;
-
+                        if let Err(err) = consensus_for_loop.produce_block(true).await {
+                            error!(%err, "Failed to auto-produce block");
+                        }
                     }
                 }
             }
-        });
-        return;
+        } else {
+            let _ = tokio::signal::ctrl_c().await;
+        }
+    });
+
+    if let Err(err) = runtime.block_on(consensus_control.shutdown()) {
+        error!(%err, "Failed to shut down consensus control");
     }
 
-    runtime.block_on(async {
-        let _ = tokio::signal::ctrl_c().await;
-    });
+    worker_handle
+        .join()
+        .expect("Failed to join consensus control thread");
 }

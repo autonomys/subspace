@@ -35,4 +35,49 @@ cargo run -p subspace-farmerless-dev-node -- --help
 - **Quick smoke test:** `cargo run -p subspace-farmerless-dev-node` (produces consensus blocks every 6s using temp storage).
 - **Run with domain node:** `cargo run -p subspace-farmerless-dev-node -- --domain`.
 - **Fast integration testing:** `cargo run -p subspace-farmerless-dev-node -- --block-interval-ms 500 --domain`.
-- **Manual block production:** `cargo run -p subspace-farmerless-dev-node -- --block-interval-ms 0` and trigger blocks via RPC helpers.
+- **Manual block production:** `cargo run -p subspace-farmerless-dev-node -- --block-interval-ms 0 --domain` and trigger blocks via RPC helpers.
+
+## Manual Block Production RPCs
+
+When `--block-interval-ms 0` is set, the node exposes JSON-RPC endpoints for manual block production:
+
+### `dev_produceBlock`
+
+Produce a single consensus block.
+
+**Parameters:**
+
+- `wait_for_bundle` (optional, boolean): If `true`, wait for domain bundle submission before producing the block. Defaults to `false`.
+
+**Example:**
+
+```bash
+curl -H "Content-Type: application/json" \
+     --data '{"jsonrpc":"2.0","id":1,"method":"dev_produceBlock","params":[true]}' \
+     http://127.0.0.1:9944
+```
+
+### `dev_produceBlocks`
+
+Produce multiple consensus blocks.
+
+**Parameters:**
+
+- `count` (required, number): Number of blocks to produce.
+- `wait_for_bundle` (optional, boolean): If `true`, wait for domain bundle submission before each block. Defaults to `false`.
+
+**Example:**
+
+```bash
+# Produce 5 blocks without waiting for bundles
+curl -H "Content-Type: application/json" \
+     --data '{"jsonrpc":"2.0","id":1,"method":"dev_produceBlocks","params":[5]}' \
+     http://127.0.0.1:9944
+
+# Produce 5 blocks, waiting for bundles
+curl -H "Content-Type: application/json" \
+     --data '{"jsonrpc":"2.0","id":1,"method":"dev_produceBlocks","params":[5,true]}' \
+     http://127.0.0.1:9944
+```
+
+**Note:** When `wait_for_bundle` is `true`, the domain node must be running (`--domain` flag) or the RPC call will timeout waiting for bundle submission.
