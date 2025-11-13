@@ -160,7 +160,7 @@ fn main() {
                 tokio::select! {
                     _ = tokio::signal::ctrl_c() => break,
                     _ = tokio::time::sleep(Duration::from_millis(block_interval_ms)) => {
-                        if let Err(err) = consensus_for_loop.produce_block(true).await {
+                        if let Err(err) = consensus_for_loop.produce_block(cli.domain).await {
                             error!(%err, "Failed to auto-produce block");
                         }
                     }
