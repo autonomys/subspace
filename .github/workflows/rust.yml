@@ -108,7 +108,7 @@ jobs:
           cuda: '12.4.1'
           method: network
           sub-packages: '["nvcc", "cudart"]'
-        if: runner.os == 'Linux' || runner.os == 'Windows'
+        if: runner.os == 'Linux'|| runner.os == 'Windows'
 
       - name: Configure ROCm cache (Windows)
         uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
@@ -116,7 +116,7 @@ jobs:
         with:
           path: C:\Program Files\AMD\ROCm
           key: ${{ runner.os }}-rocm
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && false
 
       - name: ROCm toolchain
         run: |
@@ -163,7 +163,7 @@ jobs:
           # TODO: we might be able to share clippy and check-individually caches
           key: ${{ runner.os }}-${{ github.job }}-target-${{ hashFiles('./Cargo.toml') }}-${{ hashFiles('./rust-toolchain.toml') }}
         # Windows caching is very slow, and we already have sccache on Linux
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && false
 
       # Checks benchmark code style and syntax (but clippy does not do code generation checks)
       - name: cargo clippy
