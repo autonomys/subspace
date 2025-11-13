@@ -20,6 +20,7 @@ members = [
     "test/subspace-test-fuzzer",
     "test/subspace-test-runtime",
     "test/subspace-test-service",
+    "test/subspace-farmerless-dev-node",
 ]
 
 [workspace.dependencies]

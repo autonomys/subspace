@@ -13623,6 +13623,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-farmerless-dev-node"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "domain-test-service",
+ "sc-cli",
+ "sc-service",
+ "sp-keyring",
+ "subspace-test-service",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "subspace-gateway"
 version = "0.1.4"
 dependencies = [
