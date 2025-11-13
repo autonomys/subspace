@@ -113,7 +113,7 @@ pub fn node_config(
             RpcConfiguration {
                 addr: Some(vec![RpcEndpoint {
                     batch_config: RpcBatchRequestConfig::Disabled,
-                    max_connections: 10,
+                    max_connections: 100,
                     listen_addr,
                     rpc_methods: Default::default(),
                     rate_limit: None,
@@ -121,8 +121,8 @@ pub fn node_config(
                     rate_limit_whitelisted_ips: vec![],
                     max_payload_in_mb: 15,
                     max_payload_out_mb: 15,
-                    max_subscriptions_per_connection: 10,
-                    max_buffer_capacity_per_connection: 10,
+                    max_subscriptions_per_connection: 100,
+                    max_buffer_capacity_per_connection: 100,
                     cors: None,
                     retry_random_port: true,
                     is_optional: false,
