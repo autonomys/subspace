@@ -24,4 +24,5 @@ jobs:
           # TODO: Remove second once Substrate upgrades litep2p and sc-network and we no longer have ring 0.16 in our dependencies
           # TODO: Remove third once Substrate upgrades wasmtime and we no longer have wasmtime <= 9 in our dependencies
           # TODO: Remove fourth once Substrate upgrades wasmtime and we no longer have wasmtime <= 23 in our dependencies
-          ignore: RUSTSEC-2024-0336, RUSTSEC-2025-0009, RUSTSEC-2023-0091, RUSTSEC-2024-0438
+          # TODO: Remove fifth once Substrate upgrades wasmtime and we no longer have wasmtime < 24.0.5 in our dependencies (RUSTSEC-2025-0118)
+          ignore: RUSTSEC-2024-0336, RUSTSEC-2025-0009, RUSTSEC-2023-0091, RUSTSEC-2024-0438, RUSTSEC-2025-0118
