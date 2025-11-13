@@ -14,8 +14,7 @@ on:
 
 jobs:
   runtime:
-    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' &&
-      '"runs-on=${{ github.run_id }}-${{ github.run_attempt }}/runner=self-hosted-ubuntu-22.04-x86-64/spot=false"' || '"ubuntu-22.04"') }}
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
       packages: write
