@@ -137,21 +137,18 @@ async fn produce_single_block(
     consensus: &mut MockConsensusNode,
     wait_for_bundle: bool,
 ) -> Result<(), String> {
+    let slot = consensus.produce_slot();
+
     if wait_for_bundle {
-        let (slot, _) = consensus
-            .produce_slot_and_wait_for_bundle_submission()
-            .await;
-        consensus
-            .produce_block_with_slot(slot)
-            .await
-            .map_err(|err| err.to_string())
-    } else {
-        let slot = consensus.produce_slot();
-        consensus
-            .produce_block_with_slot(slot)
-            .await
-            .map_err(|err| err.to_string())
+        // Notify domain operator about the new slot and try to get a bundle
+        // If no bundle is available, we'll produce the block anyway
+        let _ = consensus.notify_new_slot_and_wait_for_bundle(slot).await;
     }
+
+    consensus
+        .produce_block_with_slot(slot)
+        .await
+        .map_err(|err| err.to_string())
 }
 
 async fn produce_multiple_blocks(
