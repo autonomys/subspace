@@ -1,0 +1,12 @@
+# Exclude everything
+*
+# Then just include only the files required for builds
+!/crates
+!/domains
+!/shared
+!/test
+!/Cargo.lock
+!/Cargo.toml
+!/rust-toolchain.toml
+
+

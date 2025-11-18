@@ -39,6 +39,9 @@ jobs:
           - image: bootstrap-node
             base-artifact: subspace-bootstrap-node
             upload-executables: false
+          - image: farmerless-dev-node
+            base-artifact: subspace-farmerless-dev-node
+            upload-executables: false
       fail-fast: false
 
     steps:
