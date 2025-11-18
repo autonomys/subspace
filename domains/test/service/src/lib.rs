@@ -31,7 +31,7 @@ use sc_network::multiaddr;
 use sc_service::config::{
     DatabaseSource, ExecutorConfiguration, KeystoreConfig, MultiaddrWithPeerId,
     NetworkConfiguration, OffchainWorkerConfig, PruningMode, RpcBatchRequestConfig,
-    RpcConfiguration, WasmExecutionMethod, WasmtimeInstantiationStrategy,
+    RpcConfiguration, RpcEndpoint, WasmExecutionMethod, WasmtimeInstantiationStrategy,
 };
 use sc_service::{
     BasePath, BlocksPruning, ChainSpec, Configuration as ServiceConfiguration,
@@ -48,6 +48,7 @@ use sp_runtime::generic;
 use sp_runtime::generic::SignedPayload;
 use sp_runtime::traits::{AsSystemOriginSigner, Dispatchable};
 use std::fmt::{Debug, Display};
+use std::net::SocketAddr;
 use std::str::FromStr;
 
 /// The domain id of the evm domain
@@ -72,6 +73,8 @@ pub fn node_config(
     role: Role,
     base_path: BasePath,
     chain_spec: Box<dyn ChainSpec>,
+    rpc_addr: Option<SocketAddr>,
+    rpc_port: Option<u16>,
 ) -> Result<ServiceConfiguration, ServiceError> {
     let root = base_path.path().to_path_buf();
 
@@ -104,6 +107,59 @@ pub fn node_config(
 
     network_config.transport = TransportConfig::MemoryOnly;
 
+    let rpc_configuration = match rpc_addr {
+        Some(listen_addr) => {
+            let port = rpc_port.unwrap_or(9945);
+            RpcConfiguration {
+                addr: Some(vec![RpcEndpoint {
+                    batch_config: RpcBatchRequestConfig::Disabled,
+                    max_connections: 100,
+                    listen_addr,
+                    rpc_methods: Default::default(),
+                    rate_limit: None,
+                    rate_limit_trust_proxy_headers: false,
+                    rate_limit_whitelisted_ips: vec![],
+                    max_payload_in_mb: 15,
+                    max_payload_out_mb: 15,
+                    max_subscriptions_per_connection: 100,
+                    max_buffer_capacity_per_connection: 100,
+                    cors: None,
+                    retry_random_port: true,
+                    is_optional: false,
+                }]),
+                max_request_size: 15,
+                max_response_size: 15,
+                id_provider: None,
+                max_subs_per_conn: 1024,
+                port,
+                message_buffer_capacity: 1024,
+                batch_config: RpcBatchRequestConfig::Disabled,
+                max_connections: 1000,
+                cors: None,
+                methods: Default::default(),
+                rate_limit: None,
+                rate_limit_whitelisted_ips: vec![],
+                rate_limit_trust_proxy_headers: false,
+            }
+        }
+        None => RpcConfiguration {
+            addr: None,
+            max_request_size: 0,
+            max_response_size: 0,
+            id_provider: None,
+            max_subs_per_conn: 0,
+            port: 0,
+            message_buffer_capacity: 0,
+            batch_config: RpcBatchRequestConfig::Disabled,
+            max_connections: 0,
+            cors: None,
+            methods: Default::default(),
+            rate_limit: None,
+            rate_limit_whitelisted_ips: vec![],
+            rate_limit_trust_proxy_headers: false,
+        },
+    };
+
     Ok(ServiceConfiguration {
         impl_name: "domain-test-node".to_string(),
         impl_version: "0.1".to_string(),
@@ -127,22 +183,7 @@ pub fn node_config(
             default_heap_pages: None,
             runtime_cache_size: 2,
         },
-        rpc: RpcConfiguration {
-            addr: None,
-            max_request_size: 0,
-            max_response_size: 0,
-            id_provider: None,
-            max_subs_per_conn: 0,
-            port: 0,
-            message_buffer_capacity: 0,
-            batch_config: RpcBatchRequestConfig::Disabled,
-            max_connections: 0,
-            cors: None,
-            methods: Default::default(),
-            rate_limit: None,
-            rate_limit_whitelisted_ips: vec![],
-            rate_limit_trust_proxy_headers: false,
-        },
+        rpc: rpc_configuration,
         prometheus_config: None,
         telemetry_endpoints: None,
         offchain_worker: OffchainWorkerConfig {

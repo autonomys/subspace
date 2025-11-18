@@ -42,8 +42,8 @@ use sc_network::{
 };
 use sc_service::config::{
     DatabaseSource, ExecutorConfiguration, KeystoreConfig, MultiaddrWithPeerId,
-    OffchainWorkerConfig, RpcBatchRequestConfig, RpcConfiguration, WasmExecutionMethod,
-    WasmtimeInstantiationStrategy,
+    OffchainWorkerConfig, RpcBatchRequestConfig, RpcConfiguration, RpcEndpoint,
+    WasmExecutionMethod, WasmtimeInstantiationStrategy,
 };
 use sc_service::{
     BasePath, BlocksPruning, Configuration, NetworkStarter, Role, SpawnTasksParams, TaskManager,
@@ -84,6 +84,7 @@ use sp_timestamp::Timestamp;
 use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time;
@@ -127,6 +128,8 @@ pub fn node_config(
     private_evm: bool,
     evm_owner_account: Option<AccountId>,
     base_path: BasePath,
+    rpc_addr: Option<SocketAddr>,
+    rpc_port: Option<u16>,
 ) -> Configuration {
     let root = base_path.path();
     let role = if run_farmer {
@@ -157,6 +160,59 @@ pub fn node_config(
 
     network_config.force_synced = force_synced;
 
+    let rpc_configuration = match rpc_addr {
+        Some(listen_addr) => {
+            let port = rpc_port.unwrap_or(9944);
+            RpcConfiguration {
+                addr: Some(vec![RpcEndpoint {
+                    batch_config: RpcBatchRequestConfig::Disabled,
+                    max_connections: 100,
+                    listen_addr,
+                    rpc_methods: Default::default(),
+                    rate_limit: None,
+                    rate_limit_trust_proxy_headers: false,
+                    rate_limit_whitelisted_ips: vec![],
+                    max_payload_in_mb: 15,
+                    max_payload_out_mb: 15,
+                    max_subscriptions_per_connection: 100,
+                    max_buffer_capacity_per_connection: 100,
+                    cors: None,
+                    retry_random_port: true,
+                    is_optional: false,
+                }]),
+                max_request_size: 15,
+                max_response_size: 15,
+                id_provider: None,
+                max_subs_per_conn: 1024,
+                port,
+                message_buffer_capacity: 1024,
+                batch_config: RpcBatchRequestConfig::Disabled,
+                max_connections: 1000,
+                cors: None,
+                methods: Default::default(),
+                rate_limit: None,
+                rate_limit_whitelisted_ips: vec![],
+                rate_limit_trust_proxy_headers: false,
+            }
+        }
+        None => RpcConfiguration {
+            addr: None,
+            max_request_size: 0,
+            max_response_size: 0,
+            id_provider: None,
+            max_subs_per_conn: 0,
+            port: 0,
+            message_buffer_capacity: 0,
+            batch_config: RpcBatchRequestConfig::Disabled,
+            max_connections: 0,
+            cors: None,
+            methods: Default::default(),
+            rate_limit: None,
+            rate_limit_whitelisted_ips: vec![],
+            rate_limit_trust_proxy_headers: false,
+        },
+    };
+
     Configuration {
         impl_name: "subspace-test-node".to_string(),
         impl_version: "0.1".to_string(),
@@ -181,22 +237,7 @@ pub fn node_config(
             runtime_cache_size: 2,
         },
         wasm_runtime_overrides: Default::default(),
-        rpc: RpcConfiguration {
-            addr: None,
-            max_request_size: 0,
-            max_response_size: 0,
-            id_provider: None,
-            max_subs_per_conn: 0,
-            port: 0,
-            message_buffer_capacity: 0,
-            batch_config: RpcBatchRequestConfig::Disabled,
-            max_connections: 0,
-            cors: None,
-            methods: Default::default(),
-            rate_limit: None,
-            rate_limit_whitelisted_ips: vec![],
-            rate_limit_trust_proxy_headers: false,
-        },
+        rpc: rpc_configuration,
         prometheus_config: None,
         telemetry_endpoints: None,
         offchain_worker: OffchainWorkerConfig {
@@ -393,52 +434,34 @@ pub struct MockConsensusNode {
     base_path: BasePath,
 }
 
+/// Configuration values required to run a mock consensus node with custom RPC options.
+pub struct MockConsensusNodeRpcConfig {
+    /// The node's base path.
+    pub base_path: BasePath,
+    /// Optional block finalization depth override.
+    pub finalize_block_depth: Option<NumberFor<Block>>,
+    /// Whether to enable the private EVM domain.
+    pub private_evm: bool,
+    /// Optional EVM owner key.
+    pub evm_owner: Option<Sr25519Keyring>,
+    /// Optional RPC listen address override.
+    pub rpc_addr: Option<SocketAddr>,
+    /// Optional RPC listen port override.
+    pub rpc_port: Option<u16>,
+}
+
 impl MockConsensusNode {
-    /// Run a mock consensus node
-    pub fn run(
-        tokio_handle: tokio::runtime::Handle,
-        key: Sr25519Keyring,
-        base_path: BasePath,
-    ) -> MockConsensusNode {
-        Self::run_with_finalization_depth(tokio_handle, key, base_path, None, false, None)
-    }
-
-    /// Run a mock consensus node with a private EVM domain
-    pub fn run_with_private_evm(
-        tokio_handle: tokio::runtime::Handle,
-        key: Sr25519Keyring,
-        evm_owner: Option<Sr25519Keyring>,
-        base_path: BasePath,
-    ) -> MockConsensusNode {
-        Self::run_with_finalization_depth(tokio_handle, key, base_path, None, true, evm_owner)
-    }
-
-    /// Run a mock consensus node with finalization depth
-    pub fn run_with_finalization_depth(
-        tokio_handle: tokio::runtime::Handle,
+    fn run_with_configuration(
+        mut config: Configuration,
         key: Sr25519Keyring,
         base_path: BasePath,
         finalize_block_depth: Option<NumberFor<Block>>,
-        private_evm: bool,
-        evm_owner: Option<Sr25519Keyring>,
+        rpc_builder: Box<
+            dyn Fn() -> Result<RpcModule<()>, sc_service::Error> + Send + Sync + 'static,
+        >,
     ) -> MockConsensusNode {
         let log_prefix = key.into();
 
-        let mut config = node_config(
-            tokio_handle,
-            key,
-            vec![],
-            false,
-            false,
-            false,
-            private_evm,
-            evm_owner.map(|key| key.to_account_id()),
-            base_path.clone(),
-        );
-
-        // Set `transaction_pool.ban_time` to 0 such that duplicated tx will not immediately rejected
-        // by `TemporarilyBanned`
-        // rest of the options are taken from default
         let tx_pool_options = Options {
             ban_time: Duration::from_millis(0),
             ..Default::default()
@@ -523,7 +546,7 @@ impl MockConsensusNode {
             keystore: keystore_container.keystore(),
             task_manager: &mut task_manager,
             transaction_pool: transaction_pool.clone(),
-            rpc_builder: Box::new(|_| Ok(RpcModule::new(()))),
+            rpc_builder: Box::new(move |_| rpc_builder()),
             backend: backend.clone(),
             system_rpc_tx,
             config,
@@ -556,7 +579,6 @@ impl MockConsensusNode {
         let (consensus_msg_sink, consensus_msg_receiver) =
             tracing_unbounded("consensus_message_channel", 100);
 
-        // Start cross domain message listener for Consensus chain to receive messages from domains in the network
         let consensus_listener =
             cross_domain_message_gossip::start_cross_chain_message_listener::<_, _, _, _, _, _, _>(
                 ChainId::Consensus,
@@ -613,6 +635,100 @@ impl MockConsensusNode {
             finalize_block_depth,
             base_path,
         }
+    }
+
+    /// Run a mock consensus node
+    pub fn run(
+        tokio_handle: tokio::runtime::Handle,
+        key: Sr25519Keyring,
+        base_path: BasePath,
+    ) -> MockConsensusNode {
+        Self::run_with_finalization_depth(tokio_handle, key, base_path, None, false, None)
+    }
+
+    /// Run a mock consensus node with a private EVM domain
+    pub fn run_with_private_evm(
+        tokio_handle: tokio::runtime::Handle,
+        key: Sr25519Keyring,
+        evm_owner: Option<Sr25519Keyring>,
+        base_path: BasePath,
+    ) -> MockConsensusNode {
+        Self::run_with_finalization_depth(tokio_handle, key, base_path, None, true, evm_owner)
+    }
+
+    /// Run a mock consensus node with finalization depth
+    pub fn run_with_finalization_depth(
+        tokio_handle: tokio::runtime::Handle,
+        key: Sr25519Keyring,
+        base_path: BasePath,
+        finalize_block_depth: Option<NumberFor<Block>>,
+        private_evm: bool,
+        evm_owner: Option<Sr25519Keyring>,
+    ) -> MockConsensusNode {
+        let rpc_config = MockConsensusNodeRpcConfig {
+            base_path,
+            finalize_block_depth,
+            private_evm,
+            evm_owner,
+            rpc_addr: None,
+            rpc_port: None,
+        };
+
+        Self::run_with_rpc_builder(
+            tokio_handle,
+            key,
+            rpc_config,
+            Box::new(|| Ok(RpcModule::new(()))),
+        )
+    }
+
+    /// Run a mock consensus node with a custom RPC builder and RPC address/port options.
+    pub fn run_with_rpc_builder(
+        tokio_handle: tokio::runtime::Handle,
+        key: Sr25519Keyring,
+        rpc_config: MockConsensusNodeRpcConfig,
+        rpc_builder: Box<
+            dyn Fn() -> Result<RpcModule<()>, sc_service::Error> + Send + Sync + 'static,
+        >,
+    ) -> MockConsensusNode {
+        let MockConsensusNodeRpcConfig {
+            base_path,
+            finalize_block_depth,
+            private_evm,
+            evm_owner,
+            rpc_addr,
+            rpc_port,
+        } = rpc_config;
+
+        let config = node_config(
+            tokio_handle,
+            key,
+            vec![],
+            false,
+            false,
+            false,
+            private_evm,
+            evm_owner.map(|key| key.to_account_id()),
+            base_path.clone(),
+            rpc_addr,
+            rpc_port,
+        );
+
+        Self::run_with_configuration(config, key, base_path, finalize_block_depth, rpc_builder)
+    }
+
+    /// Run a mock consensus node with RPC options using the default empty RPC module.
+    pub fn run_with_rpc_options(
+        tokio_handle: tokio::runtime::Handle,
+        key: Sr25519Keyring,
+        rpc_config: MockConsensusNodeRpcConfig,
+    ) -> MockConsensusNode {
+        Self::run_with_rpc_builder(
+            tokio_handle,
+            key,
+            rpc_config,
+            Box::new(|| Ok(RpcModule::new(()))),
+        )
     }
 
     /// Start the mock consensus node network

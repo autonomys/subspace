@@ -1,0 +1,25 @@
+[package]
+name = "subspace-farmerless-dev-node"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "subspace-farmerless-dev-node"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true, features = ["derive"] }
+sc-cli = { workspace = true, default-features = false }
+sc-service = { workspace = true, default-features = false }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tempfile = { workspace = true }
+tracing = { workspace = true }
+sp-keyring = { workspace = true }
+jsonrpsee = { workspace = true, features = ["macros", "server-core"] }
+async-trait = { workspace = true }
+
+subspace-test-service = { workspace = true }
+domain-test-service = { workspace = true }
+

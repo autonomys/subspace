@@ -41,6 +41,7 @@ use sp_runtime::traits::{AsSystemOriginSigner, Dispatchable, NumberFor};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::future::Future;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_runtime_primitives::opaque::Block as CBlock;
@@ -146,6 +147,8 @@ where
         maybe_operator_id: Option<OperatorId>,
         role: Role,
         mock_consensus_node: &mut MockConsensusNode,
+        rpc_addr: Option<SocketAddr>,
+        rpc_port: Option<u16>,
     ) -> Self {
         let mut domain_config = node_config(
             domain_id,
@@ -156,6 +159,8 @@ where
             role,
             base_path.clone(),
             Box::new(create_domain_spec()) as Box<_>,
+            rpc_addr,
+            rpc_port,
         )
         .expect("could not generate domain node Configuration");
 
@@ -573,6 +578,8 @@ pub struct DomainNodeBuilder {
     skip_empty_bundle_production: bool,
     base_path: BasePath,
     maybe_operator_id: Option<OperatorId>,
+    rpc_addr: Option<SocketAddr>,
+    rpc_port: Option<u16>,
 }
 
 impl DomainNodeBuilder {
@@ -588,6 +595,8 @@ impl DomainNodeBuilder {
             skip_empty_bundle_production: false,
             base_path,
             maybe_operator_id: None,
+            rpc_addr: None,
+            rpc_port: None,
         }
     }
 
@@ -620,6 +629,18 @@ impl DomainNodeBuilder {
         self
     }
 
+    /// Set RPC address for the domain node
+    pub fn rpc_addr(mut self, addr: SocketAddr) -> Self {
+        self.rpc_addr = Some(addr);
+        self
+    }
+
+    /// Set RPC port for the domain node
+    pub fn rpc_port(mut self, port: u16) -> Self {
+        self.rpc_port = Some(port);
+        self
+    }
+
     /// Build an EVM domain node
     pub async fn build_evm_node(
         self,
@@ -642,6 +663,8 @@ impl DomainNodeBuilder {
             self.maybe_operator_id,
             role,
             mock_consensus_node,
+            self.rpc_addr,
+            self.rpc_port,
         )
         .await
     }
@@ -668,6 +691,8 @@ impl DomainNodeBuilder {
             self.maybe_operator_id,
             role,
             mock_consensus_node,
+            self.rpc_addr,
+            self.rpc_port,
         )
         .await
     }
@@ -691,6 +716,8 @@ impl DomainNodeBuilder {
             self.maybe_operator_id,
             role,
             mock_consensus_node,
+            self.rpc_addr,
+            self.rpc_port,
         )
         .await
     }
