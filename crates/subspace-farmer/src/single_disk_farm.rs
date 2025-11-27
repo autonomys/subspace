@@ -2204,7 +2204,7 @@ impl SingleDiskFarm {
                         let _span_guard = span.enter();
 
                         let checked_sectors = checked_sectors.fetch_add(1, Ordering::Relaxed);
-                        if checked_sectors > 1 && checked_sectors % 10 == 0 {
+                        if checked_sectors > 1 && checked_sectors.is_multiple_of(10) {
                             info!(
                                 "Checked {}/{} sectors",
                                 checked_sectors, metadata_header.plotted_sector_count
@@ -2322,7 +2322,7 @@ impl SingleDiskFarm {
                     let _span_guard = span.enter();
 
                     let checked_elements = checked_elements.fetch_add(1, Ordering::Relaxed);
-                    if checked_elements > 1 && checked_elements % 1000 == 0 {
+                    if checked_elements > 1 && checked_elements.is_multiple_of(1000) {
                         info!(
                             "Checked {}/{} cache elements",
                             checked_elements, number_of_cached_elements

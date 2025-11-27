@@ -299,7 +299,7 @@ where
     /// Returns the Execution receipt as a ref.
     pub fn as_execution_receipt_ref(
         &self,
-    ) -> ExecutionReceiptRef<Number, Hash, DomainNumber, DomainHash, Balance> {
+    ) -> ExecutionReceiptRef<'_, Number, Hash, DomainNumber, DomainHash, Balance> {
         let ExecutionReceipt::V0(receipt) = self;
         ExecutionReceiptRef::V0(receipt)
     }

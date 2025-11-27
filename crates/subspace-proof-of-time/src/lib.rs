@@ -1,6 +1,5 @@
 //! Proof of time implementation.
 
-#![cfg_attr(target_arch = "aarch64", feature(array_chunks))]
 #![cfg_attr(target_arch = "x86_64", feature(stdarch_x86_avx512))]
 #![feature(portable_simd)]
 #![no_std]
@@ -30,7 +29,10 @@ pub enum PotError {
 ///
 /// Returns error if `iterations` is not a multiple of checkpoints times two.
 pub fn prove(seed: PotSeed, iterations: NonZeroU32) -> Result<PotCheckpoints, PotError> {
-    if iterations.get() % u32::from(PotCheckpoints::NUM_CHECKPOINTS.get() * 2) != 0 {
+    if iterations
+        .get()
+        .is_multiple_of(u32::from(PotCheckpoints::NUM_CHECKPOINTS.get() * 2))
+    {
         return Err(PotError::NotMultipleOfCheckpoints {
             iterations,
             num_checkpoints: u32::from(PotCheckpoints::NUM_CHECKPOINTS.get()),
@@ -53,7 +55,7 @@ pub fn verify(
     checkpoints: &PotCheckpoints,
 ) -> Result<bool, PotError> {
     let num_checkpoints = checkpoints.len() as u32;
-    if iterations.get() % (num_checkpoints * 2) != 0 {
+    if iterations.get().is_multiple_of(num_checkpoints * 2) {
         return Err(PotError::NotMultipleOfCheckpoints {
             iterations,
             num_checkpoints,

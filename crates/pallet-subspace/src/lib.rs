@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(array_chunks, assert_matches, portable_simd)]
+#![feature(assert_matches, portable_simd)]
 #![warn(unused_must_use, unsafe_code, unused_variables)]
 
 #[cfg(not(feature = "std"))]
@@ -627,7 +627,10 @@ pub mod pallet {
         ) -> DispatchResult {
             ensure_root(origin)?;
 
-            if slot_iterations.get() % u32::from(PotCheckpoints::NUM_CHECKPOINTS.get() * 2) != 0 {
+            if slot_iterations
+                .get()
+                .is_multiple_of(u32::from(PotCheckpoints::NUM_CHECKPOINTS.get() * 2))
+            {
                 return Err(Error::<T>::NotMultipleOfCheckpoints.into());
             }
 

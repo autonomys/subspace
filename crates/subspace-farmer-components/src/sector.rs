@@ -329,7 +329,11 @@ impl SectorContentsMap {
 
         let num_encoded_record_chunks = encoded_record_chunks_used
             .iter_mut()
-            .zip(single_records_bit_arrays.array_chunks::<{ SINGLE_RECORD_BIT_ARRAY_SIZE }>())
+            .zip(
+                single_records_bit_arrays
+                    .as_chunks::<{ SINGLE_RECORD_BIT_ARRAY_SIZE }>()
+                    .0,
+            )
             .map(|(encoded_record_chunks_used, bytes)| {
                 encoded_record_chunks_used
                     .as_raw_mut_slice()

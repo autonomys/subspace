@@ -1,5 +1,4 @@
 #![feature(
-    array_chunks,
     array_windows,
     assert_matches,
     btree_extract_if,
@@ -11,7 +10,6 @@
     int_roundings,
     iter_collect_into,
     never_type,
-    result_flattening,
     trait_alias,
     try_blocks,
     type_alias_impl_trait,

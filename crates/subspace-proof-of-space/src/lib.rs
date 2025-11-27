@@ -3,13 +3,7 @@
 // `generic_const_exprs` is an incomplete feature
 #![allow(incomplete_features)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
-#![feature(
-    array_chunks,
-    array_windows,
-    generic_const_exprs,
-    portable_simd,
-    step_trait
-)]
+#![feature(array_windows, generic_const_exprs, portable_simd, step_trait)]
 
 pub mod chia;
 pub mod chiapos;

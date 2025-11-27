@@ -6,12 +6,17 @@ use frame_support::traits::VariantCount;
 use frame_support::{derive_impl, parameter_types};
 use pallet_balances::AccountData;
 use parity_scale_codec::{Decode, Encode};
+#[cfg(not(feature = "runtime-benchmarks"))]
 use sp_core::U256;
 use sp_domains::DomainId;
-use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId, EndpointRequest, Sender};
+use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId};
+#[cfg(not(feature = "runtime-benchmarks"))]
+use sp_messenger::endpoint::{EndpointRequest, Sender};
 use sp_messenger::messages::{ChainId, MessageId};
+#[cfg(not(feature = "runtime-benchmarks"))]
+use sp_runtime::DispatchError;
 use sp_runtime::traits::{Convert, IdentityLookup};
-use sp_runtime::{BuildStorage, DispatchError, Perbill};
+use sp_runtime::{BuildStorage, Perbill};
 use subspace_runtime_primitives::DomainEventSegmentSize;
 
 type Block = frame_system::mocking::MockBlock<MockRuntime>;
@@ -120,9 +125,11 @@ impl pallet_messenger::Config for MockRuntime {
     type NoteChainTransfer = Transporter;
 }
 
+#[cfg(not(feature = "runtime-benchmarks"))]
 #[derive(Debug)]
 pub struct MockMessenger {}
 
+#[cfg(not(feature = "runtime-benchmarks"))]
 impl Sender<AccountId> for MockMessenger {
     type MessageId = MessageId;
 

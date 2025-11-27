@@ -664,8 +664,8 @@ where
                             let progress = prev_downloaded_pieces_count as f32
                                 / pieces_to_download_total as f32
                                 * 100.0;
-                            if prev_downloaded_pieces_count % INTERMEDIATE_CACHE_UPDATE_INTERVAL
-                                == 0
+                            if prev_downloaded_pieces_count
+                                .is_multiple_of(INTERMEDIATE_CACHE_UPDATE_INTERVAL)
                             {
                                 let mut piece_caches = self.piece_caches.write().await;
                                 piece_caches.clone_from(&caches.lock());

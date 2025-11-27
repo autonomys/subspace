@@ -393,7 +393,9 @@ where
         EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     {
         ys_and_metadata
-            .array_chunks::<2>()
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|&[(left_y, left_metadata), (right_y, right_metadata)]| {
                 has_match(left_y, right_y).then_some(compute_fn::<
                     K,

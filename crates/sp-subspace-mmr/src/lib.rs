@@ -1,7 +1,6 @@
 //! Primitives for Subspace MMR.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(result_flattening)]
 
 #[cfg(all(feature = "std", feature = "runtime-benchmarks"))]
 pub mod benchmarking;
