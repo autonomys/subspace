@@ -1,0 +1,1 @@
+searchState.loadedDescShard("sp_evm_precompiles", 0, "EVM precompile primitives\nThe PrecompileSet installed in the EVM Domain runtime. The …\nReturns the argument unchanged.\nGet a mutable reference to the inner from the outer.\nGet a reference to the inner from the outer.\nCalls <code>U::from(self)</code>.")
