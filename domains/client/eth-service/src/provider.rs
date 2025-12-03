@@ -17,7 +17,6 @@ use sc_client_api::{AuxStore, Backend, BlockBackend, BlockchainEvents, StoragePr
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_server::SubscriptionIdProvider;
 use sc_service::BasePath;
-use sc_transaction_pool::ChainApi;
 use sc_transaction_pool_api::TransactionPool;
 use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, CallApiAt, ConstructRuntimeApi, Core, ProvideRuntimeApi};
@@ -76,8 +75,8 @@ where
     }
 }
 
-impl<Block, Client, BE, TxPool, CA, AccountId, CT, EC, CIDP>
-    RpcProvider<Block, Client, TxPool, CA, BE, AccountId, CIDP> for EthProvider<CT, EC>
+impl<Block, Client, BE, TxPool, AccountId, CT, EC, CIDP>
+    RpcProvider<Block, Client, TxPool, BE, AccountId, CIDP> for EthProvider<CT, EC>
 where
     Block: BlockT<Hash = H256>,
     BE: Backend<Block> + 'static,
@@ -100,16 +99,15 @@ where
     Client::Api: EthereumRuntimeRPCApi<Block>,
     CT: ConvertTransaction<Block::Extrinsic> + Clone + Default + Send + Sync + 'static,
     EC: EthConfig<Block, Client>,
-    TxPool: TransactionPool<Block = Block> + Sync + Send + 'static,
-    CA: ChainApi<Block = Block> + 'static,
+    TxPool: TransactionPool<Block = Block, Hash = H256> + Sync + Send + 'static,
     AccountId: DeserializeOwned + Encode + Debug + Decode + Display + Clone + Sync + Send + 'static,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Clone + 'static,
 {
-    type Deps = EthDeps<Client, TxPool, CA, CT, Block, BE, CIDP>;
+    type Deps = EthDeps<Client, TxPool, CT, Block, BE, CIDP>;
 
     fn deps(
         &self,
-        full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
+        full_deps: FullDeps<Block, Client, TxPool, BE, CIDP>,
     ) -> Result<Self::Deps, sc_service::Error> {
         let client = full_deps.client.clone();
         let storage_override = Arc::new(StorageOverrideHandler::new(client.clone()));
@@ -183,7 +181,7 @@ where
         > = Default::default();
         let pubsub_notification_sinks = Arc::new(pubsub_notification_sinks);
 
-        let io = create_eth_rpc::<Client, BE, TxPool, CA, CT, Block, EC, CIDP>(
+        let io = create_eth_rpc::<Client, BE, TxPool, CT, Block, EC, CIDP>(
             io,
             deps.clone(),
             subscription_task_executor,

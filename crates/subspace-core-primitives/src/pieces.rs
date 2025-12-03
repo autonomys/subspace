@@ -24,7 +24,9 @@ use derive_more::{
     Add, AddAssign, AsMut, AsRef, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul,
     MulAssign, Sub, SubAssign,
 };
-use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen, Output};
+use parity_scale_codec::{
+    Decode, DecodeWithMemTracking, Encode, EncodeLike, Input, MaxEncodedLen, Output,
+};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use scale_info::build::Fields;
@@ -220,6 +222,7 @@ impl PieceIndex {
     DivAssign,
     TypeInfo,
     MaxEncodedLen,
+    DecodeWithMemTracking,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(transparent)]
@@ -677,6 +680,7 @@ impl Record {
     Decode,
     TypeInfo,
     MaxEncodedLen,
+    DecodeWithMemTracking,
 )]
 pub struct RecordCommitment([u8; RecordCommitment::SIZE]);
 
@@ -812,6 +816,7 @@ impl RecordCommitment {
     Decode,
     TypeInfo,
     MaxEncodedLen,
+    DecodeWithMemTracking,
 )]
 pub struct RecordWitness([u8; RecordWitness::SIZE]);
 

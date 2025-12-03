@@ -207,6 +207,7 @@ where
             access_list: vec![],
             max_priority_fee_per_gas: Some(U256::from(1)),
             nonce: Some(nonce),
+            authorization_list: vec![],
         }
     } else {
         pallet_evm::Call::<TestRuntime>::call {
@@ -219,6 +220,7 @@ where
             max_priority_fee_per_gas: Some(U256::from(1)),
             nonce: Some(nonce),
             access_list: vec![],
+            authorization_list: vec![],
         }
     };
 

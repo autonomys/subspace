@@ -20,7 +20,7 @@ use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::weights::Weight;
 use frame_support::{PalletError, ensure};
 use frame_system::pallet_prelude::*;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{
@@ -34,7 +34,7 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 
 /// Domain registry specific errors
-#[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
+#[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq, DecodeWithMemTracking)]
 pub enum Error {
     ExceedMaxDomainBlockWeight,
     ExceedMaxDomainBlockSize,
@@ -82,7 +82,7 @@ pub struct DomainConfig<AccountId: Ord, Balance> {
 ///
 /// It is used to derive `DomainConfig`, and if `maybe_bundle_limit` is `None` a default `max_bundle_size/weight`
 /// derived from the `bundle_slot_probability` and other system-wide parameters will be used.
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, DecodeWithMemTracking)]
 pub struct DomainConfigParams<AccountId: Ord, Balance> {
     pub domain_name: String,
     pub runtime_id: RuntimeId,

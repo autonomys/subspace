@@ -12,7 +12,7 @@ use frame_support::pallet_prelude::{
     ValidTransaction, Weight,
 };
 use frame_support::sp_runtime::traits::{DispatchInfoOf, One, TransactionExtension};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::prelude::vec;
 use sp_runtime::traits::{
     AsSystemOriginSigner, Dispatchable, PostDispatchInfoOf, ValidateResult, Zero,
@@ -20,7 +20,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::TransactionSource;
 use sp_runtime::{DispatchResult, Saturating};
 
-#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 #[scale_info(skip_type_params(T))]
 pub struct CheckNonce<T: Config>(#[codec(compact)] pub T::Nonce);
 

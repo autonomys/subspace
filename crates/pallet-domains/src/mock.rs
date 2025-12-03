@@ -11,6 +11,7 @@ use frame_support::{PalletId, derive_impl, parameter_types};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::BlockNumberFor;
 use pallet_subspace::NormalEraChange;
+use parity_scale_codec::DecodeWithMemTracking;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_domains::bundle::BundleVersion;
@@ -82,7 +83,18 @@ impl Get<BlockNumber> for ConfirmationDepthK {
 }
 
 #[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+    Ord,
+    PartialOrd,
+    Copy,
+    Debug,
+    DecodeWithMemTracking,
 )]
 pub struct HoldIdentifierWrapper(HoldIdentifier);
 

@@ -28,7 +28,7 @@ pub use fp_account::{AccountId20, EthereumSignature as EVMSignature};
 use frame_support::dispatch::DispatchClass;
 use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight};
 use frame_system::limits::{BlockLength, BlockWeights};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_core::parameter_types;
@@ -201,7 +201,18 @@ where
 
 /// MultiAccountId used by all the domains to describe their account type.
 #[derive(
-    Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Serialize, Deserialize, Ord, PartialOrd,
+    Debug,
+    Encode,
+    Decode,
+    Clone,
+    Eq,
+    PartialEq,
+    TypeInfo,
+    Serialize,
+    Deserialize,
+    Ord,
+    PartialOrd,
+    DecodeWithMemTracking,
 )]
 pub enum MultiAccountId {
     /// 32 byte account Id.

@@ -150,6 +150,7 @@ where
             config.blocks_pruning,
             backend.clone(),
             &*rpc_builder,
+            None,
         )
     };
 

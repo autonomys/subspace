@@ -5,7 +5,7 @@ use frame_support::pallet_prelude::{MaxEncodedLen, TypeInfo};
 use frame_support::traits::VariantCount;
 use frame_support::{derive_impl, parameter_types};
 use pallet_balances::AccountData;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use sp_core::U256;
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId, EndpointRequest, Sender};
@@ -60,7 +60,18 @@ parameter_types! {
 }
 
 #[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+    Ord,
+    PartialOrd,
+    Copy,
+    Debug,
+    DecodeWithMemTracking,
 )]
 pub enum MockHoldIdentifier {
     Messenger(HoldIdentifier),
@@ -186,6 +197,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 
     pallet_balances::GenesisConfig::<MockRuntime> {
         balances: vec![(USER_ACCOUNT, USER_INITIAL_BALANCE)],
+        dev_accounts: None,
     }
     .assimilate_storage(&mut t)
     .unwrap();

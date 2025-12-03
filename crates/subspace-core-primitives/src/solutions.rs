@@ -9,7 +9,7 @@ use core::array::TryFromSliceError;
 use core::fmt;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
 use num_traits::WrappingSub;
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -65,7 +65,20 @@ const_assert!(solution_range_to_pieces(pieces_to_solution_range(5, (1, 6)), (1, 
 
 /// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
 #[derive(
-    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, Deref, From, Into,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
+    Deref,
+    From,
+    Into,
+    DecodeWithMemTracking,
 )]
 pub struct RewardSignature([u8; RewardSignature::SIZE]);
 
@@ -142,6 +155,7 @@ impl RewardSignature {
     Decode,
     TypeInfo,
     MaxEncodedLen,
+    DecodeWithMemTracking,
 )]
 #[repr(transparent)]
 pub struct ChunkWitness([u8; ChunkWitness::SIZE]);
@@ -228,7 +242,7 @@ impl ChunkWitness {
 }
 
 /// Farmer solution for slot challenge.
-#[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo)]
+#[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo, DecodeWithMemTracking)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct Solution<RewardAddress> {

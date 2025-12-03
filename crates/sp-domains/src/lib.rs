@@ -36,7 +36,7 @@ use execution_receipt::{ExecutionReceiptFor, SealedSingletonReceipt};
 use frame_support::storage::storage_prefix;
 use frame_support::{Blake2_128Concat, StorageHasher};
 use hex_literal::hex;
-use parity_scale_codec::{Codec, Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Codec, Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_core::H256;
@@ -133,6 +133,7 @@ pub type HeaderHashFor<Header> = <Header as HeaderT>::Hash;
     Serialize,
     Deserialize,
     MaxEncodedLen,
+    DecodeWithMemTracking,
 )]
 pub struct DomainId(u32);
 
@@ -218,6 +219,7 @@ impl PassBy for DomainId {
     Serialize,
     Deserialize,
     MaxEncodedLen,
+    DecodeWithMemTracking,
 )]
 pub enum ChainId {
     Consensus,
@@ -267,7 +269,7 @@ impl From<DomainId> for ChainId {
 /// Initial tx range = U256::MAX / INITIAL_DOMAIN_TX_RANGE.
 pub const INITIAL_DOMAIN_TX_RANGE: u64 = 3;
 
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct ProofOfElection {
     /// Domain id.
     pub domain_id: DomainId,
@@ -330,7 +332,18 @@ impl ProofOfElection {
 }
 
 /// Type that represents an operator allow list for Domains.
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    TypeInfo,
+    Debug,
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    DecodeWithMemTracking,
+)]
 pub enum OperatorAllowList<AccountId: Ord> {
     /// Anyone can operate for this domain.
     Anyone,
@@ -350,7 +363,18 @@ impl<AccountId: Ord> OperatorAllowList<AccountId> {
 }
 
 /// Permissioned actions allowed by either specific accounts or anyone.
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    TypeInfo,
+    Debug,
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    DecodeWithMemTracking,
+)]
 pub enum PermissionedActionAllowedBy<AccountId: Codec + Clone> {
     Accounts(Vec<AccountId>),
     Anyone,
@@ -371,7 +395,17 @@ impl<AccountId: Codec + PartialEq + Clone> PermissionedActionAllowedBy<AccountId
 
 /// EVM-specific domain type (and associated data).
 #[derive(
-    TypeInfo, Debug, Default, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize,
+    TypeInfo,
+    Debug,
+    Default,
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    DecodeWithMemTracking,
 )]
 pub enum EvmType {
     #[default]
@@ -411,7 +445,17 @@ impl EvmType {
 
 /// EVM-specific domain runtime config.
 #[derive(
-    TypeInfo, Debug, Default, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize,
+    TypeInfo,
+    Debug,
+    Default,
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    DecodeWithMemTracking,
 )]
 pub struct EvmDomainRuntimeConfig {
     pub evm_type: EvmType,
@@ -419,14 +463,35 @@ pub struct EvmDomainRuntimeConfig {
 
 /// AutoId-specific domain runtime config.
 #[derive(
-    TypeInfo, Debug, Default, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize,
+    TypeInfo,
+    Debug,
+    Default,
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    DecodeWithMemTracking,
 )]
 pub struct AutoIdDomainRuntimeConfig {
     // Currently, there is no specific configuration for AutoId.
 }
 
 /// Domain runtime specific information to create domain raw genesis.
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    TypeInfo,
+    Debug,
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    DecodeWithMemTracking,
+)]
 pub enum DomainRuntimeInfo {
     Evm {
         /// The EVM chain id for this domain.
@@ -542,7 +607,18 @@ pub struct GenesisDomain<AccountId: Ord, Balance> {
 
 /// Types of runtime pallet domains currently supports
 #[derive(
-    Debug, Default, Encode, Decode, TypeInfo, Copy, Clone, PartialEq, Eq, Serialize, Deserialize,
+    Debug,
+    Default,
+    Encode,
+    Decode,
+    TypeInfo,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    DecodeWithMemTracking,
 )]
 pub enum RuntimeType {
     #[default]
@@ -700,7 +776,7 @@ pub struct DomainInstanceData {
     pub raw_genesis: RawGenesis,
 }
 
-#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq, DecodeWithMemTracking)]
 pub struct DomainBundleLimit {
     /// The max bundle size for the domain.
     pub max_bundle_size: u32,
@@ -787,7 +863,7 @@ pub fn derive_domain_block_hash<DomainHeader: HeaderT>(
 }
 
 /// Represents the extrinsic either as full data or hash of the data.
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub enum ExtrinsicDigest {
     /// Actual extrinsic data that is inlined since it is less than 33 bytes.
     Data(Vec<u8>),
@@ -886,7 +962,7 @@ impl OnDomainInstantiated for () {
 }
 
 /// Domain chains allowlist updates.
-#[derive(Default, Debug, Encode, Decode, PartialEq, Eq, Clone, TypeInfo)]
+#[derive(Default, Debug, Encode, Decode, PartialEq, Eq, Clone, TypeInfo, DecodeWithMemTracking)]
 pub struct DomainAllowlistUpdates {
     /// Chains that are allowed to open a channel with this chain.
     pub allow_chains: BTreeSet<ChainId>,
@@ -967,7 +1043,7 @@ impl<Balance> OnChainRewards<Balance> for () {
     fn on_chain_rewards(_chain_id: ChainId, _reward: Balance) {}
 }
 
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub enum OperatorRewardSource<Number> {
     Bundle {
         at_block_number: Number,

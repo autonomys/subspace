@@ -7,7 +7,6 @@ use sc_client_api::{AuxStore, Backend, BlockBackend, StorageProvider};
 use sc_consensus::BlockImport;
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_server::SubscriptionIdProvider;
-use sc_transaction_pool::ChainApi;
 use sc_transaction_pool_api::TransactionPool;
 use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, ConstructRuntimeApi, Core, ProvideRuntimeApi};
@@ -46,13 +45,12 @@ where
 }
 
 /// Provides adding custom ID to the RPC module.
-pub trait RpcProvider<Block, Client, TxPool, CA, BE, AccountId, CIDP>
+pub trait RpcProvider<Block, Client, TxPool, BE, AccountId, CIDP>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + StorageProvider<Block, BE>,
     Client::Api: AccountNonceApi<Block, AccountId, Nonce>,
     TxPool: TransactionPool<Block = Block> + Sync + Send + 'static,
-    CA: ChainApi<Block = Block> + 'static,
     BE: Backend<Block> + 'static,
     AccountId: DeserializeOwned + Encode + Debug + Decode + Display + Clone + Sync + Send + 'static,
 {
@@ -61,7 +59,7 @@ where
     #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
     fn deps(
         &self,
-        full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
+        full_deps: FullDeps<Block, Client, TxPool, BE, CIDP>,
     ) -> Result<Self::Deps, sc_service::Error>;
 
     fn rpc_id(&self) -> Option<Box<dyn SubscriptionIdProvider>>;
@@ -76,8 +74,8 @@ where
         SE: SpawnEssentialNamed + Clone;
 }
 
-impl<Block, Client, BE, TxPool, CA, AccountId, CIDP>
-    RpcProvider<Block, Client, TxPool, CA, BE, AccountId, CIDP> for DefaultProvider
+impl<Block, Client, BE, TxPool, AccountId, CIDP>
+    RpcProvider<Block, Client, TxPool, BE, AccountId, CIDP> for DefaultProvider
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -93,16 +91,15 @@ where
         + AccountNonceApi<Block, AccountId, Nonce>
         + BlockBuilder<Block>,
     TxPool: TransactionPool<Block = Block> + Sync + Send + 'static,
-    CA: ChainApi<Block = Block> + 'static,
     BE: Backend<Block> + 'static,
     AccountId: DeserializeOwned + Encode + Debug + Decode + Display + Clone + Sync + Send + 'static,
     CIDP: Clone,
 {
-    type Deps = FullDeps<Block, Client, TxPool, CA, BE, CIDP>;
+    type Deps = FullDeps<Block, Client, TxPool, BE, CIDP>;
 
     fn deps(
         &self,
-        full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
+        full_deps: FullDeps<Block, Client, TxPool, BE, CIDP>,
     ) -> Result<Self::Deps, sc_service::Error> {
         Ok(full_deps)
     }
@@ -120,6 +117,6 @@ where
     where
         SE: SpawnEssentialNamed + Clone,
     {
-        crate::rpc::create_full::<_, _, _, _, AccountId, BE, CIDP>(deps)
+        crate::rpc::create_full::<_, _, _, AccountId, BE, CIDP>(deps)
     }
 }

@@ -25,7 +25,7 @@ use frame_system::pallet_prelude::BlockNumberFor;
 use pallet_transaction_payment::{
     Multiplier, NextFeeMultiplier, OnChargeTransaction, TargetedFeeAdjustment,
 };
-use parity_scale_codec::{Codec, Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Codec, Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::parameter_types;
 use sp_runtime::traits::{Block as BlockT, Bounded, Header as HeaderT, IdentifyAccount, Verify};
@@ -327,7 +327,18 @@ impl<T: pallet_transaction_payment::Config> WeightToFee for XdmAdjustedWeightToF
 }
 
 #[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+    Ord,
+    PartialOrd,
+    Copy,
+    Debug,
+    DecodeWithMemTracking,
 )]
 pub enum HoldIdentifier {
     DomainStaking,

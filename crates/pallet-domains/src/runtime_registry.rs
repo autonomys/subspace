@@ -15,7 +15,7 @@ use domain_runtime_primitives::{AccountId20, MultiAccountId, TryConvertBack};
 use frame_support::{PalletError, ensure};
 use frame_system::AccountInfo;
 use frame_system::pallet_prelude::*;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_core::Hasher;
 use sp_core::crypto::AccountId32;
@@ -30,7 +30,7 @@ use sp_std::vec;
 use sp_version::RuntimeVersion;
 
 /// Runtime specific errors
-#[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
+#[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq, DecodeWithMemTracking)]
 pub enum Error {
     FailedToExtractRuntimeVersion,
     InvalidSpecName,

@@ -10,14 +10,14 @@ use alloc::collections::BTreeSet;
 use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_runtime::traits::{Hash as HashT, Header as HeaderT, NumberFor};
 use subspace_runtime_primitives::BlockHashFor;
 
 /// Receipt V0 of a domain block execution.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// The index of the current domain block that forms the basis of this ER.
     pub domain_block_number: DomainNumber,
@@ -112,7 +112,7 @@ where
 
 /// Singleton receipt submit along when there is a gap between `domain_best_number`
 /// and `HeadReceiptNumber`
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct SingletonReceiptV0<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Proof of receipt producer election.
     pub proof_of_election: ProofOfElection,
@@ -134,7 +134,7 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
     }
 }
 
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct SealedSingletonReceiptV0<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// A collection of the receipt.
     pub singleton_receipt: SingletonReceiptV0<Number, Hash, DomainHeader, Balance>,

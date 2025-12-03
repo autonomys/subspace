@@ -21,8 +21,8 @@ use sc_domains::{ExtensionsFactory, RuntimeExecutor};
 use sc_network::service::traits::NetworkService;
 use sc_network::{NetworkPeers, NetworkWorker, NotificationMetrics};
 use sc_service::{
-    BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
-    SpawnTasksParams, TFullBackend, TaskManager,
+    BuildNetworkParams, Configuration as ServiceConfiguration, PartialComponents, SpawnTasksParams,
+    TFullBackend, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_transaction_pool::{BasicPool, FullChainApi};
@@ -107,8 +107,6 @@ where
     pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPCHandlers to make RPC queries.
     pub rpc_handlers: sc_service::RpcHandlers,
-    /// Network starter.
-    pub network_starter: NetworkStarter,
     /// Operator.
     pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi>,
     /// Transaction pool
@@ -341,7 +339,6 @@ where
             Block,
             FullClient<Block, RuntimeApi>,
             FullPool<RuntimeApi>,
-            FullChainApi<FullClient<Block, RuntimeApi>, Block>,
             TFullBackend<Block>,
             AccountId,
             CreateInherentDataProvider<CClient, CBlock>,
@@ -401,7 +398,6 @@ where
         network_service,
         system_rpc_tx,
         tx_handler_controller,
-        network_starter,
         sync_service,
         network_service_handle,
         block_downloader,
@@ -432,7 +428,6 @@ where
         let deps = crate::rpc::FullDeps {
             client: client.clone(),
             pool: transaction_pool.clone(),
-            graph: transaction_pool.pool().clone(),
             network: network_service.clone(),
             sync: sync_service.clone(),
             is_authority,
@@ -573,7 +568,6 @@ where
         network_service,
         sync_service,
         rpc_handlers,
-        network_starter,
         operator,
         transaction_pool: params.transaction_pool,
         _phantom_data: Default::default(),

@@ -32,9 +32,14 @@ where
                 }
                 pallet_utility::Call::as_derivative { call, .. }
                 | pallet_utility::Call::dispatch_as { call, .. }
+                | pallet_utility::Call::dispatch_as_fallible { call, .. }
                 | pallet_utility::Call::with_weight { call, .. } => {
                     Some(vec![call.as_ref().into()])
                 }
+                pallet_utility::Call::if_else { main, fallback } => {
+                    Some(vec![main.as_ref().into(), fallback.as_ref().into()])
+                }
+
                 pallet_utility::Call::__Ignore(..) => None,
             }
         } else {
@@ -66,7 +71,9 @@ where
                 pallet_multisig::Call::approve_as_multi {  .. }
                 | pallet_multisig::Call::cancel_as_multi { .. }
                 // Ignored calls
-                | pallet_multisig::Call::__Ignore(..) => None,
+                | pallet_multisig::Call::__Ignore(..)
+                | pallet_multisig::Call::poke_deposit { .. }=> None,
+
             }
         } else {
             None

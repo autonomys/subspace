@@ -22,7 +22,7 @@ macro_rules! impl_runtime {
         #[cfg(not(feature = "runtime-benchmarks"))]
         use crate::mock::MockEndpoint;
         use crate::mock::{AccountId, Balance, MessageId, TestExternalities};
-        use parity_scale_codec::{Decode, Encode};
+        use parity_scale_codec::{Decode, Encode, DecodeWithMemTracking};
         use domain_runtime_primitives::{MultiAccountId, TryConvertBack, HoldIdentifier};
         #[cfg(not(feature = "runtime-benchmarks"))]
         use frame_support::pallet_prelude::*;
@@ -70,7 +70,18 @@ macro_rules! impl_runtime {
         }
 
         #[derive(
-            PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+            PartialEq,
+            Eq,
+            Clone,
+            Encode,
+            Decode,
+            TypeInfo,
+            MaxEncodedLen,
+            Ord,
+            PartialOrd,
+            Copy,
+            Debug,
+            DecodeWithMemTracking
         )]
         pub enum MockHoldIdentifier {
             Messenger(HoldIdentifier)
@@ -197,6 +208,7 @@ macro_rules! impl_runtime {
 
             pallet_balances::GenesisConfig::<$runtime> {
                 balances: vec![(USER_ACCOUNT, USER_INITIAL_BALANCE)],
+                dev_accounts: None,
             }
             .assimilate_storage(&mut t)
             .unwrap();

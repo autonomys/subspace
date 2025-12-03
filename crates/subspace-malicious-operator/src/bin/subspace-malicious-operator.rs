@@ -165,7 +165,7 @@ fn main() -> Result<(), Error> {
                 let keypair = subspace_networking::libp2p::identity::Keypair::ed25519_from_bytes(
                     network_keypair.secret().to_bytes(),
                 )
-                .expect("Keypair-from-protobuf decoding should succeed.");
+                    .expect("Keypair-from-protobuf decoding should succeed.");
 
                 DsnConfig {
                     keypair,
@@ -200,25 +200,25 @@ fn main() -> Result<(), Error> {
                 false,
                 &pot_external_entropy,
             )
-            .map_err(|error| {
-                sc_service::Error::Other(format!("Failed to build a full subspace node: {error:?}"))
-            })?;
+                .map_err(|error| {
+                    sc_service::Error::Other(format!("Failed to build a full subspace node: {error:?}"))
+                })?;
 
             let keystore = partial_components.keystore_container.keystore();
 
             let consensus_chain_node =
                 subspace_service::new_full::<PosTable, _>(
-                consensus_chain_config,
-                partial_components,
-                None,
-                true,
-                SlotProportion::new(3f32 / 4f32),
-                None,
-            )
-            .await
-            .map_err(|error| {
-                sc_service::Error::Other(format!("Failed to build a full subspace node: {error:?}"))
-            })?;
+                    consensus_chain_config,
+                    partial_components,
+                    None,
+                    true,
+                    SlotProportion::new(3f32 / 4f32),
+                    None,
+                )
+                    .await
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!("Failed to build a full subspace node: {error:?}"))
+                    })?;
 
             (consensus_chain_node, keystore)
         };
@@ -287,7 +287,7 @@ fn main() -> Result<(), Error> {
             let domain_config = {
                 let chain_id = domain_cli.run.chain_id(domain_cli.run.is_dev()?)?;
                 let domain_spec =
-                subspace_malicious_operator::create_domain_spec(chain_id.as_str())?;
+                    subspace_malicious_operator::create_domain_spec(chain_id.as_str())?;
                 create_malicious_operator_configuration::<DomainCli>(
                     domain_id,
                     base_path.into(),
@@ -298,8 +298,8 @@ fn main() -> Result<(), Error> {
             };
 
             let domain_backend = sc_service::new_db_backend::<DomainBlock>(
-                    domain_config.db_config(),
-                )
+                domain_config.db_config(),
+            )
                 .map_err(|error| Error::Other(format!("Failed to create domain backend: {error:?}")))?;
 
             let domain_starter = DomainInstanceStarter {
@@ -405,7 +405,6 @@ fn main() -> Result<(), Error> {
                 );
         };
 
-        consensus_chain_node.network_starter.start_network();
         Ok::<_, Error>(consensus_chain_node.task_manager)
     })?;
 

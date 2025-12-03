@@ -50,6 +50,7 @@ impl<AccountId, Balance> OnReward<AccountId, Balance> for () {
     TypeInfo,
     Serialize,
     Deserialize,
+    DecodeWithMemTracking,
 )]
 pub struct RewardPoint<BlockNumber, Balance> {
     pub block: BlockNumber,

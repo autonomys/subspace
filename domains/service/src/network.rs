@@ -7,8 +7,8 @@ use sc_network_sync::block_relay_protocol::{BlockDownloader, BlockRelayParams};
 use sc_network_sync::engine::SyncingEngine;
 use sc_network_sync::service::network::{NetworkServiceHandle, NetworkServiceProvider};
 use sc_service::{
-    BuildNetworkAdvancedParams, BuildNetworkParams, Error, NetworkStarter,
-    build_default_block_downloader, build_network_advanced, build_polkadot_syncing_strategy,
+    BuildNetworkAdvancedParams, BuildNetworkParams, Error, build_default_block_downloader,
+    build_network_advanced, build_polkadot_syncing_strategy,
 };
 use sc_transaction_pool_api::TransactionPool;
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -30,7 +30,6 @@ pub fn build_network<Block, Net, TxPool, IQ, Client>(
         Arc<dyn sc_network::service::traits::NetworkService>,
         TracingUnboundedSender<sc_rpc::system::Request<Block>>,
         sc_network_transactions::TransactionsHandlerController<BlockHashFor<Block>>,
-        NetworkStarter,
         Arc<SyncingService<Block>>,
         NetworkServiceHandle,
         Arc<dyn BlockDownloader<Block>>,
@@ -156,12 +155,11 @@ where
         metrics,
     })
     .map(
-        |(network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service)| {
+        |(network_service, system_rpc_tx, tx_handler_controller, sync_service)| {
             (
                 network_service,
                 system_rpc_tx,
                 tx_handler_controller,
-                network_starter,
                 sync_service,
                 network_service_handle,
                 block_downloader,
