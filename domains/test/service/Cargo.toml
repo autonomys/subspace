@@ -15,7 +15,9 @@ include = [
 domain-check-weight.workspace = true
 auto-id-domain-test-runtime.workspace = true
 cross-domain-message-gossip.workspace = true
+domain-block-preprocessor.workspace = true
 domain-client-operator.workspace = true
+domain-eth-service.workspace = true
 domain-service.workspace = true
 domain-test-primitives.workspace = true
 domain-runtime-primitives.workspace = true
@@ -32,6 +34,7 @@ sc-network.workspace = true
 sc-network-sync.workspace = true
 sc-service.workspace = true
 sc-tracing.workspace = true
+sc-transaction-pool.workspace = true
 sc-transaction-pool-api.workspace = true
 sc-utils.workspace = true
 serde = { workspace = true, features = ["derive"] }
