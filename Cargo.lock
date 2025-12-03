@@ -3106,8 +3106,10 @@ version = "0.1.0"
 dependencies = [
  "auto-id-domain-test-runtime",
  "cross-domain-message-gossip",
+ "domain-block-preprocessor",
  "domain-check-weight",
  "domain-client-operator",
+ "domain-eth-service",
  "domain-runtime-primitives",
  "domain-service",
  "domain-test-primitives",
@@ -3124,6 +3126,7 @@ dependencies = [
  "sc-network-sync",
  "sc-service",
  "sc-tracing",
+ "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
  "serde",
