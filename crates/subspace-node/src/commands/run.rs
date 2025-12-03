@@ -391,8 +391,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 });
         };
 
-        consensus_chain_node.network_starter.start_network();
-
         if let Some(prometheus_configuration) = prometheus_configuration.take() {
             let metrics_server = start_prometheus_metrics_server(
                 vec![prometheus_configuration.listen_on],

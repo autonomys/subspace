@@ -445,7 +445,10 @@ fn subspace_genesis_config(
 
     Ok(RuntimeGenesisConfig {
         system: SystemConfig::default(),
-        balances: BalancesConfig { balances },
+        balances: BalancesConfig {
+            balances,
+            dev_accounts: None,
+        },
         transaction_payment: Default::default(),
         sudo: SudoConfig {
             // Assign network admin rights.

@@ -6,7 +6,7 @@ use core::num::NonZeroU8;
 use core::str::FromStr;
 use core::{fmt, mem};
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From};
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,7 @@ use serde::{Deserializer, Serializer};
     TypeInfo,
     MaxEncodedLen,
 )]
-pub struct PotKey([u8; Self::SIZE]);
+pub struct PotKey([u8; PotKey::SIZE]);
 
 impl fmt::Debug for PotKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -119,7 +119,7 @@ impl PotKey {
     TypeInfo,
     MaxEncodedLen,
 )]
-pub struct PotSeed([u8; Self::SIZE]);
+pub struct PotSeed([u8; PotSeed::SIZE]);
 
 impl fmt::Debug for PotSeed {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -212,9 +212,10 @@ impl PotSeed {
     Decode,
     TypeInfo,
     MaxEncodedLen,
+    DecodeWithMemTracking,
 )]
 #[repr(C)]
-pub struct PotOutput([u8; Self::SIZE]);
+pub struct PotOutput([u8; PotOutput::SIZE]);
 
 impl fmt::Debug for PotOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

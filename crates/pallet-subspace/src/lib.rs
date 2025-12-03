@@ -28,7 +28,7 @@ use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
 use log::{debug, error, warn};
 pub use pallet::*;
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use schnorrkel::SignatureError;
 use sp_consensus_slots::Slot;
@@ -81,7 +81,17 @@ impl EraChangeTrigger for NormalEraChange {
 }
 
 /// Custom origin for validated unsigned extrinsics.
-#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(
+    PartialEq,
+    Eq,
+    Clone,
+    Encode,
+    Decode,
+    RuntimeDebug,
+    TypeInfo,
+    MaxEncodedLen,
+    DecodeWithMemTracking,
+)]
 pub enum RawOrigin {
     ValidatedUnsigned,
 }
@@ -296,7 +306,9 @@ pub mod pallet {
     }
 
     /// When to enable block/vote rewards
-    #[derive(Debug, Copy, Clone, Eq, PartialEq, Encode, Decode, TypeInfo)]
+    #[derive(
+        Debug, Copy, Clone, Eq, PartialEq, Encode, Decode, TypeInfo, DecodeWithMemTracking,
+    )]
     #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
     pub enum EnableRewardsAt<BlockNumber> {
         /// At specified height or next block if `None`

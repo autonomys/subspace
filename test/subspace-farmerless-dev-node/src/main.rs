@@ -99,14 +99,12 @@ fn start_consensus_node(
         rpc_port: Some(rpc_port),
     };
 
-    let mut node = MockConsensusNode::run_with_rpc_builder(
+    MockConsensusNode::run_with_rpc_builder(
         tokio_handle,
         consensus_key,
         rpc_config,
         Box::new(move || Ok(manual_block_production_rpc(consensus_control.clone()))),
-    );
-    node.start_network();
-    node
+    )
 }
 
 fn main() {

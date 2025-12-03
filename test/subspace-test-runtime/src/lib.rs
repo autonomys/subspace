@@ -63,7 +63,9 @@ use pallet_domains::staking::StakingSummary;
 pub use pallet_rewards::RewardPoint;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
 use pallet_transporter::EndpointHandler;
-use parity_scale_codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{
+    Compact, CompactLen, Decode, DecodeWithMemTracking, Encode, MaxEncodedLen,
+};
 use scale_info::TypeInfo;
 use sp_api::impl_runtime_apis;
 use sp_consensus_slots::{Slot, SlotDuration};
@@ -285,7 +287,7 @@ impl frame_system::Config for Runtime {
     type PostInherents = ();
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
+    type ExtensionsWeightInfo = frame_system::SubstrateExtensionsWeight<Runtime>;
     type EventSegmentSize = ConsensusEventSegmentSize;
 }
 
@@ -341,7 +343,18 @@ impl pallet_timestamp::Config for Runtime {
 }
 
 #[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+    Ord,
+    PartialOrd,
+    Copy,
+    Debug,
+    DecodeWithMemTracking,
 )]
 pub struct HoldIdentifierWrapper(HoldIdentifier);
 
@@ -1034,6 +1047,7 @@ impl pallet_multisig::Config for Runtime {
     type DepositFactor = DepositFactor;
     type MaxSignatories = MaxSignatories;
     type WeightInfo = pallet_multisig::weights::SubstrateWeight<Runtime>;
+    type BlockNumberProvider = System;
 }
 
 construct_runtime!(
@@ -1205,7 +1219,8 @@ fn extract_utility_block_object_mapping(
                 recursion_depth_left,
             );
         }
-        pallet_utility::Call::dispatch_as { as_origin, call } => {
+        pallet_utility::Call::dispatch_as { as_origin, call }
+        | pallet_utility::Call::dispatch_as_fallible { as_origin, call } => {
             base_offset += as_origin.encoded_size() as u32;
 
             extract_call_block_object_mapping(
@@ -1223,6 +1238,13 @@ fn extract_utility_block_object_mapping(
                 recursion_depth_left,
             );
         }
+        // TODO: need to figure out if we want to object map both the calls
+        // or just one call.
+        // per the docs,
+        // if main call succeeds, fallback is not executed.
+        // if main call fails, fallback is executed
+        // if fallback fails, entire call fails and we dont do object mapping in this case
+        pallet_utility::Call::if_else { .. } => {}
         pallet_utility::Call::__Ignore(_, _) => {
             // Ignore.
         }

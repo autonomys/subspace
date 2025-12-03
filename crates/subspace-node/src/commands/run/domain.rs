@@ -519,8 +519,7 @@ pub(super) async fn run_domain(
             Err(err) => match err {
                 BroadcastStreamRecvError::Lagged(skipped_notifications) => {
                     info!(
-                        "Domain slot receiver is lagging. Skipped {} slot notification(s)",
-                        skipped_notifications
+                        "Domain slot receiver is lagging. Skipped {skipped_notifications} slot notification(s)",
                     );
                     None
                 }
@@ -618,8 +617,6 @@ pub(super) async fn run_domain(
             >(domain_params)
             .await?;
 
-            domain_node.network_starter.start_network();
-
             domain_node.task_manager.future().await?;
 
             Ok(())
@@ -658,8 +655,6 @@ pub(super) async fn run_domain(
                 _,
             >(domain_params)
             .await?;
-
-            domain_node.network_starter.start_network();
 
             domain_node.task_manager.future().await?;
 

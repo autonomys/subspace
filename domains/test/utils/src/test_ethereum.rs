@@ -4,7 +4,7 @@ use crate::test_ethereum_tx::{
     AccountInfo, EIP1559UnsignedTransaction, EIP2930UnsignedTransaction, LegacyUnsignedTransaction,
 };
 use domain_runtime_primitives::EthereumAccountId;
-use ethereum::TransactionV2 as Transaction;
+use ethereum::TransactionV3 as Transaction;
 use frame_support::pallet_prelude::DispatchClass;
 use frame_system::pallet_prelude::RuntimeCallFor;
 use hex_literal::hex;
@@ -92,6 +92,7 @@ where
             access_list: vec![],
             max_priority_fee_per_gas: Some(U256::from(1)),
             nonce: Some(nonce),
+            authorization_list: vec![],
         },
         ethereum::TransactionAction::Call(contract) => pallet_evm::Call::<TestRuntime>::call {
             source: account_info.address,
@@ -103,6 +104,7 @@ where
             max_priority_fee_per_gas: Some(U256::from(1)),
             nonce: Some(nonce),
             access_list: vec![],
+            authorization_list: vec![],
         },
     };
 
@@ -137,6 +139,7 @@ pub fn generate_legacy_transfer_txn<TestRuntime: frame_system::Config + pallet_e
         input: vec![],
     }
     .sign(&account_info.private_key)
+    .into()
 }
 
 pub fn generate_legacy_tx<TestRuntime: frame_system::Config + pallet_evm::Config>(
@@ -155,6 +158,7 @@ pub fn generate_legacy_tx<TestRuntime: frame_system::Config + pallet_evm::Config
         input,
     }
     .sign(&account_info.private_key)
+    .into()
 }
 
 pub fn generate_eip2930_transfer_txn<TestRuntime: frame_system::Config + pallet_evm::Config>(
@@ -173,6 +177,7 @@ pub fn generate_eip2930_transfer_txn<TestRuntime: frame_system::Config + pallet_
         input: vec![],
     }
     .sign(&account_info.private_key, None)
+    .into()
 }
 
 pub fn generate_eip2930_tx<TestRuntime: frame_system::Config + pallet_evm::Config>(
@@ -191,6 +196,7 @@ pub fn generate_eip2930_tx<TestRuntime: frame_system::Config + pallet_evm::Confi
         input,
     }
     .sign(&account_info.private_key, None)
+    .into()
 }
 
 pub fn generate_eip1559_transfer_txn<TestRuntime: frame_system::Config + pallet_evm::Config>(
@@ -210,6 +216,7 @@ pub fn generate_eip1559_transfer_txn<TestRuntime: frame_system::Config + pallet_
         input: vec![],
     }
     .sign(&account_info.private_key, None)
+    .into()
 }
 
 pub fn generate_eip1559_tx<TestRuntime: frame_system::Config + pallet_evm::Config>(
@@ -229,4 +236,5 @@ pub fn generate_eip1559_tx<TestRuntime: frame_system::Config + pallet_evm::Confi
         input,
     }
     .sign(&account_info.private_key, None)
+    .into()
 }

@@ -6,7 +6,7 @@
 
 pub use ethereum::{
     AccessListItem, BlockV2 as Block, LegacyTransactionMessage, Log, ReceiptV3 as Receipt,
-    TransactionAction, TransactionSignature, TransactionV2 as Transaction,
+    TransactionAction, TransactionV2 as Transaction,
 };
 use frame_support::parameter_types;
 use rlp::RlpStream;
@@ -102,7 +102,7 @@ impl LegacyUnsignedTransaction {
         );
         let sig = s.0.serialize();
 
-        let sig = TransactionSignature::new(
+        let sig = ethereum::legacy::TransactionSignature::new(
             s.1.serialize() as u64 % 2 + chain_id * 2 + 35,
             H256::from_slice(&sig[0..32]),
             H256::from_slice(&sig[32..64]),
@@ -154,6 +154,8 @@ impl EIP2930UnsignedTransaction {
         let rs = signature.serialize();
         let r = H256::from_slice(&rs[0..32]);
         let s = H256::from_slice(&rs[32..64]);
+        let signature =
+            ethereum::eip2930::TransactionSignature::new(recid.serialize() != 0, r, s).unwrap();
         Transaction::EIP2930(ethereum::EIP2930Transaction {
             chain_id: msg.chain_id,
             nonce: msg.nonce,
@@ -163,9 +165,7 @@ impl EIP2930UnsignedTransaction {
             value: msg.value,
             input: msg.input.clone(),
             access_list: msg.access_list,
-            odd_y_parity: recid.serialize() != 0,
-            r,
-            s,
+            signature,
         })
     }
 }
@@ -205,6 +205,8 @@ impl EIP1559UnsignedTransaction {
         let rs = signature.serialize();
         let r = H256::from_slice(&rs[0..32]);
         let s = H256::from_slice(&rs[32..64]);
+        let signature =
+            ethereum::eip1559::TransactionSignature::new(recid.serialize() != 0, r, s).unwrap();
         Transaction::EIP1559(ethereum::EIP1559Transaction {
             chain_id: msg.chain_id,
             nonce: msg.nonce,
@@ -215,9 +217,7 @@ impl EIP1559UnsignedTransaction {
             value: msg.value,
             input: msg.input.clone(),
             access_list: msg.access_list,
-            odd_y_parity: recid.serialize() != 0,
-            r,
-            s,
+            signature,
         })
     }
 }

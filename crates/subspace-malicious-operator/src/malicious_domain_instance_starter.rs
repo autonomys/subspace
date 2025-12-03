@@ -192,8 +192,6 @@ impl DomainInstanceStarter {
                         Box::pin(malicious_bundle_producer.start(new_slot_notification_stream())),
                     );
 
-                domain_node.network_starter.start_network();
-
                 domain_node.task_manager.future().await?;
 
                 Ok(domain_node.code_executor.clone())
@@ -254,8 +252,6 @@ impl DomainInstanceStarter {
                         None,
                         Box::pin(malicious_bundle_producer.start(new_slot_notification_stream())),
                     );
-
-                domain_node.network_starter.start_network();
 
                 domain_node.task_manager.future().await?;
 

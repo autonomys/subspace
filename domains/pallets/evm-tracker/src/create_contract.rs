@@ -9,7 +9,7 @@ use frame_support::dispatch::PostDispatchInfo;
 use frame_support::pallet_prelude::{DispatchResult, PhantomData, TypeInfo};
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use pallet_ethereum::{Transaction as EthereumTransaction, TransactionAction};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::prelude::fmt;
 use sp_runtime::traits::{
     AsSystemOriginSigner, DispatchInfoOf, DispatchOriginOf, Dispatchable, PostDispatchInfoOf,
@@ -122,7 +122,7 @@ where
 }
 
 /// Reject contract creation, unless the account is in the current evm contract allow list.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct CheckContractCreation<Runtime>(PhantomData<Runtime>);
 
 impl<Runtime> CheckContractCreation<Runtime> {

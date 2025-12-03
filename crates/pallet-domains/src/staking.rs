@@ -20,7 +20,7 @@ use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::{PalletError, StorageDoubleMap, ensure};
 use frame_system::pallet_prelude::BlockNumberFor;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_core::{Get, sr25519};
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey, OperatorRewardSource};
@@ -285,14 +285,14 @@ pub struct StakingSummary<OperatorId, Balance> {
     pub current_epoch_rewards: BTreeMap<OperatorId, Balance>,
 }
 
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, DecodeWithMemTracking)]
 pub struct OperatorConfig<Balance> {
     pub signing_key: OperatorPublicKey,
     pub minimum_nominator_stake: Balance,
     pub nomination_tax: Percent,
 }
 
-#[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
+#[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq, DecodeWithMemTracking)]
 pub enum Error {
     MaximumOperatorId,
     DomainNotInitialized,

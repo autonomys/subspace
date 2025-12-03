@@ -45,9 +45,7 @@ use sc_service::config::{
     OffchainWorkerConfig, RpcBatchRequestConfig, RpcConfiguration, RpcEndpoint,
     WasmExecutionMethod, WasmtimeInstantiationStrategy,
 };
-use sc_service::{
-    BasePath, BlocksPruning, Configuration, NetworkStarter, Role, SpawnTasksParams, TaskManager,
-};
+use sc_service::{BasePath, BlocksPruning, Configuration, Role, SpawnTasksParams, TaskManager};
 use sc_transaction_pool::{BasicPool, FullChainApi, Options};
 use sc_transaction_pool_api::error::{Error as TxPoolError, IntoPoolError};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
@@ -411,8 +409,6 @@ pub struct MockConsensusNode {
     pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPC handlers.
     pub rpc_handlers: sc_service::RpcHandlers,
-    /// Network starter
-    pub network_starter: Option<NetworkStarter>,
     /// The next slot number
     next_slot: u64,
     /// The mock pot verifier
@@ -522,7 +518,7 @@ impl MockConsensusNode {
             xdm_gossip_peers_set_config();
         net_config.add_notification_protocol(xdm_gossip_notification_config);
 
-        let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
+        let (network_service, system_rpc_tx, tx_handler_controller, sync_service) =
             sc_service::build_network(sc_service::BuildNetworkParams {
                 config: &config,
                 net_config,
@@ -622,7 +618,6 @@ impl MockConsensusNode {
             xdm_gossip_notification_service: Some(xdm_gossip_notification_service),
             sync_service,
             rpc_handlers,
-            network_starter: Some(network_starter),
             next_slot: 1,
             mock_pot_verifier,
             new_slot_notification_subscribers: Vec::new(),
@@ -729,14 +724,6 @@ impl MockConsensusNode {
             rpc_config,
             Box::new(|| Ok(RpcModule::new(()))),
         )
-    }
-
-    /// Start the mock consensus node network
-    pub fn start_network(&mut self) {
-        self.network_starter
-            .take()
-            .expect("mock consensus node network have not started yet")
-            .start_network();
     }
 
     /// Get the cross domain gossip message worker builder

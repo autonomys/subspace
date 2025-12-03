@@ -9,7 +9,7 @@ use frame_support::ensure;
 use frame_support::pallet_prelude::{PhantomData, TypeInfo};
 use frame_support::weights::Weight;
 use frame_system::pallet_prelude::RuntimeCallFor;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::prelude::fmt;
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_domains_fraud_proof::weights::fraud_proof_verification_weights;
@@ -38,7 +38,7 @@ pub trait DomainsCheck {
 }
 
 /// Extensions for pallet-domains unsigned extrinsics.
-#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct DomainsExtension<Runtime>(PhantomData<Runtime>);
 
 impl<Runtime> DomainsExtension<Runtime> {

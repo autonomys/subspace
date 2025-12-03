@@ -7,6 +7,7 @@ use frame_support::Parameter;
 use frame_support::weights::Weight;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_core::DecodeWithMemTracking;
 use sp_domains::ChainId;
 use sp_runtime::traits::Member;
 use sp_runtime::{DispatchError, DispatchResult};
@@ -16,7 +17,7 @@ pub type EndpointId = u64;
 
 /// Endpoint as defined in the formal spec.
 /// Endpoint is an application that can send and receive messages from other chains.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub enum Endpoint {
     /// Id of the endpoint on a specific chain.
     Id(EndpointId),

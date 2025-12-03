@@ -70,7 +70,18 @@ macro_rules! impl_runtime {
         }
 
         #[derive(
-            PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+            PartialEq,
+            Eq,
+            Clone,
+            Encode,
+            Decode,
+            TypeInfo,
+            MaxEncodedLen,
+            Ord,
+            PartialOrd,
+            Copy,
+            Debug,
+            DecodeWithMemTracking
         )]
         pub enum MockHoldIdentifier {
             Messenger(HoldIdentifier)
@@ -197,6 +208,7 @@ macro_rules! impl_runtime {
 
             pallet_balances::GenesisConfig::<$runtime> {
                 balances: vec![(USER_ACCOUNT, USER_INITIAL_BALANCE)],
+                dev_accounts: None,
             }
             .assimilate_storage(&mut t)
             .unwrap();

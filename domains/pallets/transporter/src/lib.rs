@@ -35,7 +35,7 @@ use frame_support::dispatch::DispatchResult;
 use frame_support::ensure;
 use frame_support::traits::Currency;
 pub use pallet::*;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_domains::execution_receipt::Transfers;
 use sp_domains::{DomainId, DomainsTransfersTracker};
@@ -51,7 +51,7 @@ pub use weights::WeightInfo;
 const ZERO_EVM_ADDRESS: MultiAccountId = MultiAccountId::AccountId20([0; 20]);
 
 /// Location that either sends or receives transfers between chains.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct Location {
     /// Unique identity of chain.
     pub chain_id: ChainId,

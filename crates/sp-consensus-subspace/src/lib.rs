@@ -13,7 +13,7 @@ use alloc::borrow::Cow;
 use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_core::H256;
@@ -174,7 +174,7 @@ enum ConsensusLog {
 }
 
 /// Farmer vote.
-#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode, TypeInfo)]
+#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode, TypeInfo, DecodeWithMemTracking)]
 pub enum Vote<Number, Hash, RewardAddress> {
     /// V0 of the farmer vote.
     V0 {
@@ -220,7 +220,7 @@ where
 }
 
 /// Signed farmer vote.
-#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode, TypeInfo)]
+#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode, TypeInfo, DecodeWithMemTracking)]
 pub struct SignedVote<Number, Hash, RewardAddress> {
     /// Farmer vote.
     pub vote: Vote<Number, Hash, RewardAddress>,

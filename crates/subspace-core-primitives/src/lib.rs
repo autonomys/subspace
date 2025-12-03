@@ -28,7 +28,7 @@ use crate::hashes::{Blake3Hash, blake3_hash, blake3_hash_list};
 use core::fmt;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -149,6 +149,7 @@ pub type BlockForkWeight = u128;
     Deref,
     From,
     Into,
+    DecodeWithMemTracking,
 )]
 pub struct PublicKey([u8; PublicKey::SIZE]);
 
@@ -240,6 +241,7 @@ impl PublicKey {
     Encode,
     Decode,
     TypeInfo,
+    DecodeWithMemTracking,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]

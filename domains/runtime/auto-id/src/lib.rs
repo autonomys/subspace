@@ -37,7 +37,7 @@ use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_block_fees::fees::OnChargeDomainTransaction;
 use pallet_transporter::EndpointHandler;
-use parity_scale_codec::{Decode, DecodeLimit, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeLimit, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata};
@@ -207,7 +207,7 @@ impl frame_system::Config for Runtime {
     type PostInherents = ();
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
+    type ExtensionsWeightInfo = frame_system::SubstrateExtensionsWeight<Runtime>;
     type EventSegmentSize = DomainEventSegmentSize;
 }
 
@@ -394,7 +394,18 @@ impl sp_messenger::StorageKeys for StorageKeys {
 
 /// Hold identifier for balances for this runtime.
 #[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+    Ord,
+    PartialOrd,
+    Copy,
+    Debug,
+    DecodeWithMemTracking,
 )]
 pub struct HoldIdentifierWrapper(HoldIdentifier);
 

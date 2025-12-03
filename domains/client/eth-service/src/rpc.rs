@@ -13,7 +13,6 @@ use sc_client_api::backend::{Backend, StorageProvider};
 use sc_client_api::client::BlockchainEvents;
 use sc_network_sync::SyncingService;
 use sc_rpc::SubscriptionTaskExecutor;
-use sc_transaction_pool::ChainApi;
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::{CallApiAt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
@@ -38,9 +37,9 @@ where
 }
 
 /// Extra dependencies for Ethereum compatibility.
-pub struct EthDeps<Client, TxPool, CA: ChainApi, CT, Block: BlockT, BE, CIDP> {
+pub struct EthDeps<Client, TxPool, CT, Block: BlockT, BE, CIDP> {
     /// Full Rpc deps
-    pub full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
+    pub full_deps: FullDeps<Block, Client, TxPool, BE, CIDP>,
     /// Ethereum transaction converter.
     pub converter: Option<CT>,
     /// Whether to enable dev signer
@@ -70,8 +69,8 @@ pub struct EthDeps<Client, TxPool, CA: ChainApi, CT, Block: BlockT, BE, CIDP> {
     pub pending_inherent_data_provider: CIDP,
 }
 
-impl<Client, TxPool, CA: ChainApi, CT: Clone, Block: BlockT, BE, CIDP: Clone> Clone
-    for EthDeps<Client, TxPool, CA, CT, Block, BE, CIDP>
+impl<Client, TxPool, CT: Clone, Block: BlockT, BE, CIDP: Clone> Clone
+    for EthDeps<Client, TxPool, CT, Block, BE, CIDP>
 {
     fn clone(&self) -> Self {
         Self {
@@ -94,9 +93,9 @@ impl<Client, TxPool, CA: ChainApi, CT: Clone, Block: BlockT, BE, CIDP: Clone> Cl
 }
 
 /// Instantiate Ethereum-compatible RPC extensions.
-pub(crate) fn create_eth_rpc<Client, BE, TxPool, CA, CT, Block, EC, CIDP>(
+pub(crate) fn create_eth_rpc<Client, BE, TxPool, CT, Block, EC, CIDP>(
     mut io: RpcModule<()>,
-    deps: EthDeps<Client, TxPool, CA, CT, Block, BE, CIDP>,
+    deps: EthDeps<Client, TxPool, CT, Block, BE, CIDP>,
     subscription_task_executor: SubscriptionTaskExecutor,
     pubsub_notification_sinks: Arc<
         EthereumBlockNotificationSinks<EthereumBlockNotification<Block>>,
@@ -112,8 +111,7 @@ where
         + HeaderMetadata<Block, Error = BlockChainError>
         + StorageProvider<Block, BE>,
     BE: Backend<Block> + 'static,
-    TxPool: TransactionPool<Block = Block> + 'static,
-    CA: ChainApi<Block = Block> + 'static,
+    TxPool: TransactionPool<Block = Block, Hash = H256> + 'static,
     CT: ConvertTransaction<Block::Extrinsic> + Send + Sync + 'static,
     EC: EthConfig<Block, Client>,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + 'static,
@@ -138,7 +136,6 @@ where
     let FullDeps {
         client,
         pool,
-        graph,
         network,
         sync,
         is_authority,
@@ -151,10 +148,10 @@ where
     }
 
     io.merge(
-        Eth::<Block, Client, TxPool, CT, BE, CA, CIDP, EC>::new(
+        Eth::<Block, Client, TxPool, CT, BE, CIDP, EC>::new(
             client.clone(),
             pool.clone(),
-            graph.clone(),
+            pool.clone(),
             converter,
             sync.clone(),
             signers,
@@ -178,7 +175,7 @@ where
             EthFilter::new(
                 client.clone(),
                 frontier_backend,
-                graph.clone(),
+                pool.clone(),
                 filter_pool,
                 500_usize, // max stored filters
                 max_past_logs,
