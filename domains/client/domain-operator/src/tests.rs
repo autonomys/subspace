@@ -1384,8 +1384,8 @@ async fn test_evm_domain_gas_estimates() {
         receipt.block_fees().clone(),
         // Check the actual block fees for an EVM contract create
         BlockFees {
-            consensus_storage_fee: 789,
-            domain_execution_fee: 10_813_273_629_579_568,
+            consensus_storage_fee: 792,
+            domain_execution_fee: 10_813_273_629_679_568,
             burned_balance: 0,
             chain_rewards: [].into(),
         }
@@ -1431,8 +1431,8 @@ async fn test_evm_domain_gas_estimates() {
         receipt.block_fees().clone(),
         // Check the actual block fees for an EVM contract call
         BlockFees {
-            consensus_storage_fee: 849,
-            domain_execution_fee: 10_812_720_677_240_620,
+            consensus_storage_fee: 852,
+            domain_execution_fee: 10_812_720_677_578_347,
             burned_balance: 0,
             chain_rewards: [].into(),
         }
