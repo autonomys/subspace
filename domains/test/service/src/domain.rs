@@ -7,12 +7,15 @@ use crate::{
     UncheckedExtrinsicFor, construct_extrinsic_generic, node_config,
 };
 use cross_domain_message_gossip::ChainMsg;
+use domain_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_operator::snap_sync::ConsensusChainSyncParams;
 use domain_client_operator::{BootstrapResult, OperatorStreams, fetch_domain_bootstrap_info};
+use domain_eth_service::provider::EthProvider;
+use domain_eth_service::{DefaultEthConfig, EthConfiguration};
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, EthereumAccountId};
-use domain_service::FullClient;
 use domain_service::providers::DefaultProvider;
+use domain_service::{FullBackend, FullClient, FullPool};
 use domain_test_primitives::{EvmOnchainStateApi, OnchainStateApi};
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use frame_system::pallet_prelude::{BlockNumberFor, RuntimeCallFor};
@@ -24,6 +27,7 @@ use sc_network::{NetworkStateInfo, ReputationChange};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager, TransactionPool};
+use sc_transaction_pool::FullChainApi;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedSender, tracing_unbounded};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
@@ -136,7 +140,7 @@ where
         AsSystemOriginSigner<<Runtime as frame_system::Config>::AccountId> + Clone,
 {
     #[allow(clippy::too_many_arguments)]
-    async fn build(
+    async fn build<Provider>(
         domain_id: DomainId,
         tokio_handle: tokio::runtime::Handle,
         key: Runtime::Keyring,
@@ -149,7 +153,20 @@ where
         mock_consensus_node: &mut MockConsensusNode,
         rpc_addr: Option<SocketAddr>,
         rpc_port: Option<u16>,
-    ) -> Self {
+        provider: Provider,
+    ) -> Self
+    where
+        Provider: domain_service::providers::BlockImportProvider<Block, Client<RuntimeApi>>
+            + domain_service::providers::RpcProvider<
+                Block,
+                Client<RuntimeApi>,
+                FullPool<RuntimeApi>,
+                FullChainApi<Client<RuntimeApi>, Block>,
+                Backend,
+                <Runtime as DomainRuntime>::AccountId,
+                CreateInherentDataProvider<subspace_test_client::Client, CBlock>,
+            > + 'static,
+    {
         let mut domain_config = node_config(
             domain_id,
             tokio_handle.clone(),
@@ -245,7 +262,7 @@ where
             operator_streams,
             gossip_message_sink: gossip_msg_sink,
             domain_message_receiver,
-            provider: DefaultProvider,
+            provider,
             skip_empty_bundle_production,
             skip_out_of_order_slot: true,
             maybe_operator_id,
@@ -641,6 +658,29 @@ impl DomainNodeBuilder {
         self
     }
 
+    fn evm_eth_provider(
+        base_path: &std::path::Path,
+    ) -> EthProvider<
+        evm_domain_test_runtime::TransactionConverter,
+        DefaultEthConfig<
+            FullClient<Block, evm_domain_test_runtime::RuntimeApi>,
+            FullBackend<Block>,
+        >,
+    > {
+        EthProvider::with_configuration(
+            Some(base_path),
+            EthConfiguration {
+                max_past_logs: 10000,
+                fee_history_limit: 2048,
+                enable_dev_signer: true,
+                target_gas_price: 1,
+                execute_gas_limit_multiplier: 10,
+                eth_log_block_cache: 50,
+                eth_statuses_cache: 50,
+            },
+        )
+    }
+
     /// Build an EVM domain node
     pub async fn build_evm_node(
         self,
@@ -648,15 +688,17 @@ impl DomainNodeBuilder {
         key: EcdsaKeyring,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> EvmDomainNode {
+        let domain_base_path = self
+            .base_path
+            .path()
+            .join(format!("domain-{EVM_DOMAIN_ID}"));
+        let eth_provider = Self::evm_eth_provider(&domain_base_path);
+
         DomainNode::build(
             EVM_DOMAIN_ID,
             self.tokio_handle,
             key,
-            BasePath::new(
-                self.base_path
-                    .path()
-                    .join(format!("domain-{EVM_DOMAIN_ID}")),
-            ),
+            BasePath::new(domain_base_path),
             self.domain_nodes,
             self.domain_nodes_exclusive,
             self.skip_empty_bundle_production,
@@ -665,6 +707,7 @@ impl DomainNodeBuilder {
             mock_consensus_node,
             self.rpc_addr,
             self.rpc_port,
+            eth_provider,
         )
         .await
     }
@@ -693,6 +736,7 @@ impl DomainNodeBuilder {
             mock_consensus_node,
             self.rpc_addr,
             self.rpc_port,
+            DefaultProvider,
         )
         .await
     }
@@ -705,6 +749,8 @@ impl DomainNodeBuilder {
         mock_consensus_node: &mut MockConsensusNode,
         domain_id: DomainId,
     ) -> EvmDomainNode {
+        let eth_provider = Self::evm_eth_provider(self.base_path.path());
+
         DomainNode::build(
             domain_id,
             self.tokio_handle,
@@ -718,6 +764,7 @@ impl DomainNodeBuilder {
             mock_consensus_node,
             self.rpc_addr,
             self.rpc_port,
+            eth_provider,
         )
         .await
     }
