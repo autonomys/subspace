@@ -52,6 +52,7 @@ core_affinity = "0.8.1"
 cpufeatures = "0.2.17"
 criterion = { version = "0.5.1", default-features = false }
 cross-domain-message-gossip = { version = "0.1.0", path = "domains/client/cross-domain-message-gossip" }
+cumulus-primitives-proof-size-hostfunction = { git = "https://github.com/subspace/polkadot-sdk", rev = "abff7ba7e61b7e55f8b1f90be581cf34526caf25", default-features = false }
 derive_more = { version = "1.0.0", default-features = false }
 domain-block-builder = { version = "0.1.0", path = "domains/client/block-builder", default-features = false }
 domain-block-preprocessor = { version = "0.1.0", path = "domains/client/block-preprocessor", default-features = false }
