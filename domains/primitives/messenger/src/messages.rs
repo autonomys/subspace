@@ -4,7 +4,7 @@ extern crate alloc;
 use crate::endpoint::{Endpoint, EndpointRequestWithCollectedFee, EndpointResponse};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 pub use sp_domains::{ChainId, ChannelId};
 use sp_runtime::DispatchError;
@@ -113,7 +113,7 @@ pub enum VersionedPayload<Balance> {
 }
 
 /// Message weight tag used to indicate the consumed weight when handling the message
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Default)]
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Default, DecodeWithMemTracking)]
 pub enum MessageWeightTag {
     ProtocolChannelOpen,
     ProtocolChannelClose,
@@ -177,7 +177,7 @@ pub struct Message<Balance> {
     pub last_delivered_message_response_nonce: Option<Nonce>,
 }
 
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub enum Proof<CBlockNumber, CBlockHash, MmrHash> {
     Consensus {
         /// Consensus chain MMR leaf proof.
@@ -232,7 +232,7 @@ impl<CBlockNumber, CBlockHash, MmrHash> Proof<CBlockNumber, CBlockHash, MmrHash>
 }
 
 /// Cross Domain message contains Message and its proof on src_chain.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct CrossDomainMessage<CBlockNumber, CBlockHash, MmrHash> {
     /// Chain which initiated this message.
     pub src_chain_id: ChainId,

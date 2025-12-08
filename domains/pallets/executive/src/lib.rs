@@ -117,7 +117,9 @@ mod pallet {
         #[pallet::weight((T::WeightInfo::set_code(), DispatchClass::Mandatory))]
         pub fn set_code(origin: OriginFor<T>, code: Vec<u8>) -> DispatchResult {
             ensure_none(origin)?;
-            <frame_system::pallet::Pallet<T>>::can_set_code(&code)?;
+            // we dont need to check version here since the version check already happens
+            // on the consensus side before issuing a domain runtime upgrade.
+            <frame_system::pallet::Pallet<T>>::can_set_code(&code, false).into_result()?;
             <T as frame_system::Config>::OnSetCode::set_code(code)?;
             Ok(())
         }

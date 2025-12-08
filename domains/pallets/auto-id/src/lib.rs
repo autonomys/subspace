@@ -34,7 +34,7 @@ use frame_support::ensure;
 use frame_support::traits::Time;
 use frame_support::weights::Weight;
 pub use pallet::*;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_auto_id::auto_id_runtime_interface::{decode_tbs_certificate, verify_signature};
 use sp_auto_id::{DerVec, SignatureVerificationRequest, Validity};
@@ -180,7 +180,7 @@ pub struct AutoId {
 }
 
 /// Type holds X509 certificate details used to register an AutoId.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub enum RegisterAutoIdX509 {
     Root {
         certificate: DerVec,
@@ -196,13 +196,13 @@ pub enum RegisterAutoIdX509 {
 }
 
 /// Request to renew AutoId.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub enum RenewAutoId {
     X509(RenewX509Certificate),
 }
 
 /// Type holds X509 certificate details used to renew.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct RenewX509Certificate {
     issuer_id: Option<Identifier>,
     certificate: DerVec,
@@ -211,14 +211,14 @@ pub struct RenewX509Certificate {
 }
 
 /// Signature holds algorithm used and the signature value.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct Signature {
     pub signature_algorithm: DerVec,
     pub value: Vec<u8>,
 }
 
 /// Request to register a new AutoId.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub enum RegisterAutoId {
     X509(RegisterAutoIdX509),
 }

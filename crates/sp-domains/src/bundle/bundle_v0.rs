@@ -6,13 +6,13 @@ use crate::execution_receipt::ExecutionReceipt;
 use crate::{HeaderHashFor, HeaderHashingFor, HeaderNumberFor, OperatorSignature, ProofOfElection};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime::traits::{Hash, Header as HeaderT};
 use sp_weights::Weight;
 
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct BundleHeaderV0<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Proof of bundle producer election.
     pub proof_of_election: ProofOfElection,
@@ -43,7 +43,7 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
 }
 
 /// Header of bundle.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct SealedBundleHeaderV0<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Unsealed header.
     pub header: BundleHeaderV0<Number, Hash, DomainHeader, Balance>,
@@ -64,7 +64,7 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
 }
 
 /// Domain bundle v0.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct BundleV0<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Sealed bundle header.
     pub sealed_header: SealedBundleHeaderV0<Number, Hash, DomainHeader, Balance>,

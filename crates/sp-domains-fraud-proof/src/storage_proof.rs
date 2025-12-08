@@ -1,5 +1,5 @@
 use frame_support::PalletError;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_core::storage::StorageKey;
@@ -32,7 +32,7 @@ pub enum GenerationError {
     StorageKey,
 }
 
-#[derive(Debug, PartialEq, Eq, Encode, Decode, PalletError, TypeInfo)]
+#[derive(Debug, PartialEq, Eq, Encode, Decode, PalletError, TypeInfo, DecodeWithMemTracking)]
 pub enum VerificationError {
     InvalidBundleStorageProof,
     RuntimeCodeNotFound,
@@ -162,7 +162,7 @@ pub trait BasicStorageProof<Block: BlockT>:
     }
 }
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct SuccessfulBundlesProof(StorageProof);
 
 impl_storage_proof!(SuccessfulBundlesProof);
@@ -174,7 +174,7 @@ impl<Block: BlockT> BasicStorageProof<Block> for SuccessfulBundlesProof {
     }
 }
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct DomainChainsAllowlistUpdateStorageProof(StorageProof);
 
 impl_storage_proof!(DomainChainsAllowlistUpdateStorageProof);
@@ -186,7 +186,7 @@ impl<Block: BlockT> BasicStorageProof<Block> for DomainChainsAllowlistUpdateStor
     }
 }
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct DomainSudoCallStorageProof(StorageProof);
 
 impl_storage_proof!(DomainSudoCallStorageProof);
@@ -198,7 +198,7 @@ impl<Block: BlockT> BasicStorageProof<Block> for DomainSudoCallStorageProof {
     }
 }
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct EvmDomainContractCreationAllowedByCallStorageProof(StorageProof);
 
 impl_storage_proof!(EvmDomainContractCreationAllowedByCallStorageProof);
@@ -212,7 +212,7 @@ impl<Block: BlockT> BasicStorageProof<Block>
     }
 }
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct DomainRuntimeUpgradesProof(StorageProof);
 
 impl_storage_proof!(DomainRuntimeUpgradesProof);
@@ -231,7 +231,7 @@ impl<Block: BlockT> BasicStorageProof<Block> for DomainRuntimeUpgradesProof {
 // to execute thus the domain runtime code will take effect in the next domain block, in other
 // word the domain runtime code of the parent consensus block is the one used when constructing
 // the `ExecutionReceipt`.
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct DomainRuntimeCodeProof(StorageProof);
 
 impl_storage_proof!(DomainRuntimeCodeProof);
@@ -244,7 +244,7 @@ impl<Block: BlockT> BasicStorageProof<Block> for DomainRuntimeCodeProof {
 }
 
 /// Bundle with proof data for fraud proof.
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct OpaqueBundleWithProof<Number, Hash, DomainHeader: HeaderT, Balance> {
     pub bundle: OpaqueBundle<Number, Hash, DomainHeader, Balance>,
     pub bundle_index: u32,
@@ -309,7 +309,7 @@ where
 }
 
 /// A proof of a single domain runtime upgrade (or that there wasn't an upgrade).
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct MaybeDomainRuntimeUpgradedProof {
     /// A list of domain runtime upgrades for a block.
     pub domain_runtime_upgrades: DomainRuntimeUpgradesProof,
@@ -406,7 +406,7 @@ impl PassBy for InherentExtrinsicData {
     type PassBy = pass_by::Codec<Self>;
 }
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct InvalidInherentExtrinsicDataProof(StorageProof);
 
 impl_storage_proof!(InvalidInherentExtrinsicDataProof);
@@ -417,7 +417,7 @@ impl<Block: BlockT> BasicStorageProof<Block> for InvalidInherentExtrinsicDataPro
     }
 }
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct MmrRootStorageProof<MmrHash> {
     storage_proof: StorageProof,
     _phantom_data: PhantomData<MmrHash>,

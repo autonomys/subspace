@@ -38,7 +38,7 @@ use pallet_transporter::EndpointHandler;
 use parity_scale_codec::{Decode, DecodeLimit, Encode, MaxEncodedLen};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
-use sp_core::{Get, OpaqueMetadata};
+use sp_core::{DecodeWithMemTracking, Get, OpaqueMetadata};
 use sp_domains::execution_receipt::Transfers;
 use sp_domains::{ChannelId, DomainAllowlistUpdates, DomainId};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
@@ -205,7 +205,7 @@ impl frame_system::Config for Runtime {
     type PostInherents = ();
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
+    type ExtensionsWeightInfo = frame_system::SubstrateExtensionsWeight<Runtime>;
     type EventSegmentSize = DomainEventSegmentSize;
 }
 
@@ -391,7 +391,18 @@ impl sp_messenger::StorageKeys for StorageKeys {
 
 /// Hold identifier for balances for this runtime.
 #[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+    Ord,
+    PartialOrd,
+    Copy,
+    Debug,
+    DecodeWithMemTracking,
 )]
 pub struct HoldIdentifierWrapper(HoldIdentifier);
 
@@ -1208,7 +1219,7 @@ impl_runtime_apis! {
             Vec<frame_benchmarking::BenchmarkList>,
             Vec<frame_support::traits::StorageInfo>,
         ) {
-            use frame_benchmarking::{baseline, Benchmarking, BenchmarkList};
+            use frame_benchmarking::{baseline, BenchmarkList};
             use frame_support::traits::StorageInfoTrait;
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
@@ -1225,7 +1236,7 @@ impl_runtime_apis! {
         fn dispatch_benchmark(
             config: frame_benchmarking::BenchmarkConfig
         ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, alloc::string::String> {
-            use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch};
+            use frame_benchmarking::{baseline, BenchmarkBatch};
             use sp_storage::TrackedStorageKey;
             use frame_system_benchmarking::Pallet as SystemBench;
             use frame_support::traits::WhitelistedStorageKeys;

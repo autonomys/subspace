@@ -10,7 +10,7 @@ use frame_support::PalletError;
 use hash_db::Hasher;
 #[cfg(feature = "std")]
 use parity_scale_codec::Codec;
-use parity_scale_codec::{Compact, Decode, Encode};
+use parity_scale_codec::{Compact, Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_core::storage::StorageKey;
 #[cfg(feature = "std")]
@@ -26,7 +26,7 @@ use std::collections::BTreeSet;
 use trie_db::{DBValue, TrieDBMutBuilder, TrieLayout, TrieMut};
 
 /// Verification error.
-#[derive(Debug, PartialEq, Eq, Encode, Decode, PalletError, TypeInfo)]
+#[derive(Debug, PartialEq, Eq, Encode, Decode, PalletError, TypeInfo, DecodeWithMemTracking)]
 pub enum VerificationError {
     /// Emits when the given storage proof is invalid.
     InvalidProof,

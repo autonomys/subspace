@@ -11,7 +11,7 @@ use domain_test_utils::test_ethereum::{
     generate_eip2930_tx, generate_legacy_transfer_txn, generate_legacy_tx,
 };
 use domain_test_utils::test_ethereum_tx::{AccountInfo, address_build};
-use ethereum::TransactionV2 as EthereumTransaction;
+use ethereum::TransactionV3 as EthereumTransaction;
 use evm_domain_test_runtime::construct_extrinsic_raw_payload;
 use fp_rpc::EthereumRuntimeRPCApi;
 use parity_scale_codec::Encode;

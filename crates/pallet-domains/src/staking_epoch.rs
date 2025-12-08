@@ -20,7 +20,7 @@ use frame_support::traits::tokens::{
     DepositConsequence, Fortitude, Precision, Provenance, Restriction,
 };
 use frame_support::{PalletError, StorageDoubleMap};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::offline_operators::{
@@ -32,7 +32,7 @@ use sp_runtime::{Perquintill, SaturatedConversion, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 
-#[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
+#[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq, DecodeWithMemTracking)]
 pub enum Error {
     FinalizeDomainEpochStaking(TransitionError),
     OperatorRewardStaking(TransitionError),

@@ -54,7 +54,8 @@ pub(crate) fn extract_utility_block_object_mapping(
                 recursion_depth_left,
             );
         }
-        pallet_utility::Call::dispatch_as { as_origin, call } => {
+        pallet_utility::Call::dispatch_as { as_origin, call }
+        | pallet_utility::Call::dispatch_as_fallible { as_origin, call } => {
             base_offset += as_origin.encoded_size() as u32;
 
             extract_call_block_object_mapping(
@@ -72,6 +73,13 @@ pub(crate) fn extract_utility_block_object_mapping(
                 recursion_depth_left,
             );
         }
+        // TODO: need to figure out if we want to object map both the calls
+        // or just one call.
+        // per the docs,
+        // if main call succeeds, fallback is not executed.
+        // if main call fails, fallback is executed
+        // if fallback fails, entire call fails and we dont do object mapping in this case
+        pallet_utility::Call::if_else { .. } => {}
         pallet_utility::Call::__Ignore(_, _) => {
             // Ignore.
         }

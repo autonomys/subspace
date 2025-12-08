@@ -8,7 +8,7 @@ use core::fmt;
 use frame_support::pallet_prelude::Zero;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_core::H256;
+use sp_core::{DecodeWithMemTracking, H256};
 use sp_domain_digests::AsPredigest;
 use sp_domains::bundle::{BundleValidity, InvalidBundleType};
 use sp_domains::execution_receipt::ExecutionReceiptFor;
@@ -21,14 +21,14 @@ use sp_trie::StorageProof;
 use subspace_runtime_primitives::Balance;
 
 /// Mismatch type possible for ApplyExtrinsic execution phase
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub enum ApplyExtrinsicMismatch {
     StateRoot(u32),
     Shorter,
 }
 
 /// Mismatch type possible for FinalizBlock execution phase
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub enum FinalizeBlockMismatch {
     StateRoot,
     Longer(u32),
@@ -36,7 +36,7 @@ pub enum FinalizeBlockMismatch {
 
 /// A phase of a block's execution, carrying necessary information needed for verifying the
 /// invalid state transition proof.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub enum ExecutionPhase {
     /// Executes the `initialize_block` hook.
     InitializeBlock,
@@ -316,7 +316,7 @@ impl<DomainHash> From<storage_proof::VerificationError> for VerificationError<Do
 }
 
 /// Fraud proof for domains.
-#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct FraudProof<Number, Hash, DomainHeader: HeaderT, MmrHash> {
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted
@@ -335,7 +335,7 @@ pub struct FraudProof<Number, Hash, DomainHeader: HeaderT, MmrHash> {
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub enum FraudProofVariant<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     #[codec(index = 0)]
     InvalidStateTransition(InvalidStateTransitionProof),
@@ -456,7 +456,7 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT> fmt::Debug
 }
 
 /// Represents a valid bundle index and all the extrinsics within that bundle.
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct ValidBundleDigest {
     /// Index of this bundle in the original list of bundles in the consensus block.
     pub bundle_index: u32,
@@ -468,14 +468,14 @@ pub struct ValidBundleDigest {
 }
 
 // Domain runtime code at a specific block
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct DomainRuntimeCodeAt<Number, Hash, MmrHash> {
     pub mmr_proof: ConsensusChainMmrLeafProof<Number, Hash, MmrHash>,
     pub domain_runtime_code_proof: DomainRuntimeCodeProof,
 }
 
 /// Proves an invalid state transition by challenging the trace at specific index in a bad receipt.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct InvalidStateTransitionProof {
     /// Proof recorded during the computation.
     pub execution_proof: StorageProof,
@@ -484,7 +484,7 @@ pub struct InvalidStateTransitionProof {
 }
 
 /// Fraud proof for the valid bundles in `ExecutionReceipt::inboxed_bundles`
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct ValidBundleProof<Number, Hash, DomainHeader: HeaderT> {
     /// The targeted bundle with proof
     pub bundle_with_proof: OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>,
@@ -496,7 +496,7 @@ impl<Number, Hash, DomainHeader: HeaderT> ValidBundleProof<Number, Hash, DomainH
     }
 }
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct InvalidExtrinsicsRootProof {
     /// Valid Bundle digests
     pub valid_bundle_digests: Vec<ValidBundleDigest>,
@@ -518,14 +518,14 @@ pub struct InvalidExtrinsicsRootProof {
         EvmDomainContractCreationAllowedByCallStorageProof,
 }
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct MmrRootProof<Number, Hash, MmrHash> {
     pub mmr_proof: ConsensusChainMmrLeafProof<Number, Hash, MmrHash>,
     pub mmr_root_storage_proof: MmrRootStorageProof<MmrHash>,
 }
 
 /// Invalid versioned bundle proof data.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub enum InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     Extrinsic(StorageProof),
     Bundle(OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>),
@@ -540,7 +540,7 @@ pub enum InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader: HeaderT> {
 }
 
 /// A proof about a bundle that was marked invalid (but might or might not actually be invalid).
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     pub bundle_index: u32,
     /// The invalid bundle type that the bundle was marked with.
@@ -565,21 +565,21 @@ impl<Number, Hash, MmrHash, DomainHeader: HeaderT>
 }
 
 /// Represents an invalid block fees proof.
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct InvalidBlockFeesProof {
     /// Storage witness needed for verifying this proof.
     pub storage_proof: StorageProof,
 }
 
 /// Represents an invalid transfers proof.
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct InvalidTransfersProof {
     /// Storage witness needed for verifying this proof.
     pub storage_proof: StorageProof,
 }
 
 /// Represents an invalid domain block hash fraud proof.
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct InvalidDomainBlockHashProof {
     /// Digests storage proof that is used to derive Domain block hash.
     pub digest_storage_proof: StorageProof,

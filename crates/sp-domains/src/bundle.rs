@@ -13,7 +13,7 @@ use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use bundle_v0::BundleV0;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_runtime::OpaqueExtrinsic;
@@ -92,7 +92,7 @@ pub enum BundleVersion {
 }
 
 /// Versioned Domain Bundle.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub enum Bundle<Extrinsic, Number, Hash, DomainHeader: HeaderT, Balance> {
     /// V0 version of the domain bundle.
     V0(BundleV0<Extrinsic, Number, Hash, DomainHeader, Balance>),
@@ -346,7 +346,7 @@ pub struct BundleDigest<Hash> {
 /// Bundle invalidity type
 ///
 /// Each type contains the index of the first invalid extrinsic within the bundle
-#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq, DecodeWithMemTracking)]
 pub enum InvalidBundleType {
     /// Failed to decode the opaque extrinsic.
     #[codec(index = 0)]
@@ -424,7 +424,7 @@ impl InvalidBundleType {
     }
 }
 
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub enum BundleValidity<Hash> {
     // The invalid bundle was originally included in the consensus block but subsequently
     // excluded from execution as invalid and holds the `InvalidBundleType`
@@ -436,7 +436,7 @@ pub enum BundleValidity<Hash> {
 }
 
 /// [`InboxedBundle`] represents a bundle that was successfully submitted to the consensus chain
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct InboxedBundle<Hash> {
     pub bundle: BundleValidity<Hash>,
     // TODO remove this as the root is already present in the `ExecutionInbox` storage

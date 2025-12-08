@@ -293,7 +293,6 @@ where
             code_executor,
             network_service,
             sync_service,
-            network_starter,
             rpc_handlers,
             operator,
             ..
@@ -309,8 +308,6 @@ where
             multiaddr,
             peer_id: network_service.local_peer_id(),
         };
-
-        network_starter.start_network();
 
         DomainNode {
             domain_id,

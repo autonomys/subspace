@@ -51,7 +51,7 @@ use pallet_collective::{EnsureMember, EnsureProportionAtLeast};
 pub use pallet_rewards::RewardPoint;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
 use pallet_transporter::EndpointHandler;
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_api::impl_runtime_apis;
 use sp_consensus_slots::{Slot, SlotDuration};
@@ -261,7 +261,7 @@ impl frame_system::Config for Runtime {
     type PostInherents = ();
     type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtensionsWeightInfo = frame_system::ExtensionsWeight<Runtime>;
+    type ExtensionsWeightInfo = frame_system::SubstrateExtensionsWeight<Runtime>;
     type EventSegmentSize = ConsensusEventSegmentSize;
 }
 
@@ -332,7 +332,18 @@ parameter_types! {
 }
 
 #[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+    Ord,
+    PartialOrd,
+    Copy,
+    Debug,
+    DecodeWithMemTracking,
 )]
 pub struct HoldIdentifierWrapper(HoldIdentifier);
 
@@ -587,6 +598,7 @@ impl pallet_scheduler::Config for Runtime {
     type RuntimeOrigin = RuntimeOrigin;
     type ScheduleOrigin = EnsureRoot<AccountId>;
     type WeightInfo = weights::pallet_scheduler::WeightInfo<Runtime>;
+    type BlockNumberProvider = System;
 }
 
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
@@ -1086,6 +1098,7 @@ impl pallet_multisig::Config for Runtime {
     type DepositFactor = DepositFactor;
     type MaxSignatories = MaxSignatories;
     type WeightInfo = weights::pallet_multisig::WeightInfo<Runtime>;
+    type BlockNumberProvider = System;
 }
 
 construct_runtime!(
@@ -1863,7 +1876,7 @@ impl_runtime_apis! {
             Vec<frame_benchmarking::BenchmarkList>,
             Vec<frame_support::traits::StorageInfo>,
         ) {
-            use frame_benchmarking::{baseline, Benchmarking, BenchmarkList};
+            use frame_benchmarking::{baseline, BenchmarkList};
             use frame_support::traits::StorageInfoTrait;
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
@@ -1882,7 +1895,7 @@ impl_runtime_apis! {
         fn dispatch_benchmark(
             config: frame_benchmarking::BenchmarkConfig
         ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, alloc::string::String> {
-            use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch};
+            use frame_benchmarking::{baseline, BenchmarkBatch};
             use sp_core::storage::TrackedStorageKey;
 
             use frame_system_benchmarking::Pallet as SystemBench;
