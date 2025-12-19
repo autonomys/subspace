@@ -106,7 +106,10 @@ fn create_genesis_config(
 ) -> Result<RuntimeGenesisConfig, String> {
     Ok(RuntimeGenesisConfig {
         system: SystemConfig::default(),
-        balances: BalancesConfig { balances },
+        balances: BalancesConfig {
+            balances,
+            dev_accounts: None,
+        },
         transaction_payment: Default::default(),
         sudo: SudoConfig {
             // Assign network admin rights.

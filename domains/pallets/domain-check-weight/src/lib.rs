@@ -19,7 +19,7 @@ use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use frame_support::traits::Get;
 use frame_system::limits::BlockWeights;
 use frame_system::{Config, ConsumedWeight};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::DispatchResult;
 use sp_runtime::traits::{
@@ -36,7 +36,7 @@ use sp_weights::Weight;
 /// It performs the same check as [`frame_system::CheckWeight`] except the `max_total/max_block` weight limit
 /// check is removed from the `pre_dispatch/pre_dispatch_unsigned` because the total weight of a domain block
 /// is based on probability instead of a hard limit.
-#[derive(Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
+#[derive(Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo, DecodeWithMemTracking)]
 #[scale_info(skip_type_params(T))]
 pub struct CheckWeight<T: Config + Send + Sync>(core::marker::PhantomData<T>);
 
@@ -139,7 +139,7 @@ where
         _len: usize,
         _result: &DispatchResult,
     ) -> Result<Weight, TransactionValidityError> {
-        frame_system::CheckWeight::<T>::do_post_dispatch(info, post_info)?;
+        frame_system::Pallet::<T>::reclaim_weight(info, post_info)?;
         Ok(Weight::zero())
     }
 
@@ -166,7 +166,7 @@ where
         _len: usize,
         _result: &DispatchResult,
     ) -> Result<(), TransactionValidityError> {
-        frame_system::CheckWeight::<T>::do_post_dispatch(info, post_info)
+        frame_system::Pallet::<T>::reclaim_weight(info, post_info)
     }
 }
 

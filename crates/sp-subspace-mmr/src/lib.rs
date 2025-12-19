@@ -20,6 +20,7 @@ extern crate alloc;
 
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_core::DecodeWithMemTracking;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 
 /// MMR leaf structure
@@ -59,7 +60,7 @@ pub struct LeafDataV0<BlockNumber, Hash> {
 /// The verifier is not required to contains any the MMR offchain data but this proof
 /// will be expired after `N` blocks where `N` is the number of MMR root stored in the
 // consensus chain runtime.
-#[derive(Debug, Clone, Encode, Decode, Eq, PartialEq, TypeInfo)]
+#[derive(Debug, Clone, Encode, Decode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash> {
     /// Consensus block info from which this proof was generated.
     pub consensus_block_number: CBlockNumber,

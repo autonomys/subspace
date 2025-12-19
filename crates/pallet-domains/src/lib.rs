@@ -48,7 +48,7 @@ use frame_support::weights::Weight;
 use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_subspace::WrappedPotOutput;
 use sp_consensus_subspace::consensus::is_proof_of_time_valid;
@@ -169,7 +169,17 @@ pub type BlockTreeNodeFor<T> = crate::block_tree::BlockTreeNode<
 >;
 
 /// Custom origin for validated unsigned extrinsics.
-#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(
+    PartialEq,
+    Eq,
+    Clone,
+    Encode,
+    Decode,
+    RuntimeDebug,
+    TypeInfo,
+    MaxEncodedLen,
+    DecodeWithMemTracking,
+)]
 pub enum RawOrigin {
     ValidatedUnsigned,
 }
@@ -887,7 +897,7 @@ mod pallet {
         ExecutionVersionMissing,
     }
 
-    #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
+    #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq, DecodeWithMemTracking)]
     pub enum FraudProofError {
         /// The targeted bad receipt not found which may already pruned by other
         /// fraud proof or the fraud proof is submitted to the wrong fork.
@@ -1037,7 +1047,7 @@ mod pallet {
     }
 
     /// Reason for slashing an operator
-    #[derive(Clone, Debug, PartialEq, Encode, Decode, TypeInfo)]
+    #[derive(Clone, Debug, PartialEq, Encode, Decode, TypeInfo, DecodeWithMemTracking)]
     pub enum SlashedReason<DomainBlock, ReceiptHash> {
         /// Operator produced bad bundle.
         InvalidBundle(DomainBlock),

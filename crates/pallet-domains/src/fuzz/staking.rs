@@ -119,6 +119,7 @@ fn create_genesis_storage(accounts: &[AccountId], mint: u128) -> Storage {
     RuntimeGenesisConfig {
         balances: BalancesConfig {
             balances: accounts.iter().cloned().map(|k| (k, mint)).collect(),
+            dev_accounts: None,
         },
         domains: DomainsConfig {
             genesis_domains: vec![GenesisDomain {

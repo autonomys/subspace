@@ -13,7 +13,6 @@ use sc_client_api::{AuxStore, BlockBackend};
 use sc_network::service::traits::NetworkService;
 use sc_network_sync::SyncingService;
 use sc_service::{DatabaseSource, SpawnTaskHandle};
-use sc_transaction_pool::{ChainApi, Pool};
 use sc_transaction_pool_api::TransactionPool;
 use serde::de::DeserializeOwned;
 use sp_api::ProvideRuntimeApi;
@@ -27,15 +26,13 @@ use substrate_frame_rpc_system::{System, SystemApiServer};
 use substrate_prometheus_endpoint::Registry;
 
 /// Full RPC dependencies.
-pub struct FullDeps<Block: BlockT, Client, TP, CA: ChainApi, BE, CIDP> {
+pub struct FullDeps<Block: BlockT, Client, TP, BE, CIDP> {
     /// The client instance to use.
     pub client: Arc<Client>,
     /// The chain backend.
     pub backend: Arc<BE>,
     /// Transaction pool instance.
     pub pool: Arc<TP>,
-    /// Graph pool instance.
-    pub graph: Arc<Pool<CA>>,
     /// Network service
     pub network: Arc<dyn NetworkService>,
     /// Chain syncing service
@@ -52,15 +49,12 @@ pub struct FullDeps<Block: BlockT, Client, TP, CA: ChainApi, BE, CIDP> {
     pub create_inherent_data_provider: CIDP,
 }
 
-impl<Block: BlockT, Client, TP, CA: ChainApi, BE, CIDP: Clone> Clone
-    for FullDeps<Block, Client, TP, CA, BE, CIDP>
-{
+impl<Block: BlockT, Client, TP, BE, CIDP: Clone> Clone for FullDeps<Block, Client, TP, BE, CIDP> {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
             backend: self.backend.clone(),
             pool: self.pool.clone(),
-            graph: self.graph.clone(),
             network: self.network.clone(),
             sync: self.sync.clone(),
             is_authority: self.is_authority,
@@ -73,8 +67,8 @@ impl<Block: BlockT, Client, TP, CA: ChainApi, BE, CIDP: Clone> Clone
 }
 
 /// Instantiate all RPC extensions.
-pub fn create_full<Block, Client, P, CA, AccountId, BE, CIDP>(
-    deps: FullDeps<Block, Client, P, CA, BE, CIDP>,
+pub fn create_full<Block, Client, P, AccountId, BE, CIDP>(
+    deps: FullDeps<Block, Client, P, BE, CIDP>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
     Block: BlockT,
@@ -90,7 +84,6 @@ where
         + substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>
         + BlockBuilder<Block>,
     P: TransactionPool + Sync + Send + 'static,
-    CA: ChainApi,
     AccountId: DeserializeOwned + Encode + Debug + Decode + Display + Clone + Sync + Send + 'static,
 {
     let mut module = RpcModule::new(());

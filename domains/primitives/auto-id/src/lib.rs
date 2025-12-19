@@ -29,7 +29,7 @@ pub use crate::runtime_interface::auto_id_runtime_interface;
 use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_core::U256;
+use sp_core::{DecodeWithMemTracking, U256};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use subspace_runtime_primitives::Moment;
@@ -111,7 +111,7 @@ pub struct TbsCertificate {
 }
 
 /// DER encoded bytes
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct DerVec(pub Vec<u8>);
 
 impl PassBy for DerVec {

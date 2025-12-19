@@ -70,7 +70,7 @@ use sc_proof_of_time::source::{PotSlotInfo, PotSourceWorker};
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_service::error::Error as ServiceError;
 use sc_service::{
-    BuildNetworkAdvancedParams, Configuration, NetworkStarter, SpawnTasksParams, TaskManager,
+    BuildNetworkAdvancedParams, Configuration, SpawnTasksParams, TaskManager,
     build_network_advanced, build_polkadot_syncing_strategy,
 };
 use sc_subspace_block_relay::{
@@ -720,8 +720,6 @@ where
     /// Archived segment stream.
     pub archived_segment_notification_stream:
         SubspaceNotificationStream<ArchivedSegmentNotification>,
-    /// Network starter.
-    pub network_starter: NetworkStarter,
     /// Transaction pool.
     pub transaction_pool: Arc<TransactionPoolHandle<Block, Client>>,
 }
@@ -953,7 +951,7 @@ where
 
     let network_service_provider = NetworkServiceProvider::new();
     let network_service_handle = network_service_provider.handle();
-    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) = {
+    let (network_service, system_rpc_tx, tx_handler_controller, sync_service) = {
         let spawn_handle = task_manager.spawn_handle();
         let metrics = NotificationMetrics::new(substrate_prometheus_registry.as_ref());
 
@@ -1358,7 +1356,6 @@ where
         block_importing_notification_stream,
         object_mapping_notification_stream,
         archived_segment_notification_stream,
-        network_starter,
         transaction_pool,
     })
 }

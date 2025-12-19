@@ -3,7 +3,7 @@
 use crate::hashes::{Blake3Hash, blake3_hash};
 use core::fmt;
 use derive_more::{Deref, DerefMut, From, Into};
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -29,7 +29,19 @@ impl PosSeed {
 
 /// Proof of space proof bytes.
 #[derive(
-    Copy, Clone, Eq, PartialEq, Deref, DerefMut, From, Into, Encode, Decode, TypeInfo, MaxEncodedLen,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Deref,
+    DerefMut,
+    From,
+    Into,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+    DecodeWithMemTracking,
 )]
 pub struct PosProof([u8; PosProof::SIZE]);
 

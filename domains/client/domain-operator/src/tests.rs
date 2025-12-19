@@ -20,7 +20,7 @@ use domain_test_utils::test_ethereum::{
     EvmAccountList, generate_evm_account_list, generate_evm_domain_call, generate_legacy_tx,
 };
 use domain_test_utils::test_ethereum_tx::{AccountInfo, address_build, contract_address};
-use ethereum::TransactionV2 as EthereumTransaction;
+use ethereum::TransactionV3 as EthereumTransaction;
 use fp_rpc::EthereumRuntimeRPCApi;
 use futures::StreamExt;
 use pallet_domains::{FraudProofFor, OpaqueBundleOf, OperatorConfig};
@@ -1195,6 +1195,7 @@ async fn test_evm_domain_gas_estimates() {
                 max_priority_fee_per_gas,
                 nonce,
                 ref access_list,
+                ref authorization_list,
             } => {
                 let create_info = alice
                     .client
@@ -1211,6 +1212,7 @@ async fn test_evm_domain_gas_estimates() {
                         // Do we want to estimate gas, or run the call?
                         is_estimate,
                         Some(access_list.clone()),
+                        Some(authorization_list.clone()),
                     )
                     .expect("test EVM Create runtime call must succeed")
                     .expect("test EVM Create info must succeed");
@@ -1235,6 +1237,7 @@ async fn test_evm_domain_gas_estimates() {
                 max_priority_fee_per_gas,
                 nonce,
                 ref access_list,
+                ref authorization_list,
             } => {
                 let call_info = alice
                     .client
@@ -1252,6 +1255,7 @@ async fn test_evm_domain_gas_estimates() {
                         // Do we want to estimate gas, or run the call?
                         is_estimate,
                         Some(access_list.clone()),
+                        Some(authorization_list.clone()),
                     )
                     .expect("test EVM Call runtime call must succeed")
                     .expect("test EVM Call info must succeed");
@@ -1380,8 +1384,8 @@ async fn test_evm_domain_gas_estimates() {
         receipt.block_fees().clone(),
         // Check the actual block fees for an EVM contract create
         BlockFees {
-            consensus_storage_fee: 789,
-            domain_execution_fee: 10_813_273_629_579_568,
+            consensus_storage_fee: 792,
+            domain_execution_fee: 10_813_273_629_679_568,
             burned_balance: 0,
             chain_rewards: [].into(),
         }
@@ -1427,8 +1431,8 @@ async fn test_evm_domain_gas_estimates() {
         receipt.block_fees().clone(),
         // Check the actual block fees for an EVM contract call
         BlockFees {
-            consensus_storage_fee: 849,
-            domain_execution_fee: 10_812_720_677_240_620,
+            consensus_storage_fee: 852,
+            domain_execution_fee: 10_812_720_677_578_347,
             burned_balance: 0,
             chain_rewards: [].into(),
         }
@@ -8835,6 +8839,7 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
             None,
             None,
             false,
+            None,
             None,
         )
         .expect("EVM runtime call must succeed")

@@ -27,7 +27,6 @@ use sc_network::{NetworkStateInfo, ReputationChange};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager, TransactionPool};
-use sc_transaction_pool::FullChainApi;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedSender, tracing_unbounded};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
@@ -161,7 +160,6 @@ where
                 Block,
                 Client<RuntimeApi>,
                 FullPool<RuntimeApi>,
-                FullChainApi<Client<RuntimeApi>, Block>,
                 Backend,
                 <Runtime as DomainRuntime>::AccountId,
                 CreateInherentDataProvider<subspace_test_client::Client, CBlock>,
@@ -293,7 +291,6 @@ where
             code_executor,
             network_service,
             sync_service,
-            network_starter,
             rpc_handlers,
             operator,
             ..
@@ -309,8 +306,6 @@ where
             multiaddr,
             peer_id: network_service.local_peer_id(),
         };
-
-        network_starter.start_network();
 
         DomainNode {
             domain_id,

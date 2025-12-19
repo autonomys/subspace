@@ -10,7 +10,7 @@ use crate::{Config, Origin, Pallet as Subspace};
 use frame_support::RuntimeDebugNoBound;
 use frame_support::pallet_prelude::{PhantomData, TypeInfo, Weight};
 use frame_system::pallet_prelude::{BlockNumberFor, RuntimeCallFor};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::prelude::fmt;
 use sp_consensus_subspace::SignedVote;
 use sp_runtime::DispatchResult;
@@ -40,7 +40,7 @@ pub enum ExtensionWeightData {
 }
 
 /// Extensions for pallet-subspace unsigned extrinsics.
-#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct SubspaceExtension<Runtime>(PhantomData<Runtime>);
 
 impl<Runtime> SubspaceExtension<Runtime> {

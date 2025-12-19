@@ -7,7 +7,7 @@ use frame_support::PalletError;
 use frame_support::traits::Get;
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_domains::OperatorId;
 use sp_runtime::Perquintill;
@@ -19,7 +19,7 @@ use subspace_runtime_primitives::StorageFee;
 pub const STORAGE_FEE_RESERVE: Perquintill = Perquintill::from_percent(20);
 
 /// Bundle storage fund specific errors
-#[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
+#[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq, DecodeWithMemTracking)]
 pub enum Error {
     BundleStorageFeePayment,
     BalanceUnderflow,

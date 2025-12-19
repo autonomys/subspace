@@ -22,7 +22,7 @@ use core::cmp::Ordering;
 use frame_support::RuntimeDebugNoBound;
 use frame_support::pallet_prelude::{PhantomData, TypeInfo, Weight};
 use frame_system::pallet_prelude::RuntimeCallFor;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::prelude::fmt;
 use sp_messenger::MAX_FUTURE_ALLOWED_NONCES;
 use sp_messenger::messages::{Message, Nonce, Proof};
@@ -61,7 +61,7 @@ pub enum Pre {
 }
 
 /// Extensions for pallet-messenger unsigned extrinsics.
-#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct MessengerExtension<Runtime>(PhantomData<Runtime>);
 
 impl<Runtime> MessengerExtension<Runtime> {
@@ -381,7 +381,7 @@ where
 }
 
 /// Extensions for pallet-messenger unsigned extrinsics with trusted MMR verification.
-#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct MessengerTrustedMmrExtension<Runtime>(PhantomData<Runtime>);
 
 impl<Runtime> MessengerTrustedMmrExtension<Runtime> {

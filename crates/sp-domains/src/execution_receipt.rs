@@ -15,7 +15,7 @@ use alloc::collections::BTreeSet;
 use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_runtime::traits::{CheckedAdd, Hash as HashT, Header as HeaderT, NumberFor, Zero};
@@ -29,7 +29,7 @@ pub enum ExecutionReceiptVersion {
     V0,
 }
 
-#[derive(Clone, Debug, Decode, Default, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Default, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct BlockFees<Balance> {
     /// The consensus chain storage fee
     pub consensus_storage_fee: Balance,
@@ -74,7 +74,7 @@ where
 }
 
 /// Type that holds the transfers(in/out) for a given chain.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Default, DecodeWithMemTracking)]
 pub struct Transfers<Balance> {
     /// Total transfers that came into the domain.
     pub transfers_in: BTreeMap<ChainId, Balance>,
@@ -146,7 +146,7 @@ pub enum ExecutionReceiptMutRef<'a, Number, Hash, DomainNumber, DomainHash, Bala
 }
 
 /// Receipt for execution of Domain Bundle.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub enum ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     V0(ExecutionReceiptV0<Number, Hash, DomainNumber, DomainHash, Balance>),
 }
@@ -384,7 +384,7 @@ where
 
 /// Singleton receipt submit along when there is a gap between `domain_best_number`
 /// and `HeadReceiptNumber`
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct SingletonReceipt<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Proof of receipt producer election.
     pub proof_of_election: ProofOfElection,
@@ -407,7 +407,7 @@ impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
 }
 
 /// Singleton receipt with operator signature.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct SealedSingletonReceipt<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// A collection of the receipt.
     pub singleton_receipt: SingletonReceipt<Number, Hash, DomainHeader, Balance>,

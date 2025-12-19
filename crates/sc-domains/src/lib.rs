@@ -28,6 +28,7 @@ pub type HostFunctions = (
     sp_io::SubstrateHostFunctions,
     sp_messenger_host_functions::HostFunctions,
     sp_subspace_mmr::DomainHostFunctions,
+    cumulus_primitives_proof_size_hostfunction::storage_proof_size::HostFunctions,
 );
 
 /// Host functions required for Subspace domain
@@ -38,6 +39,7 @@ pub type HostFunctions = (
     sp_messenger_host_functions::HostFunctions,
     sp_subspace_mmr::DomainHostFunctions,
     frame_benchmarking::benchmarking::HostFunctions,
+    cumulus_primitives_proof_size_hostfunction::storage_proof_size::HostFunctions,
 );
 
 /// Runtime executor for Domains

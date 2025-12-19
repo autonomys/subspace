@@ -9,7 +9,7 @@ use frame_support::pallet_prelude::Weight;
 use frame_system::Config;
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
 use pallet_balances::Call as BalancesCall;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use scale_info::prelude::fmt;
 use sp_runtime::DispatchResult;
@@ -45,7 +45,7 @@ pub trait BalanceTransferChecks {
 }
 
 /// Disable balance transfers, if configured in the runtime.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
 pub struct BalanceTransferCheckExtension<Runtime>(PhantomData<Runtime>);
 
 impl<Runtime> Default for BalanceTransferCheckExtension<Runtime>

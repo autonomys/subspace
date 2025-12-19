@@ -236,7 +236,10 @@ fn subspace_genesis_config(
 
     subspace_runtime::RuntimeGenesisConfig {
         system: subspace_runtime::SystemConfig::default(),
-        balances: subspace_runtime::BalancesConfig { balances },
+        balances: subspace_runtime::BalancesConfig {
+            balances,
+            dev_accounts: None,
+        },
         transaction_payment: Default::default(),
         sudo: subspace_runtime::SudoConfig {
             // Assign network admin rights.

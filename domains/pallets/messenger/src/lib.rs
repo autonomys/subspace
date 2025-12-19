@@ -39,7 +39,7 @@ use frame_support::pallet_prelude::{EnsureOrigin, MaxEncodedLen, StorageVersion}
 use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_system::pallet_prelude::BlockNumberFor;
 pub use pallet::*;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::{DomainAllowlistUpdates, DomainId};
@@ -71,7 +71,7 @@ pub(crate) mod verification_errors {
     pub(crate) const NEXT_NONCE_UPDATE: u8 = 205;
 }
 
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy, DecodeWithMemTracking)]
 pub enum OutboxMessageResult {
     /// Message response handler returned Ok.
     Ok,
@@ -80,7 +80,17 @@ pub enum OutboxMessageResult {
 }
 
 /// Custom origin for validated unsigned extrinsics.
-#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(
+    PartialEq,
+    Eq,
+    Clone,
+    Encode,
+    Decode,
+    RuntimeDebug,
+    TypeInfo,
+    MaxEncodedLen,
+    DecodeWithMemTracking,
+)]
 pub enum RawOrigin {
     ValidatedUnsigned,
 }
@@ -109,7 +119,7 @@ pub(crate) type FungibleHoldId<T> =
     <<T as Config>::Currency as InspectHold<<T as frame_system::Config>::AccountId>>::Reason;
 
 /// Parameter to update chain allow list.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy, DecodeWithMemTracking)]
 pub enum ChainAllowlistUpdate {
     Add(ChainId),
     Remove(ChainId),
@@ -630,7 +640,8 @@ mod pallet {
 
         /// Receives an Inbox message that needs to be validated and processed.
         #[pallet::call_index(2)]
-        #[pallet::weight(T::WeightInfo::relay_message().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)))]
+        #[pallet::weight(T::WeightInfo::relay_message().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag))
+        )]
         pub fn relay_message(
             origin: OriginFor<T>,
             msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
@@ -643,7 +654,8 @@ mod pallet {
 
         /// Receives a response from the dst_chain for a message in Outbox.
         #[pallet::call_index(3)]
-        #[pallet::weight(T::WeightInfo::relay_message_response().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)))]
+        #[pallet::weight(T::WeightInfo::relay_message_response().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag))
+        )]
         pub fn relay_message_response(
             origin: OriginFor<T>,
             msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
@@ -1136,7 +1148,7 @@ mod pallet {
             };
 
             if !is_valid_call {
-                log::error!("Unexpected XDM message: {:?}", msg,);
+                log::error!("Unexpected XDM message: {msg:?}",);
                 return Err(InvalidTransaction::Call.into());
             }
 
@@ -1177,7 +1189,7 @@ mod pallet {
                             InvalidTransaction::Call
                         })?;
                 } else {
-                    log::error!("Unexpected call instead of channel open request: {:?}", msg,);
+                    log::error!("Unexpected call instead of channel open request: {msg:?}");
                     return Err(InvalidTransaction::Call.into());
                 }
             }
@@ -1196,15 +1208,12 @@ mod pallet {
                     Ok(())
                 },
             )
-            .map_err(|err| {
-                log::error!(
-                    "Failed to increment the next relay message nonce for Chain[{:?}] with Channel[{:?}]: {:?}",
-                    dst_chain_id,
-                    channel_id,
-                    err,
-                );
-                InvalidTransaction::Custom(crate::verification_errors::NEXT_NONCE_UPDATE)
-            })?;
+                .map_err(|err| {
+                    log::error!(
+                        "Failed to increment the next relay message nonce for Chain[{dst_chain_id:?}] with Channel[{channel_id:?}]: {err:?}"
+                    );
+                    InvalidTransaction::Custom(crate::verification_errors::NEXT_NONCE_UPDATE)
+                })?;
 
             Self::deposit_event(Event::InboxMessage {
                 chain_id: msg.src_chain_id,
@@ -1224,7 +1233,7 @@ mod pallet {
                 match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
                     // unknown channel. return
                     None => {
-                        log::error!("Unexpected inbox message response: {:?}", xdm,);
+                        log::error!("Unexpected inbox message response: {xdm:?}",);
                         return Err(InvalidTransaction::Call.into());
                     }
                     Some(channel) => match channel.latest_response_received_message_nonce {
@@ -1279,15 +1288,11 @@ mod pallet {
                     Ok(())
                 },
             )
-            .map_err(|err| {
-                log::error!(
-                    "Failed to increment the next relay message response nonce for Chain[{:?}] with Channel[{:?}]: {:?}",
-                    dst_chain_id,
-                    channel_id,
-                    err,
+                .map_err(|err| { log::error!(
+                    "Failed to increment the next relay message response nonce for Chain[{dst_chain_id:?}] with Channel[{channel_id:?}]: {err:?}",
                 );
-                InvalidTransaction::Custom(crate::verification_errors::NEXT_NONCE_UPDATE)
-            })?;
+                    InvalidTransaction::Custom(crate::verification_errors::NEXT_NONCE_UPDATE)
+                })?;
 
             Self::deposit_event(Event::OutboxMessageResponse {
                 chain_id: msg.src_chain_id,
@@ -1342,8 +1347,7 @@ mod pallet {
                 )
                 .map_err(|err| {
                     log::error!(
-                        "Failed to verify storage proof for confirmed Domain block: {:?}",
-                        err
+                        "Failed to verify storage proof for confirmed Domain block: {err:?}",
                     );
                     TransactionValidityError::Invalid(InvalidTransaction::BadProof)
                 })?
@@ -1360,7 +1364,7 @@ mod pallet {
                     storage_key,
                 )
                 .map_err(|err| {
-                    log::error!("Failed to verify storage proof for message: {:?}", err);
+                    log::error!("Failed to verify storage proof for message: {err:?}");
                     TransactionValidityError::Invalid(InvalidTransaction::BadProof)
                 })?;
 

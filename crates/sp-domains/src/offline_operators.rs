@@ -28,7 +28,7 @@ use frame_support::pallet_prelude::{Decode, Encode, TypeInfo};
 use frame_support::{Deserialize, Serialize};
 use sp_arithmetic::traits::{One, SaturatedConversion, Saturating, UniqueSaturatedInto, Zero};
 use sp_arithmetic::{FixedPointNumber, FixedU128};
-use sp_core::U256;
+use sp_core::{DecodeWithMemTracking, U256};
 
 /// For τ = 1%: ln(1/τ) = ln(100) ≈ 4.605170185988092
 /// Represent in FixedU128 by multiplying by 1e18 and rounding.
@@ -139,7 +139,18 @@ fn compute_e_relevance(ln_one_over_tau: FixedU128, e_base: u64) -> u64 {
 }
 
 /// Expectations for one operator at epoch end (slots-based, Chernoff-calibrated).
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    TypeInfo,
+    Debug,
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    DecodeWithMemTracking,
+)]
 pub struct OperatorEpochExpectations {
     /// floor(μ) = floor(S * p_slot_exact): integer expected bundles this epoch.
     pub expected_bundles: u64,

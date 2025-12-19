@@ -4,7 +4,7 @@ use crate::ScalarBytes;
 use core::array::TryFromSliceError;
 use core::fmt;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,7 @@ use serde::{Deserializer, Serializer};
     Decode,
     TypeInfo,
     MaxEncodedLen,
+    DecodeWithMemTracking,
 )]
 pub struct Blake3Hash([u8; Blake3Hash::SIZE]);
 

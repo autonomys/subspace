@@ -16,7 +16,7 @@ use derive_more::{
     Add, AddAssign, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul, MulAssign, Sub,
     SubAssign,
 };
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -51,6 +51,7 @@ use serde_big_array::BigArray;
     DivAssign,
     TypeInfo,
     MaxEncodedLen,
+    DecodeWithMemTracking,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(transparent)]
@@ -161,6 +162,7 @@ impl SegmentIndex {
     Decode,
     TypeInfo,
     MaxEncodedLen,
+    DecodeWithMemTracking,
 )]
 #[repr(transparent)]
 pub struct SegmentCommitment([u8; SegmentCommitment::SIZE]);
@@ -265,6 +267,7 @@ impl SegmentCommitment {
     Decode,
     TypeInfo,
     MaxEncodedLen,
+    DecodeWithMemTracking,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(transparent)]
@@ -307,7 +310,20 @@ impl HistorySize {
 }
 
 /// Progress of an archived block.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
+    DecodeWithMemTracking,
+)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub enum ArchivedBlockProgress {
@@ -343,7 +359,20 @@ impl ArchivedBlockProgress {
 }
 
 /// Last archived block
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
+    DecodeWithMemTracking,
+)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct LastArchivedBlock {
@@ -376,7 +405,9 @@ impl LastArchivedBlock {
 /// segment. Each `SegmentHeader` includes hash of the previous one and all together form a chain of
 /// segment headers that is used for quick and efficient verification that some [`Piece`]
 /// corresponds to the actual archival history of the blockchain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo, Hash)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo, Hash, DecodeWithMemTracking,
+)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub enum SegmentHeader {
