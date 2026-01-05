@@ -1,8 +1,10 @@
 ## Pre-requisites
 
-You'll have to have [Rust toolchain](https://rustup.rs/) installed as well as LLVM, Clang and CMake in addition to usual developer tooling.
+You'll have to have [Rust toolchain](https://rustup.rs/) installed as well as LLVM, Clang and CMake in addition to usual
+developer tooling.
 
-Check [crates/subspace-node](../crates/subspace-node/README.md) and [crates/subspace-farmer](../crates/subspace-farmer/README.md) for required dependencies.
+Check [crates/subspace-node](../crates/subspace-node/README.md)
+and [crates/subspace-farmer](../crates/subspace-farmer/README.md) for required dependencies.
 
 ## To Farm By Yourself (Offline)
 
@@ -38,10 +40,13 @@ You may need to follow both node & farmer requirements
 
 - `cargo run --release --bin subspace-node -- run --dev` to run [a node](/crates/subspace-node)
 - To [start farming](/crates/subspace-farmer):
-  - Single farm: `cargo run --release --bin subspace-farmer -- farm --reward-address REWARD-ADDRESS path=FARM0-DIR,size=FARM0-SIZE`
-  - Multiple farms: `cargo run --release --bin subspace-farmer -- farm --reward-address REWARD-ADDRESS path=FARM0-DIR,size=FARM0-SIZE path=FARM1-DIR,size=FARM1-SIZE ...`
+    - Single farm:
+      `cargo run --release --bin subspace-farmer -- farm --reward-address REWARD-ADDRESS path=FARM0-DIR,size=FARM0-SIZE`
+    - Multiple farms:
+      `cargo run --release --bin subspace-farmer -- farm --reward-address REWARD-ADDRESS path=FARM0-DIR,size=FARM0-SIZE path=FARM1-DIR,size=FARM1-SIZE ...`
 
-NOTE 1: You need to have `nightly` version of Rust toolchain with `wasm32-unknown-unknown` target available or else you'll get a compilation error.
+NOTE 1: You need to have `nightly` version of Rust toolchain with `wasm32v1-none` target available or else you'll get a
+compilation error.
 NOTE 2: Following the commands above, you will be farming in an offline setting (by yourself).
 NOTE 3: To farm in online setting, you can modify the command accordingly.
 
