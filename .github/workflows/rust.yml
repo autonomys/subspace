@@ -377,7 +377,7 @@ jobs:
         run: sudo apt install -y protobuf-compiler binutils-dev coreutils
 
       - name: install ziggy
-        run: cargo install --locked --force ziggy cargo-afl honggfuzz grcov
+        run: cargo install --locked --force ziggy@1.3.5 cargo-afl@0.17.0 honggfuzz@0.5.58 grcov@0.10.5
 
       - name: test fuzzer
         run: scripts/run-fuzzer.sh
