@@ -51,7 +51,6 @@ use libp2p::request_response::{
 };
 pub use libp2p::request_response::{InboundFailure, OutboundFailure};
 use libp2p::swarm::behaviour::{ConnectionClosed, DialFailure, FromSwarm, ListenFailure};
-use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::handler::multi::MultiHandler;
 use libp2p::swarm::{
     ConnectionDenied, ConnectionId, NetworkBehaviour, THandlerInEvent, THandlerOutEvent, ToSwarm,
@@ -385,8 +384,7 @@ impl RequestResponseFactoryBehaviour {
     ) {
         if let Some((protocol, _)) = self.protocols.get_mut(protocol_name) {
             if protocol.is_connected(target) || connect.should_connect() {
-                let opts = DialOpts::peer_id(*target).addresses(addresses).build();
-                let request_id = protocol.send_request(opts, request);
+                let request_id = protocol.send_request_with_addresses(target, request, addresses);
                 let prev_req_id = self.pending_requests.insert(
                     (protocol_name.to_string().into(), request_id).into(),
                     (Instant::now(), pending_response),
@@ -760,6 +758,7 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                     request,
                                     channel,
                                 },
+                            ..
                         } => {
                             self.message_request = Some(MessageRequest {
                                 peer,
@@ -783,6 +782,7 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                                     request_id,
                                     response,
                                 },
+                            ..
                         } => {
                             let (started, delivered) = match self
                                 .pending_requests
@@ -850,7 +850,7 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                             };
 
                             let out = Event::RequestFinished {
-                                peer,
+                                peer: Some(peer),
                                 protocol: protocol.clone(),
                                 duration: started.elapsed(),
                                 result: Err(error_string),

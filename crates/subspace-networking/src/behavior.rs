@@ -104,6 +104,7 @@ impl Behavior {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, From)]
 pub(crate) enum Event {
     Identify(IdentifyEvent),
