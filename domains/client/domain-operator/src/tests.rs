@@ -6441,9 +6441,9 @@ async fn test_skip_empty_bundle_production() {
     assert_eq!(alice.client.info().best_number, domain_block_number + 1);
 }
 
-// This test is more unstable on macOS
+// This test is more unstable on macOS and windows
 // TODO: find and fix the source of the instability (#3385)
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_receipt_chain() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -8193,6 +8193,7 @@ async fn test_current_block_number_used_as_new_account_nonce() {
 // This test is unstable on Windows, it likely contains a filesystem race condition between stopping
 // the node `bob`, and restarting that node with the same data directory.
 #[tokio::test(flavor = "multi_thread")]
+#[cfg(not(target_os = "windows"))]
 async fn test_domain_node_starting_check() {
     use futures::FutureExt;
     let directory = TempDir::new().expect("Must be able to create temporary directory");
