@@ -24,7 +24,7 @@ use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::offline_operators::{
-    E_BASE, LN_1_OVER_TAU_1_PERCENT, operator_expected_bundles_in_epoch,
+    E_BASE, LN_1_OVER_TAU_0_5_PERCENT, operator_expected_bundles_in_epoch,
 };
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorRewardSource};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
@@ -271,7 +271,7 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
                     (*operator_stake).saturated_into(),
                     epoch_total_stake.saturated_into(),
                     bundle_slot_probability,
-                    LN_1_OVER_TAU_1_PERCENT,
+                    LN_1_OVER_TAU_0_5_PERCENT,
                     E_BASE,
                 );
 

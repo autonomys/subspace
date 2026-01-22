@@ -34,6 +34,10 @@ use sp_core::{DecodeWithMemTracking, U256};
 /// Represent in FixedU128 by multiplying by 1e18 and rounding.
 pub const LN_1_OVER_TAU_1_PERCENT: FixedU128 = FixedU128::from_inner(4_605_170_185_988_091_904);
 
+// For τ = 0.5%: ln(1/τ) = ln(200) ≈ 5.298317366548036
+// Represent in FixedU128 by multiplying by 1e18 and rounding.
+pub const LN_1_OVER_TAU_0_5_PERCENT: FixedU128 = FixedU128::from_inner(5_298_317_366_548_036_608);
+
 /// Threshold for number of bundles operator can produce based on their stake share.
 /// Operators whose expected bundles from their threshold < E_BASE will not be checked
 /// since they are not throughput relevant.
