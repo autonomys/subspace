@@ -1,7 +1,8 @@
 use crate::bundle_producer_election::calculate_threshold;
 use crate::offline_operators::{
-    E_BASE, LN_1_OVER_TAU_1_PERCENT, chernoff_threshold_fp, compute_e_relevance,
-    is_throughput_relevant_fp, operator_expected_bundles_in_epoch, p_from_threshold,
+    E_BASE, LN_1_OVER_TAU_0_5_PERCENT, LN_1_OVER_TAU_1_PERCENT, chernoff_threshold_fp,
+    compute_e_relevance, is_throughput_relevant_fp, operator_expected_bundles_in_epoch,
+    p_from_threshold,
 };
 use num_traits::{One, Zero};
 use prop_test::proptest::prelude::{ProptestConfig, Strategy};
@@ -10,10 +11,6 @@ use prop_test::proptest::test_runner::TestRunner;
 use prop_test::proptest::{prop_assert, prop_assert_eq, prop_assume, proptest};
 use sp_arithmetic::traits::{SaturatedConversion, Saturating};
 use sp_arithmetic::{FixedPointNumber, FixedU128};
-
-// For τ = 0.5%: ln(1/τ) = ln(200) ≈ 5.298317366548036
-// Represent in FixedU128 by multiplying by 1e18 and rounding.
-const LN_1_OVER_TAU_0_5_PERCENT: FixedU128 = FixedU128::from_inner(5_298_317_366_548_036_000);
 
 // For τ = 0.1%: ln(1/τ) = ln(1000) ≈ 6.907755278982137
 // Represent in FixedU128 by multiplying by 1e18 and rounding.
@@ -30,11 +27,21 @@ fn test_ln_1_over_tau_1_value() {
 }
 
 #[test]
+fn test_ln_1_over_tau_0_5_value() {
+    // Dynamically compute ln(200) in floating point
+    // Convert to FixedU128 representation (scaled by 1e18)
+    let computed_ln_1_over_tau_0_5 = FixedU128::from_inner((f64::ln(200.0) * 1e18).round() as u128);
+
+    // Check equality of integer fixed-point representation
+    assert_eq!(LN_1_OVER_TAU_0_5_PERCENT, computed_ln_1_over_tau_0_5,);
+}
+
+#[test]
 fn test_chernoff_basic() {
-    // S = 600, p = 0.05 (μ = 30). τ = 1% -> ln(100)
+    // S = 600, p = 0.05 (μ = 30). τ = 0.5% -> ln(200)
     let s = 600u64;
     let p = FixedU128::saturating_from_rational(5u128, 100u128);
-    let r = chernoff_threshold_fp(s, p, LN_1_OVER_TAU_1_PERCENT).unwrap();
+    let r = chernoff_threshold_fp(s, p, LN_1_OVER_TAU_0_5_PERCENT).unwrap();
     // Chernoff is conservative; r will be noticeably below μ.
     // Expect r around low/mid-teens.
     assert!(r > 0 && r < 30, "r should be between 1 and 29, got {r}");
@@ -66,13 +73,13 @@ fn test_p_from_threshold() {
 }
 
 fn e_rel_1pct() -> u64 {
-    compute_e_relevance(LN_1_OVER_TAU_1_PERCENT, E_BASE)
+    compute_e_relevance(LN_1_OVER_TAU_0_5_PERCENT, E_BASE)
 }
 
 #[test]
-fn e_relevance_is_10_for_tau_1pct() {
-    // 2 * ln(100) ≈ 9.21034 -> ceil = 10; max(E_BASE=3, 10) = 10
-    assert_eq!(e_rel_1pct(), 10);
+fn e_relevance_is_11_for_tau_0_5_pct() {
+    // 2 * ln(200) ≈ 10.5966347331 -> ceil = 11; max(E_BASE=3, 11) = 11
+    assert_eq!(e_rel_1pct(), 11);
 }
 
 #[test]
@@ -84,7 +91,7 @@ fn returns_none_when_no_slots_or_zero_threshold_inputs() {
             1_000,     // operator_stake
             1_000_000, // total_domain_stake
             (1, 1),    // theta
-            LN_1_OVER_TAU_1_PERCENT,
+            LN_1_OVER_TAU_0_5_PERCENT,
             E_BASE,
         )
         .is_none()
@@ -97,7 +104,7 @@ fn returns_none_when_no_slots_or_zero_threshold_inputs() {
             1_000, // operator_stake
             0,     // total_domain_stake
             (1, 1),
-            LN_1_OVER_TAU_1_PERCENT,
+            LN_1_OVER_TAU_0_5_PERCENT,
             E_BASE,
         )
         .is_none()
@@ -110,7 +117,7 @@ fn returns_none_when_no_slots_or_zero_threshold_inputs() {
             0,                         // operator_stake
             1_000_000_000_000_000_000, // total_domain_stake
             (1, 1),
-            LN_1_OVER_TAU_1_PERCENT,
+            LN_1_OVER_TAU_0_5_PERCENT,
             E_BASE,
         )
         .is_none()
@@ -128,7 +135,7 @@ fn small_mu_is_not_throughput_relevant() {
             operator,
             total,
             (1, 1),
-            LN_1_OVER_TAU_1_PERCENT,
+            LN_1_OVER_TAU_0_5_PERCENT,
             E_BASE,
         )
         .is_none()
@@ -137,19 +144,19 @@ fn small_mu_is_not_throughput_relevant() {
 
 #[test]
 fn relevant_operator_produces_some_expectations() {
-    // S = 600, share ~ 2% => μ ≈ 12 >= 10 -> Some(...)
+    // S = 600, share ~ 2% => μ ≈ 12 >= 11 -> Some(...)
     let total = 1_000_000_000_000_000_000u128;
-    let operator = total / 50; // 2%
+    let operator = total / 30; // 3.33%
     let exp = operator_expected_bundles_in_epoch(
         600,
         operator,
         total,
         (1, 1),
-        LN_1_OVER_TAU_1_PERCENT,
+        LN_1_OVER_TAU_0_5_PERCENT,
         E_BASE,
     )
     .expect("should be relevant");
-    // expected_bundles should be >= E_relevance (10) for τ=1%
+    // expected_bundles should be >= E_relevance (11) for τ=0.5%
     assert!(exp.expected_bundles >= e_rel_1pct());
     // Chernoff threshold is a lower bound; must be <= expected_bundles
     assert!(exp.min_required_bundles <= exp.expected_bundles);
@@ -167,7 +174,7 @@ fn near_full_stake_behaves_sensibly() {
         operator,
         total,
         (1, 1),
-        LN_1_OVER_TAU_1_PERCENT,
+        LN_1_OVER_TAU_0_5_PERCENT,
         E_BASE,
     )
     .expect("should be relevant");
@@ -187,9 +194,9 @@ fn monotonic_in_stake_when_relevant() {
     let tests = [
         (total / 200, false), // 0.5% -> not relevant (μ≈3)
         (total / 100, false), // 1%   -> not relevant (μ≈6)
-        (total / 59, true),   // ~1.695% -> μ_floor >= 10 -> relevant
-        (total / 50, true),   // 2%   -> μ≈12
-        (total / 20, true),   // 5%   -> μ≈30
+        (total / 59, false),  // ~1.695% -> μ_floor >= 10 -> not relevant
+        (total / 50, true),   // 2%   -> μ≈12 relevant
+        (total / 20, true),   // 5%   -> μ≈30 relevant
     ];
 
     let mut last_exp_bundles = 0u64;
@@ -200,7 +207,7 @@ fn monotonic_in_stake_when_relevant() {
             stake,
             total,
             (1, 1),
-            LN_1_OVER_TAU_1_PERCENT,
+            LN_1_OVER_TAU_0_5_PERCENT,
             E_BASE,
         );
 
@@ -255,16 +262,16 @@ fn chernoff_monotone_in_tau() {
 fn chernoff_edges_p_zero_or_one() {
     let s = 123u64;
     let r_zero =
-        chernoff_threshold_fp(s, FixedU128::from_inner(0), LN_1_OVER_TAU_1_PERCENT).unwrap();
+        chernoff_threshold_fp(s, FixedU128::from_inner(0), LN_1_OVER_TAU_0_5_PERCENT).unwrap();
     assert_eq!(r_zero, 0);
-    let r_one = chernoff_threshold_fp(s, FixedU128::one(), LN_1_OVER_TAU_1_PERCENT).unwrap();
+    let r_one = chernoff_threshold_fp(s, FixedU128::one(), LN_1_OVER_TAU_0_5_PERCENT).unwrap();
     assert_eq!(r_one, s);
 }
 
 #[test]
 fn throughput_relevance_boundary() {
     // Construct p so that floor(S * p) == E_relevance, should be relevant.
-    let e_rel = compute_e_relevance(LN_1_OVER_TAU_1_PERCENT, E_BASE); // 10
+    let e_rel = compute_e_relevance(LN_1_OVER_TAU_0_5_PERCENT, E_BASE); // 11
     let s = 600u64;
     let p = FixedU128::saturating_from_rational(e_rel as u128, s as u128);
     // at boundary is not relevant
@@ -288,12 +295,12 @@ fn operator_expected_bundles_theta_one() {
         operator,
         total,
         (1, 1),
-        LN_1_OVER_TAU_1_PERCENT,
+        LN_1_OVER_TAU_0_5_PERCENT,
         E_BASE,
     )
     .expect("relevant operator should produce expectations");
     // Expected bundles >= relevance floor
-    assert!(out.expected_bundles >= compute_e_relevance(LN_1_OVER_TAU_1_PERCENT, E_BASE));
+    assert!(out.expected_bundles >= compute_e_relevance(LN_1_OVER_TAU_0_5_PERCENT, E_BASE));
     // r <= expected
     assert!(out.min_required_bundles <= out.expected_bundles);
     // monotone sanity: increasing S increases expected bundles
@@ -302,7 +309,7 @@ fn operator_expected_bundles_theta_one() {
         operator,
         total,
         (1, 1),
-        LN_1_OVER_TAU_1_PERCENT,
+        LN_1_OVER_TAU_0_5_PERCENT,
         E_BASE,
     )
     .expect("still relevant at larger S");
@@ -315,13 +322,13 @@ fn operator_expected_bundles_theta_half_not_relevant() {
     let s = 600u64;
     let total = 1_000_000_000_000_000_000u128;
     let operator = total / 50; // 2% stake; μ would be ~12 at theta=1
-    // theta = 1/2 -> μ ≈ 6 -> below 10 => None
+    // theta = 1/2 -> μ ≈ 6 -> below 11 => None
     let out = operator_expected_bundles_in_epoch(
         s,
         operator,
         total,
         (1, 2),
-        LN_1_OVER_TAU_1_PERCENT,
+        LN_1_OVER_TAU_0_5_PERCENT,
         E_BASE,
     );
     assert!(out.is_none());
@@ -338,11 +345,11 @@ fn operator_expected_bundles_handles_huge_total_and_small_op() {
         operator,
         total,
         (1, 1),
-        LN_1_OVER_TAU_1_PERCENT,
+        LN_1_OVER_TAU_0_5_PERCENT,
         E_BASE,
     )
     .expect("should be relevant");
-    assert!(out.expected_bundles >= compute_e_relevance(LN_1_OVER_TAU_1_PERCENT, E_BASE));
+    assert!(out.expected_bundles >= compute_e_relevance(LN_1_OVER_TAU_0_5_PERCENT, E_BASE));
     assert!(out.min_required_bundles <= out.expected_bundles);
 }
 
@@ -414,7 +421,7 @@ proptest! {
         let stake = operator_stake_strategy(total).new_tree(&mut TestRunner::default()).unwrap().current();
 
         let out = operator_expected_bundles_in_epoch(
-            s, stake, total, theta, LN_1_OVER_TAU_1_PERCENT, E_BASE
+            s, stake, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
         );
 
         let mu_floor = mu_floor_from_threshold(s, stake, total, theta);
@@ -460,10 +467,10 @@ proptest! {
         prop_assume!(stake_hi >= stake_lo);
 
         let out_lo = operator_expected_bundles_in_epoch(
-            s, stake_lo, total, theta, LN_1_OVER_TAU_1_PERCENT, E_BASE
+            s, stake_lo, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
         );
         let out_hi = operator_expected_bundles_in_epoch(
-            s, stake_hi, total, theta, LN_1_OVER_TAU_1_PERCENT, E_BASE
+            s, stake_hi, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
         );
 
         if let Some(exp_lo) = out_lo {
@@ -495,10 +502,10 @@ proptest! {
         let (s_min, s_max) = if s1 <= s2 { (s1, s2) } else { (s2, s1) };
 
         let out_min = operator_expected_bundles_in_epoch(
-            s_min, stake, total, theta, LN_1_OVER_TAU_1_PERCENT, E_BASE
+            s_min, stake, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
         );
         let out_max = operator_expected_bundles_in_epoch(
-            s_max, stake, total, theta, LN_1_OVER_TAU_1_PERCENT, E_BASE
+            s_max, stake, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
         );
 
         if let Some(exp_min) = out_min {
@@ -533,10 +540,10 @@ proptest! {
         let theta_hi = (num_hi, den);
 
         let out_lo = operator_expected_bundles_in_epoch(
-            s, stake, total, theta_lo, LN_1_OVER_TAU_1_PERCENT, E_BASE
+            s, stake, total, theta_lo, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
         );
         let out_hi = operator_expected_bundles_in_epoch(
-            s, stake, total, theta_hi, LN_1_OVER_TAU_1_PERCENT, E_BASE
+            s, stake, total, theta_hi, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
         );
 
         if let Some(exp_lo) = out_lo {
