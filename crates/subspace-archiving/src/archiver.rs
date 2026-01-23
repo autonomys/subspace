@@ -700,11 +700,14 @@ impl Archiver {
             for record_offset in 0..RawRecord::NUM_CHUNKS {
                 // Collect chunks of each record at the same offset
                 raw_record_shards
-                    .array_chunks::<{ RawRecord::SIZE }>()
+                    .as_chunks::<{ RawRecord::SIZE }>()
+                    .0
+                    .iter()
                     .map(|record_bytes| {
                         record_bytes
-                            .array_chunks::<{ ScalarBytes::SAFE_BYTES }>()
-                            .nth(record_offset)
+                            .as_chunks::<{ ScalarBytes::SAFE_BYTES }>()
+                            .0
+                            .get(record_offset)
                             .expect("Statically known to exist in a record; qed")
                     })
                     .map(Scalar::from)

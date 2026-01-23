@@ -8,7 +8,7 @@ use std::ops::{Deref, DerefMut};
 use subspace_core_primitives::objects::GlobalObjectMapping;
 use subspace_data_retrieval::object_fetcher::{self, ObjectFetcher};
 use subspace_data_retrieval::piece_getter::PieceGetter;
-use tracing::{debug, error};
+use tracing::debug;
 
 const SUBSPACE_ERROR: i32 = 9000;
 

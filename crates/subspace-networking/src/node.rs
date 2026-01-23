@@ -19,7 +19,7 @@ use std::sync::{Arc, Weak};
 use std::task::{Context, Poll};
 use thiserror::Error;
 use tokio::sync::OwnedSemaphorePermit;
-use tracing::{debug, error, trace};
+use tracing::{debug, trace};
 
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
 #[derive(Debug)]

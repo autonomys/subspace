@@ -88,7 +88,9 @@ impl Drop for IncrementalRecordCommitmentsProcessor<'_> {
         let iter = raw_records_bytes
             .map(|raw_record_bytes| {
                 raw_record_bytes
-                    .array_chunks::<{ ScalarBytes::SAFE_BYTES }>()
+                    .as_chunks::<{ ScalarBytes::SAFE_BYTES }>()
+                    .0
+                    .iter()
                     .map(Scalar::from)
             })
             .map(|record_chunks| {

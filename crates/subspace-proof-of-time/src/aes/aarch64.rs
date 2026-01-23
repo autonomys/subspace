@@ -134,7 +134,7 @@ fn expand_key(key: &[u8; 16]) -> [uint8x16_t; NUM_ROUND_KEYS] {
         )
     };
 
-    for (i, chunk) in key.array_chunks::<WORD_SIZE>().enumerate() {
+    for (i, chunk) in key.as_chunks::<WORD_SIZE>().0.iter().enumerate() {
         columns[i] = u32::from_ne_bytes(*chunk);
     }
 

@@ -9,7 +9,7 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::Kzg;
 use thiserror::Error;
 use tokio::task::JoinError;
-use tracing::{error, info};
+use tracing::info;
 
 #[derive(Debug, Error)]
 pub(crate) enum SegmentReconstructionError {

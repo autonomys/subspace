@@ -631,7 +631,7 @@ impl PartialObject {
     /// the object data varies. These ties are broken using the smallest ignored padding length.
     ///
     /// Panics if the object has no valid lengths left.
-    fn shortest_object_data(&self) -> ObjectDataInput {
+    fn shortest_object_data(&self) -> ObjectDataInput<'_> {
         let length = self
             .lengths
             .first()

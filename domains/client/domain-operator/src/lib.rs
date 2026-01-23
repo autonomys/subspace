@@ -58,13 +58,7 @@
 //! [`BlockBuilder`]: ../domain_block_builder/struct.BlockBuilder.html
 //! [`FraudProof`]: ../sp_domains/struct.FraudProof.html
 
-#![feature(
-    array_windows,
-    assert_matches,
-    box_into_inner,
-    duration_constructors_lite,
-    more_qualified_paths
-)]
+#![feature(array_windows, assert_matches, box_into_inner, more_qualified_paths)]
 
 mod aux_schema;
 mod bundle_processor;

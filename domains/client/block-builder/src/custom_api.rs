@@ -217,7 +217,7 @@ where
     Block: BlockT,
     Backend: backend::Backend<Block>,
 {
-    fn fetch_runtime_code(&self) -> Option<Cow<[u8]>> {
+    fn fetch_runtime_code(&self) -> Option<Cow<'_, [u8]>> {
         Some(Cow::from(&self.runtime_code.code))
     }
 }
@@ -266,7 +266,7 @@ where
         })
     }
 
-    fn runtime_code(&self) -> sp_core::traits::RuntimeCode {
+    fn runtime_code(&self) -> sp_core::traits::RuntimeCode<'_> {
         sp_core::traits::RuntimeCode {
             code_fetcher: self,
             heap_pages: self.runtime_code.heap_pages,

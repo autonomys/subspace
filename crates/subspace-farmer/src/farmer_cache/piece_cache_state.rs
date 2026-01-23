@@ -96,7 +96,9 @@ impl PieceCachesState {
         piece_indices_to_store: &mut HashMap<KeyWithDistance, PieceIndex>,
     ) {
         self.stored_pieces
-            .extract_if(|key, _offset| piece_indices_to_store.remove(key).is_none())
+            .extract_if(.., |key, _offset| {
+                piece_indices_to_store.remove(key).is_none()
+            })
             .for_each(|(_piece_index, offset)| {
                 // There is no need to adjust the `last_stored_offset` of the `backend` here,
                 // as the free_offset will be preferentially taken from the dangling free offsets
