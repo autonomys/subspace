@@ -1,9 +1,6 @@
 #![feature(
-    array_chunks,
     array_windows,
     assert_matches,
-    btree_extract_if,
-    duration_constructors_lite,
     exact_size_is_empty,
     fmt_helpers_for_derive,
     future_join,
@@ -11,7 +8,6 @@
     int_roundings,
     iter_collect_into,
     never_type,
-    result_flattening,
     trait_alias,
     try_blocks,
     type_alias_impl_trait,

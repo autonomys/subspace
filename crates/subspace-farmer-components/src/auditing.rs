@@ -242,7 +242,9 @@ fn map_winning_chunks(
 ) -> Option<Vec<ChunkCandidate>> {
     // Map all winning chunks
     let mut chunk_candidates = s_bucket
-        .array_chunks::<{ ScalarBytes::FULL_BYTES }>()
+        .as_chunks::<{ ScalarBytes::FULL_BYTES }>()
+        .0
+        .iter()
         .enumerate()
         .filter_map(|(chunk_offset, chunk)| {
             is_within_solution_range(

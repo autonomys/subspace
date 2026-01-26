@@ -158,6 +158,7 @@ where
     pub fn receipt(
         &self,
     ) -> ExecutionReceiptRef<
+        '_,
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,
@@ -218,7 +219,7 @@ where
     }
 
     /// Returns the sealed header in the Bundle.
-    pub fn sealed_header(&self) -> SealedBundleHeaderRef<Number, Hash, DomainHeader, Balance> {
+    pub fn sealed_header(&self) -> SealedBundleHeaderRef<'_, Number, Hash, DomainHeader, Balance> {
         match self {
             Bundle::V0(bundle) => SealedBundleHeaderRef::V0(&bundle.sealed_header),
         }
@@ -256,6 +257,7 @@ where
     pub fn execution_receipt_as_mut(
         &mut self,
     ) -> ExecutionReceiptMutRef<
+        '_,
         Number,
         Hash,
         HeaderNumberFor<DomainHeader>,

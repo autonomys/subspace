@@ -41,7 +41,7 @@ use std::{fmt, io, iter};
 use subspace_core_primitives::hashes;
 use subspace_core_primitives::pieces::Piece;
 use thiserror::Error;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
 const KADEMLIA_PROTOCOL: &str = "/subspace/kad/0.1.0";

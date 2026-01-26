@@ -1,4 +1,4 @@
-#![feature(duration_constructors_lite, type_changing_struct_update)]
+#![feature(type_changing_struct_update)]
 
 mod commands;
 

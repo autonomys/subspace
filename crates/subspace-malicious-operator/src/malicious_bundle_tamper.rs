@@ -238,7 +238,7 @@ where
             // since the consensus runtime will perform the these checks and reject the bundle directly
             BadReceiptType::InboxedBundle => {
                 let mismatch_index = random_seed as usize % receipt.inboxed_bundles.len();
-                receipt.inboxed_bundles[mismatch_index].bundle = if random_seed % 2 == 0 {
+                receipt.inboxed_bundles[mismatch_index].bundle = if random_seed.is_multiple_of(2) {
                     BundleValidity::Valid(Default::default())
                 } else {
                     let extrincis_index = random_seed % 2;

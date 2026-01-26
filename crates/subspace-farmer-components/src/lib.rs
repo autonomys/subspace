@@ -3,13 +3,11 @@
 //! These components are used to implement farmer itself, but can also be used independently if necessary.
 
 #![feature(
-    array_chunks,
     const_trait_impl,
     exact_size_is_empty,
     int_roundings,
     iter_collect_into,
     never_type,
-    new_zeroed_alloc,
     portable_simd,
     try_blocks
 )]

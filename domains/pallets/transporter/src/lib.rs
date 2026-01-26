@@ -100,7 +100,6 @@ mod pallet {
     };
     use sp_messenger::messages::ChainId;
     use sp_runtime::traits::Convert;
-    use sp_std::vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {

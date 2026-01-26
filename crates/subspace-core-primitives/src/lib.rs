@@ -3,14 +3,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(rust_2018_idioms, missing_docs)]
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
-#![feature(
-    array_chunks,
-    const_trait_impl,
-    const_try,
-    new_zeroed_alloc,
-    portable_simd,
-    step_trait
-)]
+#![feature(const_trait_impl, const_try, portable_simd, step_trait)]
 
 pub mod checksum;
 pub mod hashes;
@@ -266,6 +259,7 @@ impl ScalarBytes {
 }
 
 #[expect(clippy::manual_div_ceil)]
+#[expect(clippy::double_parens)]
 mod private_u256 {
     //! This module is needed to scope clippy allows
     use parity_scale_codec::{Decode, Encode};

@@ -13,7 +13,7 @@ use subspace_networking::{
     KnownPeersManagerPersistenceError, Node, NodeRunner,
 };
 use thiserror::Error;
-use tracing::{error, trace};
+use tracing::trace;
 
 /// Size of the LRU cache for peers.
 pub const KNOWN_PEERS_CACHE_SIZE: u32 = 100;

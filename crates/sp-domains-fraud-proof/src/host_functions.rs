@@ -36,7 +36,7 @@ use subspace_runtime_primitives::Balance;
 struct DomainRuntimeCodeFetcher(Vec<u8>);
 
 impl FetchRuntimeCode for DomainRuntimeCodeFetcher {
-    fn fetch_runtime_code(&self) -> Option<Cow<[u8]>> {
+    fn fetch_runtime_code(&self) -> Option<Cow<'_, [u8]>> {
         Some(Cow::Borrowed(self.0.as_ref()))
     }
 }

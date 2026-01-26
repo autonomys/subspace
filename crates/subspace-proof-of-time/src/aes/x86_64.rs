@@ -159,30 +159,27 @@ pub(super) fn verify_sequential_avx2_vaes(
     output_3 = _mm256_xor_si256(output_3, keys_256[10]);
 
     for _ in 0..checkpoint_iterations / 2 {
-        // TODO: Shouldn't be unsafe: https://github.com/rust-lang/rust/issues/141718
-        unsafe {
-            for i in 1..10 {
-                input_0 = _mm256_aesenc_epi128(input_0, keys_256[i]);
-                input_1 = _mm256_aesenc_epi128(input_1, keys_256[i]);
-                input_2 = _mm256_aesenc_epi128(input_2, keys_256[i]);
-                input_3 = _mm256_aesenc_epi128(input_3, keys_256[i]);
+        for i in 1..10 {
+            input_0 = _mm256_aesenc_epi128(input_0, keys_256[i]);
+            input_1 = _mm256_aesenc_epi128(input_1, keys_256[i]);
+            input_2 = _mm256_aesenc_epi128(input_2, keys_256[i]);
+            input_3 = _mm256_aesenc_epi128(input_3, keys_256[i]);
 
-                output_0 = _mm256_aesdec_epi128(output_0, inv_keys_256[i]);
-                output_1 = _mm256_aesdec_epi128(output_1, inv_keys_256[i]);
-                output_2 = _mm256_aesdec_epi128(output_2, inv_keys_256[i]);
-                output_3 = _mm256_aesdec_epi128(output_3, inv_keys_256[i]);
-            }
-
-            input_0 = _mm256_aesenclast_epi128(input_0, xor_key_256);
-            input_1 = _mm256_aesenclast_epi128(input_1, xor_key_256);
-            input_2 = _mm256_aesenclast_epi128(input_2, xor_key_256);
-            input_3 = _mm256_aesenclast_epi128(input_3, xor_key_256);
-
-            output_0 = _mm256_aesdeclast_epi128(output_0, xor_key_256);
-            output_1 = _mm256_aesdeclast_epi128(output_1, xor_key_256);
-            output_2 = _mm256_aesdeclast_epi128(output_2, xor_key_256);
-            output_3 = _mm256_aesdeclast_epi128(output_3, xor_key_256);
+            output_0 = _mm256_aesdec_epi128(output_0, inv_keys_256[i]);
+            output_1 = _mm256_aesdec_epi128(output_1, inv_keys_256[i]);
+            output_2 = _mm256_aesdec_epi128(output_2, inv_keys_256[i]);
+            output_3 = _mm256_aesdec_epi128(output_3, inv_keys_256[i]);
         }
+
+        input_0 = _mm256_aesenclast_epi128(input_0, xor_key_256);
+        input_1 = _mm256_aesenclast_epi128(input_1, xor_key_256);
+        input_2 = _mm256_aesenclast_epi128(input_2, xor_key_256);
+        input_3 = _mm256_aesenclast_epi128(input_3, xor_key_256);
+
+        output_0 = _mm256_aesdeclast_epi128(output_0, xor_key_256);
+        output_1 = _mm256_aesdeclast_epi128(output_1, xor_key_256);
+        output_2 = _mm256_aesdeclast_epi128(output_2, xor_key_256);
+        output_3 = _mm256_aesdeclast_epi128(output_3, xor_key_256);
     }
 
     // Code below is a more efficient version of this:
@@ -264,22 +261,19 @@ pub(super) fn verify_sequential_avx512f_vaes(
     output_1 = _mm512_xor_si512(output_1, keys_512[10]);
 
     for _ in 0..checkpoint_iterations / 2 {
-        // TODO: Shouldn't be unsafe: https://github.com/rust-lang/rust/issues/141718
-        unsafe {
-            for i in 1..10 {
-                input_0 = _mm512_aesenc_epi128(input_0, keys_512[i]);
-                input_1 = _mm512_aesenc_epi128(input_1, keys_512[i]);
+        for i in 1..10 {
+            input_0 = _mm512_aesenc_epi128(input_0, keys_512[i]);
+            input_1 = _mm512_aesenc_epi128(input_1, keys_512[i]);
 
-                output_0 = _mm512_aesdec_epi128(output_0, inv_keys_512[i]);
-                output_1 = _mm512_aesdec_epi128(output_1, inv_keys_512[i]);
-            }
-
-            input_0 = _mm512_aesenclast_epi128(input_0, xor_key_512);
-            input_1 = _mm512_aesenclast_epi128(input_1, xor_key_512);
-
-            output_0 = _mm512_aesdeclast_epi128(output_0, xor_key_512);
-            output_1 = _mm512_aesdeclast_epi128(output_1, xor_key_512);
+            output_0 = _mm512_aesdec_epi128(output_0, inv_keys_512[i]);
+            output_1 = _mm512_aesdec_epi128(output_1, inv_keys_512[i]);
         }
+
+        input_0 = _mm512_aesenclast_epi128(input_0, xor_key_512);
+        input_1 = _mm512_aesenclast_epi128(input_1, xor_key_512);
+
+        output_0 = _mm512_aesdeclast_epi128(output_0, xor_key_512);
+        output_1 = _mm512_aesdeclast_epi128(output_1, xor_key_512);
     }
 
     // Code below is a more efficient version of this:

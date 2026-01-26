@@ -6,12 +6,11 @@ use frame_support::traits::VariantCount;
 use frame_support::{derive_impl, parameter_types};
 use pallet_balances::AccountData;
 use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
-use sp_core::U256;
 use sp_domains::DomainId;
-use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId, EndpointRequest, Sender};
+use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId};
 use sp_messenger::messages::{ChainId, MessageId};
 use sp_runtime::traits::{Convert, IdentityLookup};
-use sp_runtime::{BuildStorage, DispatchError, Perbill};
+use sp_runtime::{BuildStorage, Perbill};
 use subspace_runtime_primitives::DomainEventSegmentSize;
 
 type Block = frame_system::mocking::MockBlock<MockRuntime>;
@@ -131,23 +130,33 @@ impl pallet_messenger::Config for MockRuntime {
     type NoteChainTransfer = Transporter;
 }
 
-#[derive(Debug)]
-pub struct MockMessenger {}
+#[cfg(not(feature = "runtime-benchmarks"))]
+pub mod mock_messenger {
+    use crate::mock::AccountId;
+    use sp_core::U256;
+    use sp_domains::ChainId;
+    use sp_messenger::endpoint::{EndpointRequest, Sender};
+    use sp_messenger::messages::MessageId;
+    use sp_runtime::DispatchError;
 
-impl Sender<AccountId> for MockMessenger {
-    type MessageId = MessageId;
+    #[derive(Debug)]
+    pub struct MockMessenger {}
 
-    fn send_message(
-        _sender: &AccountId,
-        _dst_chain_id: ChainId,
-        _req: EndpointRequest,
-    ) -> Result<Self::MessageId, DispatchError> {
-        Ok((U256::zero(), U256::zero()))
-    }
+    impl Sender<AccountId> for MockMessenger {
+        type MessageId = MessageId;
 
-    #[cfg(feature = "runtime-benchmarks")]
-    fn unchecked_open_channel(_dst_chain_id: ChainId) -> Result<(), DispatchError> {
-        Ok(())
+        fn send_message(
+            _sender: &AccountId,
+            _dst_chain_id: ChainId,
+            _req: EndpointRequest,
+        ) -> Result<Self::MessageId, DispatchError> {
+            Ok((U256::zero(), U256::zero()))
+        }
+
+        #[cfg(feature = "runtime-benchmarks")]
+        fn unchecked_open_channel(_dst_chain_id: ChainId) -> Result<(), DispatchError> {
+            Ok(())
+        }
     }
 }
 
@@ -179,7 +188,7 @@ impl Config for MockRuntime {
     type SelfEndpointId = SelfEndpointId;
     type Currency = Balances;
     #[cfg(not(feature = "runtime-benchmarks"))]
-    type Sender = MockMessenger;
+    type Sender = mock_messenger::MockMessenger;
     #[cfg(feature = "runtime-benchmarks")]
     type Sender = Messenger;
     type AccountIdConverter = MockAccountIdConverter;

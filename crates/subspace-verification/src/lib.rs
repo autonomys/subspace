@@ -1,7 +1,7 @@
 //! Verification primitives for Subspace.
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
-#![feature(array_chunks, portable_simd)]
+#![feature(portable_simd)]
 // `generic_const_exprs` is an incomplete feature
 #![allow(incomplete_features)]
 // TODO: This feature is not actually used in this crate, but is added as a workaround for
@@ -125,13 +125,17 @@ fn calculate_solution_distance(
     let audit_chunk = blake3_hash_with_key(sector_slot_challenge, chunk);
     let audit_chunk_as_solution_range: SolutionRange = SolutionRange::from_le_bytes(
         *audit_chunk
-            .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
+            .as_chunks::<{ mem::size_of::<SolutionRange>() }>()
+            .0
+            .iter()
             .next()
             .expect("Solution range is smaller in size than global challenge; qed"),
     );
     let global_challenge_as_solution_range: SolutionRange = SolutionRange::from_le_bytes(
         *global_challenge
-            .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
+            .as_chunks::<{ mem::size_of::<SolutionRange>() }>()
+            .0
+            .iter()
             .next()
             .expect("Solution range is smaller in size than global challenge; qed"),
     );
