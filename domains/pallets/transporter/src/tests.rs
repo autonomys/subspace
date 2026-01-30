@@ -200,7 +200,7 @@ fn test_transfer_invalid_account_id_substrate() {
     new_test_ext().execute_with(|| {
         let account = USER_ACCOUNT;
         let amount: Balance = 500;
-        // transfer 500 to dst_chain id 100
+        // transfer 500 to dst_chain id 1
         let dst_chain_id: ChainId = 1.into();
         let dst_location = Location {
             chain_id: dst_chain_id,
