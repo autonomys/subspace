@@ -1,0 +1,34 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `test/subspace-test-primitives/src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subspace_test_primitives" data-themes="" data-resource-suffix="" data-rustdoc-version="1.92.0-nightly (6380899f3 2025-10-18)" data-channel="nightly" data-search-js="search-8d3311b9.js" data-stringdex-js="stringdex-c3e638e9.js" data-settings-js="settings-c38705f0.js" ><script src="../../static.files/storage-e2aeef58.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-ce535bd0.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">subspace_test_primitives/</div>lib.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-2"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="attr">#![cfg_attr(not(feature = <span class="string">"std"</span>), no_std)]
+<a href=#2 id=2 data-nosnippet>2</a></span><span class="doccomment">//! Test primitive crates that expose necessary extensions that are used in tests.
+<a href=#3 id=3 data-nosnippet>3</a>
+<a href=#4 id=4 data-nosnippet>4</a></span><span class="kw">use </span>pallet_domains::staking::StakingSummary;
+<a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span>parity_scale_codec::{Decode, Encode};
+<a href=#6 id=6 data-nosnippet>6</a><span class="kw">use </span>sp_core::H256;
+<a href=#7 id=7 data-nosnippet>7</a><span class="kw">use </span>sp_domains::{DomainId, OperatorId};
+<a href=#8 id=8 data-nosnippet>8</a><span class="kw">use </span>sp_messenger::messages::{ChainId, ChannelId};
+<a href=#9 id=9 data-nosnippet>9</a><span class="kw">use </span>sp_runtime::traits::NumberFor;
+<a href=#10 id=10 data-nosnippet>10</a><span class="kw">use </span>sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
+<a href=#11 id=11 data-nosnippet>11</a>
+<a href=#12 id=12 data-nosnippet>12</a><span class="macro">sp_api::decl_runtime_apis!</span> {
+<a href=#13 id=13 data-nosnippet>13</a>    <span class="doccomment">/// Api for querying onchain state in the test
+<a href=#14 id=14 data-nosnippet>14</a>    </span><span class="kw">pub trait </span>OnchainStateApi&lt;AccountId, Balance&gt;
+<a href=#15 id=15 data-nosnippet>15</a>    <span class="kw">where
+<a href=#16 id=16 data-nosnippet>16</a>        </span>AccountId: Encode + Decode,
+<a href=#17 id=17 data-nosnippet>17</a>        Balance: Encode + Decode
+<a href=#18 id=18 data-nosnippet>18</a>    {
+<a href=#19 id=19 data-nosnippet>19</a>        <span class="doccomment">/// Api to get the free balance of the given account
+<a href=#20 id=20 data-nosnippet>20</a>        </span><span class="kw">fn </span>free_balance(account_id: AccountId) -&gt; Balance;
+<a href=#21 id=21 data-nosnippet>21</a>
+<a href=#22 id=22 data-nosnippet>22</a>        <span class="doccomment">/// Returns the last open channel for a given domain.
+<a href=#23 id=23 data-nosnippet>23</a>        </span><span class="kw">fn </span>get_open_channel_for_chain(dst_chain_id: ChainId) -&gt; <span class="prelude-ty">Option</span>&lt;ChannelId&gt;;
+<a href=#24 id=24 data-nosnippet>24</a>
+<a href=#25 id=25 data-nosnippet>25</a>        <span class="doccomment">/// Verify the mmr proof statelessly and extract the state root.
+<a href=#26 id=26 data-nosnippet>26</a>        </span><span class="kw">fn </span>verify_proof_and_extract_leaf(proof: ConsensusChainMmrLeafProof&lt;NumberFor&lt;Block&gt;, Block::Hash, H256&gt;) -&gt; <span class="prelude-ty">Option</span>&lt;MmrLeaf&lt;NumberFor&lt;Block&gt;, Block::Hash&gt;&gt;;
+<a href=#27 id=27 data-nosnippet>27</a>
+<a href=#28 id=28 data-nosnippet>28</a>        <span class="doccomment">/// Return the domain balance in the consensus chain bookkeeping
+<a href=#29 id=29 data-nosnippet>29</a>        </span><span class="kw">fn </span>domain_balance(domain_id: DomainId) -&gt; Balance;
+<a href=#30 id=30 data-nosnippet>30</a>
+<a href=#31 id=31 data-nosnippet>31</a>        <span class="doccomment">/// Returns the domain stake summary
+<a href=#32 id=32 data-nosnippet>32</a>        </span><span class="kw">fn </span>domain_stake_summary(domain_id: DomainId) -&gt; <span class="prelude-ty">Option</span>&lt;StakingSummary&lt;OperatorId, Balance&gt;&gt;;
+<a href=#33 id=33 data-nosnippet>33</a>    }
+<a href=#34 id=34 data-nosnippet>34</a>}</code></pre></div></section></main></body></html>

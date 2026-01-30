@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["E_BASE","LN_1_OVER_TAU_0_5_PERCENT","LN_1_OVER_TAU_1_PERCENT"],"fn":["operator_expected_bundles_in_epoch"],"struct":["OperatorEpochExpectations"]};
