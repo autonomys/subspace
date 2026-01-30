@@ -49,6 +49,7 @@ pub use weights::WeightInfo;
 /// Zero EVM address.
 /// Used to ensure dst_account is not ZERO address.
 const ZERO_EVM_ADDRESS: MultiAccountId = MultiAccountId::AccountId20([0; 20]);
+const ZERO_SUBSTRATE_ADDRESS: MultiAccountId = MultiAccountId::AccountId32([0; 32]);
 
 /// Location that either sends or receives transfers between chains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]
@@ -83,7 +84,7 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, Location, MessageIdOf, MultiAccountId, Transfer, TryConvertBack,
-        ZERO_EVM_ADDRESS,
+        ZERO_EVM_ADDRESS, ZERO_SUBSTRATE_ADDRESS,
     };
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
@@ -262,6 +263,11 @@ mod pallet {
 
             ensure!(
                 dst_location.account_id != ZERO_EVM_ADDRESS,
+                Error::<T>::InvalidAccountId
+            );
+
+            ensure!(
+                dst_location.account_id != ZERO_SUBSTRATE_ADDRESS,
                 Error::<T>::InvalidAccountId
             );
 
