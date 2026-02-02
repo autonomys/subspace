@@ -317,7 +317,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: Cow::Borrowed("subspace-evm-domain"),
     impl_name: Cow::Borrowed("subspace-evm-domain"),
     authoring_version: 0,
-    spec_version: 2,
+    spec_version: 3,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
