@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["RawOrigin"],"mod":["extensions","pallet","weights"],"struct":["EnsureSubspaceOrigin","NormalEraChange"],"trait":["EraChangeTrigger"]};

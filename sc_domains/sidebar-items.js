@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["generate_mmr_proof"],"mod":["domain_block_er"],"struct":["ExtensionsFactory","FPStorageKeyProvider"],"type":["HostFunctions","RuntimeExecutor"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Error","OperatorStatus"],"fn":["do_register_operator"],"struct":["DomainEpoch","NewDeposit","Operator","OperatorConfig","OperatorDeregisteredInfo","SharePrice","StakingSummary"]};
