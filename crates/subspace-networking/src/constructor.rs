@@ -77,13 +77,6 @@ const TEMPORARY_BANS_DEFAULT_MAX_INTERVAL: Duration = Duration::from_secs(30 * 6
 /// wasting resources and producing a ton of log records.
 const DIALING_INTERVAL_IN_SECS: Duration = Duration::from_secs(1);
 
-/// Specific YAMUX settings for Subspace applications: additional buffer space for pieces and
-/// substream's limit.
-///
-/// Defines a replication factor for Kademlia on get_record operation.
-/// "Good citizen" supports the network health.
-const YAMUX_MAX_STREAMS: usize = 256;
-
 /// Max confidence for autonat protocol. Could affect Kademlia mode change.
 pub(crate) const AUTONAT_MAX_CONFIDENCE: usize = 3;
 /// We set a very long pause before autonat initialization (Duration::Max panics).
@@ -279,8 +272,9 @@ impl Config {
             .set_record_ttl(None)
             .set_replication_interval(None);
 
-        let mut yamux_config = YamuxConfig::default();
-        yamux_config.set_max_num_streams(YAMUX_MAX_STREAMS);
+        // NOTE: Do not call deprecated setters like `set_max_num_streams()` on this config.
+        // They silently downgrade from yamux 0.13 to 0.12, which has a remote DoS vulnerability.
+        let yamux_config = YamuxConfig::default();
 
         let gossipsub = ENABLE_GOSSIP_PROTOCOL.then(|| {
             GossipsubConfigBuilder::default()
