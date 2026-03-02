@@ -58,7 +58,7 @@ std = [
     "sp-weights/std",
     "subspace-core-primitives/std",
     "subspace-kzg/std",
-    "subspace-proof-of-space/std",
+    "subspace-proof-of-space/alloc",
     "subspace-verification/kzg",
     "subspace-verification/std",
     "thiserror/std",
