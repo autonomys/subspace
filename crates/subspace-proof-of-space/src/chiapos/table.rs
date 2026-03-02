@@ -52,20 +52,20 @@ const COMPUTE_FN_SIMD_FACTOR: usize = 16;
 const MAX_BUCKET_SIZE: usize = 512;
 #[cfg(feature = "alloc")]
 const BUCKET_SIZE_UPPER_BOUND_SECURITY_BITS: u8 = 128;
-/// Reducing bucket size for better performance.
+/// Bucket size used for fixed-size bucketed arrays.
 ///
-/// The number should be sufficient to produce enough proofs for sector encoding with high
-/// probability.
-// TODO: Statistical analysis if possible, confirming there will be enough proofs
+/// Must be `MAX_BUCKET_SIZE` to avoid silently dropping entries when a bucket's Y values exceed
+/// the limit. With `PARAM_BC / 2^PARAM_EXT ≈ 236` expected entries per bucket and std dev ≈ 15.4,
+/// the original value of 272 (~2.3 sigma) caused overflow in production (K=20), dropping hundreds
+/// of proofs and causing "Missing PoS proof" farming errors.
 #[allow(dead_code, reason = "unused when crate is compiled separately")]
-const REDUCED_BUCKET_SIZE: usize = 272;
-/// Reducing matches count for better performance.
+pub(crate) const REDUCED_BUCKET_SIZE: usize = MAX_BUCKET_SIZE;
+/// Matches count limit per bucket pair.
 ///
-/// The number should be sufficient to produce enough proofs for sector encoding with high
-/// probability.
-// TODO: Statistical analysis if possible, confirming there will be enough proofs
+/// Must be `MAX_BUCKET_SIZE` to avoid silently dropping matches. The original value of 288 could
+/// cause early termination in `find_matches_in_buckets`, losing valid proof paths.
 #[allow(dead_code, reason = "unused when crate is compiled separately")]
-const REDUCED_MATCHES_COUNT: usize = 288;
+const REDUCED_MATCHES_COUNT: usize = MAX_BUCKET_SIZE;
 #[cfg(feature = "parallel")]
 const CACHE_LINE_SIZE: usize = 64;
 
