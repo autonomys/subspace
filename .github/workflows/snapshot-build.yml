@@ -56,6 +56,14 @@ jobs:
           rm_cmd: "rmz"
           rmz_version: "3.1.1"
 
+      # Replace slashes in branch names (e.g. fix/pos-backport -> fix-pos-backport) so they
+      # don't create subdirectories when used in filenames.
+      - name: Sanitize ref name for filenames
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: echo "SAFE_REF_NAME=$(echo "$REF_NAME" | tr '/' '-')" >> $GITHUB_ENV
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf # v3.2.0
 
@@ -121,23 +129,23 @@ jobs:
           cd executables
           IMAGE="${{ fromJSON(steps.meta.outputs.json).tags[0] }}"
           ARTIFACT="${{ matrix.build.base-artifact }}"
-          docker run --rm --platform linux/amd64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-x86_64-skylake-${{ github.ref_name }}
+          docker run --rm --platform linux/amd64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-x86_64-skylake-$SAFE_REF_NAME
           # TODO: Pull is a workaround for https://github.com/moby/moby/issues/48197#issuecomment-2472265028
           docker pull --platform linux/amd64/v2 $IMAGE
-          docker run --rm --platform linux/amd64/v2 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-x86_64-v2-${{ github.ref_name }}
+          docker run --rm --platform linux/amd64/v2 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-x86_64-v2-$SAFE_REF_NAME
           if [ "${{ matrix.build.image }}" == "farmer" ]; then
-            docker run --rm --platform linux/amd64 --entrypoint /bin/cat $IMAGE /$ARTIFACT-rocm > $ARTIFACT-rocm-ubuntu-x86_64-skylake-${{ github.ref_name }}
+            docker run --rm --platform linux/amd64 --entrypoint /bin/cat $IMAGE /$ARTIFACT-rocm > $ARTIFACT-rocm-ubuntu-x86_64-skylake-$SAFE_REF_NAME
             # TODO: Pull is a workaround for https://github.com/moby/moby/issues/48197#issuecomment-2472265028
             docker pull --platform linux/amd64/v2 $IMAGE
-            docker run --rm --platform linux/amd64/v2 --entrypoint /bin/cat $IMAGE /$ARTIFACT-rocm > $ARTIFACT-rocm-ubuntu-x86_64-v2-${{ github.ref_name }}
+            docker run --rm --platform linux/amd64/v2 --entrypoint /bin/cat $IMAGE /$ARTIFACT-rocm > $ARTIFACT-rocm-ubuntu-x86_64-v2-$SAFE_REF_NAME
           fi
-          docker run --rm --platform linux/arm64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-aarch64-${{ github.ref_name }}
+          docker run --rm --platform linux/arm64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-aarch64-$SAFE_REF_NAME
         if: matrix.build.upload-executables
 
       - name: Upload node and farmer executables to artifacts
         uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.1.3
         with:
-          name: executables-ubuntu-${{ matrix.build.image }}-${{ github.ref_name }}
+          name: executables-ubuntu-${{ matrix.build.image }}-${{ env.SAFE_REF_NAME }}
           path: |
             executables/*
           if-no-files-found: error
@@ -175,6 +183,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      # Replace slashes in suffix (from branch names like fix/pos-backport) so they
+      # don't create subdirectories when used in filenames.
+      - name: Sanitize suffix for filenames
+        shell: bash
+        env:
+          SUFFIX: ${{ matrix.build.suffix }}
+        run: echo "SAFE_SUFFIX=$(echo "$SUFFIX" | tr '/' '-')" >> $GITHUB_ENV
 
       # The substrate build script automatically sets SUBSTRATE_CLI_GIT_COMMIT_HASH from the git repository:
       # https://github.com/autonomys/polkadot-sdk/blob/e831132867930ca90a7088c7246301ab29f015ba/substrate/utils/build-script-utils/src/version.rs#L28
@@ -313,27 +329,27 @@ jobs:
       - name: Prepare executables for uploading (macOS)
         run: |
           mkdir executables
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-node executables/subspace-node-${{ matrix.build.suffix }}
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer executables/subspace-farmer-${{ env.SAFE_SUFFIX }}
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-node executables/subspace-node-${{ env.SAFE_SUFFIX }}
           # Zip it so that signature is not lost
-          ditto -c -k --rsrc executables/subspace-farmer-${{ matrix.build.suffix }} executables/subspace-farmer-${{ matrix.build.suffix }}.zip
-          ditto -c -k --rsrc executables/subspace-node-${{ matrix.build.suffix }} executables/subspace-node-${{ matrix.build.suffix }}.zip
-          rm executables/subspace-farmer-${{ matrix.build.suffix }}
-          rm executables/subspace-node-${{ matrix.build.suffix }}
+          ditto -c -k --rsrc executables/subspace-farmer-${{ env.SAFE_SUFFIX }} executables/subspace-farmer-${{ env.SAFE_SUFFIX }}.zip
+          ditto -c -k --rsrc executables/subspace-node-${{ env.SAFE_SUFFIX }} executables/subspace-node-${{ env.SAFE_SUFFIX }}.zip
+          rm executables/subspace-farmer-${{ env.SAFE_SUFFIX }}
+          rm executables/subspace-node-${{ env.SAFE_SUFFIX }}
         if: runner.os == 'macOS'
 
       - name: Prepare executables for uploading (Windows)
         run: |
           mkdir executables
-          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe executables/subspace-farmer-${{ matrix.build.suffix }}.exe
-          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm.exe executables/subspace-farmer-rocm-${{ matrix.build.suffix }}.exe
-          move ${{ env.PRODUCTION_TARGET }}/subspace-node.exe executables/subspace-node-${{ matrix.build.suffix }}.exe
+          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe executables/subspace-farmer-${{ env.SAFE_SUFFIX }}.exe
+          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm.exe executables/subspace-farmer-rocm-${{ env.SAFE_SUFFIX }}.exe
+          move ${{ env.PRODUCTION_TARGET }}/subspace-node.exe executables/subspace-node-${{ env.SAFE_SUFFIX }}.exe
         if: runner.os == 'Windows'
 
       - name: Upload node and farmer executables to artifacts
         uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.1.3
         with:
-          name: executables-${{ matrix.build.suffix }}
+          name: executables-${{ env.SAFE_SUFFIX }}
           path: |
             executables/*
           if-no-files-found: error
