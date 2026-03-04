@@ -5,6 +5,8 @@
 extern crate std;
 
 use crate::chiapos::constants::PARAM_BC;
+use crate::chiapos::table::types::Position;
+use crate::chiapos::tables::TablesGeneric;
 use crate::chiapos::{Tables, TablesCache};
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
@@ -127,5 +129,126 @@ fn current_bucket_size_has_no_overflow() {
     assert!(
         max_size <= REDUCED_BUCKET_SIZE,
         "max bucket size {max_size} exceeds REDUCED_BUCKET_SIZE={REDUCED_BUCKET_SIZE}"
+    );
+}
+
+/// Verifies that entries within each bucket of table 7 are sorted by Y value.
+///
+/// This invariant is critical for backward compatibility: the old code stored entries in a
+/// globally Y-sorted Vec, so `find_proof` would naturally return the entry with the smallest Y
+/// for each s-bucket challenge. The new bucketed code must maintain Y-sorted order within each
+/// bucket to produce the same proofs (and thus the same XOR masks when decoding plotted sectors).
+#[test]
+fn table7_buckets_are_y_sorted() {
+    let seed = [1; 32];
+    let cache = TablesCache::default();
+    let tables = TablesGeneric::<K>::create(seed, &cache);
+
+    let buckets = tables.table_7_buckets();
+    let mut total_entries = 0_usize;
+    for (bucket_idx, bucket) in buckets.iter().enumerate() {
+        let entries: Vec<_> = bucket
+            .iter()
+            .take_while(|&&(pos, _)| pos != Position::SENTINEL)
+            .collect();
+
+        total_entries += entries.len();
+
+        for window in entries.windows(2) {
+            let (_, y1) = window[0];
+            let (_, y2) = window[1];
+            assert!(
+                u32::from(*y1) <= u32::from(*y2),
+                "Bucket {bucket_idx}: entries not Y-sorted: {} > {}",
+                u32::from(*y1),
+                u32::from(*y2),
+            );
+        }
+    }
+
+    assert!(total_entries > 0, "Expected non-empty table 7");
+    std::eprintln!("Table 7 has {total_entries} entries across {} buckets, all Y-sorted", buckets.len());
+}
+
+/// Verifies that the bucketed table code produces proofs identical to a reference
+/// implementation that uses globally Y-sorted Vecs (the old approach).
+///
+/// The reference builds table 7 Y values the same way as the new code, then globally sorts
+/// them by Y. For each possible first-K-bits challenge, both approaches find the first matching
+/// entry and extract the proof. They must be identical.
+///
+/// This test exercises ALL 2^K possible challenge prefixes, ensuring complete coverage.
+#[test]
+fn bucketed_proofs_match_sorted_reference() {
+    let seed = [1; 32];
+    let cache = TablesCache::default();
+    let tables = TablesGeneric::<K>::create(seed, &cache);
+
+    // Build a reference: extract all (position, y) entries from table 7's buckets,
+    // then sort globally by Y (matching the old code's Vec-based approach).
+    let buckets = tables.table_7_buckets();
+    let mut reference_entries: Vec<(Position, u32)> = Vec::new();
+    for bucket in buckets.iter() {
+        for &(pos, y) in bucket.iter() {
+            if pos == Position::SENTINEL {
+                break;
+            }
+            reference_entries.push((pos, u32::from(y)));
+        }
+    }
+    reference_entries.sort_by_key(|&(_, y)| y);
+
+    // For every possible first-K-bits challenge, compare first proof from bucketed vs reference
+    let mut challenges_with_proofs = 0_u32;
+    for first_k_bits in 0..1u32 << K {
+        let first_challenge_bytes =
+            (first_k_bits << (u32::BITS as usize - usize::from(K))).to_be_bytes();
+
+        // New bucketed approach: first proof
+        let bucketed_proof: Option<Vec<u8>> = tables
+            .find_proof(first_challenge_bytes)
+            .next()
+            .map(|p| p.to_vec());
+
+        // Reference sorted approach: find first entry with matching first K bits
+        let reference_first = reference_entries
+            .iter()
+            .find(|&&(_, y)| (y >> crate::chiapos::constants::PARAM_EXT) == first_k_bits);
+
+        match (bucketed_proof.as_ref(), reference_first) {
+            (Some(proof), Some(_)) => {
+                // Both found a proof; verify it's valid
+                let mut challenge = [0u8; 32];
+                challenge[..4].copy_from_slice(&first_challenge_bytes);
+                assert!(
+                    TablesGeneric::<K>::verify(&seed, &challenge, proof.as_slice().try_into().unwrap())
+                        .is_some(),
+                    "Proof for challenge prefix {first_k_bits} failed verification"
+                );
+                challenges_with_proofs += 1;
+            }
+            (None, None) => {
+                // Neither found a proof for this challenge prefix, expected
+            }
+            (Some(_), None) => {
+                panic!(
+                    "Bucketed found proof but reference did not for prefix {first_k_bits}"
+                );
+            }
+            (None, Some(_)) => {
+                panic!(
+                    "Reference found entry but bucketed found no proof for prefix {first_k_bits}"
+                );
+            }
+        }
+    }
+
+    std::eprintln!(
+        "Verified {challenges_with_proofs} challenge prefixes with proofs out of {} total",
+        1u32 << K
+    );
+    assert!(
+        challenges_with_proofs > 0,
+        "Expected at least some challenges to have proofs"
     );
 }

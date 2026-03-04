@@ -262,6 +262,14 @@ where
             })
     }
 
+    /// Access table 7's buckets for testing
+    #[cfg(all(feature = "alloc", test))]
+    pub(super) fn table_7_buckets(
+        &self,
+    ) -> &[[(Position, Y); crate::chiapos::table::REDUCED_BUCKET_SIZE]; num_buckets(K)] {
+        self.table_7.buckets()
+    }
+
     /// Verify proof of space for a given seed and challenge
     pub(super) fn verify_only(
         seed: &Seed,

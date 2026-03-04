@@ -258,6 +258,23 @@ where
     unsafe { Box::from_raw(Box::into_raw(buckets).cast()) }
 }
 
+/// Sort entries within each bucket by Y value to ensure deterministic proof ordering.
+/// This matches the old code's behavior where entries were globally Y-sorted before bucketing.
+#[cfg(feature = "alloc")]
+fn sort_buckets<const K: u8>(
+    buckets: &mut [[(Position, Y); REDUCED_BUCKET_SIZE]; num_buckets(K)],
+) where
+    [(); num_buckets(K)]:,
+{
+    for bucket in buckets.iter_mut() {
+        let len = bucket
+            .iter()
+            .take_while(|&&(pos, _)| pos != Position::SENTINEL)
+            .count();
+        bucket[..len].sort_unstable_by_key(|&(_, y)| u32::from(y));
+    }
+}
+
 #[cfg(feature = "alloc")]
 #[derive(Debug, Copy, Clone, Deref)]
 #[repr(align(64))]
@@ -1042,7 +1059,8 @@ where
         };
 
         // TODO: Try to group buckets in the process of collecting `y`s
-        let buckets = group_by_buckets::<K>(&ys);
+        let mut buckets = group_by_buckets::<K>(&ys);
+        sort_buckets::<K>(&mut buckets);
 
         Self::First { buckets }
     }
@@ -1093,7 +1111,8 @@ where
         };
 
         // TODO: Try to group buckets in the process of collecting `y`s
-        let buckets = group_by_buckets::<K>(&ys);
+        let mut buckets = group_by_buckets::<K>(&ys);
+        sort_buckets::<K>(&mut buckets);
 
         Self::First { buckets }
     }
@@ -1303,7 +1322,8 @@ where
         };
 
         // TODO: Try to group buckets in the process of collecting `y`s
-        let buckets = group_by_buckets::<K>(&ys);
+        let mut buckets = group_by_buckets::<K>(&ys);
+        sort_buckets::<K>(&mut buckets);
 
         let table = Self::Other {
             positions,
@@ -1420,7 +1440,7 @@ where
 
         // TODO: Try to group buckets in the process of collecting `y`s
         // SAFETY: `global_results_counts` corresponds to the number of initialized `ys`
-        let buckets = unsafe {
+        let mut buckets = unsafe {
             group_by_buckets_from_buckets::<K, _>(
                 ys.iter().zip(
                     global_results_counts
@@ -1429,6 +1449,7 @@ where
                 ),
             )
         };
+        sort_buckets::<K>(&mut buckets);
 
         let table = Self::OtherBuckets {
             positions,
