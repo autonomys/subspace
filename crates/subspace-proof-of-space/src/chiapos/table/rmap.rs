@@ -50,9 +50,6 @@ impl Rmap {
         unsafe { self.positions.get_unchecked_mut(physical_pointer as usize) }
     }
 
-    /// Note that `position == Position::ZERO` is effectively ignored here, supporting it cost too
-    /// much in terms of performance and not required for correctness.
-    ///
     /// # Safety
     /// `r` must be in the range `0..PARAM_BC`, there must be at most [`REDUCED_BUCKET_SIZE`] items
     /// inserted
@@ -61,11 +58,14 @@ impl Rmap {
         // SAFETY: Guaranteed by function contract
         let rmap_item = unsafe { self.insertion_item(r) };
 
+        // Store position + 1 so that position 0 is stored as 1, distinguishable from
+        // the Position::ZERO sentinel that means "empty slot"
+        let stored = Position::from(u32::from(position) + 1);
         // The same `r` can appear in the table multiple times, one duplicate is supported here
         if rmap_item[0] == Position::ZERO {
-            rmap_item[0] = position;
+            rmap_item[0] = stored;
         } else if rmap_item[1] == Position::ZERO {
-            rmap_item[1] = position;
+            rmap_item[1] = stored;
         }
     }
 
@@ -78,9 +78,24 @@ impl Rmap {
 
         if let Some(physical_pointer) = virtual_pointer.checked_sub(1) {
             // SAFETY: Internal pointers are always valid
-            *unsafe { self.positions.get_unchecked(physical_pointer as usize) }
+            let [a, b] = *unsafe { self.positions.get_unchecked(physical_pointer as usize) };
+            // Reverse the +1 offset applied in `add()` to recover the original position.
+            // Use `Position::SENTINEL` for empty slots so that position 0 is distinguishable
+            // from "no entry".
+            [
+                if a != Position::ZERO {
+                    Position::from(u32::from(a) - 1)
+                } else {
+                    Position::SENTINEL
+                },
+                if b != Position::ZERO {
+                    Position::from(u32::from(b) - 1)
+                } else {
+                    Position::SENTINEL
+                },
+            ]
         } else {
-            [Position::ZERO; 2]
+            [Position::SENTINEL; 2]
         }
     }
 }

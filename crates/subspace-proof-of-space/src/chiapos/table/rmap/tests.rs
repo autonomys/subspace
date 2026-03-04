@@ -11,7 +11,7 @@ fn test_rmap_basic() {
         rmap.add(R::from(0), Position::from(100));
         assert_eq!(
             rmap.get(R::from(0)),
-            [Position::from(100), Position::from(0)]
+            [Position::from(100), Position::SENTINEL]
         );
 
         rmap.add(R::from(0), Position::from(101));
@@ -30,7 +30,7 @@ fn test_rmap_basic() {
         rmap.add(R::from(1), Position::from(200));
         assert_eq!(
             rmap.get(R::from(1)),
-            [Position::from(200), Position::from(0)]
+            [Position::from(200), Position::SENTINEL]
         );
     }
 }
@@ -40,27 +40,17 @@ fn test_rmap_zero_position() {
     let mut rmap = Rmap::new();
 
     unsafe {
-        // Zero position is effectively ignored
+        // Position zero should be stored correctly
         rmap.add(R::from(2), Position::from(0));
-        assert_eq!(rmap.get(R::from(2)), [Position::from(0), Position::from(0)]);
+        assert_eq!(
+            rmap.get(R::from(2)),
+            [Position::from(0), Position::SENTINEL]
+        );
 
         rmap.add(R::from(2), Position::from(400));
         assert_eq!(
             rmap.get(R::from(2)),
-            [Position::from(400), Position::from(0)]
-        );
-
-        // Zero position is effectively ignored
-        rmap.add(R::from(2), Position::from(0));
-        assert_eq!(
-            rmap.get(R::from(2)),
-            [Position::from(400), Position::from(0)]
-        );
-
-        rmap.add(R::from(2), Position::from(401));
-        assert_eq!(
-            rmap.get(R::from(2)),
-            [Position::from(400), Position::from(401)]
+            [Position::from(0), Position::from(400)]
         );
     }
 }
@@ -77,6 +67,19 @@ fn test_rmap_zero_when_full() {
         assert_eq!(
             rmap.get(R::from(3)),
             [Position::from(500), Position::from(501)]
+        );
+    }
+}
+
+#[test]
+fn test_rmap_no_entry() {
+    let rmap = Rmap::new();
+
+    unsafe {
+        // Querying an `r` that was never added returns SENTINEL
+        assert_eq!(
+            rmap.get(R::from(5)),
+            [Position::SENTINEL, Position::SENTINEL]
         );
     }
 }

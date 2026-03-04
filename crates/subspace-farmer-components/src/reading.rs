@@ -25,7 +25,7 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::Scalar;
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Errors that happen during reading
 #[derive(Debug, Error)]
@@ -236,20 +236,40 @@ where
 
                     // Decode chunk if necessary
                     if encoded_chunk_used {
-                        let proof = pos_table
-                            .find_proof(s_bucket.into())
-                            .ok_or(ReadingError::MissingPosProof { s_bucket })?;
+                        let proof = pos_table.find_proof(s_bucket.into());
+                        let proof = match proof {
+                            Some(proof) => proof,
+                            None => {
+                                info!(
+                                    %s_bucket,
+                                    %chunk_location,
+                                    %piece_offset,
+                                    "Missing PoS proof during sync read"
+                                );
+                                return Err(ReadingError::MissingPosProof { s_bucket });
+                            }
+                        };
 
                         record_chunk =
                             Simd::to_array(Simd::from(record_chunk) ^ Simd::from(*proof.hash()));
                     }
 
                     maybe_record_chunk.replace(Scalar::try_from(record_chunk).map_err(
-                        |error| ReadingError::InvalidChunk {
-                            s_bucket,
-                            encoded_chunk_used,
-                            chunk_location,
-                            error,
+                        |error| {
+                            info!(
+                                %s_bucket,
+                                %encoded_chunk_used,
+                                %chunk_location,
+                                %piece_offset,
+                                %error,
+                                "Invalid scalar during sync read"
+                            );
+                            ReadingError::InvalidChunk {
+                                s_bucket,
+                                encoded_chunk_used,
+                                chunk_location,
+                                error,
+                            }
                         },
                     )?);
 
@@ -295,8 +315,19 @@ where
 
                         // Decode chunk if necessary
                         if encoded_chunk_used {
-                            let proof = pos_table.find_proof(s_bucket.into())
-                                .ok_or(ReadingError::MissingPosProof { s_bucket })?;
+                            let proof = pos_table.find_proof(s_bucket.into());
+                            let proof = match proof {
+                                Some(proof) => proof,
+                                None => {
+                                    info!(
+                                        %s_bucket,
+                                        %chunk_location,
+                                        %piece_offset,
+                                        "Missing PoS proof during async read"
+                                    );
+                                    return Err(ReadingError::MissingPosProof { s_bucket });
+                                }
+                            };
 
                             record_chunk = Simd::to_array(
                                 Simd::from(record_chunk) ^ Simd::from(*proof.hash()),
@@ -304,11 +335,21 @@ where
                         }
 
                         maybe_record_chunk.replace(Scalar::try_from(record_chunk).map_err(
-                            |error| ReadingError::InvalidChunk {
-                                s_bucket,
-                                encoded_chunk_used,
-                                chunk_location,
-                                error,
+                            |error| {
+                                info!(
+                                    %s_bucket,
+                                    %encoded_chunk_used,
+                                    %chunk_location,
+                                    %piece_offset,
+                                    %error,
+                                    "Invalid scalar during async read"
+                                );
+                                ReadingError::InvalidChunk {
+                                    s_bucket,
+                                    encoded_chunk_used,
+                                    chunk_location,
+                                    error,
+                                }
                             },
                         )?);
 

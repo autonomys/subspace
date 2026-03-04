@@ -481,8 +481,7 @@ unsafe fn find_matches_in_buckets<'a>(
             // SAFETY: Targets are always limited to `PARAM_BC`
             let [right_position_a, right_position_b] = unsafe { rmap.get(r_target) };
 
-            // The right bucket position is never zero
-            if right_position_a != Position::ZERO {
+            if right_position_a != Position::SENTINEL {
                 // SAFETY: Iteration will stop before `REDUCED_MATCHES_COUNT + PARAM_M * 2`
                 // elements is inserted
                 unsafe { matches.get_unchecked_mut(next_match_index) }.write(Match {
@@ -492,7 +491,7 @@ unsafe fn find_matches_in_buckets<'a>(
                 });
                 next_match_index += 1;
 
-                if right_position_b != Position::ZERO {
+                if right_position_b != Position::SENTINEL {
                     // SAFETY: Iteration will stop before
                     // `REDUCED_MATCHES_COUNT + PARAM_M * 2` elements is inserted
                     unsafe { matches.get_unchecked_mut(next_match_index) }.write(Match {
