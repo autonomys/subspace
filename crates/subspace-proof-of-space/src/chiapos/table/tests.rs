@@ -171,6 +171,13 @@ fn test_matches() {
             .chain(right_bucket_ys.iter().copied())
             .collect::<Vec<_>>();
 
+        // Sort buckets by (Y, Position) to match production sort_buckets behavior.
+        // The Rmap requires same-r entries to be consecutive, which Y-sort guarantees.
+        left_bucket[..left_bucket_ys.len()]
+            .sort_unstable_by_key(|&(pos, y)| (u32::from(y), u32::from(pos)));
+        right_bucket[..right_bucket_ys.len()]
+            .sort_unstable_by_key(|&(pos, y)| (u32::from(y), u32::from(pos)));
+
         let mut matches = [MaybeUninit::uninit(); _];
         // SAFETY: Positions correspond to `y`s
         let matches = unsafe {

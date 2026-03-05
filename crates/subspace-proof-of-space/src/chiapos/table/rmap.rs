@@ -13,8 +13,15 @@ pub(super) struct Rmap {
     /// Physical pointer must be increased by `1` to get a virtual pointer before storing. Virtual
     /// pointer must be decreased by `1` before reading to get a physical pointer.
     virtual_pointers: [u16; PARAM_BC as usize],
-    positions: [[Position; 2]; REDUCED_BUCKET_SIZE],
-    next_physical_pointer: u16,
+    /// `(start_index_in_positions, count)` per distinct r-value.
+    entries: [(u16, u8); REDUCED_BUCKET_SIZE],
+    /// Flat storage for all positions. Positions for the same r-value are consecutive here because
+    /// `add()` is called in Y-sorted bucket iteration order. Within a single bucket, same `r`
+    /// means same `Y` (since `r = y - base` and Y values span exactly one `PARAM_BC` interval),
+    /// so Y-sorted iteration ensures same-`r` additions are consecutive.
+    positions: [Position; REDUCED_BUCKET_SIZE],
+    next_entry: u16,
+    next_position: u16,
 }
 
 impl Rmap {
@@ -22,80 +29,85 @@ impl Rmap {
     pub(super) fn new() -> Self {
         Self {
             virtual_pointers: [0; _],
-            positions: [[Position::ZERO; 2]; _],
-            next_physical_pointer: 0,
+            entries: [(0, 0); _],
+            positions: [Position::SENTINEL; _],
+            next_entry: 0,
+            next_position: 0,
         }
     }
 
     /// # Safety
-    /// `r` must be in the range `0..PARAM_BC`, there must be at most [`REDUCED_BUCKET_SIZE`] items
-    /// inserted
+    /// - `r` must be in the range `0..PARAM_BC`
+    /// - There must be at most [`REDUCED_BUCKET_SIZE`] items inserted
+    /// - Additions for the same `r` value must be consecutive (no interleaving with different `r`
+    ///   values between them). This is naturally satisfied when iterating a Y-sorted bucket since
+    ///   same `r` implies same `Y` within a bucket.
     #[inline(always)]
-    unsafe fn insertion_item(&mut self, r: R) -> &mut [Position; 2] {
+    pub(super) unsafe fn add(&mut self, r: R, position: Position) {
         // SAFETY: Guaranteed by function contract
         let virtual_pointer = unsafe { self.virtual_pointers.get_unchecked_mut(usize::from(r)) };
 
         if let Some(physical_pointer) = virtual_pointer.checked_sub(1) {
+            // Existing r-value: increment count, append position
             // SAFETY: Internal pointers are always valid
-            return unsafe { self.positions.get_unchecked_mut(physical_pointer as usize) };
+            let entry = unsafe { self.entries.get_unchecked_mut(physical_pointer as usize) };
+            debug_assert!(entry.1 < u8::MAX, "Rmap entry count overflow for r={}", u16::from(r));
+            entry.1 += 1;
+        } else {
+            // New r-value: allocate entry
+            let physical_pointer = self.next_entry;
+            self.next_entry += 1;
+            *virtual_pointer = physical_pointer + 1;
+
+            // SAFETY: It is guaranteed by the function contract that the number of distinct
+            // r-values will never exceed `REDUCED_BUCKET_SIZE`
+            let entry = unsafe { self.entries.get_unchecked_mut(physical_pointer as usize) };
+            *entry = (self.next_position, 1);
         }
 
-        let physical_pointer = self.next_physical_pointer;
-        self.next_physical_pointer += 1;
-        *virtual_pointer = physical_pointer + 1;
-
-        // SAFETY: It is guaranteed by the function contract that the number of added elements will
-        // never exceed `REDUCED_BUCKETS_SIZE`, hence allocated pointers will always be within
-        // bounds
-        unsafe { self.positions.get_unchecked_mut(physical_pointer as usize) }
-    }
-
-    /// # Safety
-    /// `r` must be in the range `0..PARAM_BC`, there must be at most [`REDUCED_BUCKET_SIZE`] items
-    /// inserted
-    #[inline(always)]
-    pub(super) unsafe fn add(&mut self, r: R, position: Position) {
-        // SAFETY: Guaranteed by function contract
-        let rmap_item = unsafe { self.insertion_item(r) };
-
-        // Store position + 1 so that position 0 is stored as 1, distinguishable from
-        // the Position::ZERO sentinel that means "empty slot"
-        let stored = Position::from(u32::from(position) + 1);
-        // The same `r` can appear in the table multiple times, one duplicate is supported here
-        if rmap_item[0] == Position::ZERO {
-            rmap_item[0] = stored;
-        } else if rmap_item[1] == Position::ZERO {
-            rmap_item[1] = stored;
+        // Store position in flat array
+        // SAFETY: Total positions never exceed REDUCED_BUCKET_SIZE
+        unsafe {
+            *self.positions.get_unchecked_mut(self.next_position as usize) = position;
         }
+        self.next_position += 1;
     }
 
+    /// Returns all positions for the given r-value as a slice.
+    /// Returns an empty slice if no entry exists.
+    ///
     /// # Safety
     /// `r` must be in the range `0..PARAM_BC`
     #[inline(always)]
-    pub(super) unsafe fn get(&self, r: R) -> [Position; 2] {
+    pub(super) unsafe fn get(&self, r: R) -> &[Position] {
         // SAFETY: Guaranteed by function contract
         let virtual_pointer = *unsafe { self.virtual_pointers.get_unchecked(usize::from(r)) };
 
         if let Some(physical_pointer) = virtual_pointer.checked_sub(1) {
             // SAFETY: Internal pointers are always valid
-            let [a, b] = *unsafe { self.positions.get_unchecked(physical_pointer as usize) };
-            // Reverse the +1 offset applied in `add()` to recover the original position.
-            // Use `Position::SENTINEL` for empty slots so that position 0 is distinguishable
-            // from "no entry".
-            [
-                if a != Position::ZERO {
-                    Position::from(u32::from(a) - 1)
-                } else {
-                    Position::SENTINEL
-                },
-                if b != Position::ZERO {
-                    Position::from(u32::from(b) - 1)
-                } else {
-                    Position::SENTINEL
-                },
-            ]
+            let &(start_index, count) =
+                unsafe { self.entries.get_unchecked(physical_pointer as usize) };
+            // SAFETY: start_index..start_index+count is always within bounds
+            unsafe {
+                self.positions
+                    .get_unchecked(start_index as usize..start_index as usize + count as usize)
+            }
         } else {
-            [Position::SENTINEL; 2]
+            &[]
         }
+    }
+
+    /// Returns the maximum number of positions stored for any single r-value, and the total
+    /// number of distinct r-values. Useful for diagnostics.
+    #[cfg(test)]
+    pub(super) fn stats(&self) -> (u8, u16) {
+        let mut max_count: u8 = 0;
+        for i in 0..self.next_entry {
+            let count = self.entries[i as usize].1;
+            if count > max_count {
+                max_count = count;
+            }
+        }
+        (max_count, self.next_entry)
     }
 }

@@ -271,7 +271,7 @@ fn sort_buckets<const K: u8>(
             .iter()
             .take_while(|&&(pos, _)| pos != Position::SENTINEL)
             .count();
-        bucket[..len].sort_unstable_by_key(|&(_, y)| u32::from(y));
+        bucket[..len].sort_unstable_by_key(|&(pos, y)| (u32::from(y), u32::from(pos)));
     }
 }
 
@@ -460,6 +460,21 @@ unsafe fn find_matches_in_buckets<'a>(
         }
     }
 
+    #[cfg(test)]
+    {
+        let (max_r_count, distinct_r_count) = rmap.stats();
+        if max_r_count > 2 {
+            extern crate std;
+            std::eprintln!(
+                "find_matches_in_buckets: bucket_pair ({}, {}): rmap has {distinct_r_count} \
+                 distinct r-values, max {max_r_count} positions per r-value (>2 would have been \
+                 dropped by old Rmap)",
+                left_bucket_index,
+                left_bucket_index + 1,
+            );
+        }
+    }
+
     let parity = left_base % 2;
     let left_targets_parity = &left_targets[parity as usize];
     let mut next_match_index = 0;
@@ -479,30 +494,32 @@ unsafe fn find_matches_in_buckets<'a>(
 
         for &r_target in left_targets_r.iter() {
             // SAFETY: Targets are always limited to `PARAM_BC`
-            let [right_position_a, right_position_b] = unsafe { rmap.get(r_target) };
+            let right_positions = unsafe { rmap.get(r_target) };
 
-            if right_position_a != Position::SENTINEL {
-                // SAFETY: Iteration will stop before `REDUCED_MATCHES_COUNT + PARAM_M * 2`
-                // elements is inserted
+            for &right_position in right_positions {
+                if next_match_index >= matches.len() {
+                    break;
+                }
+                // SAFETY: Bounds checked above
                 unsafe { matches.get_unchecked_mut(next_match_index) }.write(Match {
                     left_position,
                     left_y: y,
-                    right_position: right_position_a,
+                    right_position,
                 });
                 next_match_index += 1;
-
-                if right_position_b != Position::SENTINEL {
-                    // SAFETY: Iteration will stop before
-                    // `REDUCED_MATCHES_COUNT + PARAM_M * 2` elements is inserted
-                    unsafe { matches.get_unchecked_mut(next_match_index) }.write(Match {
-                        left_position,
-                        left_y: y,
-                        right_position: right_position_b,
-                    });
-                    next_match_index += 1;
-                }
             }
         }
+    }
+
+    #[cfg(test)]
+    if next_match_index >= REDUCED_MATCHES_COUNT {
+        extern crate std;
+        std::eprintln!(
+            "find_matches_in_buckets: bucket_pair ({}, {}): match count {next_match_index} hit \
+             REDUCED_MATCHES_COUNT={REDUCED_MATCHES_COUNT} limit — matches may be truncated",
+            left_bucket_index,
+            left_bucket_index + 1,
+        );
     }
 
     // SAFETY: Initialized this many matches
