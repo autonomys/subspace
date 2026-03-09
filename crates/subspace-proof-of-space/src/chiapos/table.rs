@@ -462,29 +462,19 @@ unsafe fn find_matches_in_buckets<'a>(
 
         for &r_target in left_targets_r.iter() {
             // SAFETY: Targets are always limited to `PARAM_BC`
-            let [right_position_a, right_position_b] = unsafe { rmap.get(r_target) };
+            let right_positions = unsafe { rmap.get(r_target) };
 
-            // The right bucket position is never zero
-            if right_position_a != Position::ZERO {
-                // SAFETY: Iteration will stop before `REDUCED_MATCHES_COUNT + PARAM_M * 2`
-                // elements is inserted
+            for &right_position in right_positions {
+                if next_match_index >= matches.len() {
+                    break;
+                }
+                // SAFETY: Bounds checked above
                 unsafe { matches.get_unchecked_mut(next_match_index) }.write(Match {
                     left_position,
                     left_y: y,
-                    right_position: right_position_a,
+                    right_position,
                 });
                 next_match_index += 1;
-
-                if right_position_b != Position::ZERO {
-                    // SAFETY: Iteration will stop before
-                    // `REDUCED_MATCHES_COUNT + PARAM_M * 2` elements is inserted
-                    unsafe { matches.get_unchecked_mut(next_match_index) }.write(Match {
-                        left_position,
-                        left_y: y,
-                        right_position: right_position_b,
-                    });
-                    next_match_index += 1;
-                }
             }
         }
     }
