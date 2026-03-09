@@ -261,9 +261,8 @@ where
 /// Sort entries within each bucket by Y value to ensure deterministic proof ordering.
 /// This matches the old code's behavior where entries were globally Y-sorted before bucketing.
 #[cfg(feature = "alloc")]
-fn sort_buckets<const K: u8>(
-    buckets: &mut [[(Position, Y); REDUCED_BUCKET_SIZE]; num_buckets(K)],
-) where
+fn sort_buckets<const K: u8>(buckets: &mut [[(Position, Y); REDUCED_BUCKET_SIZE]; num_buckets(K)])
+where
     [(); num_buckets(K)]:,
 {
     for bucket in buckets.iter_mut() {
@@ -460,21 +459,6 @@ unsafe fn find_matches_in_buckets<'a>(
         }
     }
 
-    #[cfg(test)]
-    {
-        let (max_r_count, distinct_r_count) = rmap.stats();
-        if max_r_count > 2 {
-            extern crate std;
-            std::eprintln!(
-                "find_matches_in_buckets: bucket_pair ({}, {}): rmap has {distinct_r_count} \
-                 distinct r-values, max {max_r_count} positions per r-value (>2 would have been \
-                 dropped by old Rmap)",
-                left_bucket_index,
-                left_bucket_index + 1,
-            );
-        }
-    }
-
     let parity = left_base % 2;
     let left_targets_parity = &left_targets[parity as usize];
     let mut next_match_index = 0;
@@ -509,17 +493,6 @@ unsafe fn find_matches_in_buckets<'a>(
                 next_match_index += 1;
             }
         }
-    }
-
-    #[cfg(test)]
-    if next_match_index >= REDUCED_MATCHES_COUNT {
-        extern crate std;
-        std::eprintln!(
-            "find_matches_in_buckets: bucket_pair ({}, {}): match count {next_match_index} hit \
-             REDUCED_MATCHES_COUNT={REDUCED_MATCHES_COUNT} limit — matches may be truncated",
-            left_bucket_index,
-            left_bucket_index + 1,
-        );
     }
 
     // SAFETY: Initialized this many matches

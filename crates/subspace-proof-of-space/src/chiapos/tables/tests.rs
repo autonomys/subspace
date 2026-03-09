@@ -104,13 +104,7 @@ fn analyze_f1_bucket_distribution<const K: u8>(seed: &[u8; 32]) -> (usize, usize
 #[test]
 fn original_bucket_size_was_insufficient() {
     let seed = [1; 32];
-    let (num_buckets, max_size, num_overflow, total_dropped) =
-        analyze_f1_bucket_distribution::<K>(&seed);
-    std::eprintln!(
-        "Table 1 (K={K}): {num_buckets} buckets, max_size={max_size}, \
-         {num_overflow} exceed original {ORIGINAL_REDUCED_BUCKET_SIZE}, \
-         {total_dropped} entries would have been dropped"
-    );
+    let (_, _, num_overflow, _) = analyze_f1_bucket_distribution::<K>(&seed);
     assert!(
         num_overflow > 0,
         "Expected at least one bucket to exceed the original \
@@ -125,7 +119,6 @@ fn current_bucket_size_has_no_overflow() {
 
     let seed = [1; 32];
     let (_, max_size, _, _) = analyze_f1_bucket_distribution::<K>(&seed);
-    std::eprintln!("Table 1 (K={K}): max_bucket_size={max_size}, REDUCED_BUCKET_SIZE={REDUCED_BUCKET_SIZE}");
     assert!(
         max_size <= REDUCED_BUCKET_SIZE,
         "max bucket size {max_size} exceeds REDUCED_BUCKET_SIZE={REDUCED_BUCKET_SIZE}"
@@ -167,7 +160,6 @@ fn table7_buckets_are_y_sorted() {
     }
 
     assert!(total_entries > 0, "Expected non-empty table 7");
-    std::eprintln!("Table 7 has {total_entries} entries across {} buckets, all Y-sorted", buckets.len());
 }
 
 /// Cross-validates proofs from the optimized (bucketed) code against reference proofs
@@ -206,13 +198,13 @@ fn proof_identity_with_main_branch() {
         let main_proof: [u8; 160] = [
             231, 160, 182, 160, 151, 135, 181, 184, 162, 182, 73, 246, 100, 10, 64, 8, 157, 251,
             161, 176, 47, 43, 96, 21, 51, 121, 6, 141, 115, 172, 44, 235, 35, 141, 185, 231, 232,
-            112, 94, 233, 234, 129, 34, 234, 98, 156, 52, 36, 112, 133, 204, 248, 165, 32, 87,
-            87, 179, 142, 183, 9, 243, 80, 255, 233, 157, 88, 126, 200, 23, 133, 197, 95, 25, 36,
-            150, 34, 50, 199, 42, 240, 206, 77, 183, 15, 203, 92, 226, 70, 177, 117, 55, 240,
-            225, 192, 204, 211, 25, 66, 193, 214, 91, 211, 236, 112, 205, 231, 42, 241, 122, 214,
-            127, 107, 218, 66, 113, 204, 84, 62, 153, 41, 97, 47, 111, 65, 71, 154, 191, 252, 96,
-            182, 172, 232, 237, 244, 7, 132, 158, 201, 239, 133, 184, 191, 72, 99, 128, 127, 202,
-            195, 116, 49, 91, 207, 14, 134, 109, 184, 226, 222, 114, 19,
+            112, 94, 233, 234, 129, 34, 234, 98, 156, 52, 36, 112, 133, 204, 248, 165, 32, 87, 87,
+            179, 142, 183, 9, 243, 80, 255, 233, 157, 88, 126, 200, 23, 133, 197, 95, 25, 36, 150,
+            34, 50, 199, 42, 240, 206, 77, 183, 15, 203, 92, 226, 70, 177, 117, 55, 240, 225, 192,
+            204, 211, 25, 66, 193, 214, 91, 211, 236, 112, 205, 231, 42, 241, 122, 214, 127, 107,
+            218, 66, 113, 204, 84, 62, 153, 41, 97, 47, 111, 65, 71, 154, 191, 252, 96, 182, 172,
+            232, 237, 244, 7, 132, 158, 201, 239, 133, 184, 191, 72, 99, 128, 127, 202, 195, 116,
+            49, 91, 207, 14, 134, 109, 184, 226, 222, 114, 19,
         ];
         let first_bytes = 600426542_u32.to_le_bytes();
         let new_proof: Vec<u8> = tables
@@ -231,14 +223,14 @@ fn proof_identity_with_main_branch() {
     {
         let main_proof: [u8; 160] = [
             18, 71, 186, 109, 239, 82, 92, 249, 249, 22, 246, 115, 50, 138, 131, 135, 207, 108,
-            139, 56, 155, 175, 16, 111, 4, 176, 187, 88, 209, 154, 187, 71, 174, 77, 233, 86,
-            209, 58, 227, 192, 185, 73, 88, 6, 127, 59, 222, 166, 33, 239, 206, 41, 65, 52, 255,
-            233, 122, 107, 218, 68, 103, 78, 40, 40, 224, 157, 183, 185, 155, 101, 34, 122, 51,
-            180, 63, 85, 51, 166, 214, 180, 200, 132, 199, 65, 24, 55, 244, 197, 78, 87, 80, 11,
-            221, 145, 225, 134, 245, 76, 165, 245, 92, 243, 12, 121, 249, 141, 100, 157, 161, 34,
-            134, 58, 177, 116, 104, 68, 157, 136, 178, 207, 88, 11, 12, 251, 12, 106, 114, 195,
-            167, 184, 80, 161, 218, 154, 237, 164, 144, 108, 233, 211, 223, 136, 64, 49, 166,
-            143, 68, 221, 102, 42, 94, 199, 31, 95, 193, 76, 131, 117, 66, 165,
+            139, 56, 155, 175, 16, 111, 4, 176, 187, 88, 209, 154, 187, 71, 174, 77, 233, 86, 209,
+            58, 227, 192, 185, 73, 88, 6, 127, 59, 222, 166, 33, 239, 206, 41, 65, 52, 255, 233,
+            122, 107, 218, 68, 103, 78, 40, 40, 224, 157, 183, 185, 155, 101, 34, 122, 51, 180, 63,
+            85, 51, 166, 214, 180, 200, 132, 199, 65, 24, 55, 244, 197, 78, 87, 80, 11, 221, 145,
+            225, 134, 245, 76, 165, 245, 92, 243, 12, 121, 249, 141, 100, 157, 161, 34, 134, 58,
+            177, 116, 104, 68, 157, 136, 178, 207, 88, 11, 12, 251, 12, 106, 114, 195, 167, 184,
+            80, 161, 218, 154, 237, 164, 144, 108, 233, 211, 223, 136, 64, 49, 166, 143, 68, 221,
+            102, 42, 94, 199, 31, 95, 193, 76, 131, 117, 66, 165,
         ];
         let first_bytes = 1011_u32.to_le_bytes();
         let new_proof: Vec<u8> = tables
@@ -256,15 +248,15 @@ fn proof_identity_with_main_branch() {
     // Challenge 650: Rmap regression marker (was is_none before fix)
     {
         let main_proof: [u8; 160] = [
-            163, 3, 1, 44, 59, 22, 245, 97, 242, 22, 232, 0, 104, 44, 176, 157, 119, 77, 106,
-            176, 226, 204, 66, 214, 179, 124, 203, 188, 163, 135, 172, 44, 224, 25, 187, 238,
-            175, 177, 36, 240, 53, 117, 236, 129, 154, 232, 128, 176, 129, 158, 78, 102, 171,
-            109, 45, 92, 212, 235, 179, 135, 153, 15, 186, 100, 80, 143, 235, 182, 204, 72, 252,
-            242, 38, 178, 128, 106, 206, 63, 211, 58, 85, 61, 168, 107, 86, 111, 191, 109, 17,
-            152, 135, 11, 110, 137, 167, 23, 1, 126, 218, 69, 117, 226, 166, 169, 70, 4, 95, 45,
-            16, 50, 121, 163, 250, 180, 225, 138, 229, 104, 102, 25, 145, 186, 255, 129, 100, 42,
-            237, 127, 26, 24, 109, 135, 0, 193, 34, 119, 109, 250, 38, 38, 187, 152, 33, 36, 147,
-            45, 255, 117, 149, 138, 50, 122, 160, 12, 44, 212, 73, 219, 60, 31,
+            163, 3, 1, 44, 59, 22, 245, 97, 242, 22, 232, 0, 104, 44, 176, 157, 119, 77, 106, 176,
+            226, 204, 66, 214, 179, 124, 203, 188, 163, 135, 172, 44, 224, 25, 187, 238, 175, 177,
+            36, 240, 53, 117, 236, 129, 154, 232, 128, 176, 129, 158, 78, 102, 171, 109, 45, 92,
+            212, 235, 179, 135, 153, 15, 186, 100, 80, 143, 235, 182, 204, 72, 252, 242, 38, 178,
+            128, 106, 206, 63, 211, 58, 85, 61, 168, 107, 86, 111, 191, 109, 17, 152, 135, 11, 110,
+            137, 167, 23, 1, 126, 218, 69, 117, 226, 166, 169, 70, 4, 95, 45, 16, 50, 121, 163,
+            250, 180, 225, 138, 229, 104, 102, 25, 145, 186, 255, 129, 100, 42, 237, 127, 26, 24,
+            109, 135, 0, 193, 34, 119, 109, 250, 38, 38, 187, 152, 33, 36, 147, 45, 255, 117, 149,
+            138, 50, 122, 160, 12, 44, 212, 73, 219, 60, 31,
         ];
         let first_bytes = 650_u32.to_le_bytes();
         let new_proof: Vec<u8> = tables
@@ -282,7 +274,6 @@ fn proof_identity_with_main_branch() {
     // --- Broad K=20 self-verification scan ---
     // Verify that every proof found across 50,000 challenge indices is valid.
     // This catches any systemic issues the 3 pinpoint challenges might miss.
-    let mut total_proofs = 0_u32;
     let mut total_challenges_with_proofs = 0_u32;
     let mut verification_failures = Vec::new();
 
@@ -298,7 +289,6 @@ fn proof_identity_with_main_branch() {
 
         if !proofs.is_empty() {
             total_challenges_with_proofs += 1;
-            total_proofs += proofs.len() as u32;
         }
 
         for (proof_idx, proof) in proofs.iter().enumerate() {
@@ -309,23 +299,9 @@ fn proof_identity_with_main_branch() {
             );
             if valid.is_none() {
                 verification_failures.push((challenge_index, proof_idx, proof.clone()));
-                // Log first few failures with full detail for debugging
-                if verification_failures.len() <= 5 {
-                    std::eprintln!(
-                        "VERIFICATION FAILURE: challenge_index={challenge_index}, \
-                         proof_idx={proof_idx}, proof_bytes={proof:?}"
-                    );
-                }
             }
         }
     }
-
-    std::eprintln!(
-        "K=20 broad scan: {total_challenges_with_proofs} challenges with proofs, \
-         {total_proofs} total proofs across 50,000 challenge indices, \
-         {} verification failures",
-        verification_failures.len()
-    );
 
     assert!(
         verification_failures.is_empty(),
@@ -394,8 +370,12 @@ fn bucketed_proofs_match_sorted_reference() {
                 let mut challenge = [0u8; 32];
                 challenge[..4].copy_from_slice(&first_challenge_bytes);
                 assert!(
-                    TablesGeneric::<K>::verify(&seed, &challenge, proof.as_slice().try_into().unwrap())
-                        .is_some(),
+                    TablesGeneric::<K>::verify(
+                        &seed,
+                        &challenge,
+                        proof.as_slice().try_into().unwrap()
+                    )
+                    .is_some(),
                     "Proof for challenge prefix {first_k_bits} failed verification"
                 );
                 challenges_with_proofs += 1;
@@ -404,9 +384,7 @@ fn bucketed_proofs_match_sorted_reference() {
                 // Neither found a proof for this challenge prefix, expected
             }
             (Some(_), None) => {
-                panic!(
-                    "Bucketed found proof but reference did not for prefix {first_k_bits}"
-                );
+                panic!("Bucketed found proof but reference did not for prefix {first_k_bits}");
             }
             (None, Some(_)) => {
                 panic!(
@@ -416,10 +394,6 @@ fn bucketed_proofs_match_sorted_reference() {
         }
     }
 
-    std::eprintln!(
-        "Verified {challenges_with_proofs} challenge prefixes with proofs out of {} total",
-        1u32 << K
-    );
     assert!(
         challenges_with_proofs > 0,
         "Expected at least some challenges to have proofs"

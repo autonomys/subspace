@@ -51,7 +51,11 @@ impl Rmap {
             // Existing r-value: increment count, append position
             // SAFETY: Internal pointers are always valid
             let entry = unsafe { self.entries.get_unchecked_mut(physical_pointer as usize) };
-            debug_assert!(entry.1 < u8::MAX, "Rmap entry count overflow for r={}", u16::from(r));
+            debug_assert!(
+                entry.1 < u8::MAX,
+                "Rmap entry count overflow for r={}",
+                u16::from(r)
+            );
             entry.1 += 1;
         } else {
             // New r-value: allocate entry
@@ -68,7 +72,9 @@ impl Rmap {
         // Store position in flat array
         // SAFETY: Total positions never exceed REDUCED_BUCKET_SIZE
         unsafe {
-            *self.positions.get_unchecked_mut(self.next_position as usize) = position;
+            *self
+                .positions
+                .get_unchecked_mut(self.next_position as usize) = position;
         }
         self.next_position += 1;
     }
@@ -95,19 +101,5 @@ impl Rmap {
         } else {
             &[]
         }
-    }
-
-    /// Returns the maximum number of positions stored for any single r-value, and the total
-    /// number of distinct r-values. Useful for diagnostics.
-    #[cfg(test)]
-    pub(super) fn stats(&self) -> (u8, u16) {
-        let mut max_count: u8 = 0;
-        for i in 0..self.next_entry {
-            let count = self.entries[i as usize].1;
-            if count > max_count {
-                max_count = count;
-            }
-        }
-        (max_count, self.next_entry)
     }
 }

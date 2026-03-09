@@ -21,7 +21,11 @@ fn test_rmap_basic() {
         rmap.add(R::from(0), Position::from(102));
         assert_eq!(
             rmap.get(R::from(0)),
-            &[Position::from(100), Position::from(101), Position::from(102)]
+            &[
+                Position::from(100),
+                Position::from(101),
+                Position::from(102)
+            ]
         );
 
         rmap.add(R::from(1), Position::from(200));
@@ -106,4 +110,3 @@ fn test_rmap_multiple_r_values() {
         assert!(rmap.get(R::from(40)).is_empty());
     }
 }
-
