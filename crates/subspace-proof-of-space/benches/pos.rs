@@ -265,9 +265,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     }
     {
         // This challenge index with above seed is known to not have a solution
-        let challenge_index_without_solution = 1;
+        let challenge_index_without_solution = 0;
         // This challenge index with above seed is known to have a solution
-        let challenge_index_with_solution = 0;
+        let challenge_index_with_solution = 1;
 
         pos_bench::<subspace_proof_of_space::shim::ShimTable>(
             c,
