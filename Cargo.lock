@@ -6513,7 +6513,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tracing",
  "yamux 0.12.1",
- "yamux 0.13.9",
+ "yamux 0.13.10",
 ]
 
 [[package]]
@@ -6680,7 +6680,7 @@ dependencies = [
  "url",
  "x25519-dalek",
  "x509-parser 0.17.0",
- "yamux 0.13.9",
+ "yamux 0.13.10",
  "yasna",
  "zeroize",
 ]
@@ -13176,7 +13176,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-bootstrap-node"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "clap",
  "futures",
@@ -13274,7 +13274,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-farmer"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "async-lock",
@@ -13385,7 +13385,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-gateway"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "actix-web",
  "anyhow",
@@ -13555,7 +13555,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-node"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "auto-id-domain-runtime",
  "bip39",
@@ -16373,9 +16373,9 @@ dependencies = [
 
 [[package]]
 name = "yamux"
-version = "0.13.9"
+version = "0.13.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c650efd29044140aa63caaf80129996a9e2659a2ab7045a7e061807d02fc8549"
+checksum = "1991f6690292030e31b0144d73f5e8368936c58e45e7068254f7138b23b00672"
 dependencies = [
  "futures",
  "log",
