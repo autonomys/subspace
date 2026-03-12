@@ -398,7 +398,8 @@ where
             ys_and_metadata.as_chunks::<2>().0
         {
             if !has_match(left_y, right_y) {
-                continue;
+                // Any non-matching pair invalidates the entire proof
+                return &[];
             }
 
             next_ys_and_metadata[next_offset].write(compute_fn::<
