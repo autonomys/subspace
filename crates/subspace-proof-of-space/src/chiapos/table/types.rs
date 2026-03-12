@@ -130,10 +130,10 @@ impl From<Position> for usize {
 }
 
 impl Position {
-    #[cfg(any(feature = "alloc", test))]
+    #[cfg(feature = "alloc")]
     pub(in super::super) const ZERO: Self = Self(0);
     /// Position that can't exist
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", test))]
     pub(in super::super) const SENTINEL: Self = Self(u32::MAX);
 }
 
