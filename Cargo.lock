@@ -15,10 +15,8 @@ dependencies = [
 [[package]]
 name = "ab-chacha8"
 version = "0.1.0"
-dependencies = [
- "chacha20",
- "no-panic",
-]
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78928d0e8969c1b539a98de5cf3a678d136f160415c765f3f4c464b5eee39976"
 
 [[package]]
 name = "actix-codec"
@@ -7314,17 +7312,6 @@ dependencies = [
  "log",
  "rand 0.8.5",
  "signatory",
-]
-
-[[package]]
-name = "no-panic"
-version = "0.1.35"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "113d1abd5bb3dc25a75d9b3a973f40e31eb03e0bae23c172b32cca4bcb9cfad2"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.111",
 ]
 
 [[package]]
