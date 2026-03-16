@@ -360,6 +360,21 @@ where
             .collect::<Vec<_>>()
     };
 
+    {
+        let total_sectors: usize = farms
+            .iter()
+            .map(|farm| farm.total_sectors_count() as usize)
+            .sum();
+        // Each sector's metadata has Box<[u16; 65536]> = 128 KiB for s_bucket_sizes
+        let estimated_metadata_mib = total_sectors * 128 / 1024;
+        info!(
+            farm_count = farms.len(),
+            total_sectors,
+            estimated_metadata_mib,
+            "All farms initialized, estimated sector metadata memory: {estimated_metadata_mib} MiB"
+        );
+    }
+
     let mut farmer_services = (0..service_instances.get())
         .map(|index| {
             AsyncJoinOnDrop::new(

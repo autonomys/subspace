@@ -687,6 +687,21 @@ where
     };
 
     {
+        let total_sectors: usize = farms
+            .iter()
+            .map(|farm| farm.total_sectors_count() as usize)
+            .sum();
+        // Each sector's metadata has Box<[u16; 65536]> = 128 KiB for s_bucket_sizes
+        let estimated_metadata_mib = total_sectors * 128 / 1024;
+        info!(
+            farm_count = farms.len(),
+            total_sectors,
+            estimated_metadata_mib,
+            "All farms initialized, estimated sector metadata memory: {estimated_metadata_mib} MiB"
+        );
+    }
+
+    {
         let handler_id = Arc::new(Mutex::new(None));
         // Wait for piece cache to read already cached contents before starting plotting to improve
         // cache hit ratio

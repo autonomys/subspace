@@ -1,4 +1,4 @@
-#![feature(type_changing_struct_update)]
+#![feature(alloc_error_hook, type_changing_struct_update)]
 
 mod commands;
 
@@ -65,6 +65,15 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Install alloc error hook so OOM is visible instead of silently aborting
+    std::alloc::set_alloc_error_hook(|layout| {
+        eprintln!(
+            "FATAL: memory allocation of {} bytes (align {}) failed, aborting due to out of memory",
+            layout.size(),
+            layout.align(),
+        );
+    });
+
     set_exit_on_panic();
     init_logger();
     raise_fd_limit();
