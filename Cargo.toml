@@ -114,7 +114,6 @@ mmr-gadget = { git = "https://github.com/subspace/polkadot-sdk", rev = "1a4f8929
 mmr-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "1a4f892900ab0eba51f729cca4caeaab0627efed" }
 multihash = "0.19.1"
 nohash-hasher = "0.2.0"
-no-panic = "0.1.35"
 num-traits = { version = "0.2.18", default-features = false }
 num_cpus = "1.16.0"
 num_enum = { version = "0.5.3", default-features = false }
