@@ -46,7 +46,7 @@ pub(crate) fn process_rss_mib() -> Option<u64> {
             PeakPagefileUsage: usize,
         }
 
-        extern "system" {
+        unsafe extern "system" {
             fn K32GetProcessMemoryInfo(
                 process: *mut std::ffi::c_void,
                 pmc: *mut ProcessMemoryCounters,
@@ -114,7 +114,7 @@ pub(crate) fn total_system_memory_mib() -> Option<u64> {
             ullAvailExtendedVirtual: u64,
         }
 
-        extern "system" {
+        unsafe extern "system" {
             fn GlobalMemoryStatusEx(lpBuffer: *mut MemoryStatusEx) -> i32;
         }
 
