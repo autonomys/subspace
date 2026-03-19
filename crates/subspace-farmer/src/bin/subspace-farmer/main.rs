@@ -1,6 +1,7 @@
 #![feature(alloc_error_hook, type_changing_struct_update)]
 
 mod commands;
+mod diagnostics;
 
 use clap::Parser;
 use std::fs;

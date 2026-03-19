@@ -36,6 +36,7 @@ futures.workspace = true
 hex = { workspace = true, features = ["serde"] }
 hwlocality = { workspace = true, features = ["vendored"], optional = true }
 jsonrpsee = { workspace = true, features = ["ws-client"] }
+libc.workspace = true
 mimalloc = { workspace = true, optional = true }
 num_cpus.workspace = true
 ouroboros.workspace = true

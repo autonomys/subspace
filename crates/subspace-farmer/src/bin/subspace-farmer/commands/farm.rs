@@ -693,12 +693,26 @@ where
             .sum();
         // Each sector's metadata has Box<[u16; 65536]> = 128 KiB for s_bucket_sizes
         let estimated_metadata_mib = total_sectors * 128 / 1024;
+        let system_memory_mib = crate::diagnostics::total_system_memory_mib();
+        let rss_mib = crate::diagnostics::process_rss_mib();
         info!(
             farm_count = farms.len(),
             total_sectors,
             estimated_metadata_mib,
+            ?system_memory_mib,
+            ?rss_mib,
             "All farms initialized, estimated sector metadata memory: {estimated_metadata_mib} MiB"
         );
+        if let (Some(system_mem), Some(rss)) = (system_memory_mib, rss_mib)
+            && rss > system_mem / 2
+        {
+            warn!(
+                rss_mib = rss,
+                system_memory_mib = system_mem,
+                "Process RSS exceeds 50% of system memory, OOM risk is high"
+            );
+        }
+        crate::diagnostics::spawn_rss_monitor(Duration::from_secs(30));
     }
 
     {

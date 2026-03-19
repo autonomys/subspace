@@ -13292,6 +13292,7 @@ dependencies = [
  "hex",
  "hwlocality",
  "jsonrpsee",
+ "libc",
  "mimalloc",
  "num_cpus",
  "ouroboros",
