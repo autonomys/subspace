@@ -50,7 +50,7 @@ pub const E_BASE: u64 = 3;
 pub const OFFLINE_SHORTFALL_FRACTION: (u64, u64) = (1, 3);
 
 const _: () = assert!(OFFLINE_SHORTFALL_FRACTION.1 > 0);
-const _: () = assert!(OFFLINE_SHORTFALL_FRACTION.0 <= OFFLINE_SHORTFALL_FRACTION.1);
+const _: () = assert!(OFFLINE_SHORTFALL_FRACTION.0 < OFFLINE_SHORTFALL_FRACTION.1);
 
 /// Extension trait for FixedU128 providing rounding to u64.
 trait FixedU128Ext {

@@ -125,6 +125,20 @@ fn returns_none_when_no_slots_or_zero_threshold_inputs() {
         )
         .is_none()
     );
+
+    // shortfall_fraction denominator = 0 -> division by zero guard -> None
+    assert!(
+        operator_expected_bundles_in_epoch(
+            600,
+            1_000_000_000_000_000_000 / 4, // 25% stake, throughput-relevant
+            1_000_000_000_000_000_000,
+            (1, 1),
+            LN_1_OVER_TAU_0_5_PERCENT,
+            E_BASE,
+            (1, 0), // zero denominator
+        )
+        .is_none()
+    );
 }
 
 #[test]
