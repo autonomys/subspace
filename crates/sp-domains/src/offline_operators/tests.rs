@@ -366,6 +366,214 @@ fn operator_expected_bundles_handles_huge_total_and_small_op() {
     assert!(out.min_required_bundles <= out.expected_bundles);
 }
 
+#[test]
+fn shortfall_fraction_constant_is_valid() {
+    assert!(OFFLINE_SHORTFALL_FRACTION.1 > 0, "denominator must be positive");
+    assert!(
+        OFFLINE_SHORTFALL_FRACTION.0 <= OFFLINE_SHORTFALL_FRACTION.1,
+        "numerator must not exceed denominator"
+    );
+}
+
+#[test]
+fn shortfall_threshold_computed_correctly() {
+    // S=600, 25% stake, theta=1 -> large μ, expect shortfall = floor(expected * 2/3)
+    let total = 1_000_000_000_000_000_000u128;
+    let operator = total / 4; // 25% stake -> μ ≈ 150
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    // With (1, 3) fraction: shortfall_threshold = floor(expected * 2 / 3)
+    let expected_shortfall = exp.expected_bundles * 2 / 3;
+    assert_eq!(exp.shortfall_threshold, expected_shortfall);
+
+    // shortfall_threshold should be below min_required_bundles for large operators
+    // (Chernoff is stricter for large μ)
+    assert!(
+        exp.shortfall_threshold < exp.min_required_bundles,
+        "for large operators, shortfall gate should be more lenient than Chernoff"
+    );
+}
+
+#[test]
+fn large_operator_barely_below_chernoff_but_above_shortfall_gate() {
+    // This test verifies the scenario from mainnet: operator submits 130/132 min_required
+    // but is above the shortfall threshold. Under two-gate logic, they should NOT be flagged.
+    let total = 1_000_000_000_000_000_000u128;
+    let operator = total / 4; // 25% stake
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    // Simulate an operator submitting just below Chernoff but above shortfall
+    let submitted = exp.min_required_bundles - 1;
+
+    // This operator fails the Chernoff gate
+    assert!(submitted < exp.min_required_bundles);
+    // But passes the shortfall gate (submitted >= shortfall_threshold)
+    assert!(
+        submitted >= exp.shortfall_threshold,
+        "submitted {} should be >= shortfall_threshold {} for large operator",
+        submitted,
+        exp.shortfall_threshold
+    );
+    // Under two-gate AND logic: NOT flagged (must fail both)
+    let would_be_flagged =
+        submitted < exp.min_required_bundles && submitted < exp.shortfall_threshold;
+    assert!(!would_be_flagged);
+}
+
+#[test]
+fn operator_below_both_gates_is_flagged() {
+    let total = 1_000_000_000_000_000_000u128;
+    let operator = total / 4;
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    // Submit well below both thresholds
+    let submitted = exp.shortfall_threshold.saturating_sub(1);
+    assert!(submitted < exp.min_required_bundles);
+    assert!(submitted < exp.shortfall_threshold);
+    let would_be_flagged =
+        submitted < exp.min_required_bundles && submitted < exp.shortfall_threshold;
+    assert!(would_be_flagged);
+}
+
+#[test]
+fn zero_bundles_always_flagged_when_throughput_relevant() {
+    let total = 1_000_000_000_000_000_000u128;
+    let operator = total / 4;
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    let submitted = 0u64;
+    assert!(submitted < exp.min_required_bundles);
+    assert!(submitted < exp.shortfall_threshold);
+    let would_be_flagged =
+        submitted < exp.min_required_bundles && submitted < exp.shortfall_threshold;
+    assert!(would_be_flagged);
+}
+
+#[test]
+fn operator_at_exact_shortfall_threshold_not_flagged() {
+    let total = 1_000_000_000_000_000_000u128;
+    let operator = total / 4;
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    // Submitting exactly at shortfall_threshold passes the shortfall gate
+    let submitted = exp.shortfall_threshold;
+    let would_be_flagged =
+        submitted < exp.min_required_bundles && submitted < exp.shortfall_threshold;
+    assert!(!would_be_flagged, "operator at exact shortfall threshold should NOT be flagged");
+}
+
+#[test]
+fn small_operator_below_shortfall_but_above_chernoff_not_flagged() {
+    // For small μ, the Chernoff bound is more lenient than the shortfall gate.
+    // An operator can fail the shortfall gate but pass the Chernoff gate → NOT flagged.
+    let total = 1_000_000_000_000_000_000u128;
+    // ~2% stake with S=600 -> μ ≈ 12, right near the relevance threshold
+    let operator = total / 50;
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    // For small μ, Chernoff r should be very low relative to expected
+    // shortfall_threshold = expected * 2/3 should be higher than Chernoff r
+    assert!(
+        exp.min_required_bundles < exp.shortfall_threshold,
+        "for small operators, Chernoff r ({}) should be below shortfall threshold ({})",
+        exp.min_required_bundles,
+        exp.shortfall_threshold
+    );
+
+    // Simulate submitting between Chernoff r and shortfall threshold
+    let submitted = exp.min_required_bundles; // passes Chernoff (not strictly less)
+    assert!(submitted >= exp.min_required_bundles); // passes Chernoff gate
+    assert!(submitted < exp.shortfall_threshold); // fails shortfall gate
+    let would_be_flagged =
+        submitted < exp.min_required_bundles && submitted < exp.shortfall_threshold;
+    assert!(!would_be_flagged, "should NOT be flagged — passes Chernoff gate");
+}
+
+#[test]
+fn crossover_region_both_gates_roughly_equal() {
+    // At μ ≈ 95, Chernoff r ≈ 67% of expected, which is close to the shortfall gate (67%).
+    // This validates the crossover behavior described in the spec.
+    let total = 1_000_000_000_000_000_000u128;
+    // Need to find stake that gives μ ≈ 95 with S=600, theta=1
+    // μ = S * p ≈ S * (stake/total) => stake/total ≈ 95/600 ≈ 0.1583
+    let operator = total / 6; // ~16.7% stake -> μ ≈ 100
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    // Near the crossover, both thresholds should be reasonably close
+    let chernoff_pct = (exp.min_required_bundles as f64) / (exp.expected_bundles as f64);
+    let shortfall_pct = (exp.shortfall_threshold as f64) / (exp.expected_bundles as f64);
+    // Both should be in the 60-70% range of expected
+    assert!(
+        (chernoff_pct - shortfall_pct).abs() < 0.10,
+        "near crossover, gates should be within 10% of each other: chernoff={:.1}%, shortfall={:.1}%",
+        chernoff_pct * 100.0,
+        shortfall_pct * 100.0
+    );
+}
+
 // Helper: compute floor(μ) directly from threshold for cross-checks.
 fn mu_floor_from_threshold(
     slots_in_epoch: u64,
