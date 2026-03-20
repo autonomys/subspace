@@ -43,6 +43,15 @@ pub const LN_1_OVER_TAU_0_5_PERCENT: FixedU128 = FixedU128::from_inner(5_298_317
 /// since they are not throughput relevant.
 pub const E_BASE: u64 = 3;
 
+/// Minimum shortfall fraction relative to expected bundles to consider an operator offline.
+/// (numerator, denominator): operator is flagged only if submitted < expected * (den - num) / den.
+/// (1, 3) means 1/3 = 33% shortfall required (must submit < 67% of expected).
+/// Constraints: denominator > 0, numerator <= denominator.
+pub const OFFLINE_SHORTFALL_FRACTION: (u64, u64) = (1, 3);
+
+const _: () = assert!(OFFLINE_SHORTFALL_FRACTION.1 > 0);
+const _: () = assert!(OFFLINE_SHORTFALL_FRACTION.0 <= OFFLINE_SHORTFALL_FRACTION.1);
+
 /// Extension trait for FixedU128 providing rounding to u64.
 trait FixedU128Ext {
     /// Floor FixedU128 to u64.
@@ -160,6 +169,9 @@ pub struct OperatorEpochExpectations {
     pub expected_bundles: u64,
     /// Chernoff lower-bound r: minimum bundles to pass with false-positive ≤ τ.
     pub min_required_bundles: u64,
+    /// Shortfall policy threshold: expected * (den - num) / den, using floor rounding.
+    /// Operator must submit fewer than this AND fewer than min_required_bundles to be flagged.
+    pub shortfall_threshold: u64,
 }
 
 /// Compute epoch-end expectations for an operator using the exact VRF threshold.
@@ -185,8 +197,9 @@ pub fn operator_expected_bundles_in_epoch(
     bundle_slot_probability: (u64, u64), // (theta_num, theta_den)
     ln_one_over_tau: FixedU128,
     e_base: u64,
+    shortfall_fraction: (u64, u64),
 ) -> Option<OperatorEpochExpectations> {
-    if slots_in_epoch.is_zero() {
+    if slots_in_epoch.is_zero() || shortfall_fraction.1 == 0 {
         return None;
     }
 
@@ -209,8 +222,15 @@ pub fn operator_expected_bundles_in_epoch(
     let expected_bundles = mu_fp.to_u64_floor();
     let min_required_bundles = chernoff_threshold_fp(slots_in_epoch, p_slot, ln_one_over_tau)?;
 
+    // Shortfall policy gate: expected * (den - num) / den, floor rounding
+    let (sf_num, sf_den) = shortfall_fraction;
+    let shortfall_threshold = expected_bundles
+        .saturating_mul(sf_den.saturating_sub(sf_num))
+        / sf_den;
+
     Some(OperatorEpochExpectations {
         expected_bundles,
         min_required_bundles,
+        shortfall_threshold,
     })
 }
