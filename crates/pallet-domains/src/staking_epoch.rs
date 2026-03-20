@@ -248,8 +248,14 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
             .map(|start_slot| current_slot - start_slot + 1)
             .unwrap_or_default();
         let epoch_total_stake = stake_summary.current_total_stake;
-        let operators_total_bundle_count =
-            OperatorBundleCountInEpoch::<T>::drain().collect::<BTreeMap<_, _>>();
+        // Take bundle counts only for this domain's current-epoch operators.
+        // OperatorBundleCountInEpoch is a global map across all domains, so drain()
+        // would remove other domains' counts. take() reads and removes per-operator.
+        let operators_total_bundle_count: BTreeMap<_, _> = stake_summary
+            .current_operators
+            .keys()
+            .map(|op_id| (*op_id, OperatorBundleCountInEpoch::<T>::take(op_id)))
+            .collect();
         let bundle_slot_probability = DomainRegistry::<T>::get(domain_id)
             .ok_or(TransitionError::DomainNotInitialized)?
             .domain_config
@@ -266,9 +272,8 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
             // if they are not part of the previous epoch set, their performance will be checked in the next epoch.
             if let Some(operator_stake) = stake_summary.current_operators.get(next_operator_id)
             {
-                // Default to 0 for operators with no bundle count entry.
-                // drain() only yields entries explicitly written via submit_bundle,
-                // so operators who submitted zero bundles have no entry.
+                // Bundle count is 0 for operators who never submitted a bundle in this epoch,
+                // since take() on ValueQuery returns 0 for missing entries.
                 let bundle_count = operators_total_bundle_count
                     .get(next_operator_id)
                     .copied()
