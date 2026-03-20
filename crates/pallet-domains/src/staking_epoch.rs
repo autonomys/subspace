@@ -270,8 +270,7 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
 
             // check operator performance in the previous epoch if the operator was part of the previous epoch set
             // if they are not part of the previous epoch set, their performance will be checked in the next epoch.
-            if let Some(operator_stake) = stake_summary.current_operators.get(next_operator_id)
-            {
+            if let Some(operator_stake) = stake_summary.current_operators.get(next_operator_id) {
                 // Bundle count is 0 for operators who never submitted a bundle in this epoch,
                 // since take() on ValueQuery returns 0 for missing entries.
                 let bundle_count = operators_total_bundle_count

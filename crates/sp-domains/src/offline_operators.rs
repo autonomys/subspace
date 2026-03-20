@@ -224,9 +224,8 @@ pub fn operator_expected_bundles_in_epoch(
 
     // Shortfall policy gate: expected * (den - num) / den, floor rounding
     let (sf_num, sf_den) = shortfall_fraction;
-    let shortfall_threshold = expected_bundles
-        .saturating_mul(sf_den.saturating_sub(sf_num))
-        / sf_den;
+    let shortfall_threshold =
+        expected_bundles.saturating_mul(sf_den.saturating_sub(sf_num)) / sf_den;
 
     Some(OperatorEpochExpectations {
         expected_bundles,

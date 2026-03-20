@@ -382,7 +382,10 @@ fn operator_expected_bundles_handles_huge_total_and_small_op() {
 
 #[test]
 fn shortfall_fraction_constant_is_valid() {
-    assert!(OFFLINE_SHORTFALL_FRACTION.1 > 0, "denominator must be positive");
+    assert!(
+        OFFLINE_SHORTFALL_FRACTION.1 > 0,
+        "denominator must be positive"
+    );
     assert!(
         OFFLINE_SHORTFALL_FRACTION.0 <= OFFLINE_SHORTFALL_FRACTION.1,
         "numerator must not exceed denominator"
@@ -518,7 +521,10 @@ fn operator_at_exact_shortfall_threshold_not_flagged() {
     let submitted = exp.shortfall_threshold;
     let would_be_flagged =
         submitted < exp.min_required_bundles && submitted < exp.shortfall_threshold;
-    assert!(!would_be_flagged, "operator at exact shortfall threshold should NOT be flagged");
+    assert!(
+        !would_be_flagged,
+        "operator at exact shortfall threshold should NOT be flagged"
+    );
 }
 
 #[test]
@@ -554,7 +560,10 @@ fn small_operator_below_shortfall_but_above_chernoff_not_flagged() {
     assert!(submitted < exp.shortfall_threshold); // fails shortfall gate
     let would_be_flagged =
         submitted < exp.min_required_bundles && submitted < exp.shortfall_threshold;
-    assert!(!would_be_flagged, "should NOT be flagged — passes Chernoff gate");
+    assert!(
+        !would_be_flagged,
+        "should NOT be flagged — passes Chernoff gate"
+    );
 }
 
 #[test]
