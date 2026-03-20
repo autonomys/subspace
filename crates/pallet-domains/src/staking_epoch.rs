@@ -265,8 +265,15 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
             // check operator performance in the previous epoch if the operator was part of the previous epoch set
             // if they are not part of the previous epoch set, their performance will be checked in the next epoch.
             if let Some(operator_stake) = stake_summary.current_operators.get(next_operator_id)
-                && let Some(bundle_count) = operators_total_bundle_count.get(next_operator_id)
             {
+                // Default to 0 for operators with no bundle count entry.
+                // drain() only yields entries explicitly written via submit_bundle,
+                // so operators who submitted zero bundles have no entry.
+                let bundle_count = operators_total_bundle_count
+                    .get(next_operator_id)
+                    .copied()
+                    .unwrap_or(0);
+
                 let maybe_operator_epoch_expectations = operator_expected_bundles_in_epoch(
                     total_epoch_slots.into(),
                     (*operator_stake).saturated_into(),
@@ -277,13 +284,16 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
                     OFFLINE_SHORTFALL_FRACTION,
                 );
 
+                // Two-gate check: operator must fail BOTH the Chernoff statistical threshold
+                // AND the shortfall policy threshold to be flagged as offline.
                 if let Some(operator_epoch_expectations) = maybe_operator_epoch_expectations
-                    && bundle_count < &operator_epoch_expectations.min_required_bundles
+                    && bundle_count < operator_epoch_expectations.min_required_bundles
+                    && bundle_count < operator_epoch_expectations.shortfall_threshold
                 {
                     Pallet::<T>::deposit_event(Event::OperatorOffline {
                         operator_id: *next_operator_id,
                         domain_id,
-                        submitted_bundles: *bundle_count,
+                        submitted_bundles: bundle_count,
                         expectations: operator_epoch_expectations,
                     });
                 };
