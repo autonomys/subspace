@@ -24,7 +24,8 @@ use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::offline_operators::{
-    E_BASE, LN_1_OVER_TAU_0_5_PERCENT, operator_expected_bundles_in_epoch,
+    E_BASE, LN_1_OVER_TAU_0_5_PERCENT, OFFLINE_SHORTFALL_FRACTION,
+    operator_expected_bundles_in_epoch,
 };
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorRewardSource};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
@@ -247,8 +248,14 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
             .map(|start_slot| current_slot - start_slot + 1)
             .unwrap_or_default();
         let epoch_total_stake = stake_summary.current_total_stake;
-        let operators_total_bundle_count =
-            OperatorBundleCountInEpoch::<T>::drain().collect::<BTreeMap<_, _>>();
+        // Take bundle counts only for this domain's current-epoch operators.
+        // OperatorBundleCountInEpoch is a global map across all domains, so drain()
+        // would remove other domains' counts. take() reads and removes per-operator.
+        let operators_total_bundle_count: BTreeMap<_, _> = stake_summary
+            .current_operators
+            .keys()
+            .map(|op_id| (*op_id, OperatorBundleCountInEpoch::<T>::take(op_id)))
+            .collect();
         let bundle_slot_probability = DomainRegistry::<T>::get(domain_id)
             .ok_or(TransitionError::DomainNotInitialized)?
             .domain_config
@@ -263,9 +270,14 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
 
             // check operator performance in the previous epoch if the operator was part of the previous epoch set
             // if they are not part of the previous epoch set, their performance will be checked in the next epoch.
-            if let Some(operator_stake) = stake_summary.current_operators.get(next_operator_id)
-                && let Some(bundle_count) = operators_total_bundle_count.get(next_operator_id)
-            {
+            if let Some(operator_stake) = stake_summary.current_operators.get(next_operator_id) {
+                // Bundle count is 0 for operators who never submitted a bundle in this epoch,
+                // since take() on ValueQuery returns 0 for missing entries.
+                let bundle_count = operators_total_bundle_count
+                    .get(next_operator_id)
+                    .copied()
+                    .unwrap_or(0);
+
                 let maybe_operator_epoch_expectations = operator_expected_bundles_in_epoch(
                     total_epoch_slots.into(),
                     (*operator_stake).saturated_into(),
@@ -273,15 +285,19 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
                     bundle_slot_probability,
                     LN_1_OVER_TAU_0_5_PERCENT,
                     E_BASE,
+                    OFFLINE_SHORTFALL_FRACTION,
                 );
 
+                // Two-gate check: operator must fail BOTH the Chernoff statistical threshold
+                // AND the shortfall policy threshold to be flagged as offline.
                 if let Some(operator_epoch_expectations) = maybe_operator_epoch_expectations
-                    && bundle_count < &operator_epoch_expectations.min_required_bundles
+                    && bundle_count < operator_epoch_expectations.min_required_bundles
+                    && bundle_count < operator_epoch_expectations.shortfall_threshold
                 {
                     Pallet::<T>::deposit_event(Event::OperatorOffline {
                         operator_id: *next_operator_id,
                         domain_id,
-                        submitted_bundles: *bundle_count,
+                        submitted_bundles: bundle_count,
                         expectations: operator_epoch_expectations,
                     });
                 };

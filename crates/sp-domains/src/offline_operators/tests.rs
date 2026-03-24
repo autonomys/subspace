@@ -1,8 +1,8 @@
 use crate::bundle_producer_election::calculate_threshold;
 use crate::offline_operators::{
-    E_BASE, LN_1_OVER_TAU_0_5_PERCENT, LN_1_OVER_TAU_1_PERCENT, chernoff_threshold_fp,
-    compute_e_relevance, is_throughput_relevant_fp, operator_expected_bundles_in_epoch,
-    p_from_threshold,
+    E_BASE, LN_1_OVER_TAU_0_5_PERCENT, LN_1_OVER_TAU_1_PERCENT, OFFLINE_SHORTFALL_FRACTION,
+    chernoff_threshold_fp, compute_e_relevance, is_throughput_relevant_fp,
+    operator_expected_bundles_in_epoch, p_from_threshold,
 };
 use num_traits::{One, Zero};
 use prop_test::proptest::prelude::{ProptestConfig, Strategy};
@@ -93,6 +93,7 @@ fn returns_none_when_no_slots_or_zero_threshold_inputs() {
             (1, 1),    // theta
             LN_1_OVER_TAU_0_5_PERCENT,
             E_BASE,
+            OFFLINE_SHORTFALL_FRACTION,
         )
         .is_none()
     );
@@ -106,6 +107,7 @@ fn returns_none_when_no_slots_or_zero_threshold_inputs() {
             (1, 1),
             LN_1_OVER_TAU_0_5_PERCENT,
             E_BASE,
+            OFFLINE_SHORTFALL_FRACTION,
         )
         .is_none()
     );
@@ -119,6 +121,21 @@ fn returns_none_when_no_slots_or_zero_threshold_inputs() {
             (1, 1),
             LN_1_OVER_TAU_0_5_PERCENT,
             E_BASE,
+            OFFLINE_SHORTFALL_FRACTION,
+        )
+        .is_none()
+    );
+
+    // shortfall_fraction denominator = 0 -> division by zero guard -> None
+    assert!(
+        operator_expected_bundles_in_epoch(
+            600,
+            1_000_000_000_000_000_000 / 4, // 25% stake, throughput-relevant
+            1_000_000_000_000_000_000,
+            (1, 1),
+            LN_1_OVER_TAU_0_5_PERCENT,
+            E_BASE,
+            (1, 0), // zero denominator
         )
         .is_none()
     );
@@ -137,6 +154,7 @@ fn small_mu_is_not_throughput_relevant() {
             (1, 1),
             LN_1_OVER_TAU_0_5_PERCENT,
             E_BASE,
+            OFFLINE_SHORTFALL_FRACTION,
         )
         .is_none()
     );
@@ -154,6 +172,7 @@ fn relevant_operator_produces_some_expectations() {
         (1, 1),
         LN_1_OVER_TAU_0_5_PERCENT,
         E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
     )
     .expect("should be relevant");
     // expected_bundles should be >= E_relevance (11) for τ=0.5%
@@ -162,6 +181,7 @@ fn relevant_operator_produces_some_expectations() {
     assert!(exp.min_required_bundles <= exp.expected_bundles);
     // And strictly positive in this regime
     assert!(exp.min_required_bundles > 0);
+    assert!(exp.shortfall_threshold <= exp.expected_bundles);
 }
 
 #[test]
@@ -176,6 +196,7 @@ fn near_full_stake_behaves_sensibly() {
         (1, 1),
         LN_1_OVER_TAU_0_5_PERCENT,
         E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
     )
     .expect("should be relevant");
     // Expected bundles floor should be S - 1 (since p ~= 1 - epsilon)
@@ -183,6 +204,7 @@ fn near_full_stake_behaves_sensibly() {
     // Lower bound should be <= expected, and > 0
     assert!(exp.min_required_bundles <= exp.expected_bundles);
     assert!(exp.min_required_bundles > 0);
+    assert!(exp.shortfall_threshold <= exp.expected_bundles);
 }
 
 #[test]
@@ -209,6 +231,7 @@ fn monotonic_in_stake_when_relevant() {
             (1, 1),
             LN_1_OVER_TAU_0_5_PERCENT,
             E_BASE,
+            OFFLINE_SHORTFALL_FRACTION,
         );
 
         // check relevance
@@ -297,6 +320,7 @@ fn operator_expected_bundles_theta_one() {
         (1, 1),
         LN_1_OVER_TAU_0_5_PERCENT,
         E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
     )
     .expect("relevant operator should produce expectations");
     // Expected bundles >= relevance floor
@@ -311,6 +335,7 @@ fn operator_expected_bundles_theta_one() {
         (1, 1),
         LN_1_OVER_TAU_0_5_PERCENT,
         E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
     )
     .expect("still relevant at larger S");
     assert!(out2.expected_bundles >= out.expected_bundles);
@@ -330,6 +355,7 @@ fn operator_expected_bundles_theta_half_not_relevant() {
         (1, 2),
         LN_1_OVER_TAU_0_5_PERCENT,
         E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
     );
     assert!(out.is_none());
 }
@@ -347,10 +373,228 @@ fn operator_expected_bundles_handles_huge_total_and_small_op() {
         (1, 1),
         LN_1_OVER_TAU_0_5_PERCENT,
         E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
     )
     .expect("should be relevant");
     assert!(out.expected_bundles >= compute_e_relevance(LN_1_OVER_TAU_0_5_PERCENT, E_BASE));
     assert!(out.min_required_bundles <= out.expected_bundles);
+}
+
+#[test]
+fn shortfall_fraction_constant_is_valid() {
+    assert!(
+        OFFLINE_SHORTFALL_FRACTION.1 > 0,
+        "denominator must be positive"
+    );
+    assert!(
+        OFFLINE_SHORTFALL_FRACTION.0 <= OFFLINE_SHORTFALL_FRACTION.1,
+        "numerator must not exceed denominator"
+    );
+}
+
+#[test]
+fn shortfall_threshold_computed_correctly() {
+    // S=600, 25% stake, theta=1 -> large μ, expect shortfall = floor(expected * 2/3)
+    let total = 1_000_000_000_000_000_000u128;
+    let operator = total / 4; // 25% stake -> μ ≈ 150
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    // With (1, 3) fraction: shortfall_threshold = floor(expected * 2 / 3)
+    let expected_shortfall = exp.expected_bundles * 2 / 3;
+    assert_eq!(exp.shortfall_threshold, expected_shortfall);
+
+    // shortfall_threshold should be below min_required_bundles for large operators
+    // (Chernoff is stricter for large μ)
+    assert!(
+        exp.shortfall_threshold < exp.min_required_bundles,
+        "for large operators, shortfall gate should be more lenient than Chernoff"
+    );
+}
+
+#[test]
+fn large_operator_barely_below_chernoff_but_above_shortfall_gate() {
+    // This test verifies the scenario from mainnet: operator submits 130/132 min_required
+    // but is above the shortfall threshold. Under two-gate logic, they should NOT be flagged.
+    let total = 1_000_000_000_000_000_000u128;
+    let operator = total / 4; // 25% stake
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    // Simulate an operator submitting just below Chernoff but above shortfall
+    let submitted = exp.min_required_bundles - 1;
+
+    // This operator fails the Chernoff gate
+    assert!(submitted < exp.min_required_bundles);
+    // But passes the shortfall gate (submitted >= shortfall_threshold)
+    assert!(
+        submitted >= exp.shortfall_threshold,
+        "submitted {} should be >= shortfall_threshold {} for large operator",
+        submitted,
+        exp.shortfall_threshold
+    );
+    // Under two-gate AND logic: NOT flagged (must fail both)
+    let would_be_flagged =
+        submitted < exp.min_required_bundles && submitted < exp.shortfall_threshold;
+    assert!(!would_be_flagged);
+}
+
+#[test]
+fn operator_below_both_gates_is_flagged() {
+    let total = 1_000_000_000_000_000_000u128;
+    let operator = total / 4;
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    // Submit well below both thresholds
+    let submitted = exp.shortfall_threshold.saturating_sub(1);
+    assert!(submitted < exp.min_required_bundles);
+    assert!(submitted < exp.shortfall_threshold);
+    let would_be_flagged =
+        submitted < exp.min_required_bundles && submitted < exp.shortfall_threshold;
+    assert!(would_be_flagged);
+}
+
+#[test]
+fn zero_bundles_always_flagged_when_throughput_relevant() {
+    let total = 1_000_000_000_000_000_000u128;
+    let operator = total / 4;
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    let submitted = 0u64;
+    assert!(submitted < exp.min_required_bundles);
+    assert!(submitted < exp.shortfall_threshold);
+    let would_be_flagged =
+        submitted < exp.min_required_bundles && submitted < exp.shortfall_threshold;
+    assert!(would_be_flagged);
+}
+
+#[test]
+fn operator_at_exact_shortfall_threshold_not_flagged() {
+    let total = 1_000_000_000_000_000_000u128;
+    let operator = total / 4;
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    // Submitting exactly at shortfall_threshold passes the shortfall gate
+    let submitted = exp.shortfall_threshold;
+    let would_be_flagged =
+        submitted < exp.min_required_bundles && submitted < exp.shortfall_threshold;
+    assert!(
+        !would_be_flagged,
+        "operator at exact shortfall threshold should NOT be flagged"
+    );
+}
+
+#[test]
+fn small_operator_below_shortfall_but_above_chernoff_not_flagged() {
+    // For small μ, the Chernoff bound is more lenient than the shortfall gate.
+    // An operator can fail the shortfall gate but pass the Chernoff gate → NOT flagged.
+    let total = 1_000_000_000_000_000_000u128;
+    // ~2% stake with S=600 -> μ ≈ 12, right near the relevance threshold
+    let operator = total / 50;
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    // For small μ, Chernoff r should be very low relative to expected
+    // shortfall_threshold = expected * 2/3 should be higher than Chernoff r
+    assert!(
+        exp.min_required_bundles < exp.shortfall_threshold,
+        "for small operators, Chernoff r ({}) should be below shortfall threshold ({})",
+        exp.min_required_bundles,
+        exp.shortfall_threshold
+    );
+
+    // Simulate submitting between Chernoff r and shortfall threshold
+    let submitted = exp.min_required_bundles; // passes Chernoff (not strictly less)
+    assert!(submitted >= exp.min_required_bundles); // passes Chernoff gate
+    assert!(submitted < exp.shortfall_threshold); // fails shortfall gate
+    let would_be_flagged =
+        submitted < exp.min_required_bundles && submitted < exp.shortfall_threshold;
+    assert!(
+        !would_be_flagged,
+        "should NOT be flagged — passes Chernoff gate"
+    );
+}
+
+#[test]
+fn crossover_region_both_gates_roughly_equal() {
+    // At μ ≈ 95, Chernoff r ≈ 67% of expected, which is close to the shortfall gate (67%).
+    // This validates the crossover behavior described in the spec.
+    let total = 1_000_000_000_000_000_000u128;
+    // Need to find stake that gives μ ≈ 95 with S=600, theta=1
+    // μ = S * p ≈ S * (stake/total) => stake/total ≈ 95/600 ≈ 0.1583
+    let operator = total / 6; // ~16.7% stake -> μ ≈ 100
+    let exp = operator_expected_bundles_in_epoch(
+        600,
+        operator,
+        total,
+        (1, 1),
+        LN_1_OVER_TAU_0_5_PERCENT,
+        E_BASE,
+        OFFLINE_SHORTFALL_FRACTION,
+    )
+    .expect("should be relevant");
+
+    // Near the crossover, both thresholds should be reasonably close
+    let chernoff_pct = (exp.min_required_bundles as f64) / (exp.expected_bundles as f64);
+    let shortfall_pct = (exp.shortfall_threshold as f64) / (exp.expected_bundles as f64);
+    // Both should be in the 60-70% range of expected
+    assert!(
+        (chernoff_pct - shortfall_pct).abs() < 0.10,
+        "near crossover, gates should be within 10% of each other: chernoff={:.1}%, shortfall={:.1}%",
+        chernoff_pct * 100.0,
+        shortfall_pct * 100.0
+    );
 }
 
 // Helper: compute floor(μ) directly from threshold for cross-checks.
@@ -421,7 +665,7 @@ proptest! {
         let stake = operator_stake_strategy(total).new_tree(&mut TestRunner::default()).unwrap().current();
 
         let out = operator_expected_bundles_in_epoch(
-            s, stake, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
+            s, stake, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE, OFFLINE_SHORTFALL_FRACTION
         );
 
         let mu_floor = mu_floor_from_threshold(s, stake, total, theta);
@@ -437,6 +681,7 @@ proptest! {
                 prop_assert!(exp.min_required_bundles <= exp.expected_bundles);
                 prop_assert!(exp.min_required_bundles <= s);
                 prop_assert!(exp.expected_bundles <= s);
+                prop_assert!(exp.shortfall_threshold <= exp.expected_bundles);
             }
             None => {
                 // Not relevant: μ_floor below relevance floor, or zero probability -> μ_floor = 0
@@ -467,10 +712,10 @@ proptest! {
         prop_assume!(stake_hi >= stake_lo);
 
         let out_lo = operator_expected_bundles_in_epoch(
-            s, stake_lo, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
+            s, stake_lo, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE, OFFLINE_SHORTFALL_FRACTION
         );
         let out_hi = operator_expected_bundles_in_epoch(
-            s, stake_hi, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
+            s, stake_hi, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE, OFFLINE_SHORTFALL_FRACTION
         );
 
         if let Some(exp_lo) = out_lo {
@@ -483,6 +728,8 @@ proptest! {
             prop_assert!(exp_hi.min_required_bundles <= exp_hi.expected_bundles);
             prop_assert!(exp_hi.expected_bundles <= s);
             prop_assert!(exp_lo.expected_bundles <= s);
+            prop_assert!(exp_lo.shortfall_threshold <= exp_lo.expected_bundles);
+            prop_assert!(exp_hi.shortfall_threshold <= exp_hi.expected_bundles);
         }
     }
 
@@ -502,10 +749,10 @@ proptest! {
         let (s_min, s_max) = if s1 <= s2 { (s1, s2) } else { (s2, s1) };
 
         let out_min = operator_expected_bundles_in_epoch(
-            s_min, stake, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
+            s_min, stake, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE, OFFLINE_SHORTFALL_FRACTION
         );
         let out_max = operator_expected_bundles_in_epoch(
-            s_max, stake, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
+            s_max, stake, total, theta, LN_1_OVER_TAU_0_5_PERCENT, E_BASE, OFFLINE_SHORTFALL_FRACTION
         );
 
         if let Some(exp_min) = out_min {
@@ -516,6 +763,8 @@ proptest! {
             // r <= expected (sanity)
             prop_assert!(exp_min.min_required_bundles <= exp_min.expected_bundles);
             prop_assert!(exp_max.min_required_bundles <= exp_max.expected_bundles);
+            prop_assert!(exp_min.shortfall_threshold <= exp_min.expected_bundles);
+            prop_assert!(exp_max.shortfall_threshold <= exp_max.expected_bundles);
         }
     }
 
@@ -540,10 +789,10 @@ proptest! {
         let theta_hi = (num_hi, den);
 
         let out_lo = operator_expected_bundles_in_epoch(
-            s, stake, total, theta_lo, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
+            s, stake, total, theta_lo, LN_1_OVER_TAU_0_5_PERCENT, E_BASE, OFFLINE_SHORTFALL_FRACTION
         );
         let out_hi = operator_expected_bundles_in_epoch(
-            s, stake, total, theta_hi, LN_1_OVER_TAU_0_5_PERCENT, E_BASE
+            s, stake, total, theta_hi, LN_1_OVER_TAU_0_5_PERCENT, E_BASE, OFFLINE_SHORTFALL_FRACTION
         );
 
         if let Some(exp_lo) = out_lo {
@@ -556,6 +805,8 @@ proptest! {
             prop_assert!(exp_hi.min_required_bundles <= exp_hi.expected_bundles);
             prop_assert!(exp_hi.expected_bundles <= s);
             prop_assert!(exp_lo.expected_bundles <= s);
+            prop_assert!(exp_lo.shortfall_threshold <= exp_lo.expected_bundles);
+            prop_assert!(exp_hi.shortfall_threshold <= exp_hi.expected_bundles);
         }
     }
 }
