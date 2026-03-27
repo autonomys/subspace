@@ -236,7 +236,7 @@ where
         backend: Arc<Backend>,
         executor: Arc<Exec>,
     ) -> Result<Self, sp_blockchain::Error> {
-        let state = backend.state_at(parent_hash)?;
+        let state = backend.state_at(parent_hash, sc_client_api::TrieCacheContext::Trusted)?;
         let trie_backend = state.as_trie_backend();
         let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
         let sp_core::traits::RuntimeCode {

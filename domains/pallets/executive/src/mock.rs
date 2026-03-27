@@ -64,7 +64,6 @@ impl crate::ExtrinsicStorageFees<MockRuntime> for ExtrinsicStorageFees {
 }
 
 impl Config for MockRuntime {
-    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = ();
     type Currency = Balances;
     type LengthToFee = IdentityFee<Balance>;

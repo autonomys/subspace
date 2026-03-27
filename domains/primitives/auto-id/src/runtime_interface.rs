@@ -1,10 +1,14 @@
 use crate::{DerVec, SignatureVerificationRequest, TbsCertificate};
+use sp_runtime_interface::pass_by::{AllocateAndReturnByCodec, PassFatPointerAndDecode};
 use sp_runtime_interface::runtime_interface;
 
 /// AutoId runtime interface.
 #[runtime_interface]
 pub trait AutoIdRuntimeInterface {
-    fn verify_signature(&mut self, req: SignatureVerificationRequest) -> Option<()> {
+    fn verify_signature(
+        &mut self,
+        req: PassFatPointerAndDecode<SignatureVerificationRequest>,
+    ) -> AllocateAndReturnByCodec<Option<()>> {
         // TODO: we need to conditional compile for benchmarks here since
         //  benchmark externalities does not provide custom extensions.
         //  Remove this once the issue is resolved: https://github.com/paritytech/polkadot-sdk/issues/137
@@ -24,7 +28,10 @@ pub trait AutoIdRuntimeInterface {
         }
     }
 
-    fn decode_tbs_certificate(&mut self, certificate: DerVec) -> Option<TbsCertificate> {
+    fn decode_tbs_certificate(
+        &mut self,
+        certificate: PassFatPointerAndDecode<DerVec>,
+    ) -> AllocateAndReturnByCodec<Option<TbsCertificate>> {
         // TODO: we need to conditional compile for benchmarks here since
         //  benchmark externalities does not provide custom extensions.
         //  Remove this once the issue is resolved: https://github.com/paritytech/polkadot-sdk/issues/137

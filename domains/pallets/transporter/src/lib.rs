@@ -103,10 +103,7 @@ mod pallet {
     use sp_runtime::traits::Convert;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
-        /// Event type for this pallet.
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
+    pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
         /// Gets the chain_id of the current execution environment.
         type SelfChainId: Get<ChainId>;
 
@@ -421,14 +418,14 @@ mod pallet {
             match resp {
                 Ok(_) => {
                     // transfer is successful
-                    frame_system::Pallet::<T>::deposit_event(
-                        Into::<<T as Config>::RuntimeEvent>::into(
-                            Event::<T>::OutgoingTransferSuccessful {
-                                chain_id: dst_chain_id,
-                                message_id,
-                            },
-                        ),
-                    );
+                    frame_system::Pallet::<T>::deposit_event(Into::<
+                        <T as frame_system::Config>::RuntimeEvent,
+                    >::into(
+                        Event::<T>::OutgoingTransferSuccessful {
+                            chain_id: dst_chain_id,
+                            message_id,
+                        },
+                    ));
                 }
                 Err(err) => {
                     // transfer failed
@@ -456,15 +453,15 @@ mod pallet {
                     }
 
                     let _imbalance = T::Currency::deposit_creating(&account_id, transfer.amount);
-                    frame_system::Pallet::<T>::deposit_event(
-                        Into::<<T as Config>::RuntimeEvent>::into(
-                            Event::<T>::OutgoingTransferFailed {
-                                chain_id: dst_chain_id,
-                                message_id,
-                                err,
-                            },
-                        ),
-                    );
+                    frame_system::Pallet::<T>::deposit_event(Into::<
+                        <T as frame_system::Config>::RuntimeEvent,
+                    >::into(
+                        Event::<T>::OutgoingTransferFailed {
+                            chain_id: dst_chain_id,
+                            message_id,
+                            err,
+                        },
+                    ));
                 }
             }
 
@@ -662,13 +659,15 @@ impl<T: Config> Pallet<T> {
 
         let _imbalance = T::Currency::deposit_creating(&account_id, req.amount);
 
-        frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::RuntimeEvent>::into(
-            Event::<T>::IncomingTransferSuccessful {
-                chain_id: src_chain_id,
-                message_id,
-                amount: req.amount,
-            },
-        ));
+        frame_system::Pallet::<T>::deposit_event(
+            Into::<<T as frame_system::Config>::RuntimeEvent>::into(
+                Event::<T>::IncomingTransferSuccessful {
+                    chain_id: src_chain_id,
+                    message_id,
+                    amount: req.amount,
+                },
+            ),
+        );
         Ok(vec![])
     }
 

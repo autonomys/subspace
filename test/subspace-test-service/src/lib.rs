@@ -250,6 +250,7 @@ pub fn node_config(
         announce_block: true,
         data_path: base_path.path().into(),
         base_path,
+        warm_up_trie_cache: None,
     }
 }
 

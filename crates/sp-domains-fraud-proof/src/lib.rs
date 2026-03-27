@@ -40,8 +40,6 @@ use sp_domains::{DomainAllowlistUpdates, PermissionedActionAllowedBy};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime::traits::{Header as HeaderT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
-use sp_runtime_interface::pass_by;
-use sp_runtime_interface::pass_by::PassBy;
 use subspace_core_primitives::U256;
 use subspace_runtime_primitives::{Balance, Moment};
 
@@ -108,10 +106,6 @@ pub struct DomainInherentExtrinsicData {
         Option<PermissionedActionAllowedBy<EthereumAccountId>>,
 }
 
-impl PassBy for DomainInherentExtrinsicData {
-    type PassBy = pass_by::Codec<Self>;
-}
-
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct DomainInherentExtrinsic {
     domain_timestamp_extrinsic: Vec<u8>,
@@ -128,10 +122,6 @@ pub enum DomainStorageKeyRequest {
     Transfers,
 }
 
-impl PassBy for DomainStorageKeyRequest {
-    type PassBy = pass_by::Codec<Self>;
-}
-
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum StatelessDomainRuntimeCall {
     IsTxInRange {
@@ -142,10 +132,6 @@ pub enum StatelessDomainRuntimeCall {
     IsInherentExtrinsic(OpaqueExtrinsic),
     IsDecodableExtrinsic(OpaqueExtrinsic),
     IsValidDomainSudoCall(Vec<u8>),
-}
-
-impl PassBy for StatelessDomainRuntimeCall {
-    type PassBy = pass_by::Codec<Self>;
 }
 
 sp_api::decl_runtime_apis! {

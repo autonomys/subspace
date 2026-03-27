@@ -128,7 +128,6 @@ parameter_types! {
 }
 
 impl Config for Test {
-    type RuntimeEvent = RuntimeEvent;
     type SubspaceOrigin = pallet_subspace::EnsureSubspaceOrigin;
     type BlockAuthoringDelay = BlockAuthoringDelay;
     type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
@@ -186,6 +185,10 @@ pub fn go_to_block(
     );
 
     System::reset_events();
+    // Set block number to block-1 so that initialize() sees the correct previous block.
+    // This is needed because initialize() now asserts strictly sequential block numbers,
+    // but tests may skip blocks to simulate missed slots.
+    frame_system::Pallet::<Test>::set_block_number(block - 1);
     System::initialize(&block, &parent_hash, &pre_digest);
 
     Subspace::on_initialize(block);

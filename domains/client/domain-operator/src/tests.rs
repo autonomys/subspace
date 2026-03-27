@@ -5012,7 +5012,10 @@ async fn set_new_code_should_work() {
         .await;
 
     let best_hash = alice.client.info().best_hash;
-    let state = alice.backend.state_at(best_hash).expect("Get state");
+    let state = alice
+        .backend
+        .state_at(best_hash, sc_client_api::TrieCacheContext::Trusted)
+        .expect("Get state");
     let trie_backend = state.as_trie_backend();
     let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
     let runtime_code = state_runtime_code.fetch_runtime_code().unwrap();

@@ -44,7 +44,6 @@ impl Time for MockTime {
 }
 
 impl pallet_auto_id::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
     type Time = MockTime;
     type Weights = ();
 }

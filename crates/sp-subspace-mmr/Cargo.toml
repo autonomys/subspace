@@ -49,3 +49,6 @@ runtime-benchmarks = [
     "sp-runtime/runtime-benchmarks",
     "subspace-runtime-primitives/runtime-benchmarks",
 ]
+
+[lints]
+workspace = true

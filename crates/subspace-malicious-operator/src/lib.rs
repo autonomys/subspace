@@ -290,5 +290,6 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
         announce_block: domain_cli_args.announce_block()?,
         role,
         base_path,
+        warm_up_trie_cache: None,
     })
 }

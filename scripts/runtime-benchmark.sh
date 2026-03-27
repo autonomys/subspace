@@ -14,6 +14,11 @@
 # http://redsymbol.net/articles/unofficial-bash-strict-mode/
 set -euo pipefail
 
+# Skip WASM build for frame-storage-access-test-runtime (upstream polkadot-sdk test crate).
+# Its wasm-builder panics when built outside the polkadot-sdk workspace.
+# See: https://github.com/paritytech/polkadot-sdk/pull/8069
+export SKIP_FRAME_STORAGE_ACCESS_TEST_RUNTIME_WASM_BUILD=1
+
 PROFILE="production"
 FEATURES="runtime-benchmarks"
 CORE_BENCH_SETTINGS="--extrinsic=* --wasm-execution=compiled --genesis-builder=none --heap-pages=4096"

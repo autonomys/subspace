@@ -17,18 +17,19 @@ use sp_core::storage::{Storage, StorageChild};
 use sp_runtime::StateVersion;
 use sp_state_machine::{Backend, TrieBackend, TrieBackendBuilder};
 use sp_std::collections::btree_map::BTreeMap;
-use sp_trie::{LayoutV0, MemoryDB, empty_trie_root};
+use sp_trie::{LayoutV0, MemoryDB, RandomState, empty_trie_root};
 
 /// Create a new empty instance of in-memory backend.
 ///
 /// NOTE: this function is port from `sp_state_machine::in_memory_backend::new_in_mem` which is
-/// only export for `std` but we need to use it in `no_std`
+/// only exported behind `#[cfg(not(substrate_runtime))]` but we need to use it in runtime context.
+/// We must use `sp_trie::RandomState` explicitly so the `TrieBackendStorage` impl matches.
 fn new_in_mem<H>() -> TrieBackend<MemoryDB<H>, H>
 where
     H: Hasher,
     H::Out: Codec + Ord,
 {
-    let db = MemoryDB::default();
+    let db = MemoryDB::with_hasher(RandomState::default());
     // V1 is same as V0 for an empty trie.
     TrieBackendBuilder::new(db, empty_trie_root::<LayoutV0<H>>()).build()
 }

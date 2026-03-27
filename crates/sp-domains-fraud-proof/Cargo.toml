@@ -109,3 +109,6 @@ runtime-benchmarks = [
 [[bench]]
 name = "fraud_proof_verification"
 harness = false
+
+[lints]
+workspace = true

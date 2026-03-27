@@ -119,7 +119,7 @@ fn chernoff_threshold_fp(
     let t = FixedU128::from(2u128)
         .saturating_mul(mu)
         .saturating_mul(ln_one_over_tau)
-        .try_sqrt()?;
+        .checked_sqrt()?;
 
     // r = floor( μ - t ), clamped to [0, S]
     Some(

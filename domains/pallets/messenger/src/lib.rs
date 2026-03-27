@@ -201,8 +201,7 @@ mod pallet {
     use std::collections::BTreeSet;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+    pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
         /// Gets the chain_id that is treated as src_chain_id for outgoing messages.
         type SelfChainId: Get<ChainId>;
         /// function to fetch endpoint response handler by Endpoint.

@@ -206,6 +206,8 @@ impl From<SubstrateConfiguration> for Configuration {
                 ipfs_server: false,
                 network_backend: NetworkBackendType::Libp2p,
                 force_synced: configuration.network.force_synced,
+                // Subspace does not use warp sync
+                min_peers_to_start_warp_sync: None,
             },
             // Not used on consensus chain
             keystore: KeystoreConfig::InMemory,
@@ -268,6 +270,8 @@ impl From<SubstrateConfiguration> for Configuration {
                 sc_service::Role::Full
             },
             base_path: BasePath::new(configuration.base_path),
+            // Trie cache warm-up not needed — Subspace uses its own sync strategy
+            warm_up_trie_cache: None,
         }
     }
 }

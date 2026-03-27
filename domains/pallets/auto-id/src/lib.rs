@@ -252,8 +252,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+    pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
         type Time: Time<Moment = subspace_runtime_primitives::Moment>;
         type Weights: WeightInfo;
     }

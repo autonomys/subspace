@@ -131,3 +131,6 @@ runtime-benchmarks = [
     "sp-storage",
     "sp-subspace-mmr/runtime-benchmarks",
 ]
+
+[lints]
+workspace = true

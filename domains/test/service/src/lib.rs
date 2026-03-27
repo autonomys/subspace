@@ -199,6 +199,7 @@ pub fn node_config(
         data_path: base_path.path().into(),
         base_path,
         wasm_runtime_overrides: None,
+        warm_up_trie_cache: None,
     })
 }
 

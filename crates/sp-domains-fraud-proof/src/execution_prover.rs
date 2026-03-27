@@ -46,7 +46,9 @@ where
         call_data: &[u8],
         delta_changes: Option<(BackendTransaction<HashingFor<Block>>, Block::Hash)>,
     ) -> sp_blockchain::Result<StorageProof> {
-        let state = self.backend.state_at(at)?;
+        let state = self
+            .backend
+            .state_at(at, sc_client_api::TrieCacheContext::Trusted)?;
 
         let trie_backend = state.as_trie_backend();
 
