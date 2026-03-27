@@ -365,8 +365,6 @@ where
         let mut partial_object = if let Some(partial_object) =
             PartialObject::new_with_padding(&raw_data, self.max_object_len, mapping)?
         {
-            // We've used up this data, so just drop it
-            std::mem::drop(raw_data);
 
             trace!(
                 %next_source_piece_index,
@@ -404,8 +402,6 @@ where
             if let Some(partial_object) =
                 PartialObject::new_with_padding(&raw_data, self.max_object_len, mapping)?
             {
-                // We've used up this data, so just drop it
-                std::mem::drop(raw_data);
 
                 trace!(
                     %next_source_piece_index,
