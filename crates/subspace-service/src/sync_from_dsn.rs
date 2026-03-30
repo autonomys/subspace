@@ -376,7 +376,7 @@ where
             }
         }
 
-        while notifications.try_next().is_ok() {
+        while notifications.try_recv().is_ok() {
             // Just drain extra messages if there are any
         }
 

@@ -242,7 +242,6 @@ pub trait WeightInfo {
     fn withdraw_stake_from_deactivated_operator() -> Weight;
 }
 
-#[expect(clippy::useless_conversion, reason = "Macro-generated")]
 #[frame_support::pallet]
 mod pallet {
     #[cfg(not(feature = "runtime-benchmarks"))]

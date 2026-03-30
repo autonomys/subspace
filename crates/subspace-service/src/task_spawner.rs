@@ -77,6 +77,7 @@ where
         tx_handler_controller,
         sync_service,
         telemetry,
+        tracing_execute_block,
     } = params;
 
     let chain_info = client.usage_info().chain;
@@ -136,22 +137,25 @@ where
     let rpc_id_provider = config.rpc.id_provider.take();
 
     // jsonrpsee RPC
+    // stable2512: gen_rpc_module now takes GenRpcModuleParams struct (re-exported from our fork)
+    // instead of positional args
     let gen_rpc_module = || {
-        gen_rpc_module(
-            task_manager.spawn_handle(),
-            client.clone(),
-            transaction_pool.clone(),
-            keystore.clone(),
-            system_rpc_tx.clone(),
-            config.impl_name.clone(),
-            config.impl_version.clone(),
-            config.chain_spec.as_ref(),
-            &config.state_pruning,
-            config.blocks_pruning,
-            backend.clone(),
-            &*rpc_builder,
-            None,
-        )
+        gen_rpc_module(sc_service::GenRpcModuleParams {
+            spawn_handle: task_manager.spawn_handle(),
+            client: client.clone(),
+            transaction_pool: transaction_pool.clone(),
+            keystore: keystore.clone(),
+            system_rpc_tx: system_rpc_tx.clone(),
+            impl_name: config.impl_name.clone(),
+            impl_version: config.impl_version.clone(),
+            chain_spec: config.chain_spec.as_ref(),
+            state_pruning: &config.state_pruning,
+            blocks_pruning: config.blocks_pruning,
+            backend: backend.clone(),
+            rpc_builder: &*rpc_builder,
+            metrics: None,
+            tracing_execute_block: tracing_execute_block.clone(),
+        })
     };
 
     let rpc_server_handle = start_rpc_servers(

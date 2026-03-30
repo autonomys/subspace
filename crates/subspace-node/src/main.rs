@@ -266,6 +266,7 @@ fn main() -> Result<(), Error> {
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
 
+                        // None = no shared trie cache for storage benchmarks
                         cmd.run(config, client, db, storage, None)
                     }
                     BenchmarkCmd::Overhead(_cmd) => {

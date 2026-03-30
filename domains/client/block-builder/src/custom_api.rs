@@ -236,6 +236,7 @@ where
         backend: Arc<Backend>,
         executor: Arc<Exec>,
     ) -> Result<Self, sp_blockchain::Error> {
+        // Trusted: bounded block-building context
         let state = backend.state_at(parent_hash, sc_client_api::TrieCacheContext::Trusted)?;
         let trie_backend = state.as_trie_backend();
         let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);

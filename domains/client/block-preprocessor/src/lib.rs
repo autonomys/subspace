@@ -291,6 +291,7 @@ where
         &self,
         parent_domain_hash: Block::Hash,
     ) -> sp_blockchain::Result<StatelessRuntime<CBlock, Block, Exec>> {
+        // Trusted: bounded bundle-validation context
         let state = self
             .backend
             .state_at(parent_domain_hash, sc_client_api::TrieCacheContext::Trusted)?;

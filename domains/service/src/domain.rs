@@ -474,6 +474,8 @@ where
         tx_handler_controller,
         sync_service: sync_service.clone(),
         telemetry: telemetry.as_mut(),
+        // None: trace_block RPC not supported on domain nodes
+        tracing_execute_block: None,
     })?;
 
     let spawn_essential = task_manager.spawn_essential_handle();

@@ -54,7 +54,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn execute_block(_block: Block) {
+        fn execute_block(_block: <Block as sp_runtime::traits::Block>::LazyBlock) {
             unreachable!()
         }
 
@@ -91,7 +91,7 @@ sp_api::impl_runtime_apis! {
         }
 
         fn check_inherents(
-            _block: Block,
+            _block: <Block as sp_runtime::traits::Block>::LazyBlock,
             _data: sp_inherents::InherentData,
         ) -> sp_inherents::CheckInherentsResult {
             unreachable!()
@@ -458,6 +458,13 @@ sp_api::impl_runtime_apis! {
             _block_numbers: Vec<BlockNumber>,
             _best_known_block_number: Option<BlockNumber>,
         ) -> Result<(Vec<mmr::EncodableOpaqueLeaf>, mmr::LeafProof<mmr::Hash>), mmr::Error> {
+            unreachable!()
+        }
+
+        fn generate_ancestry_proof(
+            _prev_block_number: BlockNumber,
+            _best_known_block_number: Option<BlockNumber>,
+        ) -> Result<mmr::AncestryProof<mmr::Hash>, mmr::Error> {
             unreachable!()
         }
 

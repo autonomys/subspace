@@ -21,6 +21,15 @@ type NegativeImbalanceOf<C, T> = <C as Currency<AccountIdOf<T>>>::NegativeImbala
 /// fees and distributes storage/compute fees and tip separately.
 pub struct OnChargeDomainTransaction<C>(PhantomData<C>);
 
+// Required by OnChargeTransaction since stable2512. Credit = () because domain
+// fees are burned/transferred directly, not stored as typed credits.
+impl<T, C> pallet_transaction_payment::TxCreditHold<T> for OnChargeDomainTransaction<C>
+where
+    T: pallet_transaction_payment::Config,
+{
+    type Credit = ();
+}
+
 impl<T, C> pallet_transaction_payment::OnChargeTransaction<T> for OnChargeDomainTransaction<C>
 where
     T: pallet_transaction_payment::Config + crate::Config<Balance = BalanceOf<C, T>>,

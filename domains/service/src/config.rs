@@ -202,6 +202,8 @@ impl From<SubstrateConfiguration> for Configuration {
                 force_synced: configuration.network.force_synced,
                 // Domain nodes do not use warp sync
                 min_peers_to_start_warp_sync: None,
+                // Substrate's default
+                idle_connection_timeout: std::time::Duration::from_secs(10),
             },
             // Not used on consensus chain
             keystore: configuration.keystore,
@@ -234,6 +236,7 @@ impl From<SubstrateConfiguration> for Configuration {
                 rate_limit_trust_proxy_headers: configuration
                     .rpc_options
                     .rate_limit_trust_proxy_headers,
+                request_logger_limit: 1024,
             },
             prometheus_config: configuration
                 .prometheus_listen_on

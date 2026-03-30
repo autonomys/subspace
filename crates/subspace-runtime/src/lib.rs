@@ -1348,7 +1348,7 @@ impl_runtime_apis! {
             VERSION
         }
 
-        fn execute_block(block: Block) {
+        fn execute_block(block: <Block as sp_runtime::traits::Block>::LazyBlock) {
             Executive::execute_block(block);
         }
 
@@ -1385,7 +1385,7 @@ impl_runtime_apis! {
         }
 
         fn check_inherents(
-            block: Block,
+            block: <Block as sp_runtime::traits::Block>::LazyBlock,
             data: sp_inherents::InherentData,
         ) -> sp_inherents::CheckInherentsResult {
             data.check_extrinsics(&block)
@@ -1827,6 +1827,13 @@ impl_runtime_apis! {
                     )
                 },
             )
+        }
+
+        fn generate_ancestry_proof(
+            prev_block_number: BlockNumber,
+            best_known_block_number: Option<BlockNumber>,
+        ) -> Result<mmr::AncestryProof<mmr::Hash>, mmr::Error> {
+            Mmr::generate_ancestry_proof(prev_block_number, best_known_block_number)
         }
 
         fn verify_proof(leaves: Vec<mmr::EncodableOpaqueLeaf>, proof: mmr::LeafProof<mmr::Hash>)

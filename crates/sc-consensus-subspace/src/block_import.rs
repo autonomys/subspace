@@ -553,7 +553,7 @@ where
 
             let inherent_res = self.client.runtime_api().check_inherents(
                 parent_hash,
-                Block::new(header, extrinsics),
+                Block::new(header, extrinsics).into(),
                 inherent_data,
             )?;
 

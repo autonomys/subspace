@@ -392,6 +392,8 @@ fn test_bundle_format_verification() {
                 dest,
                 value,
             }),
+            // stable2512: bijective encoding protection field, None for test extrinsics
+            encoded_call: None,
         }
         .into()
     };

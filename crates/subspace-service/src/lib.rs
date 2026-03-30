@@ -1338,6 +1338,8 @@ where
         telemetry: telemetry.as_mut(),
         tx_handler_controller,
         sync_service: sync_service.clone(),
+        // None: trace_block RPC not supported, Subspace uses its own tracing
+        tracing_execute_block: None,
     })?;
 
     Ok(NewFull {

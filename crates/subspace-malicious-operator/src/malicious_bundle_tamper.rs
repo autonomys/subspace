@@ -308,7 +308,7 @@ where
                         self.domain_client.info().best_hash,
                         Default::default(),
                     )?;
-                OpaqueExtrinsic::from_bytes(&inherent_tx.encode())
+                OpaqueExtrinsic::try_from_encoded_extrinsic(&inherent_tx.encode())
                     .expect("We have just encoded a valid extrinsic; qed")
             }
             InvalidBundleType::InvalidBundleWeight => {

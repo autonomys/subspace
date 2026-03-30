@@ -46,6 +46,7 @@ where
         call_data: &[u8],
         delta_changes: Option<(BackendTransaction<HashingFor<Block>>, Block::Hash)>,
     ) -> sp_blockchain::Result<StorageProof> {
+        // Trusted: bounded block-processing context (fraud proof generation)
         let state = self
             .backend
             .state_at(at, sc_client_api::TrieCacheContext::Trusted)?;

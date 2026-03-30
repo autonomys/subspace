@@ -151,7 +151,6 @@ where
         Eth::<Block, Client, TxPool, CT, BE, CIDP, EC>::new(
             client.clone(),
             pool.clone(),
-            pool.clone(),
             converter,
             sync.clone(),
             signers,
@@ -179,6 +178,7 @@ where
                 filter_pool,
                 500_usize, // max stored filters
                 max_past_logs,
+                10_000_u32, // max block range for eth_getLogs (stable2512: new param to prevent overly wide queries)
                 block_data_cache,
             )
             .into_rpc(),
