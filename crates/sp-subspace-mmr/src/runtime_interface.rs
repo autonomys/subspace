@@ -11,7 +11,8 @@ use sp_core::H256;
 use sp_externalities::ExternalitiesExt;
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime_interface::pass_by::{
-    AllocateAndReturnByCodec, PassFatPointerAndDecode, PassPointerAndReadCopy,
+    AllocateAndReturnByCodec, PassFatPointerAndDecode, PassFatPointerAndRead,
+    PassPointerAndReadCopy,
 };
 use sp_runtime_interface::runtime_interface;
 use subspace_core_primitives::BlockNumber;
@@ -78,7 +79,7 @@ pub trait DomainMmrRuntimeInterface {
     fn verify_mmr_proof(
         &mut self,
         leaves: PassFatPointerAndDecode<Vec<EncodableOpaqueLeaf>>,
-        encoded_proof: PassFatPointerAndDecode<Vec<u8>>,
+        encoded_proof: PassFatPointerAndRead<Vec<u8>>,
     ) -> bool {
         #[cfg(not(feature = "runtime-benchmarks"))]
         {
