@@ -95,7 +95,6 @@ impl pallet_messenger::HoldIdentifier<MockRuntime> for MockHoldIdentifier {
 }
 
 impl pallet_messenger::Config for MockRuntime {
-    type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
     type Currency = Balances;
     type WeightInfo = ();
@@ -183,7 +182,6 @@ parameter_types! {
 }
 
 impl Config for MockRuntime {
-    type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
     type SelfEndpointId = SelfEndpointId;
     type Currency = Balances;

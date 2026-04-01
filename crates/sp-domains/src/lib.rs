@@ -47,8 +47,6 @@ use sp_core::sr25519::vrf::{VrfPreOutput, VrfProof};
 use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{CheckedAdd, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem, Percent};
-use sp_runtime_interface::pass_by;
-use sp_runtime_interface::pass_by::PassBy;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::fmt::{Display, Formatter};
 use sp_trie::TrieLayout;
@@ -197,10 +195,6 @@ impl Display for DomainId {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         self.0.fmt(f)
     }
-}
-
-impl PassBy for DomainId {
-    type PassBy = pass_by::Codec<Self>;
 }
 
 /// Identifier of a chain.

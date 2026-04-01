@@ -21,7 +21,8 @@ type PrecompilesAt<R> = (
     PrecompileAt<AddressU64<4>, Identity, EthereumPrecompilesChecks>,
     PrecompileAt<AddressU64<5>, Modexp, EthereumPrecompilesChecks>,
     // Non-Frontier specific nor Ethereum precompiles :
-    PrecompileAt<AddressU64<1024>, Sha3FIPS256, (CallableByContract, CallableByPrecompile)>,
+    // Sha3FIPS256 gained <Runtime, WeightInfo> generics in stable2512; () = default weights
+    PrecompileAt<AddressU64<1024>, Sha3FIPS256<R, ()>, (CallableByContract, CallableByPrecompile)>,
     PrecompileAt<AddressU64<1025>, ECRecoverPublicKey, (CallableByContract, CallableByPrecompile)>,
     // Subspace specific precompiles
     PrecompileAt<

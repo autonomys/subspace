@@ -65,3 +65,6 @@ std = [
 ]
 
 runtime-benchmarks = []
+
+[lints]
+workspace = true

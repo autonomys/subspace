@@ -191,6 +191,7 @@ pub fn node_config(
                 rate_limit: None,
                 rate_limit_whitelisted_ips: vec![],
                 rate_limit_trust_proxy_headers: false,
+                request_logger_limit: 1024,
             }
         }
         None => RpcConfiguration {
@@ -208,6 +209,7 @@ pub fn node_config(
             rate_limit: None,
             rate_limit_whitelisted_ips: vec![],
             rate_limit_trust_proxy_headers: false,
+            request_logger_limit: 1024,
         },
     };
 
@@ -250,6 +252,7 @@ pub fn node_config(
         announce_block: true,
         data_path: base_path.path().into(),
         base_path,
+        warm_up_trie_cache: None,
     }
 }
 
@@ -549,6 +552,7 @@ impl MockConsensusNode {
             telemetry: None,
             tx_handler_controller,
             sync_service: sync_service.clone(),
+            tracing_execute_block: None,
         })
         .expect("Should be able to spawn tasks");
 

@@ -274,6 +274,7 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
             rate_limit: domain_cli_args.rpc_rate_limit()?,
             rate_limit_whitelisted_ips: vec![],
             rate_limit_trust_proxy_headers: false,
+            request_logger_limit: 1024,
         },
         prometheus_config: domain_cli_args.prometheus_config(9616, &chain_spec)?,
         telemetry_endpoints,
@@ -290,5 +291,6 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
         announce_block: domain_cli_args.announce_block()?,
         role,
         base_path,
+        warm_up_trie_cache: None,
     })
 }

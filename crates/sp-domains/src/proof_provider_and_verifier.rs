@@ -23,7 +23,7 @@ use sp_trie::{LayoutV1, StorageProof, read_trie_value};
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
 #[cfg(feature = "std")]
-use trie_db::{DBValue, TrieDBMutBuilder, TrieLayout, TrieMut};
+use trie_db::{TrieDBMutBuilder, TrieLayout, TrieMut};
 
 /// Verification error.
 #[derive(Debug, PartialEq, Eq, Encode, Decode, PalletError, TypeInfo, DecodeWithMemTracking)]
@@ -111,11 +111,7 @@ impl<H: Hasher> StorageProofVerifier<H> {
 }
 
 #[cfg(feature = "std")]
-type MemoryDB<T> = memory_db::MemoryDB<
-    <T as TrieLayout>::Hash,
-    memory_db::HashKey<<T as TrieLayout>::Hash>,
-    DBValue,
->;
+type MemoryDB<T> = sp_trie::MemoryDB<<T as TrieLayout>::Hash>;
 
 /// Type that provides utilities to generate the storage proof.
 #[cfg(feature = "std")]
@@ -156,7 +152,7 @@ where
             (db, root)
         };
 
-        let backend = TrieBackendBuilder::new(db, root).build();
+        let backend = TrieBackendBuilder::<_, <Layout as TrieLayout>::Hash>::new(db, root).build();
         let key = Compact(index).encode();
         prove_read(backend, &[key]).ok()
     }

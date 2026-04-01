@@ -27,6 +27,12 @@ pub struct LiquidityInfo {
 /// fees and distributes storage/compute fees and tip separately.
 pub struct OnChargeTransaction;
 
+// Required by OnChargeTransaction since stable2512. Credit = () because we don't
+// store withdrawn fees as a typed credit — they're burned/transferred directly.
+impl pallet_transaction_payment::TxCreditHold<Runtime> for OnChargeTransaction {
+    type Credit = ();
+}
+
 impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransaction {
     type LiquidityInfo = Option<LiquidityInfo>;
     type Balance = Balance;

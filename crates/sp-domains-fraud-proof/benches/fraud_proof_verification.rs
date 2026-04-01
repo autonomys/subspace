@@ -150,7 +150,10 @@ fn mmr_proof_and_runtime_code_proof_verification(c: &mut Criterion) {
     let mut overlay = OverlayedChanges::default();
     let state = ferdie
         .backend
-        .state_at(ferdie.client.info().best_hash)
+        .state_at(
+            ferdie.client.info().best_hash,
+            sc_client_api::TrieCacheContext::Trusted,
+        )
         .unwrap();
     let mut ext = Ext::new(&mut overlay, &state, None);
 

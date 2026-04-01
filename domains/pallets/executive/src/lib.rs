@@ -35,7 +35,7 @@ pub mod weights;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use frame_support::defensive_assert;
+use frame_executive::OnInitializeWithWeightRegistration;
 use frame_support::dispatch::{
     DispatchClass, DispatchErrorWithPostInfo, DispatchInfo, GetDispatchInfo, Pays, PostDispatchInfo,
 };
@@ -43,16 +43,16 @@ use frame_support::storage::with_storage_layer;
 use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::traits::{
-    BeforeAllRuntimeMigrations, EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker,
-    OnFinalize, OnIdle, OnInitialize, OnPoll, OnRuntimeUpgrade, PostTransactions,
+    BeforeAllRuntimeMigrations, ExecuteBlock, Get, IsInherent, OffchainWorker, OnFinalize, OnIdle,
+    OnPoll, OnRuntimeUpgrade, PostTransactions,
 };
 use frame_support::weights::{Weight, WeightToFee};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use parity_scale_codec::{Codec, Encode};
 use sp_runtime::traits::{
-    Applyable, Block as BlockT, CheckEqual, Checkable, Dispatchable, Header, NumberFor, One,
-    ValidateUnsigned, Zero,
+    Applyable, Block as BlockT, CheckEqual, Checkable, Dispatchable, Header, LazyBlock, NumberFor,
+    One, ValidateUnsigned, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -97,8 +97,7 @@ mod pallet {
     use sp_executive::{INHERENT_IDENTIFIER, InherentError, InherentType};
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+    pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
         type WeightInfo: WeightInfo;
         type Currency: Mutate<Self::AccountId>;
         type LengthToFee: WeightToFee<Balance = BalanceOf<Self>>;
@@ -209,12 +208,12 @@ pub struct Executive<
 );
 
 impl<
-    ExecutiveConfig: Config + frame_system::Config + EnsureInherentsAreFirst<BlockOf<ExecutiveConfig>>,
+    ExecutiveConfig: Config + frame_system::Config + IsInherent<ExtrinsicOf<ExecutiveConfig>>,
     Context: Default,
     UnsignedValidator,
     AllPalletsWithSystem: OnRuntimeUpgrade
         + BeforeAllRuntimeMigrations
-        + OnInitialize<BlockNumberFor<ExecutiveConfig>>
+        + OnInitializeWithWeightRegistration<ExecutiveConfig>
         + OnIdle<BlockNumberFor<ExecutiveConfig>>
         + OnFinalize<BlockNumberFor<ExecutiveConfig>>
         + OffchainWorker<BlockNumberFor<ExecutiveConfig>>
@@ -236,7 +235,7 @@ where
     OriginOf<ExtrinsicOf<ExecutiveConfig>, Context>: From<Option<AccountIdOf<ExecutiveConfig>>>,
     UnsignedValidator: ValidateUnsigned<Call = CallOf<ExtrinsicOf<ExecutiveConfig>, Context>>,
 {
-    fn execute_block(block: BlockOf<ExecutiveConfig>) {
+    fn execute_block(block: <BlockOf<ExecutiveConfig> as BlockT>::LazyBlock) {
         Executive::<
             ExecutiveConfig,
             Context,
@@ -248,12 +247,12 @@ where
 }
 
 impl<
-    ExecutiveConfig: Config + frame_system::Config + EnsureInherentsAreFirst<BlockOf<ExecutiveConfig>>,
+    ExecutiveConfig: Config + frame_system::Config + IsInherent<ExtrinsicOf<ExecutiveConfig>>,
     Context: Default,
     UnsignedValidator,
     AllPalletsWithSystem: OnRuntimeUpgrade
         + BeforeAllRuntimeMigrations
-        + OnInitialize<BlockNumberFor<ExecutiveConfig>>
+        + OnInitializeWithWeightRegistration<ExecutiveConfig>
         + OnIdle<BlockNumberFor<ExecutiveConfig>>
         + OnFinalize<BlockNumberFor<ExecutiveConfig>>
         + OffchainWorker<BlockNumberFor<ExecutiveConfig>>
@@ -300,10 +299,10 @@ where
         >::initialize_block(header)
     }
 
-    // TODO: https://github.com/paritytech/substrate/issues/10711
-    fn initial_checks(block: &BlockOf<ExecutiveConfig>) -> u32 {
+    /// Matches upstream `frame_executive::Executive::initial_checks`.
+    /// Only checks parent hash — inherent ordering is checked inline in `apply_extrinsics`.
+    fn initial_checks(header: &HeaderFor<ExecutiveConfig>) {
         sp_tracing::enter_span!(sp_tracing::Level::TRACE, "initial_checks");
-        let header = block.header();
 
         // Check that `parent_hash` is correct.
         let n = *header.number();
@@ -314,37 +313,28 @@ where
                 ) == *header.parent_hash(),
             "Parent hash should be valid.",
         );
-
-        match ExecutiveConfig::ensure_inherents_are_first(block) {
-            Ok(num) => num,
-            Err(i) => panic!("Invalid inherent position for extrinsic at index {i}"),
-        }
     }
 
     /// Wrapped `frame_executive::Executive::execute_block`.
     ///
     /// The purpose is to use our custom [`Executive::apply_extrinsic`] and
     /// the [`Executive::finalize_block`] logic.
-    pub fn execute_block(block: BlockOf<ExecutiveConfig>) {
+    ///
+    /// Matches upstream structure: `initial_checks` only validates parent hash,
+    /// inherent ordering is checked inline in `apply_extrinsics`.
+    pub fn execute_block(block: <BlockOf<ExecutiveConfig> as BlockT>::LazyBlock) {
         sp_io::init_tracing();
         sp_tracing::within_span! {
             sp_tracing::info_span!("execute_block", ?block);
             // Execute `on_runtime_upgrade` and `on_initialize`.
             let mode = Self::initialize_block(block.header());
-            let num_inherents = Self::initial_checks(&block) as usize;
-            let (header, extrinsics) = block.deconstruct();
-            let num_extrinsics = extrinsics.len();
+            Self::initial_checks(block.header());
 
-            if mode == ExtrinsicInclusionMode::OnlyInherents && num_extrinsics > num_inherents {
-                // Invalid block
-                panic!("Only inherents are allowed in this block")
-            }
-
-            Self::apply_extrinsics(extrinsics.into_iter());
+            let extrinsics = block.extrinsics();
+            Self::apply_extrinsics(mode, extrinsics);
 
             // In this case there were no transactions to trigger this state transition:
             if !<frame_system::Pallet<ExecutiveConfig>>::inherents_applied() {
-                defensive_assert!(num_inherents == num_extrinsics);
                 frame_executive::Executive::<
                     ExecutiveConfig,
                     BlockOf<ExecutiveConfig>,
@@ -358,19 +348,40 @@ where
             <frame_system::Pallet<ExecutiveConfig>>::note_finished_extrinsics();
             <ExecutiveConfig as frame_system::Config>::PostTransactions::post_transactions();
 
-            Self::idle_and_finalize_hook(*header.number());
-            Self::final_checks(&header);
+            let header = block.header();
+            Self::on_idle_hook(*header.number());
+            Self::on_finalize_hook(*header.number());
+            Self::final_checks(header);
         }
     }
 
-    /// Wrapped `frame_executive::Executive::apply_extrinsics`.
-    fn apply_extrinsics(extrinsics: impl Iterator<Item = ExtrinsicOf<ExecutiveConfig>>) {
-        extrinsics.into_iter().for_each(|e| {
-            if let Err(e) = Self::apply_extrinsic(e) {
+    /// Matches upstream `frame_executive::Executive::apply_extrinsics`.
+    /// Checks inherent ordering inline per-extrinsic.
+    fn apply_extrinsics(
+        mode: ExtrinsicInclusionMode,
+        extrinsics: impl Iterator<
+            Item = Result<ExtrinsicOf<ExecutiveConfig>, parity_scale_codec::Error>,
+        >,
+    ) {
+        let mut first_non_inherent_idx = 0;
+        for (idx, maybe_uxt) in extrinsics.into_iter().enumerate() {
+            let uxt = maybe_uxt
+                .unwrap_or_else(|err| panic!("Failed to decode extrinsic at index {idx}: {err}"));
+            let is_inherent = ExecutiveConfig::is_inherent(&uxt);
+            if is_inherent {
+                if first_non_inherent_idx != idx {
+                    panic!("Invalid inherent position for extrinsic at index {idx}");
+                }
+                first_non_inherent_idx += 1;
+            } else if mode == ExtrinsicInclusionMode::OnlyInherents {
+                panic!("Only inherents are allowed in this block")
+            }
+
+            if let Err(e) = Self::apply_extrinsic(uxt) {
                 let err: &'static str = e.into();
                 panic!("{}", err)
             }
-        });
+        }
     }
 
     /// Wrapped `frame_executive::Executive::finalize_block`.
@@ -385,8 +396,8 @@ where
         >::finalize_block()
     }
 
-    /// Wrapped `frame_executive::Executive::on_idle_hook` and `frame_executive::Executive::on_finalize_hook`
-    fn idle_and_finalize_hook(block_number: NumberFor<BlockOf<ExecutiveConfig>>) {
+    /// Matches upstream `frame_executive::Executive::on_idle_hook`.
+    fn on_idle_hook(block_number: NumberFor<BlockOf<ExecutiveConfig>>) {
         let weight = <frame_system::Pallet<ExecutiveConfig>>::block_weight();
         let max_weight = <<ExecutiveConfig as frame_system::Config>::BlockWeights as frame_support::traits::Get<_>>::get().max_block;
         let remaining_weight = max_weight.saturating_sub(weight.total());
@@ -398,7 +409,10 @@ where
                 DispatchClass::Mandatory,
             );
         }
+    }
 
+    /// Matches upstream `frame_executive::Executive::on_finalize_hook`.
+    fn on_finalize_hook(block_number: NumberFor<BlockOf<ExecutiveConfig>>) {
         AllPalletsWithSystem::on_finalize(block_number);
     }
 

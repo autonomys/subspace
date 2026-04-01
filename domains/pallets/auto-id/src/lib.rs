@@ -241,7 +241,6 @@ pub struct CertificateAction {
     pub action_type: CertificateActionType,
 }
 
-#[expect(clippy::useless_conversion, reason = "Macro-generated")]
 #[frame_support::pallet]
 mod pallet {
     use super::*;
@@ -252,8 +251,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+    pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
         type Time: Time<Moment = subspace_runtime_primitives::Moment>;
         type Weights: WeightInfo;
     }

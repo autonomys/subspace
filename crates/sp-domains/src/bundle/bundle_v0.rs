@@ -84,7 +84,7 @@ impl<Extrinsic: Encode, Number, Hash, DomainHeader: HeaderT, Balance>
         let opaque_extrinsics = extrinsics
             .into_iter()
             .map(|xt| {
-                OpaqueExtrinsic::from_bytes(&xt.encode())
+                OpaqueExtrinsic::try_from_encoded_extrinsic(&xt.encode())
                     .expect("We have just encoded a valid extrinsic; qed")
             })
             .collect();

@@ -307,6 +307,13 @@ jobs:
             ~/.cargo/git/db
           key: ${{ runner.os }}-cargo-${{ hashFiles('./Cargo.toml') }}
 
+      # Disable PDB generation on Windows to avoid LNK1318 PDB size limits with large test binaries
+      # (wasmtime 35+ makes domain_client_operator test binary exceed PDB page count limits)
+      # /DEBUG:NONE tells the MSVC linker to skip PDB file creation entirely
+      - name: Configure Windows linker
+        run: echo "RUSTFLAGS=$env:RUSTFLAGS -C debuginfo=0 -C link-arg=/DEBUG:NONE" >> $env:GITHUB_ENV
+        if: runner.os == 'Windows'
+
       - name: cargo nextest run --locked
         run: |
           cargo -Zgitoxide -Zgit nextest run --locked

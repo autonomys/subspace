@@ -105,7 +105,6 @@ macro_rules! impl_runtime {
         }
 
         impl crate::Config for $runtime {
-            type RuntimeEvent = RuntimeEvent;
             type SelfChainId = SelfChainId;
             type Currency = Balances;
             type WeightInfo = ();
@@ -186,7 +185,6 @@ macro_rules! impl_runtime {
         }
 
         impl pallet_transporter::Config for $runtime {
-            type RuntimeEvent = RuntimeEvent;
             type SelfChainId = SelfChainId;
             type SelfEndpointId = TransporterEndpointId;
             type Currency = Balances;

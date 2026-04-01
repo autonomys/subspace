@@ -165,3 +165,6 @@ runtime-benchmarks = [
     "sp-subspace-mmr/runtime-benchmarks",
     "subspace-runtime-primitives/runtime-benchmarks",
 ]
+
+[lints]
+workspace = true

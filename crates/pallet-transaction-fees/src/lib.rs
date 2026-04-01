@@ -39,10 +39,7 @@ mod pallet {
     use subspace_runtime_primitives::{BlockTransactionByteFee, FindBlockRewardAddress};
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
-        /// `pallet-transaction-fees` events
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
+    pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
         /// Minimum desired number of replicas of the blockchain to be stored by the network,
         /// impacts storage fees.
         #[pallet::constant]

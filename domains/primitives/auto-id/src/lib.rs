@@ -30,8 +30,6 @@ use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::{DecodeWithMemTracking, U256};
-use sp_runtime_interface::pass_by;
-use sp_runtime_interface::pass_by::PassBy;
 use subspace_runtime_primitives::Moment;
 
 /// Signature verification request.
@@ -45,10 +43,6 @@ pub struct SignatureVerificationRequest {
     pub data: Vec<u8>,
     /// Signature.
     pub signature: Vec<u8>,
-}
-
-impl PassBy for SignatureVerificationRequest {
-    type PassBy = pass_by::Codec<Self>;
 }
 
 /// Validity of a given certificate.
@@ -113,10 +107,6 @@ pub struct TbsCertificate {
 /// DER encoded bytes
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, DecodeWithMemTracking)]
 pub struct DerVec(pub Vec<u8>);
-
-impl PassBy for DerVec {
-    type PassBy = pass_by::Codec<Self>;
-}
 
 impl AsRef<[u8]> for DerVec {
     fn as_ref(&self) -> &[u8] {
