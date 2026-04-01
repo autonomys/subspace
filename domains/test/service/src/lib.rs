@@ -158,7 +158,7 @@ pub fn node_config(
             rate_limit: None,
             rate_limit_whitelisted_ips: vec![],
             rate_limit_trust_proxy_headers: false,
-            request_logger_limit: 0,
+            request_logger_limit: 1024,
         },
     };
 

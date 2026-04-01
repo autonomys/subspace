@@ -99,6 +99,7 @@ pub trait DomainMmrRuntimeInterface {
     }
 
     // Return `true` if the given consensus block is finalized.
+    // BlockNumber (u32) and bool are primitives with direct RIType impls — no ABI wrapper needed.
     fn is_consensus_block_finalized(&mut self, block_number: BlockNumber) -> bool {
         #[cfg(not(feature = "runtime-benchmarks"))]
         {

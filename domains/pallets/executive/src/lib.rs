@@ -365,7 +365,8 @@ where
     ) {
         let mut first_non_inherent_idx = 0;
         for (idx, maybe_uxt) in extrinsics.into_iter().enumerate() {
-            let uxt = maybe_uxt.expect("Failed to decode extrinsic");
+            let uxt = maybe_uxt
+                .unwrap_or_else(|err| panic!("Failed to decode extrinsic at index {idx}: {err}"));
             let is_inherent = ExecutiveConfig::is_inherent(&uxt);
             if is_inherent {
                 if first_non_inherent_idx != idx {
