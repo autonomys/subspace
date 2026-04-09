@@ -365,7 +365,10 @@ where
         let mut partial_object = if let Some(partial_object) =
             PartialObject::new_with_padding(&raw_data, self.max_object_len, mapping)?
         {
-
+            // Explicitly drop piece data early to free memory before downloading
+            // remaining pieces in the loop below.
+            std::mem::drop(raw_data);
+            
             trace!(
                 %next_source_piece_index,
                 ?mapping,
@@ -402,6 +405,9 @@ where
             if let Some(partial_object) =
                 PartialObject::new_with_padding(&raw_data, self.max_object_len, mapping)?
             {
+                // Explicitly drop piece data early to free memory before downloading
+                // remaining pieces in the loop below.
+                std::mem::drop(raw_data);
 
                 trace!(
                     %next_source_piece_index,
