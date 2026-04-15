@@ -156,6 +156,7 @@ parameter_types! {
 }
 
 impl frame_system::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
     /// The identifier used to distinguish between accounts.
     type AccountId = AccountId;
     /// The aggregated dispatch type that is available for extrinsics.
@@ -173,7 +174,6 @@ impl frame_system::Config for Runtime {
     /// The block type.
     type Block = Block;
     /// The ubiquitous event type.
-    type RuntimeEvent = RuntimeEvent;
     /// The ubiquitous origin type.
     type RuntimeOrigin = RuntimeOrigin;
     /// Maximum number of block number to block hash mappings to keep (oldest pruned first).
@@ -235,12 +235,12 @@ impl OnUnbalanced<Credit<AccountId, Balances>> for DustRemovalHandler {
 }
 
 impl pallet_balances::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
     type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = MaxLocks;
     /// The type for recording an account's balance.
     type Balance = Balance;
     /// The ubiquitous event type.
-    type RuntimeEvent = RuntimeEvent;
     type DustRemoval = DustRemovalHandler;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
@@ -283,7 +283,6 @@ impl pallet_transaction_payment::Config for Runtime {
 }
 
 impl pallet_auto_id::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type Time = Timestamp;
     type Weights = weights::pallet_auto_id::WeightInfo<Runtime>;
 }
@@ -320,7 +319,6 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
 }
 
 impl domain_pallet_executive::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = weights::domain_pallet_executive::WeightInfo<Runtime>;
     type Currency = Balances;
     type LengthToFee = <Runtime as pallet_transaction_payment::Config>::LengthToFee;
@@ -429,7 +427,6 @@ parameter_types! {
 const_assert!(MaxOutgoingMessages::get() >= 1);
 
 impl pallet_messenger::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
 
     fn get_endpoint_handler(endpoint: &Endpoint) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
@@ -481,7 +478,6 @@ parameter_types! {
 }
 
 impl pallet_transporter::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
@@ -504,7 +500,6 @@ impl sp_domain_sudo::IntoRuntimeCall<RuntimeCall> for IntoRuntimeCall {
 }
 
 impl pallet_domain_sudo::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
     type IntoRuntimeCall = IntoRuntimeCall;
 }
@@ -773,7 +768,7 @@ impl_runtime_apis! {
             VERSION
         }
 
-        fn execute_block(block: Block) {
+        fn execute_block(block: <Block as sp_runtime::traits::Block>::LazyBlock) {
             Executive::execute_block(block)
         }
 
@@ -810,7 +805,7 @@ impl_runtime_apis! {
         }
 
         fn check_inherents(
-            block: Block,
+            block: <Block as sp_runtime::traits::Block>::LazyBlock,
             data: sp_inherents::InherentData,
         ) -> sp_inherents::CheckInherentsResult {
             data.check_extrinsics(&block)
@@ -967,11 +962,16 @@ impl_runtime_apis! {
         fn check_extrinsics_and_do_pre_dispatch(uxts: Vec<ExtrinsicFor<Block>>, block_number: BlockNumber,
             block_hash: BlockHashFor<Block>) -> Result<(), CheckExtrinsicsValidityError> {
             // Initializing block related storage required for validation
-            System::initialize(
-                &(block_number + BlockNumber::one()),
-                &block_hash,
-                &Default::default(),
-            );
+            // Only initialize if not already at the expected block number,
+            // as this may be called multiple times with the same block_number
+            let next_block_number = block_number + BlockNumber::one();
+            if System::block_number() != next_block_number {
+                System::initialize(
+                    &next_block_number,
+                    &block_hash,
+                    &Default::default(),
+                );
+            }
 
             for (extrinsic_index, uxt) in uxts.iter().enumerate() {
                 check_transaction_and_do_pre_dispatch_inner(uxt).map_err(|e| {

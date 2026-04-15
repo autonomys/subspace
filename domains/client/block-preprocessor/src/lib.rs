@@ -291,7 +291,10 @@ where
         &self,
         parent_domain_hash: Block::Hash,
     ) -> sp_blockchain::Result<StatelessRuntime<CBlock, Block, Exec>> {
-        let state = self.backend.state_at(parent_domain_hash)?;
+        // Trusted: bounded bundle-validation context
+        let state = self
+            .backend
+            .state_at(parent_domain_hash, sc_client_api::TrieCacheContext::Trusted)?;
         let trie_backend = state.as_trie_backend();
         let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
         let runtime_code = state_runtime_code

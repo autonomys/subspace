@@ -1263,7 +1263,9 @@ async fn test_evm_domain_gas_estimates() {
                 assert_eq!(
                     (call_info.used_gas.standard, call_info.used_gas.effective),
                     // The exact estimate is not important, but we want to know if it changes
-                    (21_400.into(), 21_400.into()),
+                    // Updated from 21_400 in stable2512 due to Frontier EVM config
+                    // change from Pectra to Osaka (EIP-7939)
+                    (22_000.into(), 22_000.into()),
                     "Incorrect EVM Call gas estimate: {evm_call:?} {call_info:?}",
                 );
             }
@@ -2223,9 +2225,10 @@ async fn test_bad_invalid_bundle_fraud_proof_is_rejected() {
     // UndecodableTx
     bundles.push({
         let (_, mut b) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-        let undecodable_tx =
-            OpaqueExtrinsic::from_bytes(&rand::random::<[u8; 5]>().to_vec().encode())
-                .expect("raw byte encoding and decoding never fails; qed");
+        let undecodable_tx = OpaqueExtrinsic::try_from_encoded_extrinsic(
+            &rand::random::<[u8; 5]>().to_vec().encode(),
+        )
+        .expect("raw byte encoding and decoding never fails; qed");
         let mut exts = b.extrinsics().to_vec();
         exts.push(undecodable_tx);
         exts.extend_from_slice(valid_bundle.extrinsics());
@@ -3237,7 +3240,7 @@ async fn test_true_invalid_bundles_undecodeable_tx_proof_creation_and_verificati
 
     let undecodable_tx = || {
         let undecodable_extrinsic = rand::random::<[u8; 5]>().to_vec();
-        OpaqueExtrinsic::from_bytes(&undecodable_extrinsic.encode())
+        OpaqueExtrinsic::try_from_encoded_extrinsic(&undecodable_extrinsic.encode())
             .expect("raw byte encoding and decoding never fails; qed")
     };
 
@@ -5012,7 +5015,10 @@ async fn set_new_code_should_work() {
         .await;
 
     let best_hash = alice.client.info().best_hash;
-    let state = alice.backend.state_at(best_hash).expect("Get state");
+    let state = alice
+        .backend
+        .state_at(best_hash, sc_client_api::TrieCacheContext::Trusted)
+        .expect("Get state");
     let trie_backend = state.as_trie_backend();
     let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
     let runtime_code = state_runtime_code.fetch_runtime_code().unwrap();

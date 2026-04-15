@@ -10,6 +10,10 @@ use sp_core::H256;
 #[cfg(all(feature = "std", not(feature = "runtime-benchmarks")))]
 use sp_externalities::ExternalitiesExt;
 use sp_mmr_primitives::EncodableOpaqueLeaf;
+use sp_runtime_interface::pass_by::{
+    AllocateAndReturnByCodec, PassFatPointerAndDecode, PassFatPointerAndRead,
+    PassPointerAndReadCopy,
+};
 use sp_runtime_interface::runtime_interface;
 use subspace_core_primitives::BlockNumber;
 
@@ -17,7 +21,10 @@ use subspace_core_primitives::BlockNumber;
 #[runtime_interface]
 pub trait SubspaceMmrRuntimeInterface {
     /// Returns the MMR leaf for the given consensus block.
-    fn get_mmr_leaf_data(&mut self, consensus_block_hash: H256) -> Option<LeafData> {
+    fn get_mmr_leaf_data(
+        &mut self,
+        consensus_block_hash: PassPointerAndReadCopy<H256, 32>,
+    ) -> AllocateAndReturnByCodec<Option<LeafData>> {
         #[cfg(not(feature = "runtime-benchmarks"))]
         {
             self.extension::<SubspaceMmrExtension>()
@@ -38,7 +45,10 @@ pub trait SubspaceMmrRuntimeInterface {
     }
 
     /// Returns the consensus block hash for a given block number.
-    fn consensus_block_hash(&mut self, block_number: BlockNumber) -> Option<H256> {
+    fn consensus_block_hash(
+        &mut self,
+        block_number: BlockNumber,
+    ) -> AllocateAndReturnByCodec<Option<H256>> {
         #[cfg(not(feature = "runtime-benchmarks"))]
         {
             self.extension::<SubspaceMmrExtension>()
@@ -68,8 +78,8 @@ pub trait DomainMmrRuntimeInterface {
     /// Verifies the given MMR proof using the leaves provided.
     fn verify_mmr_proof(
         &mut self,
-        leaves: Vec<EncodableOpaqueLeaf>,
-        encoded_proof: Vec<u8>,
+        leaves: PassFatPointerAndDecode<Vec<EncodableOpaqueLeaf>>,
+        encoded_proof: PassFatPointerAndRead<Vec<u8>>,
     ) -> bool {
         #[cfg(not(feature = "runtime-benchmarks"))]
         {
@@ -89,6 +99,7 @@ pub trait DomainMmrRuntimeInterface {
     }
 
     // Return `true` if the given consensus block is finalized.
+    // BlockNumber (u32) and bool are primitives with direct RIType impls — no ABI wrapper needed.
     fn is_consensus_block_finalized(&mut self, block_number: BlockNumber) -> bool {
         #[cfg(not(feature = "runtime-benchmarks"))]
         {

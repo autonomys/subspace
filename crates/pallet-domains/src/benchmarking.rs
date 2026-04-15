@@ -1474,7 +1474,10 @@ mod benchmarks {
         if let Some(parent_block_number) = block_number.checked_sub(&One::one()) {
             Domains::<T>::on_finalize(parent_block_number);
         }
-        System::<T>::set_block_number(block_number);
+        // Set to parent block number so initialize() sees strictly sequential increment
+        if let Some(parent_block_number) = block_number.checked_sub(&One::one()) {
+            System::<T>::set_block_number(parent_block_number);
+        }
         System::<T>::initialize(&block_number, &parent_hash, &Default::default());
         BlockRandomness::<T>::put(Randomness::default());
         Domains::<T>::on_initialize(block_number);

@@ -206,6 +206,10 @@ impl From<SubstrateConfiguration> for Configuration {
                 ipfs_server: false,
                 network_backend: NetworkBackendType::Libp2p,
                 force_synced: configuration.network.force_synced,
+                // Subspace does not use warp sync
+                min_peers_to_start_warp_sync: None,
+                // Substrate's default
+                idle_connection_timeout: std::time::Duration::from_secs(10),
             },
             // Not used on consensus chain
             keystore: KeystoreConfig::InMemory,
@@ -238,6 +242,8 @@ impl From<SubstrateConfiguration> for Configuration {
                 rate_limit_trust_proxy_headers: configuration
                     .rpc_options
                     .rate_limit_trust_proxy_headers,
+                // stable2512: max bytes logged per RPC request for debugging
+                request_logger_limit: 1024,
             },
             prometheus_config: configuration
                 .prometheus_listen_on
@@ -268,6 +274,8 @@ impl From<SubstrateConfiguration> for Configuration {
                 sc_service::Role::Full
             },
             base_path: BasePath::new(configuration.base_path),
+            // Trie cache warm-up not needed — Subspace uses its own sync strategy
+            warm_up_trie_cache: None,
         }
     }
 }

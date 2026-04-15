@@ -134,3 +134,6 @@ std = [
 ]
 # Internal implementation detail, enabled during building of wasm blob.
 wasm-builder = []
+
+[lints]
+workspace = true

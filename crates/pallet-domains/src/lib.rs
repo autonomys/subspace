@@ -242,7 +242,6 @@ pub trait WeightInfo {
     fn withdraw_stake_from_deactivated_operator() -> Weight;
 }
 
-#[expect(clippy::useless_conversion, reason = "Macro-generated")]
 #[frame_support::pallet]
 mod pallet {
     #[cfg(not(feature = "runtime-benchmarks"))]
@@ -327,9 +326,9 @@ mod pallet {
     use subspace_runtime_primitives::StorageFee;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config<Hash: Into<H256> + From<H256>> {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
+    pub trait Config:
+        frame_system::Config<Hash: Into<H256> + From<H256>, RuntimeEvent: From<Event<Self>>>
+    {
         /// Origin for domain call.
         type DomainOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = ()>;
 

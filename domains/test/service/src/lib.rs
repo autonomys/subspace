@@ -140,6 +140,7 @@ pub fn node_config(
                 rate_limit: None,
                 rate_limit_whitelisted_ips: vec![],
                 rate_limit_trust_proxy_headers: false,
+                request_logger_limit: 1024,
             }
         }
         None => RpcConfiguration {
@@ -157,6 +158,7 @@ pub fn node_config(
             rate_limit: None,
             rate_limit_whitelisted_ips: vec![],
             rate_limit_trust_proxy_headers: false,
+            request_logger_limit: 1024,
         },
     };
 
@@ -199,6 +201,7 @@ pub fn node_config(
         data_path: base_path.path().into(),
         base_path,
         wasm_runtime_overrides: None,
+        warm_up_trie_cache: None,
     })
 }
 

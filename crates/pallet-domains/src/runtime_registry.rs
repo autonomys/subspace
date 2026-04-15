@@ -317,7 +317,7 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
         frame_system::Pallet::<T>::deposit_log(DigestItem::domain_runtime_upgrade(runtime_id));
 
         // deposit event to signal runtime upgrade is complete
-        frame_system::Pallet::<T>::deposit_event(<T as Config>::RuntimeEvent::from(
+        frame_system::Pallet::<T>::deposit_event(<T as frame_system::Config>::RuntimeEvent::from(
             Event::DomainRuntimeUpgraded { runtime_id },
         ));
     }

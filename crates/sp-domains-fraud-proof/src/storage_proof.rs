@@ -12,8 +12,6 @@ use sp_domains::{
     RuntimeId, RuntimeObject,
 };
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor, Zero};
-use sp_runtime_interface::pass_by;
-use sp_runtime_interface::pass_by::PassBy;
 use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
@@ -400,10 +398,6 @@ pub struct InherentExtrinsicData {
 
     /// Transaction byte fee, derived from dynamic cost of storage and the consensus chain byte fee
     pub consensus_transaction_byte_fee: Balance,
-}
-
-impl PassBy for InherentExtrinsicData {
-    type PassBy = pass_by::Codec<Self>;
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo, DecodeWithMemTracking)]

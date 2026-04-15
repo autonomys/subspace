@@ -53,6 +53,7 @@ pub(crate) type AccountId = u128;
 
 #[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for Test {
+    type RuntimeEvent = RuntimeEvent;
     type Block = Block;
     type Hash = Hash;
     type AccountId = AccountId;
@@ -122,6 +123,7 @@ parameter_types! {
 
 #[derive_impl(pallet_balances::config_preludes::TestDefaultConfig as pallet_balances::DefaultConfig)]
 impl pallet_balances::Config for Test {
+    type RuntimeEvent = RuntimeEvent;
     type Balance = Balance;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
@@ -243,7 +245,6 @@ impl sp_domains::DomainsTransfersTracker<Balance> for MockDomainsTransfersTracke
 }
 
 impl crate::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
     type DomainHash = sp_core::H256;
     type Balance = Balance;
     type DomainHeader = DomainHeader;
@@ -303,7 +304,6 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Test> for ExtrinsicStorageFee
 }
 
 impl domain_pallet_executive::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = ();
     type Currency = Balances;
     type LengthToFee = IdentityFee<Balance>;
@@ -341,7 +341,6 @@ parameter_types! {
 }
 
 impl pallet_subspace::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
     type SubspaceOrigin = pallet_subspace::EnsureSubspaceOrigin;
     type BlockAuthoringDelay = BlockAuthoringDelay;
     type PotEntropyInjectionInterval = PotEntropyInjectionInterval;

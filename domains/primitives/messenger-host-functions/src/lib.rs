@@ -33,9 +33,6 @@ pub use runtime_interface::messenger_runtime_interface::get_storage_key;
 use scale_info::TypeInfo;
 use sp_domains::DomainId;
 use sp_messenger::messages::{ChainId, MessageKey};
-use sp_runtime_interface::pass_by;
-use sp_runtime_interface::pass_by::PassBy;
-
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum StorageKeyRequest {
     /// Request to get confirmed domain block storage key for given domain.
@@ -50,8 +47,4 @@ pub enum StorageKeyRequest {
         chain_id: ChainId,
         message_key: MessageKey,
     },
-}
-
-impl PassBy for StorageKeyRequest {
-    type PassBy = pass_by::Codec<Self>;
 }

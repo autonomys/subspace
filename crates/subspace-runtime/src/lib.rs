@@ -204,6 +204,7 @@ pub type SS58Prefix = ConstU16<6094>;
 // Configure FRAME pallets to include in runtime.
 
 impl frame_system::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
     /// The basic call filter to use in dispatchable.
     ///
     /// `Everything` is used here as we use the signed extension
@@ -230,7 +231,6 @@ impl frame_system::Config for Runtime {
     /// The block type.
     type Block = Block;
     /// The ubiquitous event type.
-    type RuntimeEvent = RuntimeEvent;
     /// The ubiquitous origin type.
     type RuntimeOrigin = RuntimeOrigin;
     /// Maximum number of block number to block hash mappings to keep (oldest pruned first).
@@ -291,7 +291,6 @@ impl Get<BlockNumber> for ConfirmationDepthK {
 }
 
 impl pallet_subspace::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type SubspaceOrigin = pallet_subspace::EnsureSubspaceOrigin;
     type BlockAuthoringDelay = BlockAuthoringDelay;
     type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
@@ -372,6 +371,7 @@ impl VariantCount for HoldIdentifierWrapper {
 }
 
 impl pallet_balances::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
     type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = ConstU32<50>;
     type MaxReserves = ();
@@ -379,7 +379,6 @@ impl pallet_balances::Config for Runtime {
     /// The type for recording an account's balance.
     type Balance = Balance;
     /// The ubiquitous event type.
-    type RuntimeEvent = RuntimeEvent;
     type DustRemoval = ();
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
@@ -402,7 +401,6 @@ parameter_types! {
 }
 
 impl pallet_transaction_fees::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type MinReplicationFactor = ConstU16<MIN_REPLICATION_FACTOR>;
     type CreditSupply = CreditSupply;
     type TotalSpacePledged = TotalSpacePledged;
@@ -533,6 +531,7 @@ pub type HalfCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 
 
 // TODO: update params for mainnnet
 impl pallet_collective::Config<CouncilCollective> for Runtime {
+    type RuntimeEvent = RuntimeEvent;
     type DefaultVote = pallet_collective::PrimeDefaultVote;
     type MaxMembers = ConstU32<100>;
     type MaxProposalWeight = MaxProposalWeight;
@@ -540,7 +539,6 @@ impl pallet_collective::Config<CouncilCollective> for Runtime {
     /// Duration of voting for a given council motion.
     type MotionDuration = CouncilMotionDuration;
     type Proposal = RuntimeCall;
-    type RuntimeEvent = RuntimeEvent;
     type RuntimeOrigin = RuntimeOrigin;
     type SetMembersOrigin = EnsureRootOr<AllCouncil>;
     type WeightInfo = weights::pallet_collective::WeightInfo<Runtime>;
@@ -559,6 +557,7 @@ parameter_types! {
 }
 
 impl pallet_preimage::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
     type Consideration = HoldConsideration<
         AccountId,
         Balances,
@@ -567,7 +566,6 @@ impl pallet_preimage::Config for Runtime {
     >;
     type Currency = Balances;
     type ManagerOrigin = EnsureRoot<AccountId>;
-    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = weights::pallet_preimage::WeightInfo<Runtime>;
 }
 
@@ -588,13 +586,13 @@ parameter_types! {
 // Invalid domain runtime calls will be rejected by the domain runtime extrinsic format checks,
 // even if they are scheduled/democratized in the subspace runtime.
 impl pallet_scheduler::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
     type MaxScheduledPerBlock = ConstU32<50>;
     type MaximumWeight = MaximumSchedulerWeight;
     type OriginPrivilegeCmp = EqualPrivilegeOnly;
     type PalletsOrigin = OriginCaller;
     type Preimages = Preimage;
     type RuntimeCall = RuntimeCall;
-    type RuntimeEvent = RuntimeEvent;
     type RuntimeOrigin = RuntimeOrigin;
     type ScheduleOrigin = EnsureRoot<AccountId>;
     type WeightInfo = weights::pallet_scheduler::WeightInfo<Runtime>;
@@ -619,6 +617,7 @@ impl_get_council_democracy_field_block_number! {VotingPeriod, democracy_voting_p
 
 // TODO: update params for mainnnet
 impl pallet_democracy::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
     type BlacklistOrigin = EnsureRoot<AccountId>;
     /// To cancel a proposal before it has been passed and slash its backers, must be root.
     type CancelProposalOrigin = EnsureRoot<AccountId>;
@@ -660,7 +659,6 @@ impl pallet_democracy::Config for Runtime {
     type MinimumDeposit = ConstU128<{ 1000 * AI3 }>;
     type PalletsOrigin = OriginCaller;
     type Preimages = Preimage;
-    type RuntimeEvent = RuntimeEvent;
     type Scheduler = Scheduler;
     /// Handler for the unbalanced reduction when slashing a preimage deposit.
     type Slash = DemocracySlash;
@@ -773,7 +771,6 @@ impl sp_messenger::DomainRegistration for DomainRegistration {
 }
 
 impl pallet_messenger::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
 
     fn get_endpoint_handler(endpoint: &Endpoint) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
@@ -825,7 +822,7 @@ impl<C> frame_system::offchain::CreateInherent<C> for Runtime
 where
     RuntimeCall: From<C>,
 {
-    fn create_inherent(call: Self::RuntimeCall) -> Self::Extrinsic {
+    fn create_bare(call: Self::RuntimeCall) -> Self::Extrinsic {
         UncheckedExtrinsic::new_bare(call)
     }
 }
@@ -845,7 +842,6 @@ parameter_types! {
 }
 
 impl pallet_transporter::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
@@ -955,7 +951,6 @@ impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
 }
 
 impl pallet_domains::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type DomainOrigin = pallet_domains::EnsureDomainOrigin;
     type DomainHash = DomainHash;
     type Balance = Balance;
@@ -1005,7 +1000,6 @@ parameter_types! {
 }
 
 impl pallet_rewards::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type AvgBlockspaceUsageNumBlocks = AvgBlockspaceUsageNumBlocks;
     type TransactionByteFee = TransactionByteFee;
@@ -1354,7 +1348,7 @@ impl_runtime_apis! {
             VERSION
         }
 
-        fn execute_block(block: Block) {
+        fn execute_block(block: <Block as sp_runtime::traits::Block>::LazyBlock) {
             Executive::execute_block(block);
         }
 
@@ -1391,7 +1385,7 @@ impl_runtime_apis! {
         }
 
         fn check_inherents(
-            block: Block,
+            block: <Block as sp_runtime::traits::Block>::LazyBlock,
             data: sp_inherents::InherentData,
         ) -> sp_inherents::CheckInherentsResult {
             data.check_extrinsics(&block)
@@ -1833,6 +1827,13 @@ impl_runtime_apis! {
                     )
                 },
             )
+        }
+
+        fn generate_ancestry_proof(
+            prev_block_number: BlockNumber,
+            best_known_block_number: Option<BlockNumber>,
+        ) -> Result<mmr::AncestryProof<mmr::Hash>, mmr::Error> {
+            Mmr::generate_ancestry_proof(prev_block_number, best_known_block_number)
         }
 
         fn verify_proof(leaves: Vec<mmr::EncodableOpaqueLeaf>, proof: mmr::LeafProof<mmr::Hash>)

@@ -61,7 +61,6 @@ impl<RewardAddress> FindVotingRewardAddresses<RewardAddress> for MockFindVotingR
 }
 
 impl crate::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type AvgBlockspaceUsageNumBlocks = ConstU32<10>;
     type TransactionByteFee = ConstU128<1>;

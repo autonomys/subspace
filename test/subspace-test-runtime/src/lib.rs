@@ -230,6 +230,7 @@ pub type SS58Prefix = ConstU16<6094>;
 // Configure FRAME pallets to include in runtime.
 
 impl frame_system::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
     /// The basic call filter to use in dispatchable.
     ///
     /// `Everything` is used here as we use the signed extension
@@ -256,7 +257,6 @@ impl frame_system::Config for Runtime {
     /// The block type.
     type Block = Block;
     /// The ubiquitous event type.
-    type RuntimeEvent = RuntimeEvent;
     /// The ubiquitous origin type.
     type RuntimeOrigin = RuntimeOrigin;
     /// Maximum number of block number to block hash mappings to keep (oldest pruned first).
@@ -312,7 +312,6 @@ parameter_types! {
 }
 
 impl pallet_subspace::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type SubspaceOrigin = pallet_subspace::EnsureSubspaceOrigin;
     type BlockAuthoringDelay = BlockAuthoringDelay;
     type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
@@ -383,6 +382,7 @@ impl VariantCount for HoldIdentifierWrapper {
 }
 
 impl pallet_balances::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
     type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = ConstU32<50>;
     type MaxReserves = ();
@@ -390,7 +390,6 @@ impl pallet_balances::Config for Runtime {
     /// The type for recording an account's balance.
     type Balance = Balance;
     /// The ubiquitous event type.
-    type RuntimeEvent = RuntimeEvent;
     type DustRemoval = ();
     type ExistentialDeposit = ConstU128<{ 10_000_000_000_000 * SHANNON }>;
     type AccountStore = System;
@@ -432,7 +431,6 @@ impl Get<u128> for BlockchainHistorySize {
 }
 
 impl pallet_transaction_fees::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type MinReplicationFactor = ConstU16<MIN_REPLICATION_FACTOR>;
     type CreditSupply = CreditSupply;
     type TotalSpacePledged = TotalSpacePledged;
@@ -459,6 +457,10 @@ pub struct LiquidityInfo {
 /// Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges transaction
 /// fees and distributes storage/compute fees and tip separately.
 pub struct OnChargeTransaction;
+
+impl pallet_transaction_payment::TxCreditHold<Runtime> for OnChargeTransaction {
+    type Credit = ();
+}
 
 impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransaction {
     type LiquidityInfo = Option<LiquidityInfo>;
@@ -742,7 +744,6 @@ impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
 }
 
 impl pallet_messenger::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
 
     fn get_endpoint_handler(endpoint: &Endpoint) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
@@ -800,7 +801,6 @@ parameter_types! {
 }
 
 impl pallet_transporter::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
@@ -903,7 +903,6 @@ impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
 }
 
 impl pallet_domains::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type DomainOrigin = pallet_domains::EnsureDomainOrigin;
     type DomainHash = DomainHash;
     type Balance = Balance;
@@ -953,7 +952,6 @@ parameter_types! {
 }
 
 impl pallet_rewards::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type AvgBlockspaceUsageNumBlocks = AvgBlockspaceUsageNumBlocks;
     type TransactionByteFee = TransactionByteFee;
@@ -1409,7 +1407,7 @@ impl_runtime_apis! {
             VERSION
         }
 
-        fn execute_block(block: Block) {
+        fn execute_block(block: <Block as sp_runtime::traits::Block>::LazyBlock) {
             Executive::execute_block(block);
         }
 
@@ -1446,7 +1444,7 @@ impl_runtime_apis! {
         }
 
         fn check_inherents(
-            block: Block,
+            block: <Block as sp_runtime::traits::Block>::LazyBlock,
             data: sp_inherents::InherentData,
         ) -> sp_inherents::CheckInherentsResult {
             data.check_extrinsics(&block)
@@ -1888,6 +1886,13 @@ impl_runtime_apis! {
                     )
                 },
             )
+        }
+
+        fn generate_ancestry_proof(
+            prev_block_number: BlockNumber,
+            best_known_block_number: Option<BlockNumber>,
+        ) -> Result<mmr::AncestryProof<mmr::Hash>, mmr::Error> {
+            Mmr::generate_ancestry_proof(prev_block_number, best_known_block_number)
         }
 
         fn verify_proof(leaves: Vec<mmr::EncodableOpaqueLeaf>, proof: mmr::LeafProof<mmr::Hash>)

@@ -475,8 +475,8 @@ async fn check_bundle_validity_runtime_api_should_work() {
         alice.construct_extrinsic_with_tip(alice_nonce, 0, dummy_runtime_call.clone());
 
     let sample_valid_bundle_extrinsics = vec![
-        OpaqueExtrinsic::from_bytes(&transfer_to_charlie.encode()).unwrap(),
-        OpaqueExtrinsic::from_bytes(&transfer_to_charlie_2.encode()).unwrap(),
+        OpaqueExtrinsic::try_from_encoded_extrinsic(&transfer_to_charlie.encode()).unwrap(),
+        OpaqueExtrinsic::try_from_encoded_extrinsic(&transfer_to_charlie_2.encode()).unwrap(),
     ];
 
     {
@@ -499,10 +499,12 @@ async fn check_bundle_validity_runtime_api_should_work() {
 
     // Here tx index: 2 is invalid
     let sample_invalid_bundle_with_same_nonce_extrinsic = vec![
-        OpaqueExtrinsic::from_bytes(&transfer_to_charlie.encode()).unwrap(),
-        OpaqueExtrinsic::from_bytes(&transfer_to_charlie_2.encode()).unwrap(),
-        OpaqueExtrinsic::from_bytes(&transfer_to_charlie_3_duplicate_nonce_extrinsic.encode())
-            .unwrap(),
+        OpaqueExtrinsic::try_from_encoded_extrinsic(&transfer_to_charlie.encode()).unwrap(),
+        OpaqueExtrinsic::try_from_encoded_extrinsic(&transfer_to_charlie_2.encode()).unwrap(),
+        OpaqueExtrinsic::try_from_encoded_extrinsic(
+            &transfer_to_charlie_3_duplicate_nonce_extrinsic.encode(),
+        )
+        .unwrap(),
     ];
 
     {
@@ -554,8 +556,10 @@ async fn check_bundle_validity_runtime_api_should_work() {
             .check_extrinsics_and_do_pre_dispatch(
                 best_hash,
                 vec![
-                    OpaqueExtrinsic::from_bytes(&transfer_to_charlie_with_big_tip_1.encode())
-                        .unwrap()
+                    OpaqueExtrinsic::try_from_encoded_extrinsic(
+                        &transfer_to_charlie_with_big_tip_1.encode()
+                    )
+                    .unwrap()
                 ],
                 best_number,
                 best_hash,
@@ -1435,7 +1439,7 @@ async fn test_evm_domain_total_issuance() {
 
 //     let mut bundle_with_bad_extrinsics = maybe_bundle.unwrap();
 //     bundle_with_bad_extrinsics.extrinsics =
-//         vec![OpaqueExtrinsic::from_bytes(&transfer_from_one_to_bob.encode()).unwrap()];
+//         vec![OpaqueExtrinsic::try_from_encoded_extrinsic(&transfer_from_one_to_bob.encode()).unwrap()];
 //     bundle_with_bad_extrinsics.sealed_header.signature = alice
 //         .key
 //         .pair()

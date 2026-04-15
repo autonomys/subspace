@@ -199,7 +199,8 @@ pub(crate) fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_ha
     frame_system::Pallet::<T>::finalize();
 
     // Initialize current block
-    frame_system::Pallet::<T>::set_block_number(block_number);
+    // set_block_number to parent so that initialize() sees the correct previous block
+    frame_system::Pallet::<T>::set_block_number(block_number - One::one());
     frame_system::Pallet::<T>::initialize(&block_number, &parent_hash, &Default::default());
     // on_initialize() does not run on the genesis block
     if block_number > Zero::zero() {
@@ -391,6 +392,8 @@ fn test_bundle_format_verification() {
                 dest,
                 value,
             }),
+            // stable2512: bijective encoding protection field, None for test extrinsics
+            encoded_call: None,
         }
         .into()
     };

@@ -71,10 +71,7 @@ mod pallet {
     pub struct Pallet<T>(_);
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
-        /// `pallet-rewards` events
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
+    pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
         type Currency: Currency<Self::AccountId>;
 
         /// Number of blocks over which to compute average blockspace usage

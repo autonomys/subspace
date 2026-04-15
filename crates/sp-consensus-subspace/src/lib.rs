@@ -20,8 +20,10 @@ use sp_core::H256;
 use sp_io::hashing;
 use sp_runtime::traits::NumberFor;
 use sp_runtime::{ConsensusEngineId, Justification};
-use sp_runtime_interface::pass_by::PassBy;
-use sp_runtime_interface::{pass_by, runtime_interface};
+use sp_runtime_interface::pass_by::{
+    AllocateAndReturnByCodec, PassFatPointerAndDecode, PassPointerAndReadCopy,
+};
+use sp_runtime_interface::runtime_interface;
 use sp_std::num::NonZeroU32;
 use sp_weights::Weight;
 use subspace_core_primitives::hashes::Blake3Hash;
@@ -366,10 +368,6 @@ impl<RewardAddress> From<&Solution<RewardAddress>> for WrappedSolution {
     }
 }
 
-impl PassBy for WrappedSolution {
-    type PassBy = pass_by::Codec<Self>;
-}
-
 /// Wrapped solution verification parameters for the purposes of runtime interface.
 #[derive(Debug, Encode, Decode)]
 pub struct WrappedVerifySolutionParams<'a>(Cow<'a, VerifySolutionParams>);
@@ -381,10 +379,6 @@ impl<'a> From<&'a VerifySolutionParams> for WrappedVerifySolutionParams<'a> {
     }
 }
 
-impl PassBy for WrappedVerifySolutionParams<'_> {
-    type PassBy = pass_by::Codec<Self>;
-}
-
 /// Wrapped proof of time output for the purposes of runtime interface.
 #[derive(Debug, Encode, Decode)]
 pub struct WrappedPotOutput(PotOutput);
@@ -394,10 +388,6 @@ impl From<PotOutput> for WrappedPotOutput {
     fn from(value: PotOutput) -> Self {
         Self(value)
     }
-}
-
-impl PassBy for WrappedPotOutput {
-    type PassBy = pass_by::Codec<Self>;
 }
 
 #[cfg(feature = "std")]
@@ -454,10 +444,10 @@ pub trait Consensus {
     /// success.
     fn verify_solution(
         &mut self,
-        solution: WrappedSolution,
+        solution: PassFatPointerAndDecode<WrappedSolution>,
         slot: SlotNumber,
-        params: WrappedVerifySolutionParams<'_>,
-    ) -> Result<SolutionRange, String> {
+        params: PassFatPointerAndDecode<WrappedVerifySolutionParams<'_>>,
+    ) -> AllocateAndReturnByCodec<Result<SolutionRange, String>> {
         // TODO: we need to conditional compile for benchmarks here since
         //  benchmark externalities does not provide custom extensions.
         //  Remove this once the issue is resolved: https://github.com/paritytech/polkadot-sdk/issues/137
@@ -512,9 +502,9 @@ pub trait Consensus {
     /// fork of the chain.
     fn is_proof_of_time_valid(
         &mut self,
-        parent_hash: BlockHash,
+        parent_hash: PassPointerAndReadCopy<BlockHash, 32>,
         slot: SlotNumber,
-        proof_of_time: WrappedPotOutput,
+        proof_of_time: PassFatPointerAndDecode<WrappedPotOutput>,
         quick_verification: bool,
     ) -> bool {
         // TODO: we need to conditional compile for benchmarks here since
