@@ -368,7 +368,7 @@ where
             // Explicitly drop piece data early to free memory before downloading
             // remaining pieces in the loop below.
             std::mem::drop(raw_data);
-            
+
             trace!(
                 %next_source_piece_index,
                 ?mapping,
