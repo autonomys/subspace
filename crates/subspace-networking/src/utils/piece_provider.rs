@@ -410,7 +410,7 @@ impl KademliaWrapper {
             })
             .collect::<Vec<_>>();
 
-        closest_peers.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        closest_peers.sort_unstable_by_key(|a| a.0);
         closest_peers
             .into_iter()
             .map(|(_distance, peer_id, addresses)| (peer_id, addresses))

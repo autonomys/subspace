@@ -76,8 +76,7 @@ impl<OS: OffchainStorage> MMRStoreReadOps<NodeOf> for OffchainMmrStorage<OS> {
 
 impl<OS: OffchainStorage> MMRStoreWriteOps<NodeOf> for OffchainMmrStorage<OS> {
     fn append(&mut self, pos: u64, elems: Vec<NodeOf>) -> mmr_lib::Result<()> {
-        let mut current_pos = pos;
-        for elem in elems {
+        for (current_pos, elem) in (pos..).zip(elems) {
             let data = elem.encode();
 
             let canon_key = get_offchain_key(current_pos);
@@ -86,8 +85,6 @@ impl<OS: OffchainStorage> MMRStoreWriteOps<NodeOf> for OffchainMmrStorage<OS> {
                 &canon_key,
                 &data,
             );
-
-            current_pos += 1;
         }
 
         Ok(())

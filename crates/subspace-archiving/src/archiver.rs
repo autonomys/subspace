@@ -487,9 +487,7 @@ impl Archiver {
         }
 
         // Check if there is an excess of data that should be spilled over into the next segment
-        let spill_over = segment_size
-            .checked_sub(RecordedHistorySegment::SIZE)
-            .unwrap_or_default();
+        let spill_over = segment_size.saturating_sub(RecordedHistorySegment::SIZE);
 
         if spill_over > 0 {
             let items = segment.items_mut();

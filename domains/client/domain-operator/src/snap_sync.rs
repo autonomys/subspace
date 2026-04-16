@@ -502,7 +502,7 @@ where
             "Sync peers: {:?}", connected_full_peers
         );
 
-        let active_peers_set = HashSet::from_iter(connected_full_peers.into_iter());
+        let active_peers_set = HashSet::from_iter(connected_full_peers);
 
         if let Some(peer_id) = active_peers_set.difference(tried_peers).next().cloned() {
             tried_peers.insert(peer_id);

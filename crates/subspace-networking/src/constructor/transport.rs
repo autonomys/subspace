@@ -100,17 +100,17 @@ where
         let mut addr_iter = addr.iter();
 
         match addr_iter.next() {
-            Some(Protocol::Ip4(a)) => {
-                if !(self.allow_non_global_addresses || a.is_global()) {
-                    debug!(?a, "Not dialing non global IP address.",);
-                    return Err(TransportError::MultiaddrNotSupported(addr));
-                }
+            Some(Protocol::Ip4(a))
+                if !(self.allow_non_global_addresses || a.is_global()) =>
+            {
+                debug!(?a, "Not dialing non global IP address.",);
+                return Err(TransportError::MultiaddrNotSupported(addr));
             }
-            Some(Protocol::Ip6(a)) => {
-                if !(self.allow_non_global_addresses || a.is_global()) {
-                    debug!(?a, "Not dialing non global IP address.");
-                    return Err(TransportError::MultiaddrNotSupported(addr));
-                }
+            Some(Protocol::Ip6(a))
+                if !(self.allow_non_global_addresses || a.is_global()) =>
+            {
+                debug!(?a, "Not dialing non global IP address.");
+                return Err(TransportError::MultiaddrNotSupported(addr));
             }
             _ => {
                 // TODO: This will not catch DNS records pointing to private addresses

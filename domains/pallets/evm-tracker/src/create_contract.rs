@@ -85,26 +85,20 @@ where
                 pallet_ethereum::Call::transact {
                     transaction: EthereumTransaction::Legacy(transaction),
                     ..
-                } => {
-                    if transaction.action == TransactionAction::Create {
-                        return (true, call_count);
-                    }
+                } if transaction.action == TransactionAction::Create => {
+                    return (true, call_count);
                 }
                 pallet_ethereum::Call::transact {
                     transaction: EthereumTransaction::EIP2930(transaction),
                     ..
-                } => {
-                    if transaction.action == TransactionAction::Create {
-                        return (true, call_count);
-                    }
+                } if transaction.action == TransactionAction::Create => {
+                    return (true, call_count);
                 }
                 pallet_ethereum::Call::transact {
                     transaction: EthereumTransaction::EIP1559(transaction),
                     ..
-                } => {
-                    if transaction.action == TransactionAction::Create {
-                        return (true, call_count);
-                    }
+                } if transaction.action == TransactionAction::Create => {
+                    return (true, call_count);
                 }
                 // Inconclusive, other calls might create contracts.
                 _ => {}

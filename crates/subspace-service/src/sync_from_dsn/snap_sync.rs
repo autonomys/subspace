@@ -569,7 +569,7 @@ where
 
             debug!(?tried_peers, "Sync peers: {}", connected_full_peers.len());
 
-            let active_peers_set = HashSet::from_iter(connected_full_peers.into_iter());
+            let active_peers_set = HashSet::from_iter(connected_full_peers);
 
             if let Some(peer_id) = active_peers_set.difference(&tried_peers).next().cloned() {
                 break peer_id;

@@ -1085,7 +1085,7 @@ mod tests {
             // Construct a future receipt
             let mut future_receipt = next_receipt.clone();
             future_receipt.set_domain_block_number(head_receipt_number + 2);
-            future_receipt.set_consensus_block_number(head_receipt_number as u32 + 2);
+            future_receipt.set_consensus_block_number(head_receipt_number + 2);
             ExecutionInbox::<Test>::insert(
                 (
                     domain_id,
@@ -1199,7 +1199,7 @@ mod tests {
             // Construct a future receipt
             let mut future_receipt = next_receipt.clone();
             future_receipt.set_domain_block_number(head_receipt_number + 1);
-            future_receipt.set_consensus_block_number(head_receipt_number as u32 + 1);
+            future_receipt.set_consensus_block_number(head_receipt_number + 1);
 
             ExecutionInbox::<Test>::insert(
                 (
