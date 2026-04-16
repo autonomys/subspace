@@ -3,10 +3,8 @@
 
 #![feature(
     exact_size_is_empty,
-    impl_trait_in_assoc_type,
     ip,
-    trivial_bounds,
-    try_blocks
+    trivial_bounds
 )]
 #![warn(missing_docs)]
 

@@ -6,7 +6,6 @@
 //!
 //! All of the modules here are crucial for consensus, open each module for specific details.
 
-#![feature(try_blocks)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 

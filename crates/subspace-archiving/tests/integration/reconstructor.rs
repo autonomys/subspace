@@ -1,5 +1,5 @@
 use rand::{Rng, thread_rng};
-use std::assert_matches::assert_matches;
+use std::assert_matches;
 use std::iter;
 use std::num::NonZeroUsize;
 use subspace_archiving::archiver::Archiver;

@@ -2,19 +2,15 @@
 #![no_std]
 #![expect(incomplete_features, reason = "generic_const_exprs")]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
-#![feature(
-    array_windows,
-    const_trait_impl,
-    exact_size_is_empty,
-    generic_const_exprs,
-    get_mut_unchecked,
-    maybe_uninit_fill,
-    maybe_uninit_slice,
-    maybe_uninit_write_slice,
-    portable_simd,
-    step_trait,
-    sync_unsafe_cell,
-    vec_into_raw_parts
+#![feature(const_trait_impl, generic_const_exprs, step_trait)]
+#![cfg_attr(
+    feature = "alloc",
+    feature(get_mut_unchecked, maybe_uninit_fill)
+)]
+#![cfg_attr(any(feature = "alloc", test), feature(portable_simd))]
+#![cfg_attr(
+    feature = "parallel",
+    feature(exact_size_is_empty, sync_unsafe_cell)
 )]
 
 pub mod chia;

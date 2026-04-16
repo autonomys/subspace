@@ -1,16 +1,10 @@
 #![feature(
-    array_windows,
-    assert_matches,
     exact_size_is_empty,
     fmt_helpers_for_derive,
     future_join,
-    impl_trait_in_assoc_type,
-    int_roundings,
-    iter_collect_into,
     never_type,
     trait_alias,
     try_blocks,
-    type_alias_impl_trait,
     type_changing_struct_update
 )]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]

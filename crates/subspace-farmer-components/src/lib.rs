@@ -4,9 +4,6 @@
 
 #![feature(
     const_trait_impl,
-    exact_size_is_empty,
-    int_roundings,
-    iter_collect_into,
     never_type,
     portable_simd,
     try_blocks

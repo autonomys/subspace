@@ -1,10 +1,5 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
-#![feature(
-    impl_trait_in_assoc_type,
-    int_roundings,
-    type_alias_impl_trait,
-    type_changing_struct_update
-)]
+#![feature(type_changing_struct_update)]
 
 pub mod config;
 pub mod dsn;
@@ -1309,6 +1304,7 @@ where
             let transaction_pool = transaction_pool.clone();
             let backend = backend.clone();
 
+            #[allow(clippy::result_large_err)]
             Box::new(move |subscription_executor| {
                 let deps = rpc::FullDeps {
                     client: client.clone(),
@@ -1330,6 +1326,7 @@ where
                 rpc::create_full(deps).map_err(Into::into)
             })
         } else {
+            #[allow(clippy::result_large_err)]
             Box::new(|_| Ok(RpcModule::new(())))
         },
         backend: backend.clone(),

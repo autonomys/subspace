@@ -3,7 +3,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms)]
-#![feature(array_windows, try_blocks)]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;

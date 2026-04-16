@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(assert_matches, portable_simd)]
+#![cfg_attr(test, feature(portable_simd))]
 #![warn(unused_must_use, unsafe_code, unused_variables)]
 
 #[cfg(not(feature = "std"))]

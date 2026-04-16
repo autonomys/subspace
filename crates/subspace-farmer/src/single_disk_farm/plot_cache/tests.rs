@@ -2,7 +2,7 @@ use crate::farm::MaybePieceStoredResult;
 use crate::single_disk_farm::direct_io_file::{DISK_SECTOR_SIZE, DirectIoFile};
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
 use rand::prelude::*;
-use std::assert_matches::assert_matches;
+use std::assert_matches;
 use std::num::NonZeroU64;
 use std::sync::Arc;
 use subspace_core_primitives::pieces::{Piece, PieceIndex, Record};

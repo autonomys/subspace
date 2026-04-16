@@ -2,7 +2,7 @@ use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use rand::{Rng, thread_rng};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use std::assert_matches::assert_matches;
+use std::assert_matches;
 use std::io::Write;
 use std::iter;
 use std::num::NonZeroUsize;

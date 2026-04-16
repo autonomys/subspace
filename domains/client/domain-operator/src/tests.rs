@@ -68,7 +68,7 @@ use sp_state_machine::backend::AsTrieBackend;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
-use std::assert_matches::assert_matches;
+use std::assert_matches;
 use std::collections::{BTreeMap, VecDeque};
 use std::future::IntoFuture;
 use std::sync::Arc;
