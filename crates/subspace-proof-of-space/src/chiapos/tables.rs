@@ -205,61 +205,83 @@ where
                     .filter(move |&&(_position, y)| y.first_k_bits() == first_k_challenge_bits)
             })
             .map(move |&(position, _y)| {
-                let mut proof = [0u8; 64 * K as usize / 8];
-
                 // SAFETY: Internally generated positions that come from the parent table
-                unsafe { self.table_7.position(position) }
-                    .into_iter()
-                    .flat_map(|position| {
-                        // SAFETY: Internally generated positions that come from the parent table
-                        unsafe { self.table_6.position(position) }
-                    })
-                    .flat_map(|position| {
-                        // SAFETY: Internally generated positions that come from the parent table
-                        unsafe { self.table_5.position(position) }
-                    })
-                    .flat_map(|position| {
-                        // SAFETY: Internally generated positions that come from the parent table
-                        unsafe { self.table_4.position(position) }
-                    })
-                    .flat_map(|position| {
-                        // SAFETY: Internally generated positions that come from the parent table
-                        unsafe { self.table_3.position(position) }
-                    })
-                    .flat_map(|position| {
-                        // SAFETY: Internally generated positions that come from the parent table
-                        unsafe { self.table_2.position(position) }
-                    })
-                    .map(|position| {
-                        // X matches position
-                        X::from(u32::from(position))
-                    })
-                    .enumerate()
-                    .for_each(|(offset, x)| {
-                        let x_offset_in_bits = usize::from(K) * offset;
-                        // Collect bytes where bits of `x` will be written
-                        let proof_bytes = &mut proof[x_offset_in_bits / u8::BITS as usize..]
-                            [..(x_offset_in_bits % u8::BITS as usize + usize::from(K))
-                                .div_ceil(u8::BITS as usize)];
+                let table_6_proof_targets = unsafe { self.table_7.position(position) };
 
-                        // Bits of `x` already shifted to the correct location as they will appear
-                        // in `proof`
-                        let x_shifted = u32::from(x)
-                            << (u32::BITS as usize
-                                - (usize::from(K) + x_offset_in_bits % u8::BITS as usize));
-
-                        // Copy `x` bits into proof
-                        x_shifted
-                            .to_be_bytes()
-                            .iter()
-                            .zip(proof_bytes)
-                            .for_each(|(from, to)| {
-                                *to |= from;
-                            });
-                    });
-
-                proof
+                Self::find_proof_internal(
+                    &self.table_2,
+                    &self.table_3,
+                    &self.table_4,
+                    &self.table_5,
+                    &self.table_6,
+                    table_6_proof_targets,
+                )
             })
+    }
+
+    #[cfg(feature = "alloc")]
+    #[inline(always)]
+    fn find_proof_internal(
+        table_2: &PrunedTable<K, 2>,
+        table_3: &PrunedTable<K, 3>,
+        table_4: &PrunedTable<K, 4>,
+        table_5: &PrunedTable<K, 5>,
+        table_6: &PrunedTable<K, 6>,
+        table_6_proof_targets: [Position; 2],
+    ) -> [u8; 64 * K as usize / 8] {
+        let mut proof = [0u8; 64 * K as usize / 8];
+
+        table_6_proof_targets
+            .into_iter()
+            .flat_map(|position| {
+                // SAFETY: Internally generated positions that come from the parent table
+                unsafe { table_6.position(position) }
+            })
+            .flat_map(|position| {
+                // SAFETY: Internally generated positions that come from the parent table
+                unsafe { table_5.position(position) }
+            })
+            .flat_map(|position| {
+                // SAFETY: Internally generated positions that come from the parent table
+                unsafe { table_4.position(position) }
+            })
+            .flat_map(|position| {
+                // SAFETY: Internally generated positions that come from the parent table
+                unsafe { table_3.position(position) }
+            })
+            .flat_map(|position| {
+                // SAFETY: Internally generated positions that come from the parent table
+                unsafe { table_2.position(position) }
+            })
+            .map(|position| {
+                // X matches position
+                X::from(u32::from(position))
+            })
+            .enumerate()
+            .for_each(|(offset, x)| {
+                let x_offset_in_bits = usize::from(K) * offset;
+                // Collect bytes where bits of `x` will be written
+                let proof_bytes = &mut proof[x_offset_in_bits / u8::BITS as usize..]
+                    [..(x_offset_in_bits % u8::BITS as usize + usize::from(K))
+                        .div_ceil(u8::BITS as usize)];
+
+                // Bits of `x` already shifted to the correct location as they will appear
+                // in `proof`
+                let x_shifted = u32::from(x)
+                    << (u32::BITS as usize
+                        - (usize::from(K) + x_offset_in_bits % u8::BITS as usize));
+
+                // Copy `x` bits into proof
+                x_shifted
+                    .to_be_bytes()
+                    .iter()
+                    .zip(proof_bytes)
+                    .for_each(|(from, to)| {
+                        *to |= from;
+                    });
+            });
+
+        proof
     }
 
     /// Access table 7's buckets for testing
