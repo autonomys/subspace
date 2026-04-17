@@ -1,7 +1,7 @@
 //! Verification primitives for Subspace.
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
-#![feature(portable_simd)]
+#![cfg_attr(feature = "kzg", feature(portable_simd))]
 // `generic_const_exprs` is an incomplete feature
 #![allow(incomplete_features)]
 // TODO: This feature is not actually used in this crate, but is added as a workaround for
