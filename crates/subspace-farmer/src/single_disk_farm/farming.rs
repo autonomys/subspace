@@ -265,7 +265,7 @@ where
         global_mutex.lock().await;
 
         let mut problematic_sectors = Vec::new();
-        let result: Result<(), FarmingError> = try {
+        let result = try {
             let start = Instant::now();
             let sectors_metadata = sectors_metadata.read().await;
 
@@ -288,7 +288,8 @@ where
                         read_sector_record_chunks_mode,
                         table_generator: &table_generator,
                     })
-                })?
+                })
+                .map_err(FarmingError::LowLevelAuditing)?
             };
 
             sectors_solutions.sort_by(|a, b| {

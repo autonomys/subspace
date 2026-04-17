@@ -1,5 +1,4 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
-#![feature(type_changing_struct_update)]
 
 pub mod config;
 pub mod dsn;

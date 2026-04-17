@@ -51,8 +51,7 @@ async fn benchmark_bundle_with_evm_tx(
 
     let other_accounts_balance = alice_balance / (tx_to_create as u128 + 2);
 
-    let mut alice_nonce = alice.account_nonce();
-    for account_info in &account_infos {
+    for (alice_nonce, account_info) in (alice.account_nonce()..).zip(&account_infos) {
         let alice_balance_transfer_extrinsic = alice.construct_extrinsic(
             alice_nonce,
             pallet_balances::Call::transfer_allow_death {
@@ -64,7 +63,6 @@ async fn benchmark_bundle_with_evm_tx(
             .send_extrinsic(alice_balance_transfer_extrinsic)
             .await
             .expect("Failed to send extrinsic");
-        alice_nonce += 1;
     }
 
     const TX_TYPES: u32 = 4;

@@ -450,6 +450,7 @@ pub struct MockConsensusNodeRpcConfig {
 }
 
 impl MockConsensusNode {
+    #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
     fn run_with_configuration(
         mut config: Configuration,
         key: Sr25519Keyring,
@@ -656,6 +657,7 @@ impl MockConsensusNode {
     }
 
     /// Run a mock consensus node with finalization depth
+    #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
     pub fn run_with_finalization_depth(
         tokio_handle: tokio::runtime::Handle,
         key: Sr25519Keyring,
@@ -717,6 +719,7 @@ impl MockConsensusNode {
     }
 
     /// Run a mock consensus node with RPC options using the default empty RPC module.
+    #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
     pub fn run_with_rpc_options(
         tokio_handle: tokio::runtime::Handle,
         key: Sr25519Keyring,

@@ -2,10 +2,8 @@
     exact_size_is_empty,
     fmt_helpers_for_derive,
     future_join,
-    never_type,
-    trait_alias,
-    try_blocks,
-    type_changing_struct_update
+    iter_collect_into,
+    try_blocks
 )]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 
