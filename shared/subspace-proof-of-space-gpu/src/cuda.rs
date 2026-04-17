@@ -131,8 +131,7 @@ impl CudaDevice {
             .zip(chunks_scratch_gpu)
             .collect::<Vec<_>>();
 
-        chunks_scratch
-            .sort_unstable_by(|(a_out_index, _), (b_out_index, _)| a_out_index.cmp(b_out_index));
+        chunks_scratch.sort_unstable_by_key(|(a_out_index, _)| *a_out_index);
 
         // We don't need all the proofs
         chunks_scratch.truncate(proof_count.min(Record::NUM_CHUNKS));
