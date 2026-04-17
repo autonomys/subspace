@@ -2,10 +2,9 @@ use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use rand::{Rng, thread_rng};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use std::assert_matches;
 use std::io::Write;
-use std::iter;
 use std::num::NonZeroUsize;
+use std::{assert_matches, iter};
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, SegmentItem};
 use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, GlobalObject};
