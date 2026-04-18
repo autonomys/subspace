@@ -1,7 +1,5 @@
 //! Simple bootstrap node implementation
 
-#![feature(type_changing_struct_update)]
-
 use clap::Parser;
 use futures::FutureExt;
 use futures::channel::oneshot;

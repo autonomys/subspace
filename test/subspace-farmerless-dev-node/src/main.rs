@@ -79,6 +79,7 @@ fn build_runtime() -> tokio::runtime::Runtime {
         .expect("Tokio runtime must build")
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 fn start_consensus_node(
     tokio_handle: tokio::runtime::Handle,
     base_path: PathBuf,

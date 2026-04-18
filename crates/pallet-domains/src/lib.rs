@@ -1,7 +1,7 @@
 //! Pallet Domains
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(array_windows, variant_count)]
+#![cfg_attr(any(feature = "fuzz", test), feature(variant_count))]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;

@@ -21,7 +21,7 @@ use sp_runtime::traits::BlockNumberProvider;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, ValidTransaction,
 };
-use std::assert_matches::assert_matches;
+use std::assert_matches;
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};

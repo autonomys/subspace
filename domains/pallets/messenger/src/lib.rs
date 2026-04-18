@@ -18,7 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms)]
-#![feature(variant_count, if_let_guard)]
+#![cfg_attr(test, feature(variant_count))]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;

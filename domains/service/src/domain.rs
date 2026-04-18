@@ -449,6 +449,7 @@ where
 
         let spawn_essential = task_manager.spawn_essential_handle();
         let rpc_deps = provider.deps(deps)?;
+        #[allow(clippy::result_large_err)]
         Box::new(move |subscription_task_executor| {
             let spawn_essential = spawn_essential.clone();
             provider

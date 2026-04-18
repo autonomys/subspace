@@ -1,5 +1,3 @@
-#![feature(type_changing_struct_update)]
-
 use futures::StreamExt;
 use futures::channel::oneshot;
 use libp2p::gossipsub::Sha256Topic;

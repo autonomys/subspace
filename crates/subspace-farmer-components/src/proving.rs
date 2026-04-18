@@ -259,7 +259,8 @@ where
             );
             let sector_record_chunks = sector_record_chunks_fut
                 .now_or_never()
-                .expect("Sync reader; qed")?;
+                .expect("Sync reader; qed")
+                .map_err(ProvingError::RecordReadingError)?;
 
             let chunk = ScalarBytes::from(
                 sector_record_chunks
@@ -274,7 +275,8 @@ where
                 .map_err(|error| ReadingError::FailedToErasureDecodeRecord {
                     piece_offset,
                     error,
-                })?;
+                })
+                .map_err(ProvingError::RecordReadingError)?;
             drop(sector_record_chunks);
 
             // NOTE: We do not check plot consistency using checksum because it is more
@@ -286,7 +288,8 @@ where
             );
             let record_metadata = record_metadata_fut
                 .now_or_never()
-                .expect("Sync reader; qed")?;
+                .expect("Sync reader; qed")
+                .map_err(ProvingError::RecordReadingError)?;
 
             let proof_of_space = pos_table.find_proof(self.s_bucket.into()).expect(
                 "Quality exists for this s-bucket, otherwise it wouldn't be a winning chunk; qed",

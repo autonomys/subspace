@@ -200,10 +200,9 @@ pub fn progress_to_block(
     n: u64,
     reward_address: <Test as frame_system::Config>::AccountId,
 ) {
-    let mut slot = u64::from(Subspace::current_slot()) + 1;
-    for i in System::block_number() + 1..=n {
+    let start_slot = u64::from(Subspace::current_slot()) + 1;
+    for (slot, i) in (start_slot..).zip(System::block_number() + 1..=n) {
         go_to_block(keypair, i, slot, reward_address);
-        slot += 1;
     }
 }
 

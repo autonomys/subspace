@@ -1,5 +1,3 @@
-#![feature(type_changing_struct_update)]
-
 mod commands;
 
 use clap::Parser;

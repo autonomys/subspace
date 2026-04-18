@@ -1,7 +1,6 @@
 use rand::{Rng, thread_rng};
-use std::assert_matches::assert_matches;
-use std::iter;
 use std::num::NonZeroUsize;
+use std::{assert_matches, iter};
 use subspace_archiving::archiver::Archiver;
 use subspace_archiving::reconstructor::{Reconstructor, ReconstructorError};
 use subspace_core_primitives::objects::BlockObjectMapping;

@@ -1,13 +1,7 @@
 //! Networking functionality of Subspace Network, primarily used for DSN (Distributed Storage
 //! Network).
 
-#![feature(
-    exact_size_is_empty,
-    impl_trait_in_assoc_type,
-    ip,
-    trivial_bounds,
-    try_blocks
-)]
+#![feature(exact_size_is_empty, ip, trivial_bounds)]
 #![warn(missing_docs)]
 
 mod behavior;
