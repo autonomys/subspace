@@ -7826,6 +7826,9 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
     })
     .await
     .unwrap();
+
+    // INVESTIGATION(#3562): force panic to surface captured trace logs in CI.
+    panic!("INVESTIGATION(#3562): intentional panic to dump captured trace logs");
 }
 
 // This test is more unstable on Windows and macOS
