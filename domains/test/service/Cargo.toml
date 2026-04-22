@@ -25,6 +25,7 @@ evm-domain-test-runtime.workspace = true
 fp-account = { workspace = true, features = ["serde"] }
 frame-system.workspace = true
 frame-support.workspace = true
+fs2.workspace = true
 rand.workspace = true
 pallet-transaction-payment.workspace = true
 pallet-transaction-payment-rpc.workspace = true

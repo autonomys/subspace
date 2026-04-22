@@ -499,24 +499,69 @@ where
         );
     }
 
-    /// Take and stop the domain node and delete its database lock file.
+    /// Stop the domain node and wait until the parity-db lock is released, so
+    /// the next call to `Db::open(...)` on the same path can succeed.
     ///
-    /// Stopping and restarting a node can cause weird race conditions, with errors like:
-    /// "The system cannot find the path specified".
-    /// If this happens, try increasing the wait time in this method.
+    /// This replaces a previous fixed 2-second sleep workaround (PR #3526)
+    /// that was insufficient on Windows. The deterministic poll mirrors the
+    /// lock-acquisition that the next node-start performs, so it works on
+    /// every platform: we try to acquire an exclusive lock on the same file
+    /// the next node-start would acquire, which succeeds once the prior
+    /// holder's FD is closed and the OS has released the lock. The lock file
+    /// persists on POSIX and Windows (parity-db releases via fs2 unlock but
+    /// never unlinks), so `Path::exists()` is not the right readiness signal
+    /// — the lock itself is.
     pub async fn stop(self) -> Result<(), std::io::Error> {
+        use fs2::FileExt;
+
         let lock_file_path = self.base_path.path().join("paritydb").join("lock");
         // On Windows, sometimes open files can’t be deleted so `drop` first then delete
         std::mem::drop(self);
 
-        // Give the node time to cleanup, exit, and release the lock file.
-        // TODO: fix the underlying issue or wait for the actual shutdown instead
-        sleep(Duration::from_secs(2)).await;
-
-        // The lock file already being deleted is not a fatal test error, so just log it
-        if let Err(err) = std::fs::remove_file(lock_file_path) {
-            tracing::error!("deleting paritydb lock file failed: {err:?}");
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        let mut acquired = false;
+        while std::time::Instant::now() < deadline {
+            if let Ok(file) = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&lock_file_path)
+                && file.try_lock_exclusive().is_ok()
+            {
+                let _ = FileExt::unlock(&file);
+                drop(file);
+                acquired = true;
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
         }
+
+        if !acquired {
+            tracing::warn!(
+                "stop(): paritydb lock at {} still held after 30s; forcibly removing",
+                lock_file_path.display()
+            );
+            std::fs::remove_file(&lock_file_path).map_err(|err| {
+                tracing::error!(
+                    ?err,
+                    "stop(): failed to remove paritydb lock at {}",
+                    lock_file_path.display()
+                );
+                err
+            })?;
+            // Lock file removed but a holder may still have the FD open;
+            // callers that restart from the same path will surface the
+            // real failure when `Db::open` retries. Return TimedOut so
+            // `.unwrap()` in callers fires loudly rather than hiding a
+            // shutdown that didn't finish.
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!(
+                    "DomainNode::stop(): paritydb lock at {} not released within 30s",
+                    lock_file_path.display()
+                ),
+            ));
+        }
+
         Ok(())
     }
 
