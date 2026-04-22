@@ -6540,7 +6540,12 @@ async fn test_bad_receipt_chain() {
     )
     .await
     .unwrap();
-    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+    // Receipt indexing is async relative to block import; wait for it to land
+    // instead of asserting racily.
+    ferdie
+        .wait_for_receipt(bad_receipt_hash, Duration::from_secs(30))
+        .await
+        .expect("bad receipt should be indexed within 30s");
 
     // Remove the fraud proof from tx pool
     ferdie.clear_tx_pool().await.unwrap();
