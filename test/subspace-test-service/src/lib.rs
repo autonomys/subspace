@@ -986,6 +986,37 @@ impl MockConsensusNode {
             .is_some())
     }
 
+    /// Wait for a specific execution receipt to appear in the consensus state.
+    ///
+    /// Polls by producing blocks with bundles (the same primitive that
+    /// `produce_blocks_until!` uses internally) until
+    /// `does_receipt_exist(receipt_hash)` returns `Ok(true)`, or the timeout
+    /// expires. On timeout, returns `Err`. Tests expecting deterministic
+    /// receipt arrival should use this in place of a bare
+    /// `assert!(ferdie.does_receipt_exist(...).unwrap())`, which races with
+    /// the underlying block-production pipeline.
+    pub async fn wait_for_receipt(
+        &mut self,
+        receipt_hash: BlockHashFor<DomainBlock>,
+        timeout: Duration,
+    ) -> Result<(), Box<dyn Error>> {
+        let deadline = std::time::Instant::now() + timeout;
+        while std::time::Instant::now() < deadline {
+            if self.does_receipt_exist(receipt_hash)? {
+                return Ok(());
+            }
+            // Advance the consensus chain by producing one block with bundles,
+            // then re-check. This mirrors what `produce_blocks_until!` does:
+            // the receipt lands in consensus state via a bundle carried in a
+            // consensus block.
+            self.produce_blocks_with_bundles(1).await?;
+        }
+        Err(
+            format!("wait_for_receipt timed out after {timeout:?} for receipt {receipt_hash:?}")
+                .into(),
+        )
+    }
+
     /// Returns the stake summary of the Domain.
     pub fn get_domain_staking_summary(
         &self,
