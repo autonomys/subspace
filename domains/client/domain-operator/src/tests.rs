@@ -7155,7 +7155,11 @@ async fn test_equivocated_bundle_check() {
 async fn test_xdm_false_invalid_fraud_proof() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
-    let mut builder = sc_cli::LoggerBuilder::new("");
+    // INVESTIGATION(#3562): enable debug on relayer + gossip to trace the
+    // Linux-specific hang where this test times out at 2h CI wall-clock.
+    let mut builder = sc_cli::LoggerBuilder::new(
+        "domain_client_message_relayer=trace,cross_domain_message_gossip=debug,pallet_messenger=debug",
+    );
     builder.with_colors(false);
     let _ = builder.init();
 
