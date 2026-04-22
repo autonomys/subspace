@@ -102,8 +102,6 @@ where
     }
 }
 
-// Only used in tests that are temporarily disabled on macOS due to instability (#3385)
-#[cfg_attr(target_os = "macos", expect(dead_code))]
 fn number_of(consensus_node: &MockConsensusNode, block_hash: Hash) -> u32 {
     consensus_node
         .client
@@ -1832,7 +1830,7 @@ async fn test_domain_block_deriving_from_multiple_bundles() {
 
 // This test is more unstable on macOS
 // TODO: find and fix the source of the instability (#3385)
-#[cfg(not(target_os = "macos"))]
+
 #[tokio::test(flavor = "multi_thread")]
 async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block() {
     use sp_domains::bundle::Bundle;
@@ -6449,7 +6447,7 @@ async fn test_skip_empty_bundle_production() {
 
 // This test is more unstable on macOS and windows
 // TODO: find and fix the source of the instability (#3385)
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+
 #[tokio::test(flavor = "multi_thread")]
 async fn test_bad_receipt_chain() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -8204,7 +8202,7 @@ async fn test_current_block_number_used_as_new_account_nonce() {
 // This test is unstable on Windows, it likely contains a filesystem race condition between stopping
 // the node `bob`, and restarting that node with the same data directory.
 #[tokio::test(flavor = "multi_thread")]
-#[cfg(not(target_os = "windows"))]
+
 async fn test_domain_node_starting_check() {
     use futures::FutureExt;
     let directory = TempDir::new().expect("Must be able to create temporary directory");
