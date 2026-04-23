@@ -7770,10 +7770,11 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
         .expect("Failed to construct and send extrinsic");
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
-    // INVESTIGATION(#3562): wrap each phase in a timeout so a hang surfaces
-    // captured trace logs (via panic) before CI's job-level 2h cancellation
-    // kills the process without flushing stderr.
-    let phase_timeout = std::time::Duration::from_secs(300);
+    // INVESTIGATION(#3562): wrap each phase in a tight timeout so a hang
+    // surfaces captured trace logs (via panic) before CI's job-level 2h
+    // cancellation kills the process without flushing stderr. 90s is tight
+    // vs normal ~60s phase, so any hint of slowness panics with logs.
+    let phase_timeout = std::time::Duration::from_secs(90);
 
     // Wait until a bundle that contains the XDM
     let mut maybe_opaque_bundle = None;
