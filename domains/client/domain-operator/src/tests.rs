@@ -56,6 +56,8 @@ use sp_domains_fraud_proof::fraud_proof::{
     InvalidExtrinsicsRootProof, InvalidTransfersProof,
 };
 use sp_messenger::MessengerApi;
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+use sp_messenger::RelayerApi;
 use sp_messenger::messages::{CrossDomainMessage, Proof};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
