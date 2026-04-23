@@ -7770,27 +7770,36 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
         .expect("Failed to construct and send extrinsic");
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
-    // Wait until a bundle that cantains the XDM
+    // INVESTIGATION(#3562): wrap each phase in a timeout so a hang surfaces
+    // captured trace logs (via panic) before CI's job-level 2h cancellation
+    // kills the process without flushing stderr.
+    let phase_timeout = std::time::Duration::from_secs(300);
+
+    // Wait until a bundle that contains the XDM
     let mut maybe_opaque_bundle = None;
-    produce_blocks_until!(ferdie, alice, {
-        let alice_best_hash = alice.client.info().best_hash;
-        let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-        for tx in opaque_bundle.extrinsics().iter() {
-            if alice
-                .client
-                .runtime_api()
-                .extract_xdm_mmr_proof(alice_best_hash, tx)
-                .unwrap()
-                .is_some()
-            {
-                maybe_opaque_bundle.replace(opaque_bundle);
-                break;
+    tokio::time::timeout(phase_timeout, async {
+        produce_blocks_until!(ferdie, alice, {
+            let alice_best_hash = alice.client.info().best_hash;
+            let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+            for tx in opaque_bundle.extrinsics().iter() {
+                if alice
+                    .client
+                    .runtime_api()
+                    .extract_xdm_mmr_proof(alice_best_hash, tx)
+                    .unwrap()
+                    .is_some()
+                {
+                    maybe_opaque_bundle.replace(opaque_bundle);
+                    break;
+                }
             }
-        }
-        maybe_opaque_bundle.is_some()
+            maybe_opaque_bundle.is_some()
+        })
+        .await
+        .unwrap();
     })
     .await
-    .unwrap();
+    .expect("INVESTIGATION(#3562): PHASE 1 HANG — waiting for bundle containing XDM");
     let opaque_bundle = maybe_opaque_bundle.unwrap();
 
     // Remove the consensus chain from EVM domain's channel allowlist
@@ -7817,17 +7826,22 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
     // The XDM should be failed to executed and the XDM response should return the fund
     // to the sender (after XDM fees deducted) while the receiver's balance unchanged
     let ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
-    produce_blocks_until!(ferdie, alice, {
-        let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
-        let post_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+    tokio::time::timeout(phase_timeout, async {
+        produce_blocks_until!(ferdie, alice, {
+            let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+            let post_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
 
-        post_alice_free_balance == pre_alice_free_balance
-            && post_ferdie_free_balance == ferdie_free_balance + transfer_amount
+            post_alice_free_balance == pre_alice_free_balance
+                && post_ferdie_free_balance == ferdie_free_balance + transfer_amount
+        })
+        .await
+        .unwrap();
     })
     .await
-    .unwrap();
+    .expect("INVESTIGATION(#3562): PHASE 2 HANG — waiting for refund XDM");
 
-    // INVESTIGATION(#3562): force panic to surface captured trace logs in CI.
+    // INVESTIGATION(#3562): force panic at end to surface captured trace logs
+    // on successful runs too.
     panic!("INVESTIGATION(#3562): intentional panic to dump captured trace logs");
 }
 
