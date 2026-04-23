@@ -7722,10 +7722,17 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_initiated() {
 async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
-    // INVESTIGATION(#3562): enable debug on relayer + gossip to trace the
-    // Linux-specific hang where this test times out at 2h CI wall-clock.
+    // INVESTIGATION(#3562): enable debug on relayer + gossip + transporter +
+    // block author to trace the Linux-specific hang. iter 7 showed Phase 1
+    // waits forever because consensus outbox never gets nonce 1 (transfer
+    // never lands in outbox). iter 8 adds pallet_transporter + basic_authorship
+    // logs to see if transfer executes and is included in a block.
     let mut builder = sc_cli::LoggerBuilder::new(
-        "domain_client_message_relayer=trace,cross_domain_message_gossip=debug,pallet_messenger=debug",
+        "domain_client_message_relayer=trace,\
+         cross_domain_message_gossip=debug,\
+         pallet_messenger=debug,\
+         pallet_transporter=debug,\
+         sc_basic_authorship=debug",
     );
     builder.with_colors(false);
     let _ = builder.init();
@@ -7752,12 +7759,27 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
+    // INVESTIGATION(#3562): log open_xdm_channel duration — iter 7 showed this
+    // takes ~65s on Linux CI due to BadProof rejections during handshake.
+    let open_t0 = std::time::Instant::now();
     // Open XDM channel between the consensus chain and the EVM domain
     open_xdm_channel(&mut ferdie, &mut alice).await;
+    tracing::error!(
+        "INVESTIGATION(#3562): open_xdm_channel completed in {:?}",
+        open_t0.elapsed()
+    );
+
+    // INVESTIGATION(#3562): log ferdie's balance and channel-state pre-transfer.
+    let pre_transfer_ferdie_balance = ferdie.free_balance(ferdie.key.to_account_id());
+    tracing::error!(
+        "INVESTIGATION(#3562): pre-transfer ferdie balance = {}",
+        pre_transfer_ferdie_balance
+    );
 
     // Transfer balance through XDM
     let transfer_amount = 1234567890987654321;
     let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    let transfer_submit_t0 = std::time::Instant::now();
     ferdie
         .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
             dst_location: pallet_transporter::Location {
@@ -7768,7 +7790,46 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
         })
         .await
         .expect("Failed to construct and send extrinsic");
+    tracing::error!(
+        "INVESTIGATION(#3562): transfer extrinsic submitted to ferdie txpool in {:?}",
+        transfer_submit_t0.elapsed()
+    );
     produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // INVESTIGATION(#3562): verify transfer actually reached consensus outbox
+    // before starting Phase 1. iter 7 showed Phase 1 hangs because relayer
+    // queries outbox_from: 1 and always gets 0 messages — meaning nonce 1 is
+    // missing. Check directly via runtime API. Wait up to 15s, then panic.
+    tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        loop {
+            let best = ferdie.client.info().best_hash;
+            let outbox_nonce = ferdie
+                .client
+                .runtime_api()
+                .first_outbox_message_nonce_to_relay(
+                    best,
+                    ChainId::Domain(EVM_DOMAIN_ID),
+                    ChannelId::zero(),
+                    sp_messenger::messages::Nonce::from(1u32),
+                )
+                .unwrap();
+            let post_ferdie_balance = ferdie.free_balance(ferdie.key.to_account_id());
+            tracing::error!(
+                "INVESTIGATION(#3562): post-transfer check: best_hash={:?}, \
+                 outbox nonce-to-relay from 1 = {:?}, ferdie balance = {} (delta = {})",
+                best,
+                outbox_nonce,
+                post_ferdie_balance,
+                pre_transfer_ferdie_balance as i128 - post_ferdie_balance as i128,
+            );
+            if outbox_nonce.is_some() {
+                break;
+            }
+            produce_blocks!(ferdie, alice, 1).await.unwrap();
+        }
+    })
+    .await
+    .expect("INVESTIGATION(#3562): PRE-PHASE1 HANG — consensus outbox never got nonce 1 (transfer did not populate outbox)");
 
     // INVESTIGATION(#3562): wrap each phase in a tight timeout so a hang
     // surfaces captured trace logs (via panic) before CI's job-level 2h
