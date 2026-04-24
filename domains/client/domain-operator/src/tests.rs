@@ -7877,8 +7877,7 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
     tokio::time::timeout(phase_timeout, async {
         produce_blocks_until!(ferdie, alice, {
             let alice_best_hash = alice.client.info().best_hash;
-            let (_slot, opaque_bundle) =
-                ferdie.produce_slot_and_wait_for_bundle_submission().await;
+            let (_slot, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
             phase1_iter += 1;
 
             let ready_count = alice.operator.transaction_pool.ready().count();
@@ -7899,7 +7898,7 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
                 }
             }
             // only log every 5th iteration to avoid flooding
-            if phase1_iter % 5 == 0 || bundle_has_xdm {
+            if phase1_iter.is_multiple_of(5) || bundle_has_xdm {
                 tracing::error!(
                     "INVESTIGATION(#3562): phase1 iter={} alice_best={:?} \
                      pool_ready={} pool_status={:?} bundle_ext={} bundle_has_xdm={}",
