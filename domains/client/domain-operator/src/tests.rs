@@ -7798,16 +7798,26 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
     );
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
-    // INVESTIGATION(#3562): verify transfer actually reached consensus outbox
-    // before starting Phase 1. iter 7 showed Phase 1 hangs because relayer
-    // queries outbox_from: 1 and always gets 0 messages — meaning nonce 1 is
-    // missing. Check directly via runtime API. Wait up to 15s, then panic.
+    // INVESTIGATION(#3562): iter 8 found the transfer LANDS in consensus outbox
+    // at nonce 0 (not 1) because consensus's Channel[Domain, 0].next_outbox_nonce
+    // was 0 at transfer time — consensus had only received a ChannelOpen, whose
+    // ack lives in InboxResponses, not Outbox. Iter 9 probes from nonce 0 AND
+    // from_nonce=1, plus the inbox-response state, so we can distinguish:
+    //   (A) transfer missing → outbox 0 = None
+    //   (B) transfer present but stuck at relayer stage (Phase 1 still hangs)
     tokio::time::timeout(std::time::Duration::from_secs(15), async {
         loop {
             let best = ferdie.client.info().best_hash;
-            let outbox_nonce = ferdie
-                .client
-                .runtime_api()
+            let api = ferdie.client.runtime_api();
+            let outbox_from_0 = api
+                .first_outbox_message_nonce_to_relay(
+                    best,
+                    ChainId::Domain(EVM_DOMAIN_ID),
+                    ChannelId::zero(),
+                    sp_messenger::messages::Nonce::from(0u32),
+                )
+                .unwrap();
+            let outbox_from_1 = api
                 .first_outbox_message_nonce_to_relay(
                     best,
                     ChainId::Domain(EVM_DOMAIN_ID),
@@ -7815,23 +7825,43 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
                     sp_messenger::messages::Nonce::from(1u32),
                 )
                 .unwrap();
+            let inbox_resp_from_0 = api
+                .first_inbox_message_response_nonce_to_relay(
+                    best,
+                    ChainId::Domain(EVM_DOMAIN_ID),
+                    ChannelId::zero(),
+                    sp_messenger::messages::Nonce::from(0u32),
+                )
+                .unwrap();
             let post_ferdie_balance = ferdie.free_balance(ferdie.key.to_account_id());
             tracing::error!(
                 "INVESTIGATION(#3562): post-transfer check: best_hash={:?}, \
-                 outbox nonce-to-relay from 1 = {:?}, ferdie balance = {} (delta = {})",
+                 outbox[from 0]={:?}, outbox[from 1]={:?}, inbox_resp[from 0]={:?}, \
+                 ferdie balance = {} (delta = {})",
                 best,
-                outbox_nonce,
+                outbox_from_0,
+                outbox_from_1,
+                inbox_resp_from_0,
                 post_ferdie_balance,
                 pre_transfer_ferdie_balance as i128 - post_ferdie_balance as i128,
             );
-            if outbox_nonce.is_some() {
+            // accept nonce >= 1 as "transfer entry" since channel-open exchange
+            // uses InboxResponses (not Outbox) for acks.
+            if outbox_from_1.is_some() {
+                break;
+            }
+            // if transfer landed at nonce 0, also accept — next-outbox-nonce may
+            // be 0 due to channel-open exchange not populating consensus outbox.
+            if outbox_from_0.is_some()
+                && post_ferdie_balance < pre_transfer_ferdie_balance - transfer_amount
+            {
                 break;
             }
             produce_blocks!(ferdie, alice, 1).await.unwrap();
         }
     })
     .await
-    .expect("INVESTIGATION(#3562): PRE-PHASE1 HANG — consensus outbox never got nonce 1 (transfer did not populate outbox)");
+    .expect("INVESTIGATION(#3562): PRE-PHASE1 HANG — consensus outbox never got transfer nonce (transfer did not populate outbox)");
 
     // INVESTIGATION(#3562): wrap each phase in a tight timeout so a hang
     // surfaces captured trace logs (via panic) before CI's job-level 2h
