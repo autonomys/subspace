@@ -7734,7 +7734,9 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
          cross_domain_message_gossip=debug,\
          pallet_messenger=debug,\
          pallet_transporter=debug,\
-         sc_basic_authorship=debug",
+         sc_basic_authorship=debug,\
+         sc_transaction_pool=debug,\
+         substrate_transaction_pool=debug",
     );
     builder.with_colors(false);
     let _ = builder.init();
