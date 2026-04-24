@@ -7962,9 +7962,10 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
     .await
     .expect("INVESTIGATION(#3562): PHASE 2 HANG — waiting for refund XDM");
 
-    // INVESTIGATION(#3562): force panic at end to surface captured trace logs
-    // on successful runs too.
-    panic!("INVESTIGATION(#3562): intentional panic to dump captured trace logs");
+    // INVESTIGATION(#3562): iter 13 Phase 1 + Phase 2 both succeeded. Removing
+    // the intentional panic so iter 14 can confirm the test is actually green
+    // with the current diagnostic-enabled config. If iter 14 passes too, we
+    // have two consecutive runs of stable behavior on Linux CI.
 }
 
 // This test is more unstable on Windows and macOS
