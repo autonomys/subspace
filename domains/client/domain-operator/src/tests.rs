@@ -7729,14 +7729,17 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
     // waits forever because consensus outbox never gets nonce 1 (transfer
     // never lands in outbox). iter 8 adds pallet_transporter + basic_authorship
     // logs to see if transfer executes and is included in a block.
+    // iter 12: polkadot-sdk txpool uses LOG_TARGET="txpool" (not module path).
+    // sc_transaction_pool=debug never matched. Use txpool=trace so we see
+    // accept/reject/prune decisions including validated_pool's "Removed invalid
+    // transaction" logs.
     let mut builder = sc_cli::LoggerBuilder::new(
         "domain_client_message_relayer=trace,\
          cross_domain_message_gossip=debug,\
          pallet_messenger=debug,\
          pallet_transporter=debug,\
          sc_basic_authorship=debug,\
-         sc_transaction_pool=debug,\
-         substrate_transaction_pool=debug",
+         txpool=trace",
     );
     builder.with_colors(false);
     let _ = builder.init();
