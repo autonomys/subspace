@@ -7863,18 +7863,28 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
     .await
     .expect("INVESTIGATION(#3562): PRE-PHASE1 HANG — consensus outbox never got transfer nonce (transfer did not populate outbox)");
 
-    // INVESTIGATION(#3562): wrap each phase in a tight timeout so a hang
-    // surfaces captured trace logs (via panic) before CI's job-level 2h
-    // cancellation kills the process without flushing stderr. 90s is tight
-    // vs normal ~60s phase, so any hint of slowness panics with logs.
-    let phase_timeout = std::time::Duration::from_secs(90);
+    // INVESTIGATION(#3562): 30s Phase 1 timeout (was 90s) so CI surfaces the
+    // hang faster. Log alice's txpool state + bundle inspection at each
+    // iteration — iter 9 confirmed transfer XDM reaches alice's domain txpool
+    // at block 216, but alice's bundles stay at extrinsics: 0. Hypothesis:
+    // the XDM in pool has a stale MMR proof relative to alice's advancing
+    // best_hash, causing bundle proposer to skip it.
+    let phase_timeout = std::time::Duration::from_secs(30);
 
     // Wait until a bundle that contains the XDM
     let mut maybe_opaque_bundle = None;
+    let mut phase1_iter = 0u64;
     tokio::time::timeout(phase_timeout, async {
         produce_blocks_until!(ferdie, alice, {
             let alice_best_hash = alice.client.info().best_hash;
-            let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+            let (_slot, opaque_bundle) =
+                ferdie.produce_slot_and_wait_for_bundle_submission().await;
+            phase1_iter += 1;
+
+            let ready_count = alice.operator.transaction_pool.ready().count();
+            let pool_status = alice.operator.transaction_pool.status();
+            let bundle_ext_count = opaque_bundle.extrinsics().len();
+            let mut bundle_has_xdm = false;
             for tx in opaque_bundle.extrinsics().iter() {
                 if alice
                     .client
@@ -7884,8 +7894,22 @@ async fn test_xdm_channel_allowlist_removed_after_xdm_req_relaying() {
                     .is_some()
                 {
                     maybe_opaque_bundle.replace(opaque_bundle);
+                    bundle_has_xdm = true;
                     break;
                 }
+            }
+            // only log every 5th iteration to avoid flooding
+            if phase1_iter % 5 == 0 || bundle_has_xdm {
+                tracing::error!(
+                    "INVESTIGATION(#3562): phase1 iter={} alice_best={:?} \
+                     pool_ready={} pool_status={:?} bundle_ext={} bundle_has_xdm={}",
+                    phase1_iter,
+                    alice_best_hash,
+                    ready_count,
+                    pool_status,
+                    bundle_ext_count,
+                    bundle_has_xdm,
+                );
             }
             maybe_opaque_bundle.is_some()
         })
