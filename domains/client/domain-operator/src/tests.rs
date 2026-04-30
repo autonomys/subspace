@@ -8949,3 +8949,85 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
         "Receiver should get exactly the transfer amount (no gas deducted)"
     );
 }
+
+// ===========================================================================
+// Fraud-proof generation-order tests (issue #1892)
+//
+// Pin the priority order in `DomainBlockProcessor::generate_fraud_proof()`.
+// Each test corrupts a single ER in the requested fields and asserts the
+// matching `FraudProofVariant` fires — confirming higher-priority mismatches
+// win when multiple fields are simultaneously bad.
+// ===========================================================================
+
+#[derive(Default, Clone, Copy)]
+struct BadFieldSet {
+    /// Priority 1: flip an `inboxed_bundles[i].bundle` validity marker.
+    bundle: bool,
+    /// Priority 2: zero out `domain_block_extrinsic_root`.
+    extrinsics_root: bool,
+    /// Priority 3: zero out `execution_trace[0]`. Naturally cascades to
+    /// `final_state_root` and therefore `domain_block_hash`.
+    state_transition: bool,
+    /// Priority 4: zero out `block_fees`.
+    block_fees: bool,
+    /// Priority 5: zero out `transfers`.
+    transfers: bool,
+    /// Priority 6: zero out `domain_block_hash`.
+    block_hash: bool,
+}
+
+fn corrupt_er(opaque_bundle: &mut OpaqueBundleOf<Runtime>, fields: BadFieldSet) {
+    let ExecutionReceiptMutRef::V0(receipt) = opaque_bundle.execution_receipt_as_mut();
+    if fields.bundle {
+        assert!(
+            !receipt.inboxed_bundles.is_empty(),
+            "corrupt_er(bundle) requires at least one inboxed bundle on the receipt"
+        );
+        receipt.inboxed_bundles[0].bundle = BundleValidity::Valid(H256::random());
+    }
+    if fields.extrinsics_root {
+        receipt.domain_block_extrinsic_root = Default::default();
+    }
+    if fields.state_transition {
+        assert!(
+            !receipt.execution_trace.is_empty(),
+            "corrupt_er(state_transition) requires non-empty execution_trace"
+        );
+        receipt.execution_trace[0] = Default::default();
+        // Keep execution_trace_root consistent with the mutated trace so
+        // the receipt's internal hash invariants hold; without this, FP
+        // generation can hang on inconsistency rather than report the
+        // intended state-transition mismatch.
+        receipt.execution_trace_root = {
+            let trace: Vec<_> = receipt
+                .execution_trace
+                .iter()
+                .map(|t| t.encode().try_into().unwrap())
+                .collect();
+            MerkleTree::from_leaves(trace.as_slice())
+                .root()
+                .unwrap()
+                .into()
+        };
+        receipt.final_state_root = *receipt.execution_trace.last().unwrap();
+    }
+    if fields.block_fees {
+        // Real block_fees may already be Default for empty blocks;
+        // poke a specific field to a concrete non-default value so the
+        // mismatch is unconditional.
+        receipt.block_fees.consensus_storage_fee = 12345;
+    }
+    if fields.transfers {
+        // Real transfers stay Default for intra-domain blocks; mutate
+        // to a concrete cross-chain value so the mismatch is unconditional.
+        receipt.transfers = Transfers {
+            transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
+            transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * AI3)]),
+            rejected_transfers_claimed: Default::default(),
+            transfers_rejected: Default::default(),
+        };
+    }
+    if fields.block_hash {
+        receipt.domain_block_hash = Default::default();
+    }
+}
