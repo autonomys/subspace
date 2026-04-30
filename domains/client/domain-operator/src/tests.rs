@@ -8961,12 +8961,16 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
 
 #[derive(Default, Clone, Copy)]
 struct BadFieldSet {
-    /// Priority 1: flip an `inboxed_bundles[i].bundle` validity marker.
+    /// Priority 1: rewrite `inboxed_bundles[0].bundle` to `Valid(random)` —
+    /// honest operator computed `Valid(real_digest)`, so digests differ.
     bundle: bool,
     /// Priority 2: zero out `domain_block_extrinsic_root`.
     extrinsics_root: bool,
-    /// Priority 3: zero out `execution_trace[0]`. Naturally cascades to
-    /// `final_state_root` and therefore `domain_block_hash`.
+    /// Priority 3: zero out `execution_trace[0]`. Helper rebuilds
+    /// `execution_trace_root` and re-derives `final_state_root =
+    /// execution_trace.last()`. Mutating index 0 leaves `last()` unchanged,
+    /// so this does NOT auto-cascade to `domain_block_hash` — set
+    /// `block_hash: true` explicitly when also invalidating priority 6.
     state_transition: bool,
     /// Priority 4: zero out `block_fees`.
     block_fees: bool,
@@ -8992,6 +8996,13 @@ fn corrupt_er(opaque_bundle: &mut OpaqueBundleOf<Runtime>, fields: BadFieldSet) 
         assert!(
             !receipt.execution_trace.is_empty(),
             "corrupt_er(state_transition) requires non-empty execution_trace"
+        );
+        // Guard: zeroing an already-zero entry would silently no-op and
+        // leave priority-3 detection to fall through to the next field.
+        assert_ne!(
+            receipt.execution_trace[0],
+            Default::default(),
+            "execution_trace[0] is already zero — mutation is a no-op"
         );
         receipt.execution_trace[0] = Default::default();
         // Keep execution_trace_root consistent with the mutated trace so
@@ -9177,9 +9188,8 @@ async fn test_fp_priority_5_transfers_wins() {
         )
     };
 
-    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        matches!(fp.proof, FraudProofVariant::InvalidTransfers(_))
-    });
+    let wait_for_fraud_proof_fut = ferdie
+        .wait_for_fraud_proof(move |fp| matches!(fp.proof, FraudProofVariant::InvalidTransfers(_)));
 
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -9264,9 +9274,8 @@ async fn test_fp_priority_4_block_fees_wins() {
         )
     };
 
-    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        matches!(fp.proof, FraudProofVariant::InvalidBlockFees(_))
-    });
+    let wait_for_fraud_proof_fut = ferdie
+        .wait_for_fraud_proof(move |fp| matches!(fp.proof, FraudProofVariant::InvalidBlockFees(_)));
 
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
@@ -9530,11 +9539,11 @@ async fn test_fp_priority_1_invalid_bundle_wins() {
         )
     };
 
-    // Bundle marker flipped invalid → valid → operator's
-    // `find_inboxed_bundles_mismatch` produces a `ValidBundle` proof.
-    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        matches!(fp.proof, FraudProofVariant::ValidBundle(_))
-    });
+    // Bundle digest changed Valid(real) → Valid(random); operator's
+    // `find_inboxed_bundles_mismatch` produces a `ValidBundle` proof
+    // (mismatched digest on a bundle both sides agree is valid).
+    let wait_for_fraud_proof_fut = ferdie
+        .wait_for_fraud_proof(move |fp| matches!(fp.proof, FraudProofVariant::ValidBundle(_)));
 
     produce_block_with!(
         ferdie.produce_block_with_slot_at(
