@@ -9466,3 +9466,94 @@ async fn test_fp_priority_2_extrinsics_root_wins() {
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
     assert!(!timed_out);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fp_priority_1_invalid_bundle_wins() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+
+    alice
+        .construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
+            dest: Bob.to_account_id(),
+            value: 1,
+        })
+        .await
+        .expect("Failed to send extrinsic");
+
+    let (slot, _target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
+        corrupt_er(
+            &mut opaque_bundle,
+            BadFieldSet {
+                bundle: true,
+                extrinsics_root: true,
+                state_transition: true,
+                block_fees: true,
+                transfers: true,
+                block_hash: true,
+            },
+        );
+        opaque_bundle.set_signature(
+            Sr25519Keyring::Alice
+                .pair()
+                .sign(opaque_bundle.sealed_header().pre_hash().as_ref())
+                .into(),
+        );
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(&ferdie, opaque_bundle),
+        )
+    };
+
+    // Bundle marker flipped invalid → valid → operator's
+    // `find_inboxed_bundles_mismatch` produces a `ValidBundle` proof.
+    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
+        matches!(fp.proof, FraudProofVariant::ValidBundle(_))
+    });
+
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+
+    let timed_out = tokio::time::timeout(TIMEOUT, wait_for_fraud_proof_fut)
+        .await
+        .inspect_err(|_| error!("fraud proof was not created before the timeout"))
+        .is_err();
+
+    ferdie.produce_blocks(1).await.unwrap();
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(!timed_out);
+}
