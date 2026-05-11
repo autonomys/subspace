@@ -43,7 +43,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@4bd727d5619dc6fa323b1e76c3aa5dca94f5ec6d # v0.2.19
+        uses: Jimver/cuda-toolkit@3d45d157f327c09c04b50ee6ccdea2d9d017ec76 # v0.2.35
         with:
           cuda: '12.4.1'
           method: network
