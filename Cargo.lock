@@ -2759,7 +2759,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ab67060fc6b8ef687992d439ca0fa36e7ed17e9a0b16b25b601e8757df720de"
 dependencies = [
  "data-encoding",
- "syn 2.0.117",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -2890,11 +2890,9 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
 dependencies = [
- "convert_case 0.6.0",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
- "unicode-xid",
 ]
 
 [[package]]
@@ -11411,7 +11409,7 @@ name = "sc-proof-of-time"
 version = "0.1.0"
 dependencies = [
  "core_affinity",
- "derive_more 1.0.0",
+ "derive_more 2.1.1",
  "futures",
  "parity-scale-codec",
  "parking_lot 0.12.5",
@@ -11662,7 +11660,7 @@ version = "0.1.0"
 dependencies = [
  "async-channel 1.9.0",
  "async-trait",
- "derive_more 1.0.0",
+ "derive_more 2.1.1",
  "futures",
  "parity-scale-codec",
  "parking_lot 0.12.5",
@@ -13954,7 +13952,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "bytes",
- "derive_more 1.0.0",
+ "derive_more 2.1.1",
  "hex",
  "num-traits",
  "parity-scale-codec",
@@ -14044,7 +14042,7 @@ dependencies = [
  "bytesize",
  "clap",
  "criterion",
- "derive_more 1.0.0",
+ "derive_more 2.1.1",
  "event-listener 5.4.1",
  "event-listener-primitives",
  "fs4 0.9.1",
@@ -14183,7 +14181,7 @@ name = "subspace-kzg"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "derive_more 1.0.0",
+ "derive_more 2.1.1",
  "kzg",
  "parking_lot 0.12.5",
  "rand 0.8.5",
@@ -14281,7 +14279,7 @@ dependencies = [
  "backoff",
  "bytes",
  "clap",
- "derive_more 1.0.0",
+ "derive_more 2.1.1",
  "event-listener-primitives",
  "fs2",
  "futures",
@@ -14399,7 +14397,7 @@ dependencies = [
  "blake3",
  "chacha20",
  "criterion",
- "derive_more 1.0.0",
+ "derive_more 2.1.1",
  "hex",
  "rayon",
  "seq-macro",

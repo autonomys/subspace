@@ -59,7 +59,7 @@ cpufeatures = "0.2.17"
 criterion = { version = "0.5.1", default-features = false }
 cross-domain-message-gossip = { version = "0.1.0", path = "domains/client/cross-domain-message-gossip" }
 cumulus-primitives-proof-size-hostfunction = { git = "https://github.com/subspace/polkadot-sdk", rev = "22ebae7f5d86a59f8259f562e3445dd2a4ab961b", default-features = false }
-derive_more = { version = "1.0.0", default-features = false }
+derive_more = { version = "2.1.1", default-features = false }
 domain-block-builder = { version = "0.1.0", path = "domains/client/block-builder", default-features = false }
 domain-block-preprocessor = { version = "0.1.0", path = "domains/client/block-preprocessor", default-features = false }
 domain-check-weight = { version = "0.1.0", path = "domains/pallets/domain-check-weight", default-features = false }
