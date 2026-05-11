@@ -3035,7 +3035,7 @@ name = "domain-block-builder"
 version = "0.1.0"
 dependencies = [
  "hash-db",
- "hex-literal",
+ "hex-literal 1.1.0",
  "parity-scale-codec",
  "sc-chain-spec",
  "sc-client-api",
@@ -3408,7 +3408,7 @@ dependencies = [
  "ethereum",
  "frame-support",
  "frame-system",
- "hex-literal",
+ "hex-literal 1.1.0",
  "libsecp256k1",
  "pallet-evm",
  "pallet-utility",
@@ -5259,6 +5259,12 @@ name = "hex-literal"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
+
+[[package]]
+name = "hex-literal"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e712f64ec3850b98572bffac52e2c6f282b29fe6c5fa6d42334b30be438d95c1"
 
 [[package]]
 name = "hex_fmt"
@@ -8129,7 +8135,7 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
- "hex-literal",
+ "hex-literal 1.1.0",
  "log",
  "pallet-balances",
  "pallet-block-fees",
@@ -8195,7 +8201,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "hash-db",
- "hex-literal",
+ "hex-literal 0.4.1",
  "impl-trait-for-tuples",
  "log",
  "parity-scale-codec",
@@ -9125,7 +9131,7 @@ source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f
 dependencies = [
  "bitvec",
  "bounded-collections",
- "hex-literal",
+ "hex-literal 0.4.1",
  "log",
  "parity-scale-codec",
  "polkadot-core-primitives",
@@ -13052,7 +13058,7 @@ dependencies = [
  "domain-runtime-primitives",
  "frame-support",
  "hash-db",
- "hex-literal",
+ "hex-literal 1.1.0",
  "memory-db",
  "num-traits",
  "parity-scale-codec",
@@ -13757,7 +13763,7 @@ dependencies = [
  "derive-where",
  "environmental",
  "frame-support",
- "hex-literal",
+ "hex-literal 0.4.1",
  "impl-trait-for-tuples",
  "parity-scale-codec",
  "scale-info",
@@ -14212,7 +14218,7 @@ dependencies = [
  "frame-system",
  "frame-system-rpc-runtime-api",
  "futures",
- "hex-literal",
+ "hex-literal 1.1.0",
  "log",
  "mimalloc",
  "pallet-domains",
@@ -14329,7 +14335,7 @@ dependencies = [
  "frame-support",
  "futures",
  "hex",
- "hex-literal",
+ "hex-literal 1.1.0",
  "mimalloc",
  "parity-scale-codec",
  "prometheus-client",
