@@ -4361,7 +4361,7 @@ dependencies = [
  "environmental",
  "evm",
  "frame-support",
- "num_enum 0.7.6",
+ "num_enum",
  "parity-scale-codec",
  "scale-info",
  "serde",
@@ -7730,33 +7730,12 @@ dependencies = [
 
 [[package]]
 name = "num_enum"
-version = "0.5.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f646caf906c20226733ed5b1374287eb97e3c2a5c227ce668c1f2ce20ae57c9"
-dependencies = [
- "num_enum_derive 0.5.11",
-]
-
-[[package]]
-name = "num_enum"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d0bca838442ec211fa11de3a8b0e0e8f3a4522575b5c4c06ed722e005036f26"
 dependencies = [
- "num_enum_derive 0.7.6",
+ "num_enum_derive",
  "rustversion",
-]
-
-[[package]]
-name = "num_enum_derive"
-version = "0.5.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcbff9bc912032c62bf65ef1d5aea88983b420f4f839db1e9b0c281a25c9c799"
-dependencies = [
- "proc-macro-crate 1.1.3",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -9440,7 +9419,7 @@ dependencies = [
  "hex",
  "impl-trait-for-tuples",
  "log",
- "num_enum 0.7.6",
+ "num_enum",
  "pallet-evm",
  "parity-scale-codec",
  "precompile-utils-macro",
@@ -9457,7 +9436,7 @@ version = "0.1.0"
 source = "git+https://github.com/polkadot-evm/frontier?rev=9d49e36ed5bac38241594f8ba055fdb94991483a#9d49e36ed5bac38241594f8ba055fdb94991483a"
 dependencies = [
  "case",
- "num_enum 0.7.6",
+ "num_enum",
  "prettyplease",
  "proc-macro2",
  "quote",
@@ -13137,7 +13116,7 @@ dependencies = [
 name = "sp-evm-precompiles"
 version = "0.1.0"
 dependencies = [
- "num_enum 0.5.11",
+ "num_enum",
  "pallet-evm-precompile-modexp",
  "pallet-evm-precompile-sha3fips",
  "pallet-evm-precompile-simple",

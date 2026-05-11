@@ -121,7 +121,7 @@ multihash = "0.19.1"
 nohash-hasher = "0.2.0"
 num-traits = { version = "0.2.18", default-features = false }
 num_cpus = "1.16.0"
-num_enum = { version = "0.5.3", default-features = false }
+num_enum = { version = "0.7.6", default-features = false }
 ouroboros = "0.18.4"
 pallet-auto-id = { version = "0.1.0", path = "domains/pallets/auto-id", default-features = false }
 pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "22ebae7f5d86a59f8259f562e3445dd2a4ab961b", default-features = false }
