@@ -44,6 +44,17 @@ updates:
       prefix: ci
       include: scope
     groups:
-      github-actions:
+      github-actions-patch:
         patterns:
           - "*"
+        update-types:
+          - patch
+      github-actions-minor:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+    # Major bumps fall outside the groups so each gets its own PR —
+    # action majors regularly carry breaking changes (e.g. checkout
+    # v3→v4 changed the bundled node version), and deserve isolated
+    # review for the same reason cargo majors do.
