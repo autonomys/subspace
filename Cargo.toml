@@ -31,7 +31,7 @@ members = [
 [workspace.dependencies]
 ab-chacha8 = "0.1.0"
 actix-web = { version = "4.9.0", default-features = false }
-aes = "0.9.0-pre.2"
+aes = "0.9.0"
 anyhow = "1.0.89"
 array-bytes = "6.2.3"
 async-channel = "1.9.0"
@@ -47,13 +47,13 @@ bincode = { version = "1.3.3" }
 bip39 = "2.0.0"
 bitvec = "1.0.1"
 blake2 = { version = "0.10.6", default-features = false }
-blake3 = { version = "1.8.2", default-features = false }
+blake3 = { version = "1.8.5", default-features = false }
 blst = "0.3.13"
 bytes = { version = "1.11.1", default-features = false }
 bytesize = "1.3.0"
-cc = "1.1.23"
+cc = "1.2.62"
 chacha20 = { version = "0.9.1", default-features = false }
-clap = "4.5.18"
+clap = "4.6.1"
 core_affinity = "0.8.1"
 cpufeatures = "0.2.17"
 criterion = { version = "0.5.1", default-features = false }
@@ -104,20 +104,20 @@ futures-timer = "3.0.3"
 hash-db = { version = "0.16.0", default-features = false }
 hex = { version = "0.4.3", default-features = false }
 hex-literal = "0.4.1"
-hwlocality = "1.0.0-alpha.6"
+hwlocality = "1.0.0-alpha.12"
 jsonrpsee = "0.24.5"
 kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac", default-features = false }
-libc = "0.2.159"
+libc = "0.2.186"
 libp2p = { version = "0.56.0", git = "https://github.com/subspace/rust-libp2p", rev = "7e9532d65530ebd0cf92c53fc326948ee8467fea", default-features = false }
 libp2p-swarm-test = { version = "0.6.0", git = "https://github.com/subspace/rust-libp2p", rev = "7e9532d65530ebd0cf92c53fc326948ee8467fea" }
 libsecp256k1 = "0.7.1"
 log = { version = "0.4.22", default-features = false }
 memmap2 = "0.9.5"
 memory-db = { version = "0.34.0", default-features = false }
-mimalloc = "0.1.43"
+mimalloc = "0.1.50"
 mmr-gadget = { git = "https://github.com/subspace/polkadot-sdk", rev = "22ebae7f5d86a59f8259f562e3445dd2a4ab961b" }
 mmr-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "22ebae7f5d86a59f8259f562e3445dd2a4ab961b" }
-multihash = "0.19.1"
+multihash = "0.19.5"
 nohash-hasher = "0.2.0"
 num-traits = { version = "0.2.18", default-features = false }
 num_cpus = "1.16.0"
@@ -159,7 +159,7 @@ pallet-utility = { git = "https://github.com/subspace/polkadot-sdk", rev = "22eb
 parity-scale-codec = { version = "3.7.5", default-features = false }
 parking_lot = "0.12.2"
 pem = "3.0.4"
-pin-project = "1.1.5"
+pin-project = "1.1.12"
 precompile-utils = { version = "0.1.0", git = "https://github.com/polkadot-evm/frontier", rev = "9d49e36ed5bac38241594f8ba055fdb94991483a", default-features = false }
 prometheus = { version = "0.13.0", default-features = false }
 prometheus-client = "0.23.1"
