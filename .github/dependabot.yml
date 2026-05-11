@@ -1,0 +1,60 @@
+# Dependabot version-update configuration.
+#
+# Security alerts (CVE detection in the Security tab) and Dependabot
+# security-update PRs are separate features that have to be turned on
+# by a repo/org admin in Settings → Code security & analysis. This file
+# only governs scheduled version-update PRs.
+#
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+updates:
+  # Rust dependencies — driven by `[workspace.dependencies]` at the
+  # workspace root, so one entry covers every crate in the workspace.
+  # Many deps are git-pinned (libp2p fork, substrate fork) and will
+  # simply be skipped.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: deps
+      include: scope
+    groups:
+      cargo-patch:
+        update-types:
+          - patch
+      cargo-minor:
+        update-types:
+          - minor
+    # Major bumps are intentionally left out of groups so they each get
+    # their own PR — breaking changes deserve isolated review.
+
+  # GitHub Actions used by workflows under .github/workflows/.
+  # All actions in the repo are SHA-pinned with a `# vX.Y.Z` comment;
+  # Dependabot understands this format and updates both the pin and
+  # the comment together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      github-actions-patch:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+      github-actions-minor:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+    # Major bumps fall outside the groups so each gets its own PR —
+    # action majors regularly carry breaking changes (e.g. checkout
+    # v3→v4 changed the bundled node version), and deserve isolated
+    # review for the same reason cargo majors do.
