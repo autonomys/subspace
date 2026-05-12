@@ -21,7 +21,7 @@ where
 }
 
 /// The aux storage key used to store the block weight of the given block hash.
-fn block_weight_key<H: Encode>(block_hash: H) -> Vec<u8> {
+pub(crate) fn block_weight_key<H: Encode>(block_hash: H) -> Vec<u8> {
     (b"block_weight", block_hash).encode()
 }
 

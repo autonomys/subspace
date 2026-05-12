@@ -1047,6 +1047,7 @@ where
             segment_headers_store.clone(),
             subspace_link.clone(),
             client.clone(),
+            backend.clone(),
             sync_oracle.clone(),
             telemetry.as_ref().map(|telemetry| telemetry.handle()),
             config.create_object_mappings,
