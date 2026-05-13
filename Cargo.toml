@@ -162,7 +162,7 @@ pem = "3.0.4"
 pin-project = "1.1.5"
 precompile-utils = { version = "0.1.0", git = "https://github.com/polkadot-evm/frontier", rev = "9d49e36ed5bac38241594f8ba055fdb94991483a", default-features = false }
 prometheus = { version = "0.13.0", default-features = false }
-prometheus-client = "0.23.1"
+prometheus-client = "0.24.1"
 prop-test = "0.1.1"
 rand = { version = "0.8.5", default-features = false }
 rand_chacha = { version = "0.3.1", default-features = false }
