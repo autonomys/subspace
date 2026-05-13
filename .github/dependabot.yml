@@ -1,17 +1,19 @@
 # Dependabot version-update configuration.
 #
-# Security alerts (CVE detection in the Security tab) and Dependabot
-# security-update PRs are separate features that have to be turned on
-# by a repo/org admin in Settings → Code security & analysis. This file
-# only governs scheduled version-update PRs.
+# This file only governs scheduled version-update PRs. Security updates
+# (CVE-driven) are configured separately in repo Settings → Code security
+# & analysis and fire as alerts come in, independent of these groups.
+#
+# Note on Cargo classification: Dependabot's cargo classifier uses the
+# leftmost non-zero digit as the "major" position, so a pre-1.0 bump
+# like 0.13 → 0.14 is classified as a *major* update and lands in its
+# own PR, not the grouped one.
 #
 # Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 version: 2
 updates:
-  # Rust dependencies — driven by `[workspace.dependencies]` at the
-  # workspace root, so one entry covers every crate in the workspace.
-  # Many deps are git-pinned (libp2p fork, substrate fork) and will
-  # simply be skipped.
+  # One grouped PR per week for patch + minor cargo bumps; majors stay
+  # individual so each breaking change gets its own review.
   - package-ecosystem: cargo
     directory: /
     schedule:
@@ -22,39 +24,25 @@ updates:
       prefix: deps
       include: scope
     groups:
-      cargo-patch:
+      cargo-small:
         update-types:
           - patch
-      cargo-minor:
-        update-types:
           - minor
-    # Major bumps are intentionally left out of groups so they each get
-    # their own PR — breaking changes deserve isolated review.
 
-  # GitHub Actions used by workflows under .github/workflows/.
-  # All actions in the repo are SHA-pinned with a `# vX.Y.Z` comment;
-  # Dependabot understands this format and updates both the pin and
-  # the comment together.
+  # Same shape for GitHub Actions: patch + minor grouped, majors
+  # individual (action majors regularly carry breaking changes, e.g.
+  # checkout v3 → v4 changed the bundled Node runtime).
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
       day: monday
+    open-pull-requests-limit: 10
     commit-message:
       prefix: ci
       include: scope
     groups:
-      github-actions-patch:
-        patterns:
-          - "*"
+      github-actions-small:
         update-types:
           - patch
-      github-actions-minor:
-        patterns:
-          - "*"
-        update-types:
           - minor
-    # Major bumps fall outside the groups so each gets its own PR —
-    # action majors regularly carry breaking changes (e.g. checkout
-    # v3→v4 changed the bundled node version), and deserve isolated
-    # review for the same reason cargo majors do.
