@@ -4755,12 +4755,12 @@ dependencies = [
 
 [[package]]
 name = "fs4"
-version = "0.9.1"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8c6b3bd49c37d2aa3f3f2220233b29a7cd23f79d1fe70e5337d25fb390793de"
+checksum = "7e72ed92b67c146290f88e9c89d60ca163ea417a446f61ffd7b72df3e7f1dfd5"
 dependencies = [
- "rustix 0.38.44",
- "windows-sys 0.52.0",
+ "rustix 1.1.4",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -14047,7 +14047,7 @@ dependencies = [
  "derive_more 1.0.0",
  "event-listener 5.4.1",
  "event-listener-primitives",
- "fs4 0.9.1",
+ "fs4 1.1.0",
  "futures",
  "hex",
  "hwlocality",

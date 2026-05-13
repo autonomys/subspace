@@ -98,7 +98,7 @@ frame-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "22ebae
 frame-system-benchmarking = { git = "https://github.com/subspace/polkadot-sdk", rev = "22ebae7f5d86a59f8259f562e3445dd2a4ab961b", default-features = false }
 frame-system-rpc-runtime-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "22ebae7f5d86a59f8259f562e3445dd2a4ab961b", default-features = false }
 fs2 = "0.4.3"
-fs4 = "0.9.1"
+fs4 = "1.1.0"
 futures = "0.3.31"
 futures-timer = "3.0.3"
 hash-db = { version = "0.16.0", default-features = false }
