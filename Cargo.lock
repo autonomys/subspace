@@ -3109,7 +3109,7 @@ dependencies = [
 name = "domain-client-message-relayer"
 version = "0.1.0"
 dependencies = [
- "async-channel 1.9.0",
+ "async-channel 2.5.0",
  "cross-domain-message-gossip",
  "futures",
  "parity-scale-codec",
@@ -11051,7 +11051,7 @@ name = "sc-domains"
 version = "0.1.0"
 dependencies = [
  "array-bytes",
- "async-channel 1.9.0",
+ "async-channel 2.5.0",
  "cumulus-primitives-proof-size-hostfunction",
  "domain-runtime-primitives",
  "frame-benchmarking",
@@ -11660,7 +11660,7 @@ dependencies = [
 name = "sc-subspace-block-relay"
 version = "0.1.0"
 dependencies = [
- "async-channel 1.9.0",
+ "async-channel 2.5.0",
  "async-trait",
  "derive_more 1.0.0",
  "futures",
@@ -14534,7 +14534,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "array-bytes",
- "async-channel 1.9.0",
+ "async-channel 2.5.0",
  "async-lock",
  "async-trait",
  "cross-domain-message-gossip",
