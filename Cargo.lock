@@ -2759,7 +2759,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ab67060fc6b8ef687992d439ca0fa36e7ed17e9a0b16b25b601e8757df720de"
 dependencies = [
  "data-encoding",
- "syn 2.0.117",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -10980,7 +10980,7 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.5",
  "rand 0.8.5",
- "rand_chacha 0.3.1",
+ "rand_chacha 0.9.0",
  "rayon",
  "sc-client-api",
  "sc-consensus",
@@ -13058,7 +13058,7 @@ dependencies = [
  "parity-scale-codec",
  "prop-test",
  "rand 0.8.5",
- "rand_chacha 0.3.1",
+ "rand_chacha 0.9.0",
  "rs_merkle",
  "scale-info",
  "serde",
@@ -14430,7 +14430,7 @@ dependencies = [
  "core_affinity",
  "cpufeatures",
  "criterion",
- "rand_chacha 0.3.1",
+ "rand_chacha 0.9.0",
  "rand_core 0.6.4",
  "subspace-core-primitives",
  "thiserror 2.0.18",
