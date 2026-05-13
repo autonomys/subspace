@@ -53,10 +53,10 @@ jobs:
     steps:
       # Enable the sccache runs-on S3 backend for Linux runners, to cache C/C++/CUDA and Rust.
       # On GitHub-hosted or fork runners, the runs-on action is ignored.
-      - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+      - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
         with:
           sccache: ${{ runner.os == 'Linux' && 's3' || '' }}
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
         if: runner.os == 'Linux' && github.repository_owner == 'autonomys'
 
       - name: Checkout
@@ -64,7 +64,7 @@ jobs:
 
       # On macOS, we need a proper Clang version, not Apple's custom version without wasm32 support
       - name: Install LLVM and Clang for macOS
-        uses: KyleMayes/install-llvm-action@dec985c8d7b46a2f363ea1a78f660c946a3349ea # v2.0.1
+        uses: KyleMayes/install-llvm-action@ebc0426251bc40c7cd31162802432c68818ab8f0 # v2.0.9
         with:
           env: true
           version: 17
@@ -103,7 +103,7 @@ jobs:
 
       # TODO: cache CUDA from Program Files on Windows, because it takes 6+ minutes to install.
       - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@4bd727d5619dc6fa323b1e76c3aa5dca94f5ec6d # v0.2.19
+        uses: Jimver/cuda-toolkit@3d45d157f327c09c04b50ee6ccdea2d9d017ec76 # v0.2.35
         with:
           cuda: '12.4.1'
           method: network
@@ -196,10 +196,10 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+      - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
         with:
           sccache: 's3'
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
         if: github.repository_owner == 'autonomys'
 
       - name: Checkout
@@ -248,10 +248,10 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+      - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
         with:
           sccache: ${{ runner.os == 'Linux' && 's3' || '' }}
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
         if: runner.os == 'Linux' && github.repository_owner == 'autonomys'
 
       - name: Checkout
@@ -259,7 +259,7 @@ jobs:
 
       # On macOS, we need a proper Clang version, not Apple's custom version without wasm32 support
       - name: Install LLVM and Clang for macOS
-        uses: KyleMayes/install-llvm-action@dec985c8d7b46a2f363ea1a78f660c946a3349ea # v2.0.1
+        uses: KyleMayes/install-llvm-action@ebc0426251bc40c7cd31162802432c68818ab8f0 # v2.0.9
         with:
           env: true
           version: 17
@@ -294,7 +294,7 @@ jobs:
         if: runner.os == 'macOS'
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@21517c4e721ab8b872d9b8e90828e584dcabe8e2 # 2.56.3
+        uses: taiki-e/install-action@3235f8901fd37ffed0052b276cec25a362fb82e9 # 2.77.7
         with:
           tool: cargo-nextest
 
@@ -329,10 +329,10 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+      - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
         with:
           sccache: 's3'
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
         if: github.repository_owner == 'autonomys'
 
       - name: Checkout
@@ -398,10 +398,10 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+      - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
         with:
           sccache: 's3'
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
         if: github.repository_owner == 'autonomys'
 
       - name: Checkout
@@ -440,10 +440,10 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: runs-on/action@cd2b598b0515d39d78c38a02d529db87d2196d1e # v2.0.3
+      - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
         with:
           sccache: 's3'
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
         if: github.repository_owner == 'autonomys'
 
       - name: Checkout
@@ -462,7 +462,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@4bd727d5619dc6fa323b1e76c3aa5dca94f5ec6d # v0.2.19
+        uses: Jimver/cuda-toolkit@3d45d157f327c09c04b50ee6ccdea2d9d017ec76 # v0.2.35
         with:
           cuda: '12.4.1'
           method: network
@@ -481,7 +481,7 @@ jobs:
           sudo ldconfig
 
       - name: Install cargo-udeps
-        uses: taiki-e/install-action@21517c4e721ab8b872d9b8e90828e584dcabe8e2 # 2.56.3
+        uses: taiki-e/install-action@3235f8901fd37ffed0052b276cec25a362fb82e9 # 2.77.7
         with:
           tool: cargo-udeps
 
