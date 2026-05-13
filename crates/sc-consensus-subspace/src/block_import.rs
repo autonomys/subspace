@@ -34,7 +34,7 @@ use sp_consensus_subspace::digests::{
 use sp_consensus_subspace::{PotNextSlotInput, SubspaceApi, SubspaceJustification};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::Justifications;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One, Zero};
 use sp_weights::constants::WEIGHT_REF_TIME_PER_MILLIS;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -46,6 +46,9 @@ use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_proof_of_space::Table;
 use subspace_verification::{PieceCheckParams, VerifySolutionParams, calculate_block_fork_weight};
 use tracing::warn;
+
+/// Maximum number of canonical heights to tombstone per block import.
+const BLOCK_WEIGHT_SWEEP_BATCH: u32 = 10_000;
 
 /// Notification with number of the block that is about to be imported and acknowledgement sender
 /// that can be used to pause block production if desired.
@@ -665,6 +668,22 @@ where
                 .auxiliary
                 .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
         });
+
+        {
+            let cleaned_to = aux_schema::load_block_weight_cleaned_to::<NumberFor<Block>, _>(
+                self.client.as_ref(),
+            )?
+            .unwrap_or_else(Zero::zero);
+            let finalized = self.client.info().finalized_number;
+            let batch: NumberFor<Block> = BLOCK_WEIGHT_SWEEP_BATCH.into();
+            let entries = aux_schema::build_canonical_sweep_entries(
+                cleaned_to,
+                finalized,
+                batch,
+                |height| self.client.hash(height),
+            )?;
+            block.auxiliary.extend(entries);
+        }
 
         for (&segment_index, segment_commitment) in &subspace_digest_items.segment_commitments {
             let found_segment_commitment = self

@@ -43,12 +43,13 @@ use rand_chacha::ChaCha8Rng;
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
 use sc_client_api::{
-    AuxStore, Backend as BackendT, BlockBackend, BlockchainEvents, Finalizer, LockImportRun,
+    AuxStore, Backend as BackendT, BlockBackend, BlockImportOperation, BlockchainEvents, Finalizer,
+    LockImportRun,
 };
 use sc_telemetry::{CONSENSUS_INFO, TelemetryHandle, telemetry};
 use sc_utils::mpsc::{TracingUnboundedSender, tracing_unbounded};
 use sp_api::ProvideRuntimeApi;
-use sp_blockchain::HeaderBackend;
+use sp_blockchain::{Backend as BlockchainBackend, HeaderBackend};
 use sp_consensus::SyncOracle;
 use sp_consensus_subspace::{SubspaceApi, SubspaceJustification};
 use sp_objects::ObjectsApi;
@@ -821,18 +822,59 @@ where
 
 fn finalize_block<Block, Backend, Client>(
     client: &Client,
+    backend: &Backend,
     telemetry: Option<&TelemetryHandle>,
     hash: Block::Hash,
     number: NumberFor<Block>,
 ) where
     Block: BlockT,
     Backend: BackendT<Block>,
-    Client: LockImportRun<Block, Backend> + Finalizer<Block, Backend>,
+    Client: LockImportRun<Block, Backend> + Finalizer<Block, Backend> + HeaderBackend<Block>,
 {
     if number.is_zero() {
         // Block zero is finalized already and generates unnecessary warning if called again
         return;
     }
+
+    let displaced = match client.header(hash) {
+        Ok(Some(header)) => {
+            let parent_hash = *header.parent_hash();
+            match backend
+                .blockchain()
+                .displaced_leaves_after_finalizing(hash, number, parent_hash)
+            {
+                Ok(d) => Some(d),
+                Err(error) => {
+                    warn!(
+                        ?error,
+                        ?hash,
+                        ?parent_hash,
+                        ?number,
+                        "Failed to compute displaced leaves; their block_weight entries will leak"
+                    );
+                    None
+                }
+            }
+        }
+        Ok(None) => {
+            warn!(
+                ?hash,
+                ?number,
+                "Header missing for finalized hash; skipping displaced-fork cleanup"
+            );
+            None
+        }
+        Err(error) => {
+            warn!(
+                ?error,
+                ?hash,
+                ?number,
+                "Failed to load header for finalized hash; skipping displaced-fork cleanup"
+            );
+            None
+        }
+    };
+
     // We don't have anything useful to do with this result yet, the only source of errors was
     // logged already inside
     let _result: sp_blockchain::Result<_> = client.lock_import_and_run(|import_op| {
@@ -848,6 +890,23 @@ fn finalize_block<Block, Backend, Client>(
                 );
                 error
             })?;
+
+        if let Some(d) = &displaced
+            && !d.displaced_blocks.is_empty()
+        {
+            let count = d.displaced_blocks.len();
+            let tombstones = d
+                .displaced_blocks
+                .iter()
+                .map(|h| (crate::aux_schema::block_weight_key(h), None));
+            import_op.op.insert_aux(tombstones).map_err(|error| {
+                warn!(
+                    ?error,
+                    count, "Failed to queue displaced fork tombstones; rolling back finalization",
+                );
+                error
+            })?;
+        }
 
         debug!("Finalizing blocks up to ({:?}, {})", number, hash);
 
@@ -895,13 +954,14 @@ pub fn create_subspace_archiver<Block, Backend, Client, AS, SO>(
     segment_headers_store: SegmentHeadersStore<AS>,
     subspace_link: SubspaceLink<Block>,
     client: Arc<Client>,
+    backend: Arc<Backend>,
     sync_oracle: SubspaceSyncOracle<SO>,
     telemetry: Option<TelemetryHandle>,
     create_object_mappings: CreateObjectMappings,
 ) -> sp_blockchain::Result<impl Future<Output = sp_blockchain::Result<()>> + Send + 'static>
 where
     Block: BlockT,
-    Backend: BackendT<Block>,
+    Backend: BackendT<Block> + 'static,
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>
@@ -1095,12 +1155,13 @@ where
                     }
 
                     // Block is not guaranteed to be present this deep if we have only synced recent
-                    // blocks
+                    // blocks.
                     if let Some(block_hash_to_finalize) =
                         client.block_hash(block_number_to_finalize)?
                     {
                         finalize_block(
                             &*client,
+                            &*backend,
                             telemetry.as_ref(),
                             block_hash_to_finalize,
                             block_number_to_finalize,
