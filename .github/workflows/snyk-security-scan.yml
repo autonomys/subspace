@@ -23,7 +23,7 @@ jobs:
         run: docker build -t autonomys/farmer:snyk -f docker/farmer.Dockerfile .
 
       - name: Run Snyk to check Docker image for vulnerabilities
-        uses: snyk/actions/docker@b98d498629f1c368650224d6d212bf7dfa89e4bf # v0.4.0
+        uses: snyk/actions/docker@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -53,7 +53,7 @@ jobs:
         run: docker build -t autonomys/node:snyk -f docker/node.Dockerfile .
 
       - name: Run Snyk to check Docker image for vulnerabilities
-        uses: snyk/actions/docker@b98d498629f1c368650224d6d212bf7dfa89e4bf # v0.4.0
+        uses: snyk/actions/docker@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -83,7 +83,7 @@ jobs:
         run: docker build -t autonomys/bootstrap-node:snyk -f docker/bootstrap-node.Dockerfile .
 
       - name: Run Snyk to check Docker image for vulnerabilities
-        uses: snyk/actions/docker@b98d498629f1c368650224d6d212bf7dfa89e4bf # v0.4.0
+        uses: snyk/actions/docker@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -113,7 +113,7 @@ jobs:
         run: docker build -t autonomys/gateway:snyk -f docker/gateway.Dockerfile .
 
       - name: Run Snyk to check Docker image for vulnerabilities
-        uses: snyk/actions/docker@b98d498629f1c368650224d6d212bf7dfa89e4bf # v0.4.0
+        uses: snyk/actions/docker@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
