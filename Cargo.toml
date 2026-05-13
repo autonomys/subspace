@@ -105,7 +105,7 @@ hash-db = { version = "0.16.0", default-features = false }
 hex = { version = "0.4.3", default-features = false }
 hex-literal = "0.4.1"
 hwlocality = "1.0.0-alpha.6"
-jsonrpsee = "0.24.5"
+jsonrpsee = "0.26.0"
 kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac", default-features = false }
 libc = "0.2.159"
 libp2p = { version = "0.56.0", git = "https://github.com/subspace/rust-libp2p", rev = "7e9532d65530ebd0cf92c53fc326948ee8467fea", default-features = false }
