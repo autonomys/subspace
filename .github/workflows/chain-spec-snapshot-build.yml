@@ -33,7 +33,7 @@ jobs:
           docker run --rm -u root ${{ steps.build.outputs.imageid }} build-spec --chain mainnet-compiled --disable-default-bootnode --raw > chain-spec-raw-mainnet.json
 
       - name: Upload chain specifications to artifacts
-        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.1.3
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.1.3
         with:
           name: chain-specifications
           path: |

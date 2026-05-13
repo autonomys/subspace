@@ -143,7 +143,7 @@ jobs:
         if: matrix.build.upload-executables
 
       - name: Upload node and farmer executables to artifacts
-        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.1.3
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.1.3
         with:
           name: executables-ubuntu-${{ matrix.build.image }}-${{ env.SAFE_REF_NAME }}
           path: |
@@ -347,7 +347,7 @@ jobs:
         if: runner.os == 'Windows'
 
       - name: Upload node and farmer executables to artifacts
-        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.1.3
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.1.3
         with:
           name: executables-${{ env.SAFE_SUFFIX }}
           path: |
