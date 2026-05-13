@@ -52,7 +52,7 @@ blst = "0.3.13"
 bytes = { version = "1.11.1", default-features = false }
 bytesize = "1.3.0"
 cc = "1.1.23"
-chacha20 = { version = "0.9.1", default-features = false }
+chacha20 = { version = "0.10.0", default-features = false }
 clap = "4.5.18"
 core_affinity = "0.8.1"
 cpufeatures = "0.2.17"
