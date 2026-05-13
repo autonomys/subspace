@@ -4,45 +4,40 @@
 # (CVE-driven) are configured separately in repo Settings → Code security
 # & analysis and fire as alerts come in, independent of these groups.
 #
-# Note on Cargo classification: Dependabot's cargo classifier uses the
-# leftmost non-zero digit as the "major" position, so a pre-1.0 bump
-# like 0.13 → 0.14 is classified as a *major* update and lands in its
-# own PR, not the grouped one.
-#
 # Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 version: 2
 updates:
-  # One grouped PR per week for patch + minor cargo bumps; majors stay
-  # individual so each breaking change gets its own review.
+  # One grouped PR per week for the entire Cargo workspace. All update
+  # types — patch, minor, major — go into the same PR.
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 1
     commit-message:
       prefix: deps
       include: scope
     groups:
-      cargo-small:
+      cargo-deps:
         update-types:
           - patch
           - minor
+          - major
 
-  # Same shape for GitHub Actions: patch + minor grouped, majors
-  # individual (action majors regularly carry breaking changes, e.g.
-  # checkout v3 → v4 changed the bundled Node runtime).
+  # One grouped PR per week for all GitHub Actions used in workflows.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 1
     commit-message:
       prefix: ci
       include: scope
     groups:
-      github-actions-small:
+      github-actions-deps:
         update-types:
           - patch
           - minor
+          - major
