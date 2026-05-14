@@ -806,9 +806,9 @@ fn vote_invalid_proof_of_time() {
         let slot = Subspace::current_slot();
 
         let mut test_proof_of_time = PotOutput::default();
-        thread_rng().fill(test_proof_of_time.as_mut_slice());
+        rand::thread_rng().fill(test_proof_of_time.as_mut_slice());
         let mut test_future_proof_of_time = PotOutput::default();
-        thread_rng().fill(test_future_proof_of_time.as_mut_slice());
+        rand::thread_rng().fill(test_future_proof_of_time.as_mut_slice());
 
         // Proof of time not valid yet for votes before block is produced
         {

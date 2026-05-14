@@ -15,7 +15,6 @@ use cross_domain_message_gossip::{
 };
 use parity_scale_codec::{Codec, Encode};
 use rand::seq::SliceRandom;
-use rand::thread_rng;
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiRef, ProvideRuntimeApi};
@@ -564,7 +563,7 @@ where
     let queries = if queries.len() <= MAXIMUM_CHANNELS_TO_PROCESS_IN_BLOCK {
         queries
     } else {
-        let mut rng = thread_rng();
+        let mut rng = rand::thread_rng();
         queries.shuffle(&mut rng);
         queries.truncate(MAXIMUM_CHANNELS_TO_PROCESS_IN_BLOCK);
         queries
