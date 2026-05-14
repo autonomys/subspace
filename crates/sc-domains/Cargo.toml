@@ -17,11 +17,11 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 async-channel.workspace = true
-hex.workspace = true
 cumulus-primitives-proof-size-hostfunction = { workspace = true, features = ["std"] }
 domain-runtime-primitives.workspace = true
 frame-benchmarking = { workspace = true, optional = true }
 futures.workspace = true
+hex.workspace = true
 parity-scale-codec.workspace = true
 sc-client-api.workspace = true
 sc-executor.workspace = true
