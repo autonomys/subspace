@@ -24,6 +24,59 @@ updates:
           - patch
           - minor
           - major
+    ignore:
+      # Permanent skips — taking these would break us:
+      #
+      # `rand 0.9` rewrote `SliceRandom::shuffle` to a faster, non-
+      # reproducible algorithm. `sp_domains::shuffle_extrinsics` would
+      # produce a different on-chain extrinsic ordering, which is a
+      # consensus break. `rand_chacha` and `rand_core` are bytestream-
+      # stable but locked by `rand 0.8`'s `rand_core 0.6` dependency.
+      # TODO: lift this once we rewrite `shuffle_extrinsics` to drive
+      # Fisher-Yates manually over `RngCore` (algorithm-stable across
+      # rand versions).
+      - dependency-name: rand
+        update-types:
+          - version-update:semver-major
+      - dependency-name: rand_chacha
+        update-types:
+          - version-update:semver-major
+      - dependency-name: rand_core
+        update-types:
+          - version-update:semver-major
+      # `bincode-org/bincode` was archived 2025-08. The 3.0.0 on crates.io
+      # is a `compile_error!` placeholder published after the archive.
+      # 2.0.x is the last sane release.
+      # TODO: lift this when the ecosystem picks a maintained successor.
+      - dependency-name: bincode
+        update-types:
+          - version-update:semver-major
+      #
+      # Temporary skips — gated on fork rebases, so re-trying every week
+      # just churns PRs that can never merge. Listed here so dependabot
+      # stops opening them; the TODOs are the unlock signal.
+      #
+      # TODO: drop these three jsonrpsee/prometheus/async-channel skips
+      # on the next polkadot-sdk fork rebase that brings the matching
+      # versions in.
+      - dependency-name: jsonrpsee
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: prometheus
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: async-channel
+        update-types:
+          - version-update:semver-major
+      # TODO: drop the prometheus-client skip on the next libp2p fork
+      # rebase that bumps to a libp2p version using prometheus-client
+      # >= 0.24.
+      - dependency-name: prometheus-client
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
 
   # One grouped PR per week for all GitHub Actions used in workflows.
   - package-ecosystem: github-actions
