@@ -56,27 +56,33 @@ updates:
       # just churns PRs that can never merge. Listed here so dependabot
       # stops opening them; the TODOs are the unlock signal.
       #
-      # TODO: drop these three jsonrpsee/prometheus/async-channel skips
-      # on the next polkadot-sdk fork rebase that brings the matching
-      # versions in.
+      # `jsonrpsee` and `prometheus` are pinned to caret-bounded versions
+      # by our polkadot-sdk fork (`< 0.25.0` and `< 0.14.0` respectively),
+      # so even pre-1.0 minor bumps would split the dependency graph.
+      # Dependabot classifies 0.x.y → 0.(x+1).y as `semver-major` for
+      # Cargo deps, so a single `semver-major` skip covers both kinds.
+      # TODO: drop the jsonrpsee + prometheus skips on the next
+      # polkadot-sdk fork rebase that brings the matching versions in.
       - dependency-name: jsonrpsee
         update-types:
           - version-update:semver-major
-          - version-update:semver-minor
       - dependency-name: prometheus
         update-types:
           - version-update:semver-major
-          - version-update:semver-minor
+      # `async-channel` lives at 1.x and polkadot-sdk's fork constrains
+      # it to `< 2.0.0`. Only major bumps need blocking; 1.x patches and
+      # minor updates are fine.
+      # TODO: drop the async-channel skip if/when polkadot-sdk migrates
+      # to async-channel 2.x.
       - dependency-name: async-channel
         update-types:
           - version-update:semver-major
-      # TODO: drop the prometheus-client skip on the next libp2p fork
-      # rebase that bumps to a libp2p version using prometheus-client
-      # >= 0.24.
+      # `prometheus-client` is pinned at 0.23 by our libp2p fork.
+      # TODO: drop this skip on the next libp2p fork rebase that bumps
+      # to a libp2p version using prometheus-client >= 0.24.
       - dependency-name: prometheus-client
         update-types:
           - version-update:semver-major
-          - version-update:semver-minor
 
   # One grouped PR per week for all GitHub Actions used in workflows.
   - package-ecosystem: github-actions
