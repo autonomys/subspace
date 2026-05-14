@@ -450,7 +450,7 @@ impl NatsClient {
                         RequestErrorKind::TimedOut | RequestErrorKind::NoResponders => {
                             // Continue with retries
                         }
-                        RequestErrorKind::Other => {
+                        RequestErrorKind::Other | RequestErrorKind::InvalidSubject => {
                             return Err(error);
                         }
                     }

@@ -14,10 +14,7 @@ use core::hash::Hash;
 use core::iter::Step;
 use core::num::{NonZeroU64, TryFromIntError};
 use core::simd::Simd;
-use derive_more::{
-    Add, AddAssign, AsRef, Deref, Display, Div, DivAssign, From, Into, Mul, MulAssign, Sub,
-    SubAssign,
-};
+use derive_more::{Add, AddAssign, Deref, Display, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]

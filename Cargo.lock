@@ -742,16 +742,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d5dde061bd34119e902bbb2d9b90c5692635cf59fb91d582c2b68043f1b8293"
 
 [[package]]
-name = "array-bytes"
-version = "9.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27d55334c98d756b32dcceb60248647ab34f027690f87f9a362fd292676ee927"
-dependencies = [
- "smallvec",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1254,9 +1244,23 @@ dependencies = [
 
 [[package]]
 name = "bincode"
-version = "3.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6a120d2e16b3e1b4a24bd70f23b12d3e16b81f113364a26935f8db7245452d"
+checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
+dependencies = [
+ "bincode_derive",
+ "serde",
+ "unty",
+]
+
+[[package]]
+name = "bincode_derive"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf95709a440f45e986983918d0e8a1f30a9b1df04918fc828670606804ac3c09"
+dependencies = [
+ "virtue",
+]
 
 [[package]]
 name = "bip32"
@@ -1678,6 +1682,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f8d983286843e49675a4b7a2d174efe136dc93a18d69130dd18198a6c167601"
 dependencies = [
  "cfg-if",
+ "cipher 0.5.1",
  "cpufeatures 0.3.0",
  "rand_core 0.10.1",
 ]
@@ -1774,6 +1779,7 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e34d8227fe1ba289043aeb13792056ff80fd6de1a9f49137a5f499de8e8c78ea"
 dependencies = [
+ "block-buffer 0.12.0",
  "crypto-common 0.2.1",
  "inout 0.2.2",
 ]
@@ -2451,7 +2457,7 @@ name = "cumulus-pallet-parachain-system"
 version = "0.25.1"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "bytes",
  "cumulus-pallet-parachain-system-proc-macro",
  "cumulus-primitives-core",
@@ -2561,7 +2567,7 @@ dependencies = [
  "async-trait",
  "cumulus-primitives-core",
  "futures",
- "jsonrpsee-core 0.24.10",
+ "jsonrpsee-core",
  "parity-scale-codec",
  "polkadot-overseer",
  "sc-client-api",
@@ -3127,7 +3133,7 @@ dependencies = [
 name = "domain-client-message-relayer"
 version = "0.1.0"
 dependencies = [
- "async-channel 2.5.0",
+ "async-channel 1.9.0",
  "cross-domain-message-gossip",
  "futures",
  "parity-scale-codec",
@@ -3237,7 +3243,7 @@ dependencies = [
  "fc-storage",
  "fp-rpc",
  "futures",
- "jsonrpsee 0.26.0",
+ "jsonrpsee",
  "pallet-transaction-payment-rpc",
  "parity-scale-codec",
  "sc-client-api",
@@ -3311,7 +3317,7 @@ dependencies = [
  "domain-runtime-primitives",
  "frame-benchmarking",
  "futures",
- "jsonrpsee 0.26.0",
+ "jsonrpsee",
  "pallet-transaction-payment-rpc",
  "parity-scale-codec",
  "sc-chain-spec",
@@ -4116,13 +4122,13 @@ dependencies = [
  "fp-storage",
  "futures",
  "hex",
- "jsonrpsee 0.24.10",
+ "jsonrpsee",
  "libsecp256k1",
  "log",
  "pallet-evm",
  "parity-scale-codec",
- "prometheus 0.13.4",
- "rand 0.9.2",
+ "prometheus",
+ "rand 0.9.4",
  "rlp",
  "sc-client-api",
  "sc-network",
@@ -4156,7 +4162,7 @@ source = "git+https://github.com/polkadot-evm/frontier?rev=9d49e36ed5bac38241594
 dependencies = [
  "ethereum",
  "ethereum-types",
- "jsonrpsee 0.24.10",
+ "jsonrpsee",
  "rlp",
  "rustc-hex",
  "serde",
@@ -4460,7 +4466,7 @@ version = "53.0.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
  "Inflector",
- "array-bytes 6.2.3",
+ "array-bytes",
  "chrono",
  "clap",
  "comfy-table",
@@ -4611,7 +4617,7 @@ version = "45.1.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
  "aquamarine",
- "array-bytes 6.2.3",
+ "array-bytes",
  "binary-merkle-tree",
  "bitflags 1.3.2",
  "docify",
@@ -5307,7 +5313,7 @@ dependencies = [
  "idna",
  "ipnet",
  "once_cell",
- "rand 0.9.2",
+ "rand 0.9.4",
  "ring 0.17.14",
  "socket2 0.5.10",
  "thiserror 2.0.18",
@@ -5330,7 +5336,7 @@ dependencies = [
  "moka",
  "once_cell",
  "parking_lot 0.12.5",
- "rand 0.9.2",
+ "rand 0.9.4",
  "resolv-conf",
  "smallvec",
  "thiserror 2.0.18",
@@ -5736,7 +5742,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "log",
- "rand 0.9.2",
+ "rand 0.9.4",
  "tokio",
  "url",
  "xmltree",
@@ -6115,27 +6121,12 @@ version = "0.24.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e281ae70cc3b98dac15fced3366a880949e65fc66e345ce857a5682d152f3e62"
 dependencies = [
- "jsonrpsee-client-transport 0.24.10",
- "jsonrpsee-core 0.24.10",
- "jsonrpsee-proc-macros 0.24.10",
- "jsonrpsee-server 0.24.10",
- "jsonrpsee-types 0.24.10",
- "jsonrpsee-ws-client 0.24.10",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "jsonrpsee"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f3f48dc3e6b8bd21e15436c1ddd0bc22a6a54e8ec46fedd6adf3425f396ec6a"
-dependencies = [
- "jsonrpsee-core 0.26.0",
- "jsonrpsee-proc-macros 0.26.0",
- "jsonrpsee-server 0.26.0",
- "jsonrpsee-types 0.26.0",
- "jsonrpsee-ws-client 0.26.0",
+ "jsonrpsee-client-transport",
+ "jsonrpsee-core",
+ "jsonrpsee-proc-macros",
+ "jsonrpsee-server",
+ "jsonrpsee-types",
+ "jsonrpsee-ws-client",
  "tokio",
  "tracing",
 ]
@@ -6149,36 +6140,13 @@ dependencies = [
  "base64",
  "futures-util",
  "http 1.4.0",
- "jsonrpsee-core 0.24.10",
+ "jsonrpsee-core",
  "pin-project",
  "rustls 0.23.37",
  "rustls-pki-types",
  "rustls-platform-verifier",
  "soketto",
  "thiserror 1.0.69",
- "tokio",
- "tokio-rustls 0.26.4",
- "tokio-util",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "jsonrpsee-client-transport"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf36eb27f8e13fa93dcb50ccb44c417e25b818cfa1a481b5470cd07b19c60b98"
-dependencies = [
- "base64",
- "futures-util",
- "http 1.4.0",
- "jsonrpsee-core 0.26.0",
- "pin-project",
- "rustls 0.23.37",
- "rustls-pki-types",
- "rustls-platform-verifier",
- "soketto",
- "thiserror 2.0.18",
  "tokio",
  "tokio-rustls 0.26.4",
  "tokio-util",
@@ -6199,7 +6167,7 @@ dependencies = [
  "http 1.4.0",
  "http-body",
  "http-body-util",
- "jsonrpsee-types 0.24.10",
+ "jsonrpsee-types",
  "parking_lot 0.12.5",
  "pin-project",
  "rand 0.8.5",
@@ -6213,50 +6181,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "jsonrpsee-core"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "316c96719901f05d1137f19ba598b5fe9c9bc39f4335f67f6be8613921946480"
-dependencies = [
- "async-trait",
- "bytes",
- "futures-timer",
- "futures-util",
- "http 1.4.0",
- "http-body",
- "http-body-util",
- "jsonrpsee-types 0.26.0",
- "parking_lot 0.12.5",
- "pin-project",
- "rand 0.9.2",
- "rustc-hash 2.1.1",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tower 0.5.3",
- "tracing",
-]
-
-[[package]]
 name = "jsonrpsee-proc-macros"
 version = "0.24.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7398cddf5013cca4702862a2692b66c48a3bd6cf6ec681a47453c93d63cf8de5"
-dependencies = [
- "heck 0.5.0",
- "proc-macro-crate 3.5.0",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "jsonrpsee-proc-macros"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2da3f8ab5ce1bb124b6d082e62dffe997578ceaf0aeb9f3174a214589dc00f07"
 dependencies = [
  "heck 0.5.0",
  "proc-macro-crate 3.5.0",
@@ -6277,8 +6205,8 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
- "jsonrpsee-core 0.24.10",
- "jsonrpsee-types 0.24.10",
+ "jsonrpsee-core",
+ "jsonrpsee-types",
  "pin-project",
  "route-recognizer",
  "serde",
@@ -6289,33 +6217,6 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tower 0.4.13",
- "tracing",
-]
-
-[[package]]
-name = "jsonrpsee-server"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c51b7c290bb68ce3af2d029648148403863b982f138484a73f02a9dd52dbd7f"
-dependencies = [
- "futures-util",
- "http 1.4.0",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-util",
- "jsonrpsee-core 0.26.0",
- "jsonrpsee-types 0.26.0",
- "pin-project",
- "route-recognizer",
- "serde",
- "serde_json",
- "soketto",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tower 0.5.3",
  "tracing",
 ]
 
@@ -6332,41 +6233,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "jsonrpsee-types"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc88ff4688e43cc3fa9883a8a95c6fa27aa2e76c96e610b737b6554d650d7fd5"
-dependencies = [
- "http 1.4.0",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "jsonrpsee-ws-client"
 version = "0.24.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78fc744f17e7926d57f478cf9ca6e1ee5d8332bf0514860b1a3cdf1742e614cc"
 dependencies = [
  "http 1.4.0",
- "jsonrpsee-client-transport 0.24.10",
- "jsonrpsee-core 0.24.10",
- "jsonrpsee-types 0.24.10",
- "url",
-]
-
-[[package]]
-name = "jsonrpsee-ws-client"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b6fceceeb05301cc4c065ab3bd2fa990d41ff4eb44e4ca1b30fa99c057c3e79"
-dependencies = [
- "http 1.4.0",
- "jsonrpsee-client-transport 0.26.0",
- "jsonrpsee-core 0.26.0",
- "jsonrpsee-types 0.26.0",
- "tower 0.5.3",
+ "jsonrpsee-client-transport",
+ "jsonrpsee-core",
+ "jsonrpsee-types",
  "url",
 ]
 
@@ -6737,7 +6612,7 @@ dependencies = [
  "libp2p-ping",
  "libp2p-swarm",
  "pin-project",
- "prometheus-client 0.23.1",
+ "prometheus-client",
  "web-time",
 ]
 
@@ -7431,7 +7306,7 @@ name = "mmr-rpc"
 version = "44.0.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "jsonrpsee 0.24.10",
+ "jsonrpsee",
  "parity-scale-codec",
  "serde",
  "sp-api",
@@ -8710,7 +8585,7 @@ name = "pallet-transaction-payment-rpc"
 version = "48.0.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "jsonrpsee 0.24.10",
+ "jsonrpsee",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
  "sp-api",
@@ -8805,7 +8680,7 @@ dependencies = [
  "lz4",
  "memmap2 0.9.10",
  "parking_lot 0.12.5",
- "rand 0.9.2",
+ "rand 0.9.4",
  "siphasher 1.0.2",
  "snap",
  "winapi",
@@ -9244,7 +9119,7 @@ name = "polkadot-parachain-primitives"
 version = "20.0.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "bounded-collections",
  "derive_more 0.99.20",
  "parity-scale-codec",
@@ -9783,20 +9658,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prometheus"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ca5326d8d0b950a9acd87e6a3f94745394f62e4dae1b1ee22b2bc0c394af43a"
-dependencies = [
- "cfg-if",
- "fnv",
- "lazy_static",
- "memchr",
- "parking_lot 0.12.5",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "prometheus-client"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9805,19 +9666,7 @@ dependencies = [
  "dtoa",
  "itoa",
  "parking_lot 0.12.5",
- "prometheus-client-derive-encode 0.4.2",
-]
-
-[[package]]
-name = "prometheus-client"
-version = "0.24.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cca3d75b4566b9a29fe1ed623587fb058e826eb329a0be4b7c4da1ebb2d7a6ca"
-dependencies = [
- "dtoa",
- "itoa",
- "parking_lot 0.12.5",
- "prometheus-client-derive-encode 0.5.0",
+ "prometheus-client-derive-encode",
 ]
 
 [[package]]
@@ -9825,17 +9674,6 @@ name = "prometheus-client-derive-encode"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "440f724eba9f6996b75d63681b0a92b06947f1457076d503a4d2e2c8f56442b8"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "prometheus-client-derive-encode"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9adf1691c04c0a5ff46ff8f262b58beb07b0dbb61f96f9f54f6cbd82106ed87f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -9861,7 +9699,7 @@ dependencies = [
  "bit-vec",
  "bitflags 2.11.0",
  "num-traits",
- "rand 0.9.2",
+ "rand 0.9.4",
  "rand_chacha 0.9.0",
  "rand_xorshift",
  "regex-syntax",
@@ -10091,7 +9929,7 @@ dependencies = [
  "bytes",
  "getrandom 0.3.4",
  "lru-slab",
- "rand 0.9.2",
+ "rand 0.9.4",
  "ring 0.17.14",
  "rustc-hash 2.1.1",
  "rustls 0.23.37",
@@ -10157,9 +9995,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.9.2"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6db2770f06117d490610c7488547d543617b21bfa07796d7a12f6f1bd53850d1"
+checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
 dependencies = [
  "rand_chacha 0.9.0",
  "rand_core 0.9.5",
@@ -10906,7 +10744,7 @@ name = "sc-chain-spec"
 version = "48.0.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "docify",
  "memmap2 0.9.10",
  "parity-scale-codec",
@@ -10943,7 +10781,7 @@ name = "sc-cli"
 version = "0.57.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "bip39",
  "chrono",
  "clap",
@@ -11139,7 +10977,7 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.5",
  "rand 0.8.5",
- "rand_chacha 0.9.0",
+ "rand_chacha 0.3.1",
  "rayon",
  "sc-client-api",
  "sc-consensus",
@@ -11178,7 +11016,7 @@ dependencies = [
  "async-oneshot",
  "futures",
  "futures-timer",
- "jsonrpsee 0.26.0",
+ "jsonrpsee",
  "parking_lot 0.12.5",
  "sc-client-api",
  "sc-consensus-subspace",
@@ -11209,12 +11047,12 @@ dependencies = [
 name = "sc-domains"
 version = "0.1.0"
 dependencies = [
- "array-bytes 9.3.0",
- "async-channel 2.5.0",
+ "async-channel 1.9.0",
  "cumulus-primitives-proof-size-hostfunction",
  "domain-runtime-primitives",
  "frame-benchmarking",
  "futures",
+ "hex",
  "parity-scale-codec",
  "sc-client-api",
  "sc-executor",
@@ -11320,7 +11158,7 @@ name = "sc-keystore"
 version = "39.0.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "parking_lot 0.12.5",
  "serde_json",
  "sp-application-crypto",
@@ -11334,7 +11172,7 @@ name = "sc-mixnet"
 version = "0.25.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "arrayvec 0.7.6",
  "blake2 0.10.6",
  "bytes",
@@ -11362,7 +11200,7 @@ name = "sc-network"
 version = "0.55.2"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "async-channel 1.9.0",
  "async-trait",
  "asynchronous-codec 0.6.2",
@@ -11440,7 +11278,7 @@ name = "sc-network-light"
 version = "0.54.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "async-channel 1.9.0",
  "futures",
  "log",
@@ -11461,7 +11299,7 @@ name = "sc-network-sync"
 version = "0.54.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "async-channel 1.9.0",
  "async-trait",
  "fork-tree",
@@ -11496,7 +11334,7 @@ name = "sc-network-transactions"
 version = "0.54.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "futures",
  "log",
  "parity-scale-codec",
@@ -11609,7 +11447,7 @@ version = "50.0.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
  "futures",
- "jsonrpsee 0.24.10",
+ "jsonrpsee",
  "log",
  "parity-scale-codec",
  "parking_lot 0.12.5",
@@ -11640,7 +11478,7 @@ name = "sc-rpc-api"
 version = "0.54.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "jsonrpsee 0.24.10",
+ "jsonrpsee",
  "parity-scale-codec",
  "sc-chain-spec",
  "sc-mixnet",
@@ -11668,7 +11506,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "ip_network",
- "jsonrpsee 0.24.10",
+ "jsonrpsee",
  "log",
  "sc-rpc-api",
  "serde",
@@ -11684,12 +11522,12 @@ name = "sc-rpc-spec-v2"
 version = "0.55.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "futures",
  "futures-util",
  "hex",
  "itertools 0.11.0",
- "jsonrpsee 0.24.10",
+ "jsonrpsee",
  "log",
  "parity-scale-codec",
  "parking_lot 0.12.5",
@@ -11737,7 +11575,7 @@ dependencies = [
  "exit-future",
  "futures",
  "futures-timer",
- "jsonrpsee 0.24.10",
+ "jsonrpsee",
  "log",
  "parity-scale-codec",
  "parking_lot 0.12.5",
@@ -11819,7 +11657,7 @@ dependencies = [
 name = "sc-subspace-block-relay"
 version = "0.1.0"
 dependencies = [
- "async-channel 2.5.0",
+ "async-channel 1.9.0",
  "async-trait",
  "derive_more 2.1.1",
  "futures",
@@ -11849,8 +11687,8 @@ version = "0.1.0"
 name = "sc-subspace-sync-common"
 version = "0.1.0"
 dependencies = [
- "array-bytes 9.3.0",
  "futures",
+ "hex",
  "sc-client-api",
  "sc-consensus",
  "sc-network",
@@ -11998,7 +11836,7 @@ dependencies = [
  "futures-timer",
  "log",
  "parking_lot 0.12.5",
- "prometheus 0.13.4",
+ "prometheus",
  "sp-arithmetic",
 ]
 
@@ -13096,7 +12934,7 @@ version = "39.0.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
  "ark-vrf",
- "array-bytes 6.2.3",
+ "array-bytes",
  "bip39",
  "bitflags 1.3.2",
  "blake2 0.10.6",
@@ -13225,7 +13063,7 @@ dependencies = [
  "parity-scale-codec",
  "prop-test",
  "rand 0.8.5",
- "rand_chacha 0.9.0",
+ "rand_chacha 0.3.1",
  "rs_merkle",
  "scale-info",
  "serde",
@@ -13925,7 +13763,7 @@ name = "staging-xcm"
 version = "21.0.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "bounded-collections",
  "derive-where",
  "environmental",
@@ -14111,7 +13949,7 @@ dependencies = [
  "futures",
  "hex",
  "libp2p",
- "prometheus-client 0.24.1",
+ "prometheus-client",
  "serde",
  "serde_json",
  "subspace-metrics",
@@ -14224,14 +14062,14 @@ dependencies = [
  "futures",
  "hex",
  "hwlocality",
- "jsonrpsee 0.26.0",
+ "jsonrpsee",
  "mimalloc",
  "num_cpus",
  "ouroboros",
  "parity-scale-codec",
  "parking_lot 0.12.5",
  "pin-project",
- "prometheus-client 0.24.1",
+ "prometheus-client",
  "rand 0.8.5",
  "rayon",
  "schnorrkel",
@@ -14302,7 +14140,7 @@ dependencies = [
  "async-trait",
  "clap",
  "domain-test-service",
- "jsonrpsee 0.26.0",
+ "jsonrpsee",
  "sc-cli",
  "sc-service",
  "sp-keyring",
@@ -14323,7 +14161,7 @@ dependencies = [
  "clap",
  "futures",
  "hex",
- "jsonrpsee 0.26.0",
+ "jsonrpsee",
  "mimalloc",
  "reqwest",
  "subspace-core-primitives",
@@ -14343,7 +14181,7 @@ name = "subspace-gateway-rpc"
 version = "0.1.0"
 dependencies = [
  "hex",
- "jsonrpsee 0.26.0",
+ "jsonrpsee",
  "serde",
  "subspace-core-primitives",
  "subspace-data-retrieval",
@@ -14360,7 +14198,7 @@ dependencies = [
  "kzg",
  "parking_lot 0.12.5",
  "rand 0.8.5",
- "rand_core 0.10.1",
+ "rand_core 0.6.4",
  "rust-kzg-blst",
  "spin 0.10.0",
  "static_assertions",
@@ -14440,8 +14278,8 @@ name = "subspace-metrics"
 version = "0.1.0"
 dependencies = [
  "actix-web",
- "prometheus 0.14.0",
- "prometheus-client 0.24.1",
+ "prometheus",
+ "prometheus-client",
  "tracing",
 ]
 
@@ -14468,7 +14306,7 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.5",
  "pin-project",
- "prometheus-client 0.24.1",
+ "prometheus-client",
  "rand 0.8.5",
  "schnellru",
  "subspace-core-primitives",
@@ -14505,7 +14343,7 @@ dependencies = [
  "hex-literal 1.1.0",
  "mimalloc",
  "parity-scale-codec",
- "prometheus-client 0.24.1",
+ "prometheus-client",
  "sc-chain-spec",
  "sc-cli",
  "sc-client-api",
@@ -14603,8 +14441,8 @@ dependencies = [
  "core_affinity",
  "cpufeatures 0.3.0",
  "criterion",
- "rand_chacha 0.9.0",
- "rand_core 0.10.1",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
  "subspace-core-primitives",
  "thiserror 2.0.18",
 ]
@@ -14706,8 +14544,7 @@ name = "subspace-service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "array-bytes 9.3.0",
- "async-channel 2.5.0",
+ "async-channel 1.9.0",
  "async-lock",
  "async-trait",
  "cross-domain-message-gossip",
@@ -14717,14 +14554,14 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "futures",
  "hex",
- "jsonrpsee 0.26.0",
+ "jsonrpsee",
  "mmr-gadget",
  "mmr-rpc",
  "pallet-transaction-payment-rpc",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
  "parking_lot 0.12.5",
- "prometheus-client 0.24.1",
+ "prometheus-client",
  "rayon",
  "sc-basic-authorship",
  "sc-chain-spec",
@@ -14913,7 +14750,7 @@ dependencies = [
  "domain-runtime-primitives",
  "frame-system",
  "futures",
- "jsonrpsee 0.26.0",
+ "jsonrpsee",
  "mmr-gadget",
  "pallet-domains",
  "pallet-messenger",
@@ -15001,7 +14838,7 @@ dependencies = [
  "docify",
  "frame-system-rpc-runtime-api",
  "futures",
- "jsonrpsee 0.24.10",
+ "jsonrpsee",
  "log",
  "parity-scale-codec",
  "sc-rpc-api",
@@ -15022,7 +14859,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "log",
- "prometheus 0.13.4",
+ "prometheus",
  "thiserror 1.0.69",
  "tokio",
 ]
@@ -15032,7 +14869,7 @@ name = "substrate-test-client"
 version = "2.0.1"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=22ebae7f5d86a59f8259f562e3445dd2a4ab961b#22ebae7f5d86a59f8259f562e3445dd2a4ab961b"
 dependencies = [
- "array-bytes 6.2.3",
+ "array-bytes",
  "async-trait",
  "futures",
  "parity-scale-codec",
@@ -15227,7 +15064,7 @@ dependencies = [
  "futures",
  "hex",
  "impl-serde",
- "jsonrpsee 0.24.10",
+ "jsonrpsee",
  "parity-scale-codec",
  "primitive-types",
  "serde",
@@ -16059,7 +15896,7 @@ dependencies = [
  "http 1.4.0",
  "httparse",
  "log",
- "rand 0.9.2",
+ "rand 0.9.4",
  "rustls 0.23.37",
  "rustls-pki-types",
  "sha1",
@@ -16122,7 +15959,7 @@ version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "470dbf6591da1b39d43c14523b2b469c86879a53e8b758c8e090a470fe7b1fbe"
 dependencies = [
- "rand 0.9.2",
+ "rand 0.9.4",
  "serde",
  "web-time",
 ]
@@ -16214,6 +16051,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
+name = "unty"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
+
+[[package]]
 name = "ureq"
 version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -16300,6 +16143,12 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "virtue"
+version = "0.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
 
 [[package]]
 name = "void"
@@ -17795,7 +17644,7 @@ dependencies = [
  "nohash-hasher",
  "parking_lot 0.12.5",
  "pin-project",
- "rand 0.9.2",
+ "rand 0.9.4",
  "static_assertions",
  "web-time",
 ]

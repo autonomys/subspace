@@ -1,11 +1,12 @@
 use crate::PosTable;
 use anyhow::anyhow;
 use clap::{Parser, Subcommand};
-use criterion::{BatchSize, Criterion, Throughput, black_box};
+use criterion::{BatchSize, Criterion, Throughput};
 use parking_lot::Mutex;
 use rayon::{ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
 use std::collections::HashSet;
 use std::fs::OpenOptions;
+use std::hint::black_box;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use subspace_core_primitives::hashes::Blake3Hash;

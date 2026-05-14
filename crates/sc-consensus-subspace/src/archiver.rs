@@ -791,7 +791,9 @@ where
                 debug!(
                     "Encoded block {} has size of {}",
                     block_number_to_archive,
-                    bytesize::to_string(encoded_block.len() as u64, true),
+                    bytesize::ByteSize::b(encoded_block.len() as u64)
+                        .display()
+                        .iec(),
                 );
 
                 let block_outcome = archiver.add_block(encoded_block, block_object_mappings, false);
@@ -1253,7 +1255,9 @@ where
     debug!(
         "Encoded block {} has size of {}",
         block_number_to_archive,
-        bytesize::to_string(encoded_block.len() as u64, true),
+        bytesize::ByteSize::b(encoded_block.len() as u64)
+            .display()
+            .iec(),
     );
 
     let block_outcome = archiver.add_block(

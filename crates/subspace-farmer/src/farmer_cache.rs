@@ -672,14 +672,16 @@ where
 
                                 info!(
                                     "Piece cache sync {progress:.2}% complete ({} / {})",
-                                    bytesize::to_string(
+                                    bytesize::ByteSize::b(
                                         (prev_downloaded_pieces_count * Piece::SIZE) as u64,
-                                        true,
-                                    ),
-                                    bytesize::to_string(
+                                    )
+                                    .display()
+                                    .iec(),
+                                    bytesize::ByteSize::b(
                                         (pieces_to_download_total * Piece::SIZE) as u64,
-                                        true,
-                                    ),
+                                    )
+                                    .display()
+                                    .iec(),
                                 );
                             }
 

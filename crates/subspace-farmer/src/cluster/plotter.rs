@@ -532,7 +532,7 @@ where
                         return None;
                     }
                 }
-                RequestErrorKind::Other => {
+                RequestErrorKind::Other | RequestErrorKind::InvalidSubject => {
                     progress_updater
                         .update_progress_and_events(
                             progress_sender,

@@ -14,8 +14,8 @@ include = [
 ]
 
 [dependencies]
-array-bytes.workspace = true
 futures.workspace = true
+hex.workspace = true
 sc-client-api.workspace = true
 sc-consensus.workspace = true
 sc-network.workspace = true

@@ -1,4 +1,5 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
+use std::hint::black_box;
 use subspace_core_primitives::ScalarBytes;
 use subspace_core_primitives::pieces::RawRecord;
 use subspace_kzg::{Kzg, Scalar};

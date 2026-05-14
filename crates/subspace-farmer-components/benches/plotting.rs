@@ -1,7 +1,8 @@
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use futures::executor::block_on;
 use rand::prelude::*;
 use std::env;
+use std::hint::black_box;
 use std::num::{NonZeroU64, NonZeroUsize};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::PublicKey;

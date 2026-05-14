@@ -153,8 +153,10 @@ pub(super) fn print_disk_farm_info(directory: PathBuf, farm_index: usize) {
             println!("  Public key: 0x{}", hex::encode(info.public_key()));
             println!(
                 "  Allocated space: {} ({})",
-                bytesize::to_string(info.allocated_space(), true),
-                bytesize::to_string(info.allocated_space(), false)
+                bytesize::ByteSize::b(info.allocated_space())
+                    .display()
+                    .iec(),
+                bytesize::ByteSize::b(info.allocated_space()).display().si()
             );
             println!("  Directory: {}", directory.display());
         }

@@ -20,7 +20,7 @@ use core::array::TryFromSliceError;
 use core::hash::{Hash, Hasher};
 use core::iter::Step;
 use core::{fmt, mem, slice};
-use derive_more::{
+use derive_more::with_trait::{
     Add, AddAssign, AsMut, AsRef, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul,
     MulAssign, Sub, SubAssign,
 };

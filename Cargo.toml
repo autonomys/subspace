@@ -34,7 +34,7 @@ actix-web = { version = "4.9.0", default-features = false }
 aes = "0.9.0"
 anyhow = "1.0.89"
 array-bytes = "9.3.0"
-async-channel = "2.5.0"
+async-channel = "1.9.0"
 async-lock = "3.4.0"
 async-nats = "0.48.0"
 async-oneshot = "0.5.9"
@@ -43,7 +43,7 @@ auto-id-domain-runtime = { version = "0.1.0", path = "domains/runtime/auto-id" }
 auto-id-domain-test-runtime = { version = "0.1.0", path = "domains/test/runtime/auto-id" }
 backoff = "0.4.0"
 base58 = "0.2.0"
-bincode = { version = "3.0.0" }
+bincode = { version = "2.0.1" }
 bip39 = "2.0.0"
 bitvec = "1.0.1"
 blake2 = { version = "0.10.6", default-features = false }
@@ -105,7 +105,7 @@ hash-db = { version = "0.16.0", default-features = false }
 hex = { version = "0.4.3", default-features = false }
 hex-literal = "1.1.0"
 hwlocality = "1.0.0-alpha.12"
-jsonrpsee = "0.26.0"
+jsonrpsee = "0.24.10"
 kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac", default-features = false }
 libc = "0.2.186"
 libp2p = { version = "0.56.0", git = "https://github.com/subspace/rust-libp2p", rev = "7e9532d65530ebd0cf92c53fc326948ee8467fea", default-features = false }
@@ -161,12 +161,12 @@ parking_lot = "0.12.2"
 pem = "3.0.4"
 pin-project = "1.1.13"
 precompile-utils = { version = "0.1.0", git = "https://github.com/polkadot-evm/frontier", rev = "9d49e36ed5bac38241594f8ba055fdb94991483a", default-features = false }
-prometheus = { version = "0.14.0", default-features = false }
-prometheus-client = "0.24.1"
+prometheus = { version = "0.13.4", default-features = false }
+prometheus-client = "0.23.1"
 prop-test = "0.1.1"
 rand = { version = "0.8.5", default-features = false }
-rand_chacha = { version = "0.9.0", default-features = false }
-rand_core = "0.10.1"
+rand_chacha = { version = "0.3.1", default-features = false }
+rand_core = "0.6.4"
 rayon = "1.12.0"
 reqwest = { version = "0.12.9", default-features = false }
 ring = "0.17.8"

@@ -150,7 +150,7 @@ pub fn run_staking_fuzz(data: &[u8]) {
     let accounts: Vec<AccountId> = (0..5).map(|i| i as u128).collect();
     let mint = (u16::MAX as u128) * 2 * AI3;
     let genesis = create_genesis_storage(&accounts, mint);
-    let Ok(data) = bincode::deserialize(data) else {
+    let Ok((data, _)) = bincode::serde::decode_from_slice(data, bincode::config::legacy()) else {
         return;
     };
 

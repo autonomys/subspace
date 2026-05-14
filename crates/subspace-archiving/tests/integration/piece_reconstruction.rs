@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, thread_rng};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::num::NonZeroUsize;
@@ -17,7 +17,7 @@ fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
 // Block that fits into the segment fully
 fn get_random_block() -> Vec<u8> {
     let mut block = vec![0u8; RecordedHistorySegment::SIZE];
-    rand::thread_rng().fill(block.as_mut_slice());
+    thread_rng().fill(block.as_mut_slice());
     block
 }
 

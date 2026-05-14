@@ -4,7 +4,7 @@ use crate::{self as pallet_subspace, AllowAuthoringBy, Config, EnableRewardsAt, 
 use frame_support::traits::{ConstU16, ConstU128, OnInitialize};
 use frame_support::{derive_impl, parameter_types};
 use futures::executor::block_on;
-use rand::Rng;
+use rand::{Rng, thread_rng};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
@@ -274,7 +274,7 @@ pub fn create_archived_segment() -> &'static NewArchivedSegment {
         let mut archiver = Archiver::new(kzg_instance().clone(), erasure_coding_instance().clone());
 
         let mut block = vec![0u8; RecordedHistorySegment::SIZE];
-        rand::thread_rng().fill(block.as_mut_slice());
+        thread_rng().fill(block.as_mut_slice());
         archiver
             .add_block(block, Default::default(), true)
             .archived_segments

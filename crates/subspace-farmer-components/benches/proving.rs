@@ -1,12 +1,13 @@
 #![feature(exact_size_is_empty)]
 
-use criterion::{BatchSize, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use futures::executor::block_on;
 use parking_lot::Mutex;
 use rand::prelude::*;
 use schnorrkel::Keypair;
 use std::collections::HashSet;
 use std::fs::OpenOptions;
+use std::hint::black_box;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::{env, fs, slice};

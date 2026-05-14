@@ -1,8 +1,9 @@
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use futures::executor::block_on;
 use rand::prelude::*;
 use std::collections::HashSet;
 use std::fs::OpenOptions;
+use std::hint::black_box;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::{env, fs, slice};
