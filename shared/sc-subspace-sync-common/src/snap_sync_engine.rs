@@ -59,16 +59,9 @@ where
     {
         let genesis_hash = client.info().genesis_hash;
         let block_announces_protocol_name = ProtocolName::from(if let Some(fork_id) = fork_id {
-            format!(
-                "/{}/{}/transactions/1",
-                array_bytes::bytes2hex("", genesis_hash),
-                fork_id
-            )
+            format!("/{}/{}/transactions/1", hex::encode(genesis_hash), fork_id)
         } else {
-            format!(
-                "/{}/transactions/1",
-                array_bytes::bytes2hex("", genesis_hash)
-            )
+            format!("/{}/transactions/1", hex::encode(genesis_hash))
         });
 
         // Initialize syncing strategy.

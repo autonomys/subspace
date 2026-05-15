@@ -177,7 +177,7 @@ impl SingleDiskFarmInfo {
             .truncate(false)
             .open(directory.join(Self::FILE_NAME))?;
         if lock {
-            fs4::fs_std::FileExt::try_lock_exclusive(&file)?;
+            fs4::FileExt::try_lock(&file)?;
         }
         file.set_len(0)?;
         file.write_all(&serde_json::to_vec(self).expect("Info serialization never fails; qed"))?;
@@ -189,7 +189,7 @@ impl SingleDiskFarmInfo {
     /// processes is done
     pub fn try_lock(directory: &Path) -> io::Result<SingleDiskFarmInfoLock> {
         let file = File::open(directory.join(Self::FILE_NAME))?;
-        fs4::fs_std::FileExt::try_lock_exclusive(&file)?;
+        fs4::FileExt::try_lock(&file)?;
 
         Ok(SingleDiskFarmInfoLock { _file: file })
     }
@@ -1290,8 +1290,8 @@ impl SingleDiskFarm {
 
                     if allocated_space != single_disk_farm_info.allocated_space() {
                         info!(
-                            old_space = %bytesize::to_string(single_disk_farm_info.allocated_space(), true),
-                            new_space = %bytesize::to_string(allocated_space, true),
+                            old_space = %bytesize::ByteSize::b(single_disk_farm_info.allocated_space()).display().iec(),
+                            new_space = %bytesize::ByteSize::b(allocated_space).display().iec(),
                             "Farm size has changed"
                         );
 

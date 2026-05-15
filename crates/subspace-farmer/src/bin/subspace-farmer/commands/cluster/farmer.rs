@@ -256,18 +256,19 @@ where
         let registry = &Mutex::new(registry);
 
         let mut farms = Vec::with_capacity(disk_farms.len());
-        let mut farms_stream = disk_farms
-            .into_iter()
-            .enumerate()
-            .map(|(farm_index, disk_farm)| {
-                let farmer_app_info = farmer_app_info.clone();
-                let node_client = node_client.clone();
-                let kzg = kzg.clone();
-                let erasure_coding = erasure_coding.clone();
-                let plotter = Arc::clone(&plotter);
-                let global_mutex = Arc::clone(&global_mutex);
+        let mut farms_stream =
+            disk_farms
+                .into_iter()
+                .enumerate()
+                .map(|(farm_index, disk_farm)| {
+                    let farmer_app_info = farmer_app_info.clone();
+                    let node_client = node_client.clone();
+                    let kzg = kzg.clone();
+                    let erasure_coding = erasure_coding.clone();
+                    let plotter = Arc::clone(&plotter);
+                    let global_mutex = Arc::clone(&global_mutex);
 
-                async move {
+                    async move {
                     let farm_fut = SingleDiskFarm::new::<_, PosTable>(
                         SingleDiskFarmOptions {
                             directory: disk_farm.directory.clone(),
@@ -306,10 +307,10 @@ where
                                 Err(anyhow!(
                                     "Allocated space {} ({}) is not enough, minimum is ~{} (~{}, \
                                     {} bytes to be exact)",
-                                    bytesize::to_string(allocated_space, true),
-                                    bytesize::to_string(allocated_space, false),
-                                    bytesize::to_string(min_space, true),
-                                    bytesize::to_string(min_space, false),
+                                    bytesize::ByteSize::b(allocated_space).display().iec(),
+                                    bytesize::ByteSize::b(allocated_space).display().si(),
+                                    bytesize::ByteSize::b(min_space).display().iec(),
+                                    bytesize::ByteSize::b(min_space).display().si(),
                                     min_space
                                 )),
                             );
@@ -329,8 +330,8 @@ where
                         info!("  Public key: 0x{}", hex::encode(info.public_key()));
                         info!(
                             "  Allocated space: {} ({})",
-                            bytesize::to_string(info.allocated_space(), true),
-                            bytesize::to_string(info.allocated_space(), false)
+                            bytesize::ByteSize::b(info.allocated_space()).display().iec(),
+                            bytesize::ByteSize::b(info.allocated_space()).display().si()
                         );
                         info!("  Directory: {}", disk_farm.directory.display());
                     }
@@ -338,8 +339,8 @@ where
                     (farm_index, Ok(Box::new(farm) as Box<dyn Farm>))
                 }
                 .instrument(info_span!("", %farm_index))
-            })
-            .collect::<FuturesUnordered<_>>();
+                })
+                .collect::<FuturesUnordered<_>>();
 
         while let Some((farm_index, farm)) = farms_stream.next().await {
             if let Err(error) = &farm {

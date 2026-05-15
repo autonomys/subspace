@@ -7,7 +7,7 @@ use crate::segments::{HistorySize, SegmentIndex};
 use crate::{PublicKey, ScalarBytes};
 use core::array::TryFromSliceError;
 use core::fmt;
-use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
+use derive_more::{Deref, DerefMut, From, Into};
 use num_traits::WrappingSub;
 use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;

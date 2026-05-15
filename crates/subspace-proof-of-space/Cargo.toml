@@ -20,7 +20,7 @@ bench = false
 [dependencies]
 ab-chacha8.workspace = true
 blake3 = { workspace = true, default-features = false }
-chacha20 = { workspace = true, optional = true }
+chacha20 = { workspace = true, features = ["cipher"], optional = true }
 derive_more = { workspace = true, features = ["full"] }
 rayon = { workspace = true, optional = true }
 seq-macro = { workspace = true, optional = true }
@@ -28,7 +28,7 @@ sha2 = { workspace = true, optional = true }
 subspace-core-primitives.workspace = true
 
 [dev-dependencies]
-chacha20.workspace = true
+chacha20 = { workspace = true, features = ["cipher"] }
 criterion.workspace = true
 hex.workspace = true
 rayon.workspace = true

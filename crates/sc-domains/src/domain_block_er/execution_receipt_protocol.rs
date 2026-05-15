@@ -56,13 +56,13 @@ pub fn generate_protocol_name<Hash: AsRef<[u8]>>(
     if let Some(fork_id) = fork_id {
         format!(
             "/{}/{}/last-confirmed-domain-block-receipt/1",
-            array_bytes::bytes2hex("", genesis_hash),
+            hex::encode(genesis_hash),
             fork_id
         )
     } else {
         format!(
             "/{}/last-confirmed-domain-block-receipt/1",
-            array_bytes::bytes2hex("", genesis_hash)
+            hex::encode(genesis_hash)
         )
     }
 }

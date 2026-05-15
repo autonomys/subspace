@@ -37,7 +37,7 @@ subspace-core-primitives.workspace = true
 subspace-runtime-primitives.workspace = true
 
 # fuzz feature optional dependencies
-bincode = { workspace = true, optional = true }
+bincode = { workspace = true, features = ["serde"], optional = true }
 domain-pallet-executive = { workspace = true, optional = true, default-features = true }
 pallet-timestamp = { workspace = true, optional = true, default-features = true }
 pallet-block-fees = { workspace = true, optional = true, default-features = true }
