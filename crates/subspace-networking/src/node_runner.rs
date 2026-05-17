@@ -1542,6 +1542,9 @@ impl NodeRunner {
         self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
         self.known_peers_registry
             .remove_all_known_peer_addresses(peer_id);
+
+        // Immediately disconnect the peer to cancel any in-flight requests.
+        let _ = self.swarm.disconnect_peer_id(peer_id);
     }
 
     fn register_event_metrics(&mut self, swarm_event: &SwarmEvent<Event>) {
