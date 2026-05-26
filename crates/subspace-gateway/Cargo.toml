@@ -20,7 +20,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-actix-web = { workspace = true, features = ["rustls"] }
+actix-web = { workspace = true }
 async-lock.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
