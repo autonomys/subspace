@@ -107,8 +107,8 @@ hwlocality = "1.0.0-alpha.12"
 jsonrpsee = "0.24.10"
 kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac", default-features = false }
 libc = "0.2.186"
-libp2p = { version = "0.57.0", git = "https://github.com/subspace/rust-libp2p", rev = "ff73560df0e32040c36689db9906e6e6e585140c", default-features = false }
-libp2p-swarm-test = { version = "0.7.0", git = "https://github.com/subspace/rust-libp2p", rev = "ff73560df0e32040c36689db9906e6e6e585140c" }
+libp2p = { version = "0.57.0", git = "https://github.com/subspace/rust-libp2p", rev = "676c687c2f7a6e92f8f4f77a6934022aec3ba16c", default-features = false }
+libp2p-swarm-test = { version = "0.7.0", git = "https://github.com/subspace/rust-libp2p", rev = "676c687c2f7a6e92f8f4f77a6934022aec3ba16c" }
 libsecp256k1 = "0.7.1"
 log = { version = "0.4.22", default-features = false }
 memmap2 = "0.9.5"
@@ -446,12 +446,12 @@ substrate-bip39 = "=0.6.0"
 # This is a hack: patches to the same repository are rejected by `cargo`. But it considers
 # "subspace/rust-libp2p" and "autonomys/rust-libp2p" to be different repositories, even though
 # they're redirected to the same place by GitHub, so it allows this patch.
-libp2p = { git = "https://github.com/subspace/rust-libp2p", rev = "ff73560df0e32040c36689db9906e6e6e585140c" }
-libp2p-identity = { git = "https://github.com/subspace/rust-libp2p", rev = "ff73560df0e32040c36689db9906e6e6e585140c" }
-libp2p-kad = { git = "https://github.com/subspace/rust-libp2p", rev = "ff73560df0e32040c36689db9906e6e6e585140c" }
-multistream-select = { git = "https://github.com/subspace/rust-libp2p", rev = "ff73560df0e32040c36689db9906e6e6e585140c" }
+libp2p = { git = "https://github.com/subspace/rust-libp2p", rev = "676c687c2f7a6e92f8f4f77a6934022aec3ba16c" }
+libp2p-identity = { git = "https://github.com/subspace/rust-libp2p", rev = "676c687c2f7a6e92f8f4f77a6934022aec3ba16c" }
+libp2p-kad = { git = "https://github.com/subspace/rust-libp2p", rev = "676c687c2f7a6e92f8f4f77a6934022aec3ba16c" }
+multistream-select = { git = "https://github.com/subspace/rust-libp2p", rev = "676c687c2f7a6e92f8f4f77a6934022aec3ba16c" }
 
 [patch.crates-io]
 # Patch away `libp2p-identity` in our dependency tree with the git version.
-# For details see: https://github.com/subspace/rust-libp2p/blob/ff73560df0e32040c36689db9906e6e6e585140c/Cargo.toml#L140-L145
-libp2p-identity = { git = "https://github.com/subspace/rust-libp2p", rev = "ff73560df0e32040c36689db9906e6e6e585140c" }
+# For details see: https://github.com/subspace/rust-libp2p/blob/676c687c2f7a6e92f8f4f77a6934022aec3ba16c/Cargo.toml#L140-L145
+libp2p-identity = { git = "https://github.com/subspace/rust-libp2p", rev = "676c687c2f7a6e92f8f4f77a6934022aec3ba16c" }
