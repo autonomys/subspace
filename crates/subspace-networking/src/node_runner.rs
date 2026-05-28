@@ -1022,13 +1022,6 @@ impl NodeRunner {
                                     "Get record query failed with no results",
                                 );
                             }
-                            GetRecordError::QuorumFailed { key, records, .. } => {
-                                debug!(
-                                    key = hex::encode(&key),
-                                    "Get record query quorum failed with {} results",
-                                    records.len(),
-                                );
-                            }
                             GetRecordError::Timeout { key } => {
                                 debug!(key = hex::encode(&key), "Get record query timed out");
                             }
