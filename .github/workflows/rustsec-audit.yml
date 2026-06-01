@@ -10,6 +10,7 @@ on:
     paths:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
+      - ".github/workflows/rustsec-audit.yml"
   schedule:
     - cron: "40 13 * * 0"
 jobs:
@@ -20,9 +21,6 @@ jobs:
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 #v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          # TODO: Remove first once Substrate upgrades litep2p and we no longer have rustls 0.20.9 in our dependencies
-          # TODO: Remove second once Substrate upgrades litep2p and sc-network and we no longer have ring 0.16 in our dependencies
-          # TODO: Remove third once Substrate upgrades wasmtime and we no longer have wasmtime <= 9 in our dependencies
-          # TODO: Remove fourth once Substrate upgrades wasmtime and we no longer have wasmtime <= 23 in our dependencies
-          # TODO: Remove fifth once Substrate upgrades wasmtime and we no longer have wasmtime < 24.0.5 in our dependencies (RUSTSEC-2025-0118)
-          ignore: RUSTSEC-2024-0336, RUSTSEC-2025-0009, RUSTSEC-2023-0091, RUSTSEC-2024-0438, RUSTSEC-2025-0118
+          # TODO: Remove once litep2p moves to hickory-proto 0.26; no patched hickory 0.25.x exists and only litep2p still pulls hickory 0.25.x.
+          #   RUSTSEC-2026-0119: DNS message-encoding CPU exhaustion. RUSTSEC-2026-0118: NSEC3 loop, only reachable with hickory dnssec features we do not enable.
+          ignore: RUSTSEC-2026-0119, RUSTSEC-2026-0118
