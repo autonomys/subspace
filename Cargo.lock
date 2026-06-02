@@ -14455,6 +14455,7 @@ dependencies = [
 name = "subspace-process"
 version = "0.0.1"
 dependencies = [
+ "console",
  "fdlimit",
  "futures",
  "supports-color",
