@@ -40,14 +40,12 @@ use tracing::{debug, trace, warn};
 
 const RECONSTRUCTION_CONCURRENCY_LIMIT: usize = 1;
 
-/// Maximum time allowed for a sector download before giving up (retry will continue at the farm level).
-const SECTOR_DOWNLOAD_MAX_ELAPSED_TIME: Duration = Duration::from_secs(30 * 60); // 30 minutes
-
 fn default_backoff() -> ExponentialBackoff {
     ExponentialBackoff {
         initial_interval: Duration::from_secs(15),
         max_interval: Duration::from_secs(10 * 60),
-        max_elapsed_time: Some(SECTOR_DOWNLOAD_MAX_ELAPSED_TIME),
+        // Try until we get a valid piece
+        max_elapsed_time: None,
         ..ExponentialBackoff::default()
     }
 }
