@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Error"],"fn":["new_full","new_partial","wait_for_block_import"],"mod":["config","dsn","rpc","sync_from_dsn"],"struct":["NewFull","OtherPartialComponents"],"type":["FullBackend","FullClient","FullSelectChain","HostFunctions","RuntimeExecutor"]};

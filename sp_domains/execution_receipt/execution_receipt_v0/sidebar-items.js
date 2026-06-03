@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["ExecutionReceiptV0","SealedSingletonReceiptV0","SingletonReceiptV0"],"type":["ExecutionReceiptV0For"]};

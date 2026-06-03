@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["fraud_proof_verification_weights"]};
