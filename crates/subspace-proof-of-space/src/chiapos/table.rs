@@ -105,6 +105,13 @@ pub const fn num_buckets(k: u8) -> usize {
         .div_ceil(PARAM_BC as usize)
 }
 
+/// Upper bound on entries in a non-first table: `num_buckets(K) - 1` bucket pairs, each yielding at
+/// most `REDUCED_MATCHES_COUNT` matches. The actual count is data-dependent and can exceed `2^K`.
+#[cfg(feature = "alloc")]
+const fn max_table_entries(k: u8) -> usize {
+    (num_buckets(k) - 1) * REDUCED_MATCHES_COUNT
+}
+
 #[cfg(feature = "parallel")]
 #[inline(always)]
 fn strip_sync_unsafe_cell<const N: usize, T>(value: Box<[SyncUnsafeCell<T>; N]>) -> Box<[T; N]> {
@@ -901,7 +908,7 @@ where
     /// Other tables
     Other {
         /// Left and right entry positions in a previous table encoded into bits
-        positions: Box<[MaybeUninit<[Position; 2]>; 1 << K]>,
+        positions: Box<[MaybeUninit<[Position; 2]>]>,
     },
     /// Other tables
     #[cfg(feature = "parallel")]
@@ -968,9 +975,9 @@ where
     /// Other tables
     Other {
         /// Left and right entry positions in a previous table encoded into bits
-        positions: Box<[MaybeUninit<[Position; 2]>; 1 << K]>,
+        positions: Box<[MaybeUninit<[Position; 2]>]>,
         /// Metadata corresponding to each entry
-        metadatas: Box<[MaybeUninit<Metadata<K, TABLE_NUMBER>>; 1 << K]>,
+        metadatas: Box<[MaybeUninit<Metadata<K, TABLE_NUMBER>>]>,
         /// Each bucket contains positions of `Y` values that belong to it and corresponding `y`.
         ///
         /// Buckets are padded with sentinel values to `REDUCED_BUCKETS_SIZE`.
@@ -1245,16 +1252,12 @@ where
     {
         let left_targets = &*cache.left_targets;
         let mut initialized_elements = 0_usize;
-        // SAFETY: Contents is `MaybeUninit`
-        let mut ys = unsafe { Box::<[MaybeUninit<Y>; 1 << K]>::new_uninit().assume_init() };
-        // SAFETY: Contents is `MaybeUninit`
-        let mut positions =
-            unsafe { Box::<[MaybeUninit<[Position; 2]>; 1 << K]>::new_uninit().assume_init() };
+        let mut ys: Box<[MaybeUninit<Y>]> = Box::new_uninit_slice(max_table_entries(K));
+        let mut positions: Box<[MaybeUninit<[Position; 2]>]> =
+            Box::new_uninit_slice(max_table_entries(K));
         // The last table doesn't have metadata
-        // SAFETY: Contents is `MaybeUninit`
-        let mut metadatas = unsafe {
-            Box::<[MaybeUninit<Metadata<K, TABLE_NUMBER>>; 1 << K]>::new_uninit().assume_init()
-        };
+        let mut metadatas: Box<[MaybeUninit<Metadata<K, TABLE_NUMBER>>]> =
+            Box::new_uninit_slice(max_table_entries(K));
 
         for ([left_bucket, right_bucket], left_bucket_index) in
             parent_table.buckets().array_windows().zip(0..)
@@ -1282,7 +1285,8 @@ where
                 )
             };
 
-            // SAFETY: Preallocated length is an upper bound and is always sufficient
+            // SAFETY: arrays are sized to `max_table_entries(K)`, the exact upper bound on the total
+            // number of matches, so `initialized_elements + matches.len()` never exceeds the length
             let (ys, positions, metadatas) = unsafe {
                 (
                     ys.split_at_mut_unchecked(matches.len()).0,
