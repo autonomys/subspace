@@ -399,3 +399,48 @@ fn bucketed_proofs_match_sorted_reference() {
         "Expected at least some challenges to have proofs"
     );
 }
+
+/// Regression test for the out-of-bounds write in the non-parallel `Table::create`.
+///
+/// A non-first table's entry count fluctuates around `2^K` and exceeds it for a large fraction of
+/// K=20 seeds. The flat output arrays were sized `1 << K`, so those seeds wrote past the end (a
+/// segfault, or silent corruption that yields invalid proofs on read). Building tables across a
+/// spread of seeds must not corrupt memory, and every proof found must verify.
+#[test]
+fn table_create_does_not_overflow_at_k20() {
+    const PRODUCTION_K: u8 = 20;
+
+    let cache = TablesCache::default();
+    let mut total_proofs = 0_u32;
+    for i in 0..16_u32 {
+        // ~44% of seeds overflow a non-first table at K=20, so a derived spread reliably hits it.
+        let seed = *blake3::hash(&i.to_le_bytes()).as_bytes();
+        // Building the tables is what triggers the overflow.
+        let tables = TablesGeneric::<PRODUCTION_K>::create(seed, &cache);
+
+        for challenge_index in 0..256_u32 {
+            let mut challenge = [0u8; 32];
+            challenge[..4].copy_from_slice(&challenge_index.to_le_bytes());
+            let first_challenge_bytes: [u8; 4] = challenge[..4].try_into().unwrap();
+
+            for proof in tables.find_proof(first_challenge_bytes) {
+                assert!(
+                    TablesGeneric::<PRODUCTION_K>::verify(
+                        &seed,
+                        &challenge,
+                        proof.as_slice().try_into().unwrap(),
+                    )
+                    .is_some(),
+                    "proof failed to verify (table memory corruption): seed {i}, challenge \
+                     {challenge_index}"
+                );
+                total_proofs += 1;
+            }
+        }
+    }
+
+    assert!(
+        total_proofs > 0,
+        "expected to find proofs across the derived seeds"
+    );
+}
