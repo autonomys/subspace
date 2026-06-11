@@ -901,7 +901,7 @@ where
     /// Other tables
     Other {
         /// Left and right entry positions in a previous table encoded into bits
-        positions: Box<[MaybeUninit<[Position; 2]>; 1 << K]>,
+        positions: Vec<MaybeUninit<[Position; 2]>>,
     },
     /// Other tables
     #[cfg(feature = "parallel")]
@@ -931,9 +931,9 @@ where
             Self::First => {
                 unreachable!("Not the first table");
             }
-            Self::Other { positions, .. } => {
+            Self::Other { positions } => {
                 // SAFETY: All non-sentinel positions returned by [`Self::buckets()`] are valid
-                unsafe { positions.get_unchecked(usize::from(position)).assume_init() }
+                unsafe { *positions.get_unchecked(usize::from(position)).assume_init_ref() }
             }
             #[cfg(feature = "parallel")]
             Self::OtherBuckets { positions, .. } => {
@@ -965,12 +965,12 @@ where
         /// Buckets are padded with sentinel values to `REDUCED_BUCKETS_SIZE`.
         buckets: Box<[[(Position, Y); REDUCED_BUCKET_SIZE]; num_buckets(K)]>,
     },
-    /// Other tables
+    /// Other tables (using Vec for dynamic sizing)
     Other {
         /// Left and right entry positions in a previous table encoded into bits
-        positions: Box<[MaybeUninit<[Position; 2]>; 1 << K]>,
+        positions: Vec<MaybeUninit<[Position; 2]>>,
         /// Metadata corresponding to each entry
-        metadatas: Box<[MaybeUninit<Metadata<K, TABLE_NUMBER>>; 1 << K]>,
+        metadatas: Vec<MaybeUninit<Metadata<K, TABLE_NUMBER>>>,
         /// Each bucket contains positions of `Y` values that belong to it and corresponding `y`.
         ///
         /// Buckets are padded with sentinel values to `REDUCED_BUCKETS_SIZE`.
@@ -1244,17 +1244,10 @@ where
         EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     {
         let left_targets = &*cache.left_targets;
-        let mut initialized_elements = 0_usize;
-        // SAFETY: Contents is `MaybeUninit`
-        let mut ys = unsafe { Box::<[MaybeUninit<Y>; 1 << K]>::new_uninit().assume_init() };
-        // SAFETY: Contents is `MaybeUninit`
-        let mut positions =
-            unsafe { Box::<[MaybeUninit<[Position; 2]>; 1 << K]>::new_uninit().assume_init() };
-        // The last table doesn't have metadata
-        // SAFETY: Contents is `MaybeUninit`
-        let mut metadatas = unsafe {
-            Box::<[MaybeUninit<Metadata<K, TABLE_NUMBER>>; 1 << K]>::new_uninit().assume_init()
-        };
+
+        let mut ys = Vec::new();
+        let mut positions = Vec::new();
+        let mut metadatas = Vec::new();
 
         for ([left_bucket, right_bucket], left_bucket_index) in
             parent_table.buckets().array_windows().zip(0..)
@@ -1273,42 +1266,32 @@ where
             };
             // Throw away some successful matches that are not that necessary
             let matches = &matches[..matches.len().min(REDUCED_MATCHES_COUNT)];
-            // SAFETY: Already initialized this many elements
-            let (ys, positions, metadatas) = unsafe {
-                (
-                    ys.split_at_mut_unchecked(initialized_elements).1,
-                    positions.split_at_mut_unchecked(initialized_elements).1,
-                    metadatas.split_at_mut_unchecked(initialized_elements).1,
-                )
-            };
 
-            // SAFETY: Preallocated length is an upper bound and is always sufficient
-            let (ys, positions, metadatas) = unsafe {
-                (
-                    ys.split_at_mut_unchecked(matches.len()).0,
-                    positions.split_at_mut_unchecked(matches.len()).0,
-                    metadatas.split_at_mut_unchecked(matches.len()).0,
-                )
-            };
+            let matches_len = matches.len();
+            let ys_len = ys.len();
+            let positions_len = positions.len();
+            let metadatas_len = metadatas.len();
 
-            // SAFETY: Matches come from the parent table and the size of `ys`, `positions`
-            // and `metadatas` is the same as the number of matches
+            // Reserve space for the new matches
+            ys.resize_with(ys_len + matches_len, || MaybeUninit::uninit());
+            positions.resize_with(positions_len + matches_len, || MaybeUninit::uninit());
+            metadatas.resize_with(metadatas_len + matches_len, || MaybeUninit::uninit());
+
+            // Get mutable slices to the newly added portion
+            let ys_slice = &mut ys[ys_len..];
+            let positions_slice = &mut positions[positions_len..];
+            let metadatas_slice = &mut metadatas[metadatas_len..];
+
+            // SAFETY: Matches come from the parent table and the size of slices matches the number of matches
             unsafe {
-                matches_to_results(&parent_table, matches, ys, positions, metadatas);
+                matches_to_results(&parent_table, matches, ys_slice, positions_slice, metadatas_slice);
             }
-
-            initialized_elements += matches.len();
         }
 
         let parent_table = parent_table.prune();
 
-        // SAFETY: Converting a boxed array to a vector of the same size, which has the same memory
-        // layout, the number of elements matches the number of elements that were initialized
-        let ys = unsafe {
-            let ys_len = ys.len();
-            let ys = Box::into_raw(ys);
-            Vec::from_raw_parts(ys.cast(), initialized_elements, ys_len)
-        };
+        // SAFETY: `MaybeUninit<Y>` has the same layout as `Y`, all elements are initialized
+        let ys: Vec<Y> = unsafe { mem::transmute(ys) };
 
         // TODO: Try to group buckets in the process of collecting `y`s
         let mut buckets = group_by_buckets::<K>(&ys);
@@ -1463,7 +1446,7 @@ where
             }
             Self::Other { positions, .. } => {
                 // SAFETY: All non-sentinel positions returned by [`Self::buckets()`] are valid
-                unsafe { positions.get_unchecked(usize::from(position)).assume_init() }
+                unsafe { *positions.get_unchecked(usize::from(position)).assume_init_ref() }
             }
             #[cfg(feature = "parallel")]
             Self::OtherBuckets { positions, .. } => {
@@ -1501,7 +1484,7 @@ where
             }
             Self::Other { metadatas, .. } => {
                 // SAFETY: All non-sentinel positions returned by [`Self::buckets()`] are valid
-                unsafe { metadatas.get_unchecked(usize::from(position)).assume_init() }
+                unsafe { *metadatas.get_unchecked(usize::from(position)).assume_init_ref() }
             }
             #[cfg(feature = "parallel")]
             Self::OtherBuckets { metadatas, .. } => {
