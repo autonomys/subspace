@@ -246,9 +246,13 @@ where
     {
         Ok(piece) => piece,
         Err(error) => {
+            // The evaluation seed regenerates the exact proof-of-space table for this read, making
+            // a failure locally reproducible.
+            let evaluation_seed = sector_id.derive_evaluation_seed(piece_offset);
             error!(
                 %sector_index,
                 %piece_offset,
+                evaluation_seed = %hex::encode(*evaluation_seed),
                 %error,
                 "Failed to read piece from sector"
             );
