@@ -53,7 +53,7 @@ bytesize = "2.3.1"
 cc = "1.2.62"
 chacha20 = { version = "0.10.0", default-features = false }
 clap = "4.6.1"
-console = "0.16.3"
+console = "0.15.11"
 core_affinity = "0.8.1"
 cpufeatures = "0.3.0"
 criterion = { version = "0.8.2", default-features = false }
