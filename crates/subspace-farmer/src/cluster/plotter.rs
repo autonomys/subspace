@@ -532,7 +532,9 @@ where
                         return None;
                     }
                 }
-                RequestErrorKind::Other | RequestErrorKind::InvalidSubject => {
+                RequestErrorKind::Other
+                | RequestErrorKind::InvalidSubject
+                | RequestErrorKind::MaxPayloadExceeded => {
                     progress_updater
                         .update_progress_and_events(
                             progress_sender,

@@ -450,7 +450,9 @@ impl NatsClient {
                         RequestErrorKind::TimedOut | RequestErrorKind::NoResponders => {
                             // Continue with retries
                         }
-                        RequestErrorKind::Other | RequestErrorKind::InvalidSubject => {
+                        RequestErrorKind::Other
+                        | RequestErrorKind::InvalidSubject
+                        | RequestErrorKind::MaxPayloadExceeded => {
                             return Err(error);
                         }
                     }
