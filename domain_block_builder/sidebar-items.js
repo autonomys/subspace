@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["create_delta_backend"],"struct":["BlockBuilder","BuiltBlock","CollectedStorageChanges","CustomGenesisBlockBuilder","DeltaBackend"],"trait":["BlockBuilderApi"]};

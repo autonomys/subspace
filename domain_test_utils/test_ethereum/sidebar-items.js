@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["EvmAccountList"],"fn":["generate_eip1559_transfer_txn","generate_eip1559_tx","generate_eip2930_transfer_txn","generate_eip2930_tx","generate_evm_account_list","generate_evm_domain_call","generate_legacy_transfer_txn","generate_legacy_tx","max_extrinsic_gas"]};

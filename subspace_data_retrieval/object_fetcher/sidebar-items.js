@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_BLOCK_LENGTH"],"enum":["Error"],"fn":["max_supported_object_length"],"struct":["ObjectFetcher"],"type":["LastPieceCache"]};

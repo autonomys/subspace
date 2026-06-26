@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["SELECTOR_LOG_TRANSFER_TO_CONSENSUS"],"enum":["TransporterPrecompileCall"],"fn":["log_transfer_to_consensus"],"struct":["TransporterPrecompile"]};
