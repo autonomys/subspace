@@ -372,9 +372,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.102"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "approx"
@@ -1646,9 +1646,9 @@ dependencies = [
 
 [[package]]
 name = "chacha20"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f8d983286843e49675a4b7a2d174efe136dc93a18d69130dd18198a6c167601"
+checksum = "d524456ba66e72eb8b115ff89e01e497f8e6d11d78b70b1aa13c0fbd97540a81"
 dependencies = [
  "cfg-if",
  "cipher 0.5.1",
@@ -1886,6 +1886,18 @@ dependencies = [
  "once_cell",
  "unicode-width",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "console"
+version = "0.16.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d64e8af5551369d19cf50138de61f1c42074ab970f74e99be916646777f8fc87"
+dependencies = [
+ "encode_unicode",
+ "libc",
+ "unicode-width",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3642,9 +3654,9 @@ dependencies = [
 
 [[package]]
 name = "env_filter"
-version = "1.0.1"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e90c2accc4b07a8456ea0debdc2e7587bdd890680d71173a15d4ae604f6eef"
+checksum = "900d271a03799a1ee8d1ca9b19893b48ca674a9284fefcfb85f05e74ed314217"
 dependencies = [
  "log",
  "regex",
@@ -3652,13 +3664,13 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.11.10"
+version = "0.11.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0621c04f2196ac3f488dd583365b9c09be011a4ab8b9f37248ffcc8f6198b56a"
+checksum = "de671bd27a75a797dc9ae289ba1e77276e75e2026408aab65185384e2d5cd3f6"
 dependencies = [
  "anstream",
  "anstyle",
- "env_filter 1.0.1",
+ "env_filter 2.0.0",
  "jiff",
  "log",
 ]
@@ -3682,7 +3694,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5955,7 +5967,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7258,9 +7270,9 @@ dependencies = [
 
 [[package]]
 name = "memmap2"
-version = "0.9.10"
+version = "0.9.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "714098028fe011992e1c3962653c96b2d578c4b4bce9036e15ff220319b1e0e3"
+checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
 ]
@@ -8758,7 +8770,7 @@ dependencies = [
  "libc",
  "log",
  "lz4",
- "memmap2 0.9.10",
+ "memmap2 0.9.11",
  "parking_lot 0.12.5",
  "rand 0.9.4",
  "siphasher 1.0.2",
@@ -9835,7 +9847,7 @@ version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "itertools 0.14.0",
  "log",
  "multimap",
@@ -9855,7 +9867,7 @@ version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "343d3bd7056eda839b03204e68deff7d1b13aba7af2b2fd16890697274262ee7"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "itertools 0.14.0",
  "log",
  "multimap",
@@ -10091,7 +10103,7 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207"
 dependencies = [
- "chacha20 0.10.0",
+ "chacha20 0.10.1",
  "getrandom 0.4.2",
  "rand_core 0.10.1",
 ]
@@ -10569,7 +10581,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -10801,7 +10813,7 @@ source = "git+https://github.com/autonomys/polkadot-sdk?rev=8304f8852018c9b2d690
 dependencies = [
  "array-bytes",
  "docify",
- "memmap2 0.9.10",
+ "memmap2 0.9.11",
  "parity-scale-codec",
  "sc-chain-spec-derive",
  "sc-client-api",
@@ -11197,7 +11209,7 @@ name = "sc-informant"
 version = "0.54.0"
 source = "git+https://github.com/autonomys/polkadot-sdk?rev=8304f8852018c9b2d69071449e988d6e63e4122c#8304f8852018c9b2d69071449e988d6e63e4122c"
 dependencies = [
- "console",
+ "console 0.15.11",
  "futures",
  "futures-timer",
  "log",
@@ -11798,7 +11810,7 @@ version = "44.0.0"
 source = "git+https://github.com/autonomys/polkadot-sdk?rev=8304f8852018c9b2d69071449e988d6e63e4122c#8304f8852018c9b2d69071449e988d6e63e4122c"
 dependencies = [
  "chrono",
- "console",
+ "console 0.15.11",
  "is-terminal",
  "libc",
  "log",
@@ -13769,9 +13781,9 @@ checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 
 [[package]]
 name = "spin"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1527984ca054dfca79333baec451042863f485fbee01b7bf6d911de915cac865"
+checksum = "bd5231412d905519dca6a5deb0327d407be68d6c941feec004533401d3a0a715"
 dependencies = [
  "lock_api",
 ]
@@ -14267,7 +14279,7 @@ dependencies = [
  "rand 0.8.6",
  "rand_core 0.6.4",
  "rust-kzg-blst",
- "spin 0.12.0",
+ "spin 0.12.1",
  "static_assertions",
  "subspace-core-primitives",
  "tracing",
@@ -14367,7 +14379,7 @@ dependencies = [
  "hex",
  "libp2p",
  "libp2p-swarm-test",
- "memmap2 0.9.10",
+ "memmap2 0.9.11",
  "multihash 0.19.5",
  "nohash-hasher",
  "parity-scale-codec",
@@ -14461,7 +14473,7 @@ dependencies = [
 name = "subspace-process"
 version = "0.0.1"
 dependencies = [
- "console",
+ "console 0.16.3",
  "fdlimit",
  "futures",
  "supports-color",
@@ -14476,7 +14488,7 @@ version = "0.1.0"
 dependencies = [
  "ab-chacha8",
  "blake3",
- "chacha20 0.10.0",
+ "chacha20 0.10.1",
  "criterion",
  "derive_more 2.1.1",
  "hex",
@@ -14964,7 +14976,7 @@ source = "git+https://github.com/autonomys/polkadot-sdk?rev=8304f8852018c9b2d690
 dependencies = [
  "build-helper",
  "cargo_metadata",
- "console",
+ "console 0.15.11",
  "filetime",
  "jobserver",
  "parity-wasm",
@@ -15323,7 +15335,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -17751,9 +17763,9 @@ dependencies = [
 
 [[package]]
 name = "ziggy"
-version = "1.7.1"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65c37510ac19c73bf07516c30c2ddebc04d750a64d53ab8d1c085c8e72fcfc5e"
+checksum = "8d5a51707a85476535fd1cbe99817779975471382be18a74e479ee08bfd68e7d"
 
 [[package]]
 name = "zmij"
