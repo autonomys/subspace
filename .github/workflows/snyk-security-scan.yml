@@ -16,7 +16,7 @@ jobs:
   snyk-container-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       # we can just scan the images, but we are building the image and scanning from the Dockerfile as it can be more accurate and find more obscured vulnerabilities than simply scanning the pre-built image.
       # See https://docs.snyk.io/scan-with-snyk/snyk-container/use-snyk-container/detect-the-container-base-image#how-snyk-container-identifies-base-images
       - name: Build Farmer Docker image
