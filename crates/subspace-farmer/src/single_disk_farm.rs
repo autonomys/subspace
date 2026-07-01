@@ -255,21 +255,67 @@ pub enum SingleDiskFarmSummary {
     },
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
+enum PlotMetadataVersion {
+    /// Original layout, before the proof-of-space cutover.
+    #[codec(index = 0)]
+    V0,
+    /// Adds the proof-of-space `cutover`.
+    #[codec(index = 1)]
+    V1,
+}
+
+impl PlotMetadataVersion {
+    /// Latest version this implementation writes.
+    const LATEST: Self = Self::V1;
+}
+
+#[derive(Debug, Encode)]
 struct PlotMetadataHeader {
-    version: u8,
+    version: PlotMetadataVersion,
     plotted_sector_count: SectorIndex,
+    /// History size of the newest sector plotted before the proof-of-space cutover, or `None` for
+    /// a farm with no pre-cutover sectors. Sectors with `history_size <= cutover` use the old
+    /// proof-of-space, newer ones the new one. Present only in version 1 and later.
+    cutover: Option<HistorySize>,
 }
 
 impl PlotMetadataHeader {
     #[inline]
     fn encoded_size() -> usize {
         let default = PlotMetadataHeader {
-            version: 0,
+            version: PlotMetadataVersion::LATEST,
             plotted_sector_count: 0,
+            // `Some` is the larger encoding; size the header buffer for it so a version 1 header
+            // with a recorded cutover always fits.
+            cutover: Some(HistorySize::from(SegmentIndex::ZERO)),
         };
 
         default.encoded_size()
+    }
+}
+
+// TODO(ved): Drop this manual `Decode` and return to `#[derive(Decode)]` once the `cutover` field
+//  is removed after the proof-of-space migration completes. It exists only to decode version 0
+//  headers that predate the `cutover` field.
+impl Decode for PlotMetadataHeader {
+    fn decode<I: parity_scale_codec::Input>(
+        input: &mut I,
+    ) -> Result<Self, parity_scale_codec::Error> {
+        // Rejects unknown (future) versions — this is the old-binary lockout.
+        let version = PlotMetadataVersion::decode(input)?;
+        let plotted_sector_count = SectorIndex::decode(input)?;
+        // `cutover` was added in version 1; version 0 headers do not carry it.
+        let cutover = match version {
+            PlotMetadataVersion::V0 => None,
+            PlotMetadataVersion::V1 => Option::<HistorySize>::decode(input)?,
+        };
+
+        Ok(Self {
+            version,
+            plotted_sector_count,
+            cutover,
+        })
     }
 }
 
@@ -388,9 +434,6 @@ pub enum SingleDiskFarmError {
     /// Failed to decode metadata header
     #[error("Failed to decode metadata header: {0}")]
     FailedToDecodeMetadataHeader(parity_scale_codec::Error),
-    /// Unexpected metadata version
-    #[error("Unexpected metadata version {0}")]
-    UnexpectedMetadataVersion(u8),
     /// Allocated space is not enough for one sector
     #[error(
         "Allocated space is not enough for one sector. \
@@ -528,9 +571,6 @@ pub enum SingleDiskFarmScrubError {
     /// Failed to decode metadata header
     #[error("Failed to decode metadata header: {0}")]
     FailedToDecodeMetadataHeader(parity_scale_codec::Error),
-    /// Unexpected metadata version
-    #[error("Unexpected metadata version {0}")]
-    UnexpectedMetadataVersion(u8),
     /// Cache can't be opened
     #[error("Cache at {file} can't be opened: {error}")]
     CacheCantBeOpened {
@@ -821,7 +861,6 @@ impl SingleDiskFarm {
     pub const PLOT_FILE: &'static str = "plot.bin";
     /// Name of the metadata file
     pub const METADATA_FILE: &'static str = "metadata.bin";
-    const SUPPORTED_PLOT_VERSION: u8 = 0;
 
     /// Create new single disk farm instance
     pub async fn new<NC, PosTable>(
@@ -1350,10 +1389,11 @@ impl SingleDiskFarm {
         // Align plot file size for disk sector size
         let expected_metadata_size =
             expected_metadata_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
-        let metadata_header = if metadata_size == 0 {
+        let mut metadata_header = if metadata_size == 0 {
             let metadata_header = PlotMetadataHeader {
-                version: SingleDiskFarm::SUPPORTED_PLOT_VERSION,
+                version: PlotMetadataVersion::LATEST,
                 plotted_sector_count: 0,
+                cutover: None,
             };
 
             metadata_file
@@ -1379,12 +1419,6 @@ impl SingleDiskFarm {
             let mut metadata_header =
                 PlotMetadataHeader::decode(&mut metadata_header_bytes.as_ref())
                     .map_err(SingleDiskFarmError::FailedToDecodeMetadataHeader)?;
-
-            if metadata_header.version != SingleDiskFarm::SUPPORTED_PLOT_VERSION {
-                return Err(SingleDiskFarmError::UnexpectedMetadataVersion(
-                    metadata_header.version,
-                ));
-            }
 
             if metadata_header.plotted_sector_count > target_sector_count {
                 metadata_header.plotted_sector_count = target_sector_count;
@@ -1428,6 +1462,14 @@ impl SingleDiskFarm {
                         }
                     };
                 sectors_metadata.push(sector_metadata);
+            }
+
+            // Upgrade a version-0 plot in place: its sectors predate the new proof-of-space, so set
+            // the cutover from their max history size (not node history, which can trail on sync).
+            if metadata_header.version < PlotMetadataVersion::LATEST {
+                metadata_header.cutover = sectors_metadata.iter().map(|m| m.history_size).max();
+                metadata_header.version = PlotMetadataVersion::LATEST;
+                metadata_file.write_all_at(&metadata_header.encode(), 0)?;
             }
 
             Arc::new(AsyncRwLock::new(sectors_metadata))
@@ -1588,13 +1630,6 @@ impl SingleDiskFarm {
             .map_err(|error| {
                 io::Error::other(format!("Failed to decode metadata header: {error}"))
             })?;
-
-        if metadata_header.version != SingleDiskFarm::SUPPORTED_PLOT_VERSION {
-            return Err(io::Error::other(format!(
-                "Unsupported metadata version {}",
-                metadata_header.version
-            )));
-        }
 
         let mut sectors_metadata = Vec::<SectorMetadataChecksummed>::with_capacity(
             ((metadata_size - RESERVED_PLOT_METADATA) / sector_metadata_size as u64) as usize,
@@ -1862,12 +1897,6 @@ impl SingleDiskFarm {
                     PlotMetadataHeader::decode(&mut reserved_metadata.as_slice())
                         .map_err(SingleDiskFarmScrubError::FailedToDecodeMetadataHeader)?
                 };
-
-                if metadata_header.version != SingleDiskFarm::SUPPORTED_PLOT_VERSION {
-                    return Err(SingleDiskFarmScrubError::UnexpectedMetadataVersion(
-                        metadata_header.version,
-                    ));
-                }
 
                 let plotted_sector_count = metadata_header.plotted_sector_count;
 
