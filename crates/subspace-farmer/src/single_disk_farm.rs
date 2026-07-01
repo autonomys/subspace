@@ -2407,3 +2407,52 @@ fn write_dummy_sector_metadata(
             error,
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plot_metadata_header_version_upgrade() {
+        // A version 0 header carries no cutover field yet must still decode, with cutover = None.
+        #[derive(Encode)]
+        struct V0Header {
+            version: u8,
+            plotted_sector_count: SectorIndex,
+        }
+        let v0_bytes = V0Header {
+            version: 0,
+            plotted_sector_count: 42,
+        }
+        .encode();
+        let decoded =
+            PlotMetadataHeader::decode(&mut v0_bytes.as_slice()).expect("version 0 header decodes");
+        assert_eq!(decoded.version, PlotMetadataVersion::V0);
+        assert_eq!(decoded.plotted_sector_count, 42);
+        assert_eq!(decoded.cutover, None);
+
+        // A current header round-trips with its cutover intact.
+        let cutover = Some(HistorySize::from(SegmentIndex::ZERO));
+        let header = PlotMetadataHeader {
+            version: PlotMetadataVersion::LATEST,
+            plotted_sector_count: 7,
+            cutover,
+        };
+        let decoded = PlotMetadataHeader::decode(&mut header.encode().as_slice())
+            .expect("current header round-trips");
+        assert_eq!(decoded.version, PlotMetadataVersion::LATEST);
+        assert_eq!(decoded.plotted_sector_count, 7);
+        assert_eq!(decoded.cutover, cutover);
+    }
+
+    #[test]
+    fn is_post_cutover_boundary() {
+        let h = |n: u64| HistorySize::from(SegmentIndex::from(n));
+        // No cutover: a fresh farm plots everything with the new proof-of-space.
+        assert!(is_post_cutover(None, h(1)));
+        // At or below the cutover stays old; strictly above moves to the new proof-of-space.
+        assert!(!is_post_cutover(Some(h(10)), h(9)));
+        assert!(!is_post_cutover(Some(h(10)), h(10)));
+        assert!(is_post_cutover(Some(h(10)), h(11)));
+    }
+}

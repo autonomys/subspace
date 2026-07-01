@@ -31,10 +31,10 @@ use subspace_farmer_components::sector::{
     SectorContentsMap, SectorMetadata, SectorMetadataChecksummed, sector_size,
 };
 use subspace_kzg::Kzg;
-use subspace_proof_of_space::chia::ChiaTable;
+use subspace_proof_of_space::chia_v2::ChiaV2Table;
 use subspace_proof_of_space::{Table, TableGenerator};
 
-type PosTable = ChiaTable;
+type PosTable = ChiaV2Table;
 
 const MAX_PIECES_IN_SECTOR: u16 = 1000;
 

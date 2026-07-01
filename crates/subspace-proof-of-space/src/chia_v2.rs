@@ -63,3 +63,6 @@ impl Table for ChiaV2Table {
         <Self as SolutionPotVerifier>::is_proof_valid(seed, challenge_index, proof)
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -88,3 +88,6 @@ impl Table for PosTable {
         <Self as SolutionPotVerifier>::is_proof_valid(seed, challenge_index, proof)
     }
 }
+
+#[cfg(test)]
+mod tests;
