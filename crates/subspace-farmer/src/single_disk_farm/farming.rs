@@ -14,7 +14,6 @@ use crate::single_disk_farm::metrics::SingleDiskFarmMetrics;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use futures::StreamExt;
 use futures::channel::mpsc;
-use parking_lot::Mutex;
 use rayon::ThreadPool;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -73,11 +72,8 @@ where
 }
 
 /// Plot audit options
-#[derive(Debug)]
-pub struct PlotAuditOptions<'a, 'b, PosTable>
-where
-    PosTable: Table,
-{
+#[derive(Debug, Clone, Copy)]
+pub struct PlotAuditOptions<'a, 'b> {
     /// Public key of the farm
     pub public_key: &'a PublicKey,
     /// Reward address to use for solutions
@@ -95,21 +91,10 @@ where
     pub sectors_being_modified: &'b HashSet<SectorIndex>,
     /// Mode of reading chunks during proving
     pub read_sector_record_chunks_mode: ReadSectorRecordChunksMode,
-    /// Proof of space table generator
-    pub table_generator: &'a Mutex<PosTable::Generator>,
+    /// Proof-of-space cutover: sectors with a history size above this use the new implementation,
+    /// `None` on a farm with no pre-cutover sectors.
+    pub cutover: Option<HistorySize>,
 }
-
-impl<PosTable> Clone for PlotAuditOptions<'_, '_, PosTable>
-where
-    PosTable: Table,
-{
-    #[inline]
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<PosTable> Copy for PlotAuditOptions<'_, '_, PosTable> where PosTable: Table {}
 
 /// Plot auditing implementation
 #[derive(Debug)]
@@ -130,7 +115,7 @@ where
     #[allow(clippy::type_complexity)]
     pub fn audit<'b, PosTable>(
         &'a self,
-        options: PlotAuditOptions<'a, 'b, PosTable>,
+        options: PlotAuditOptions<'a, 'b>,
     ) -> Result<
         Vec<(
             SectorIndex,
@@ -151,7 +136,7 @@ where
             erasure_coding,
             sectors_being_modified,
             read_sector_record_chunks_mode: mode,
-            table_generator,
+            cutover,
         } = options;
 
         let audit_results = audit_plot_sync(
@@ -168,12 +153,17 @@ where
             .filter_map(|audit_results| {
                 let sector_index = audit_results.sector_index;
 
-                let sector_solutions = audit_results.solution_candidates.into_solutions(
+                let solution_candidates = audit_results.solution_candidates;
+                let is_post_cutover =
+                    super::is_post_cutover(cutover, solution_candidates.history_size());
+                let table_generator = PosTable::generator_for(is_post_cutover);
+
+                let sector_solutions = solution_candidates.into_solutions(
                     reward_address,
                     kzg,
                     erasure_coding,
                     mode,
-                    |seed: &PosSeed| table_generator.lock().generate_parallel(seed),
+                    move |seed: &PosSeed| table_generator.generate_parallel(seed),
                 );
 
                 let sector_solutions = match sector_solutions {
@@ -214,6 +204,7 @@ pub(super) struct FarmingOptions<NC, PlotAudit> {
     pub(super) read_sector_record_chunks_mode: ReadSectorRecordChunksMode,
     pub(super) global_mutex: Arc<AsyncMutex<()>>,
     pub(super) metrics: Option<Arc<SingleDiskFarmMetrics>>,
+    pub(super) cutover: Option<HistorySize>,
 }
 
 /// Starts farming process.
@@ -243,6 +234,7 @@ where
         read_sector_record_chunks_mode,
         global_mutex,
         metrics,
+        cutover,
     } = farming_options;
 
     let farmer_app_info = node_client
@@ -253,7 +245,6 @@ where
     // We assume that each slot is one second
     let farming_timeout = farmer_app_info.farming_timeout;
 
-    let table_generator = Arc::new(Mutex::new(PosTable::generator()));
     let span = Span::current();
 
     let mut non_fatal_errors = 0;
@@ -278,7 +269,7 @@ where
                     .install(|| {
                         let _span_guard = span.enter();
 
-                        plot_audit.audit(PlotAuditOptions::<PosTable> {
+                        plot_audit.audit::<PosTable>(PlotAuditOptions {
                             public_key: &public_key,
                             reward_address: &reward_address,
                             slot_info,
@@ -287,7 +278,7 @@ where
                             erasure_coding: &erasure_coding,
                             sectors_being_modified,
                             read_sector_record_chunks_mode,
-                            table_generator: &table_generator,
+                            cutover,
                         })
                     })
                     .map_err(FarmingError::LowLevelAuditing)?

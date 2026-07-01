@@ -2,7 +2,6 @@ use crate::PosTable;
 use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use criterion::{BatchSize, Criterion, Throughput};
-use parking_lot::Mutex;
 use rayon::{ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
 use std::collections::HashSet;
 use std::fs::OpenOptions;
@@ -162,9 +161,7 @@ where
             .expect("Not zero; qed"),
     )
     .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
-    let table_generator = Mutex::new(PosTable::generator());
-
-    let sectors_metadata = SingleDiskFarm::read_all_sectors_metadata(&disk_farm)
+    let (cutover, sectors_metadata) = SingleDiskFarm::read_all_sectors_metadata(&disk_farm)
         .map_err(|error| anyhow::anyhow!("Failed to read sectors metadata: {error}"))?;
 
     let mut criterion = Criterion::default().sample_size(sample_size);
@@ -187,7 +184,7 @@ where
                 b.iter_batched(
                     rand::random::<[u8; 32]>,
                     |global_challenge| {
-                        let options = PlotAuditOptions::<PosTable> {
+                        let options = PlotAuditOptions {
                             public_key: single_disk_farm_info.public_key(),
                             reward_address: single_disk_farm_info.public_key(),
                             slot_info: SlotInfo {
@@ -204,10 +201,10 @@ where
                             sectors_being_modified: &HashSet::default(),
                             read_sector_record_chunks_mode:
                                 ReadSectorRecordChunksMode::ConcurrentChunks,
-                            table_generator: &table_generator,
+                            cutover,
                         };
 
-                        black_box(plot_audit.audit(black_box(options)))
+                        black_box(plot_audit.audit::<PosTable>(black_box(options)))
                     },
                     BatchSize::SmallInput,
                 )
@@ -224,7 +221,7 @@ where
                 b.iter_batched(
                     rand::random::<[u8; 32]>,
                     |global_challenge| {
-                        let options = PlotAuditOptions::<PosTable> {
+                        let options = PlotAuditOptions {
                             public_key: single_disk_farm_info.public_key(),
                             reward_address: single_disk_farm_info.public_key(),
                             slot_info: SlotInfo {
@@ -241,10 +238,10 @@ where
                             sectors_being_modified: &HashSet::default(),
                             read_sector_record_chunks_mode:
                                 ReadSectorRecordChunksMode::ConcurrentChunks,
-                            table_generator: &table_generator,
+                            cutover,
                         };
 
-                        black_box(plot_audit.audit(black_box(options)))
+                        black_box(plot_audit.audit::<PosTable>(black_box(options)))
                     },
                     BatchSize::SmallInput,
                 )
@@ -259,7 +256,7 @@ where
                 b.iter_batched(
                     rand::random::<[u8; 32]>,
                     |global_challenge| {
-                        let options = PlotAuditOptions::<PosTable> {
+                        let options = PlotAuditOptions {
                             public_key: single_disk_farm_info.public_key(),
                             reward_address: single_disk_farm_info.public_key(),
                             slot_info: SlotInfo {
@@ -276,10 +273,10 @@ where
                             sectors_being_modified: &HashSet::default(),
                             read_sector_record_chunks_mode:
                                 ReadSectorRecordChunksMode::ConcurrentChunks,
-                            table_generator: &table_generator,
+                            cutover,
                         };
 
-                        black_box(plot_audit.audit(black_box(options)))
+                        black_box(plot_audit.audit::<PosTable>(black_box(options)))
                     },
                     BatchSize::SmallInput,
                 )
@@ -342,9 +339,7 @@ where
             .expect("Not zero; qed"),
     )
     .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
-    let table_generator = Mutex::new(PosTable::generator());
-
-    let mut sectors_metadata = SingleDiskFarm::read_all_sectors_metadata(&disk_farm)
+    let (cutover, mut sectors_metadata) = SingleDiskFarm::read_all_sectors_metadata(&disk_farm)
         .map_err(|error| anyhow::anyhow!("Failed to read sectors metadata: {error}"))?;
     if let Some(limit_sector_count) = limit_sector_count {
         sectors_metadata.truncate(limit_sector_count);
@@ -362,7 +357,7 @@ where
                 .open(disk_farm.join(SingleDiskFarm::PLOT_FILE))
                 .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
-            let mut options = PlotAuditOptions::<PosTable> {
+            let mut options = PlotAuditOptions {
                 public_key: single_disk_farm_info.public_key(),
                 reward_address: single_disk_farm_info.public_key(),
                 slot_info: SlotInfo {
@@ -378,10 +373,10 @@ where
                 erasure_coding: &erasure_coding,
                 sectors_being_modified: &HashSet::default(),
                 read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
-                table_generator: &table_generator,
+                cutover,
             };
 
-            let mut audit_results = plot_audit.audit(options).unwrap();
+            let mut audit_results = plot_audit.audit::<PosTable>(options).unwrap();
 
             group.bench_function("plot/single/concurrent-chunks", |b| {
                 b.iter_batched(
@@ -392,7 +387,7 @@ where
 
                         options.slot_info.global_challenge =
                             Blake3Hash::from(rand::random::<[u8; 32]>());
-                        audit_results = plot_audit.audit(options).unwrap();
+                        audit_results = plot_audit.audit::<PosTable>(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
@@ -406,7 +401,7 @@ where
             });
 
             options.read_sector_record_chunks_mode = ReadSectorRecordChunksMode::WholeSector;
-            let mut audit_results = plot_audit.audit(options).unwrap();
+            let mut audit_results = plot_audit.audit::<PosTable>(options).unwrap();
 
             group.bench_function("plot/single/whole-sector", |b| {
                 b.iter_batched(
@@ -417,7 +412,7 @@ where
 
                         options.slot_info.global_challenge =
                             Blake3Hash::from(rand::random::<[u8; 32]>());
-                        audit_results = plot_audit.audit(options).unwrap();
+                        audit_results = plot_audit.audit::<PosTable>(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
@@ -436,7 +431,7 @@ where
             })
             .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
-            let mut options = PlotAuditOptions::<PosTable> {
+            let mut options = PlotAuditOptions {
                 public_key: single_disk_farm_info.public_key(),
                 reward_address: single_disk_farm_info.public_key(),
                 slot_info: SlotInfo {
@@ -452,10 +447,10 @@ where
                 erasure_coding: &erasure_coding,
                 sectors_being_modified: &HashSet::default(),
                 read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
-                table_generator: &table_generator,
+                cutover,
             };
 
-            let mut audit_results = plot_audit.audit(options).unwrap();
+            let mut audit_results = plot_audit.audit::<PosTable>(options).unwrap();
 
             group.bench_function("plot/rayon/unbuffered/concurrent-chunks", |b| {
                 b.iter_batched(
@@ -466,7 +461,7 @@ where
 
                         options.slot_info.global_challenge =
                             Blake3Hash::from(rand::random::<[u8; 32]>());
-                        audit_results = plot_audit.audit(options).unwrap();
+                        audit_results = plot_audit.audit::<PosTable>(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
@@ -480,7 +475,7 @@ where
             });
 
             options.read_sector_record_chunks_mode = ReadSectorRecordChunksMode::WholeSector;
-            let mut audit_results = plot_audit.audit(options).unwrap();
+            let mut audit_results = plot_audit.audit::<PosTable>(options).unwrap();
 
             group.bench_function("plot/rayon/unbuffered/whole-sector", |b| {
                 b.iter_batched(
@@ -491,7 +486,7 @@ where
 
                         options.slot_info.global_challenge =
                             Blake3Hash::from(rand::random::<[u8; 32]>());
-                        audit_results = plot_audit.audit(options).unwrap();
+                        audit_results = plot_audit.audit::<PosTable>(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
@@ -508,7 +503,7 @@ where
             let plot = RayonFiles::open(disk_farm.join(SingleDiskFarm::PLOT_FILE))
                 .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
-            let mut options = PlotAuditOptions::<PosTable> {
+            let mut options = PlotAuditOptions {
                 public_key: single_disk_farm_info.public_key(),
                 reward_address: single_disk_farm_info.public_key(),
                 slot_info: SlotInfo {
@@ -524,10 +519,10 @@ where
                 erasure_coding: &erasure_coding,
                 sectors_being_modified: &HashSet::default(),
                 read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
-                table_generator: &table_generator,
+                cutover,
             };
 
-            let mut audit_results = plot_audit.audit(options).unwrap();
+            let mut audit_results = plot_audit.audit::<PosTable>(options).unwrap();
 
             group.bench_function("plot/rayon/regular/concurrent-chunks", |b| {
                 b.iter_batched(
@@ -538,7 +533,7 @@ where
 
                         options.slot_info.global_challenge =
                             Blake3Hash::from(rand::random::<[u8; 32]>());
-                        audit_results = plot_audit.audit(options).unwrap();
+                        audit_results = plot_audit.audit::<PosTable>(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
@@ -552,7 +547,7 @@ where
             });
 
             options.read_sector_record_chunks_mode = ReadSectorRecordChunksMode::WholeSector;
-            let mut audit_results = plot_audit.audit(options).unwrap();
+            let mut audit_results = plot_audit.audit::<PosTable>(options).unwrap();
 
             group.bench_function("plot/rayon/regular/whole-sector", |b| {
                 b.iter_batched(
@@ -563,7 +558,7 @@ where
 
                         options.slot_info.global_challenge =
                             Blake3Hash::from(rand::random::<[u8; 32]>());
-                        audit_results = plot_audit.audit(options).unwrap();
+                        audit_results = plot_audit.audit::<PosTable>(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
