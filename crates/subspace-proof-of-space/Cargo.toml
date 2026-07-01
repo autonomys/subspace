@@ -19,6 +19,7 @@ bench = false
 
 [dependencies]
 ab-chacha8.workspace = true
+ab-proof-of-space = { workspace = true, optional = true }
 blake3 = { workspace = true, default-features = false }
 chacha20 = { workspace = true, features = ["cipher"], optional = true }
 derive_more = { workspace = true, features = ["full"] }
@@ -44,6 +45,9 @@ default = []
 alloc = [
     "dep:chacha20",
     "dep:seq-macro",
+    "dep:ab-proof-of-space",
+    "ab-proof-of-space/alloc",
+    "ab-proof-of-space/full-chiapos",
 ]
 # Enabling this feature exposes quality search on `chiapos` module as well as enables support for K=15..=25 (by default
 # only K=20 is exposed)
@@ -53,4 +57,5 @@ full-chiapos = [
 parallel = [
     "alloc",
     "dep:rayon",
+    "ab-proof-of-space/parallel",
 ]

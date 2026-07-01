@@ -8,6 +8,8 @@
 #![cfg_attr(feature = "parallel", feature(exact_size_is_empty, sync_unsafe_cell))]
 
 pub mod chia;
+#[cfg(feature = "alloc")]
+pub mod chia_v2;
 pub mod chiapos;
 pub mod shim;
 
