@@ -125,6 +125,7 @@ where
     } = plotting_options;
 
     let sector_plotting_options = &sector_plotting_options;
+    let cutover = metadata_header.cutover;
     let plotting_semaphore = Semaphore::new(max_plotting_sectors_per_farm.get());
     let mut sectors_being_plotted = FuturesOrdered::new();
     // Channel size is intentionally unbounded for easier analysis, but it is bounded by plotting
@@ -165,6 +166,7 @@ where
                     sectors_metadata,
                     sectors_being_modified,
                     &plotting_semaphore,
+                    cutover,
                 )
                     .instrument(info_span!("", %sector_index))
                     .fuse();
@@ -287,6 +289,7 @@ async fn plot_single_sector<'a, NC>(
     sectors_metadata: &'a AsyncRwLock<Vec<SectorMetadataChecksummed>>,
     sectors_being_modified: &'a AsyncRwLock<HashSet<SectorIndex>>,
     plotting_semaphore: &'a Semaphore,
+    cutover: Option<HistorySize>,
 ) -> PlotSingleSectorResult<
     impl Future<Output = Result<SectorPlottingResult<'a>, PlottingError>> + 'a,
 >
@@ -382,6 +385,20 @@ where
                 );
                 return PlotSingleSectorResult::Skipped;
             }
+        }
+
+        // Wait for history to pass the cutover before plotting, so a new sector isn't stamped at or
+        // below it and later read back with the old proof-of-space.
+        if let Some(cutover) = cutover
+            && farmer_app_info.protocol_info.history_size <= cutover
+        {
+            debug!(
+                current_history_size = %farmer_app_info.protocol_info.history_size,
+                %cutover,
+                "History size has not advanced past the proof-of-space cutover yet, waiting"
+            );
+            tokio::time::sleep(FARMER_APP_INFO_RETRY_INTERVAL).await;
+            continue;
         }
 
         break farmer_app_info;

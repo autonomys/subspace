@@ -30,6 +30,7 @@ members = [
 
 [workspace.dependencies]
 ab-chacha8 = "0.1.0"
+ab-proof-of-space = { git = "https://github.com/nazar-pc/abundance", rev = "fc8da9992575a3b33ea9c5c764ea71f926f4592e", default-features = false }
 actix-web = { version = "4.9.0", default-features = false }
 aes = "0.9.0"
 anyhow = "1.0.89"
@@ -51,7 +52,7 @@ blst = "0.3.13"
 bytes = { version = "1.11.1", default-features = false }
 bytesize = "2.3.1"
 cc = "1.2.62"
-chacha20 = { version = "0.10.0", default-features = false }
+chacha20 = { version = "0.10.1", default-features = false }
 clap = "4.6.1"
 console = "0.15.11"
 core_affinity = "0.8.1"
@@ -318,6 +319,7 @@ ziggy = { version = "1.7.0", default-features = false }
 #
 # This list is ordered alphabetically.
 [profile.dev.package]
+ab-proof-of-space = { opt-level = 3 }
 bitvec = { opt-level = 3 }
 blake2 = { opt-level = 3 }
 blake3 = { opt-level = 3 }

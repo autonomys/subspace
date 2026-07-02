@@ -25,9 +25,9 @@ use subspace_farmer_components::sector::{
 use subspace_farmer_components::{FarmerProtocolInfo, ReadAt, ReadAtSync};
 use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
-use subspace_proof_of_space::chia::ChiaTable;
+use subspace_proof_of_space::chia_v2::ChiaV2Table;
 
-type PosTable = ChiaTable;
+type PosTable = ChiaV2Table;
 
 const MAX_PIECES_IN_SECTOR: u16 = 1000;
 
