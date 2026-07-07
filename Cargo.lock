@@ -14733,6 +14733,7 @@ dependencies = [
  "subspace-erasure-coding",
  "subspace-kzg",
  "subspace-proof-of-space",
+ "subspace-proof-of-space-wgpu",
  "subspace-verification",
  "thiserror 2.0.18",
  "tokio",
