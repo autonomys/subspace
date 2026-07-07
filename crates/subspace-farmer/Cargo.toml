@@ -72,20 +72,11 @@ tracing.workspace = true
 ulid = { workspace = true, features = ["serde"] }
 zeroize.workspace = true
 
-# Avoid an unused dependency on macOS, GPU is not supported there
-[target.'cfg(any(target_os = "linux", windows))'.dependencies]
-subspace-proof-of-space-gpu = { workspace = true, optional = true }
-
 [features]
-default = ["default-library", "binary"]
+default = ["default-library", "binary", "wgpu"]
 cluster = ["dep:async-nats"]
 numa = ["dep:hwlocality"]
-# Only Volta+ architectures are supported (GeForce RTX 16xx consumer GPUs and newer)
-cuda = ["_gpu", "subspace-proof-of-space-gpu/cuda"]
-# TODO: ROCm can't be enabled at the same time as `cuda` feature at the moment
-# Seems to support RDNA 2+, at least on Linux
-rocm = ["_gpu", "subspace-proof-of-space-gpu/rocm"]
-# Vulkan/Metal plotting via wgpu; unlike cuda/rocm it is available on macOS too
+# Vulkan/Metal plotting via wgpu
 wgpu = ["_gpu", "dep:subspace-proof-of-space-wgpu"]
 # Internal feature, shouldn't be used directly
 _gpu = []

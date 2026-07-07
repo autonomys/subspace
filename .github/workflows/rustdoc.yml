@@ -42,16 +42,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@3d45d157f327c09c04b50ee6ccdea2d9d017ec76 # v0.2.35
-        with:
-          cuda: '12.4.1'
-          method: network
-          sub-packages: '["nvcc", "cudart"]'
-
-      # Build the rust crate docs
+      # Build the rust crate docs (wgpu GPU plotting is a default feature)
       - name: Build Documentation
-        run: cargo -Zgitoxide -Zgit doc --locked --all --no-deps --lib --features cuda
+        run: cargo -Zgitoxide -Zgit doc --locked --all --no-deps --lib
         env:
           RUSTDOCFLAGS: "-D rustdoc::broken-intra-doc-links -D rustdoc::private_intra_doc_links -Z unstable-options --enable-index-page"
 

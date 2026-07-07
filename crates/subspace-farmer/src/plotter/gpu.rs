@@ -1,11 +1,7 @@
 //! GPU plotter
 
-#[cfg(feature = "cuda")]
-pub mod cuda;
 mod gpu_encoders_manager;
 pub mod metrics;
-#[cfg(feature = "rocm")]
-pub mod rocm;
 #[cfg(feature = "wgpu")]
 pub mod wgpu;
 

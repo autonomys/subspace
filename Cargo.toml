@@ -55,7 +55,7 @@ bytes = { version = "1.11.1", default-features = false }
 bytesize = "2.3.1"
 cargo-gpu-install = { version = "=0.10.0-alpha.1", git = "https://github.com/Rust-GPU/rust-gpu", rev = "bd49568baf08301107c9f698494735724980dee0" }
 cc = "1.2.62"
-chacha20 = { version = "0.10.0", default-features = false }
+chacha20 = { version = "0.10.1", default-features = false }
 clap = "4.6.1"
 console = "0.15.11"
 core_affinity = "0.8.1"
@@ -266,7 +266,6 @@ sp-version = { git = "https://github.com/autonomys/polkadot-sdk", rev = "8304f88
 sp-weights = { git = "https://github.com/autonomys/polkadot-sdk", rev = "8304f8852018c9b2d69071449e988d6e63e4122c", default-features = false }
 spin = "0.12.0"
 spirv-std = { version = "=0.10.0-alpha.1", git = "https://github.com/Rust-GPU/rust-gpu", rev = "bd49568baf08301107c9f698494735724980dee0" }
-sppark = { version = "0.1.8", git = "https://github.com/autonomys/sppark", rev = "b2a181eb99c8200f1a604f04122551ea39fbf63f" }
 ss58-registry = "1.51.0"
 static_assertions = "1.1.0"
 strum_macros = "0.28.0"
@@ -281,7 +280,6 @@ subspace-metrics = { version = "0.1.0", path = "shared/subspace-metrics" }
 subspace-networking = { version = "0.1.0", path = "crates/subspace-networking" }
 subspace-process = { version = "0.0.1", path = "shared/subspace-process" }
 subspace-proof-of-space = { version = "0.1.0", path = "crates/subspace-proof-of-space", default-features = false }
-subspace-proof-of-space-gpu = { version = "0.1.0", path = "shared/subspace-proof-of-space-gpu" }
 subspace-proof-of-space-wgpu = { version = "0.1.0", path = "shared/subspace-proof-of-space-wgpu" }
 subspace-proof-of-time = { version = "0.1.0", path = "crates/subspace-proof-of-time" }
 subspace-rpc-primitives = { version = "0.1.0", path = "crates/subspace-rpc-primitives" }
@@ -326,6 +324,7 @@ ziggy = { version = "1.7.0", default-features = false }
 #
 # This list is ordered alphabetically.
 [profile.dev.package]
+ab-proof-of-space = { opt-level = 3 }
 bitvec = { opt-level = 3 }
 blake2 = { opt-level = 3 }
 blake3 = { opt-level = 3 }
