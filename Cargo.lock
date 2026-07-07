@@ -15014,6 +15014,7 @@ name = "subspace-proof-of-space"
 version = "0.1.0"
 dependencies = [
  "ab-chacha8",
+ "ab-proof-of-space",
  "blake3",
  "chacha20 0.10.0",
  "criterion",
