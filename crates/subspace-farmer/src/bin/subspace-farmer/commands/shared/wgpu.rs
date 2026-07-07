@@ -28,6 +28,9 @@ pub(in super::super) struct WgpuPlottingOptions {
     /// GPUs.
     #[arg(long)]
     wgpu_gpus: Option<String>,
+    /// Plot on the CPU only, skipping GPU plotting even when GPUs are available.
+    #[arg(long)]
+    cpu_only: bool,
 }
 
 pub(in super::super) async fn init_wgpu_plotter<PG>(
@@ -49,7 +52,13 @@ where
     let WgpuPlottingOptions {
         wgpu_sector_downloading_concurrency,
         wgpu_gpus,
+        cpu_only,
     } = wgpu_plotting_options;
+
+    if cpu_only {
+        info!("GPU plotting disabled, plotting on the CPU only");
+        return Ok(None);
+    }
 
     // A couple of queues per device so downloads and encoding overlap on the GPU
     let number_of_queues = |_device_type: DeviceType| NonZeroU8::new(2).expect("Not zero; qed");
