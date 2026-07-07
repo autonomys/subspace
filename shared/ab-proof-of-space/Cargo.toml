@@ -1,0 +1,54 @@
+[package]
+name = "ab-proof-of-space"
+description = "Proof of space implementation based"
+license = "0BSD"
+version = "0.1.0"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+edition = "2024"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lib]
+bench = false
+
+[dependencies]
+ab-blake3 = { workspace = true }
+ab-chacha8 = { workspace = true }
+subspace-core-primitives = { workspace = true }
+chacha20 = { workspace = true, features = ["cipher"], optional = true }
+derive_more = { workspace = true, features = ["full"] }
+rayon = { workspace = true, optional = true }
+rclite = { workspace = true, optional = true }
+seq-macro = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+
+[dev-dependencies]
+chacha20 = { workspace = true, features = ["cipher"] }
+rayon = { workspace = true }
+seq-macro = { workspace = true }
+sha2 = { workspace = true }
+
+[features]
+default = []
+alloc = [
+    "dep:chacha20",
+    "dep:rclite",
+    "dep:seq-macro",
+]
+# Enabling this feature exposes quality search on `chiapos` module as well as enables support for K=15..=25 (by default
+# only K=20 is exposed)
+full-chiapos = [
+    "dep:sha2",
+]
+parallel = [
+    "alloc",
+    "dep:rayon",
+]
+
+[lints]
+workspace = true
