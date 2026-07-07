@@ -1,4 +1,6 @@
 use crate::commands::shared::network::{NetworkArgs, configure_network};
+#[cfg(feature = "wgpu")]
+use crate::commands::shared::wgpu::{WgpuPlottingOptions, init_wgpu_plotter};
 use crate::commands::shared::{DiskFarm, PlottingThreadPriority, derive_libp2p_keypair};
 use anyhow::anyhow;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock, Semaphore};
@@ -252,6 +254,10 @@ pub(crate) struct FarmingArgs {
     #[cfg(feature = "rocm")]
     #[clap(flatten)]
     rocm_plotting_options: RocmPlottingOptions,
+    /// Plotting options only used by wgpu GPU plotter
+    #[cfg(feature = "wgpu")]
+    #[clap(flatten)]
+    wgpu_plotting_options: WgpuPlottingOptions,
     /// How many sectors a will be plotted concurrently per farm.
     ///
     /// Defaults to 2, but can be decreased if there is a large number of farms available to
@@ -321,6 +327,8 @@ where
         cuda_plotting_options,
         #[cfg(feature = "rocm")]
         rocm_plotting_options,
+        #[cfg(feature = "wgpu")]
+        wgpu_plotting_options,
         max_plotting_sectors_per_farm,
         plot_cache,
         disable_farm_locking,
@@ -549,6 +557,22 @@ where
 
         if let Some(rocm_plotter) = maybe_rocm_plotter {
             plotters.push(Box::new(rocm_plotter));
+        }
+    }
+    #[cfg(feature = "wgpu")]
+    {
+        let maybe_wgpu_plotter = init_wgpu_plotter(
+            wgpu_plotting_options,
+            piece_getter.clone(),
+            Arc::clone(&global_mutex),
+            kzg.clone(),
+            erasure_coding.clone(),
+            &mut registry,
+        )
+        .await?;
+
+        if let Some(wgpu_plotter) = maybe_wgpu_plotter {
+            plotters.push(Box::new(wgpu_plotter));
         }
     }
     {

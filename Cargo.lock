@@ -14693,6 +14693,7 @@ dependencies = [
  "subspace-process",
  "subspace-proof-of-space",
  "subspace-proof-of-space-gpu",
+ "subspace-proof-of-space-wgpu",
  "subspace-rpc-primitives",
  "subspace-verification",
  "substrate-bip39",

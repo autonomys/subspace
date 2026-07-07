@@ -59,6 +59,7 @@ subspace-metrics = { workspace = true, optional = true }
 subspace-networking.workspace = true
 subspace-process.workspace = true
 subspace-proof-of-space.workspace = true
+subspace-proof-of-space-wgpu = { workspace = true, optional = true }
 subspace-rpc-primitives.workspace = true
 subspace-verification = { workspace = true, features = ["kzg"] }
 substrate-bip39.workspace = true
@@ -84,6 +85,8 @@ cuda = ["_gpu", "subspace-proof-of-space-gpu/cuda"]
 # TODO: ROCm can't be enabled at the same time as `cuda` feature at the moment
 # Seems to support RDNA 2+, at least on Linux
 rocm = ["_gpu", "subspace-proof-of-space-gpu/rocm"]
+# Vulkan/Metal plotting via wgpu; unlike cuda/rocm it is available on macOS too
+wgpu = ["_gpu", "dep:subspace-proof-of-space-wgpu"]
 # Internal feature, shouldn't be used directly
 _gpu = []
 

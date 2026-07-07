@@ -1,4 +1,6 @@
 use crate::commands::shared::PlottingThreadPriority;
+#[cfg(feature = "wgpu")]
+use crate::commands::shared::wgpu::{WgpuPlottingOptions, init_wgpu_plotter};
 use anyhow::anyhow;
 use async_lock::{Mutex as AsyncMutex, Semaphore};
 use clap::Parser;
@@ -133,6 +135,10 @@ pub(super) struct PlotterArgs {
     #[cfg(feature = "rocm")]
     #[clap(flatten)]
     rocm_plotting_options: RocmPlottingOptions,
+    /// Plotting options only used by wgpu GPU plotter
+    #[cfg(feature = "wgpu")]
+    #[clap(flatten)]
+    wgpu_plotting_options: WgpuPlottingOptions,
     /// Cache group to use if specified, otherwise all caches are usable by this plotter
     #[arg(long)]
     cache_group: Option<String>,
@@ -155,6 +161,8 @@ where
         cuda_plotting_options,
         #[cfg(feature = "rocm")]
         rocm_plotting_options,
+        #[cfg(feature = "wgpu")]
+        wgpu_plotting_options,
         cache_group,
         additional_components: _,
     } = plotter_args;
@@ -199,6 +207,22 @@ where
 
         if let Some(rocm_plotter) = maybe_rocm_plotter {
             plotters.push(Box::new(rocm_plotter));
+        }
+    }
+    #[cfg(feature = "wgpu")]
+    {
+        let maybe_wgpu_plotter = init_wgpu_plotter(
+            wgpu_plotting_options,
+            piece_getter.clone(),
+            Arc::clone(&global_mutex),
+            kzg.clone(),
+            erasure_coding.clone(),
+            registry,
+        )
+        .await?;
+
+        if let Some(wgpu_plotter) = maybe_wgpu_plotter {
+            plotters.push(Box::new(wgpu_plotter));
         }
     }
     {
