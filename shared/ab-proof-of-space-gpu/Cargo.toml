@@ -1,0 +1,40 @@
+[package]
+name = "ab-proof-of-space-gpu"
+description = "Proof of space plotting utilities for GPU (Vulkan/Metal)"
+license = "0BSD"
+version = "0.1.0"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+edition = "2024"
+include = [
+    "/src",
+    "/build.rs",
+    "/Cargo.toml",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+
+# TODO: Benches
+
+[dependencies]
+ab-blake3 = { workspace = true }
+ab-chacha8 = { workspace = true }
+derive_more = { workspace = true, features = ["from", "into"] }
+spirv-std = { workspace = true }
+
+[target.'cfg(not(target_arch = "spirv"))'.dependencies]
+subspace-core-primitives = { workspace = true }
+futures = { workspace = true, features = ["std"] }
+parking_lot = { workspace = true }
+rclite = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+wgpu = { workspace = true }
+
+# TODO: This will be built in the shader as well, figure out a way to avoid that
+[build-dependencies]
+cargo-gpu-install = { workspace = true }
+
+[lints.rust]
+# `spirv` is the rust-gpu target this crate compiles to, unknown to rustc's built-in cfg checking
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_arch, values("spirv"))'] }
