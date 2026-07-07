@@ -125,6 +125,7 @@ where
     } = plotting_options;
 
     let sector_plotting_options = &sector_plotting_options;
+    let cutover = metadata_header.cutover;
     let plotting_semaphore = Semaphore::new(max_plotting_sectors_per_farm.get());
     let mut sectors_being_plotted = FuturesOrdered::new();
     // Channel size is intentionally unbounded for easier analysis, but it is bounded by plotting
@@ -165,6 +166,7 @@ where
                     sectors_metadata,
                     sectors_being_modified,
                     &plotting_semaphore,
+                    cutover,
                 )
                     .instrument(info_span!("", %sector_index))
                     .fuse();
@@ -287,6 +289,7 @@ async fn plot_single_sector<'a, NC>(
     sectors_metadata: &'a AsyncRwLock<Vec<SectorMetadataChecksummed>>,
     sectors_being_modified: &'a AsyncRwLock<HashSet<SectorIndex>>,
     plotting_semaphore: &'a Semaphore,
+    cutover: Option<HistorySize>,
 ) -> PlotSingleSectorResult<
     impl Future<Output = Result<SectorPlottingResult<'a>, PlottingError>> + 'a,
 >
@@ -314,17 +317,6 @@ where
     } = sector_to_plot;
     trace!("Preparing to plot sector");
 
-    // Inform others that this sector is being modified
-    {
-        let mut sectors_being_modified = sectors_being_modified.write().await;
-        if !sectors_being_modified.insert(sector_index) {
-            debug!("Skipped sector plotting, it is already in progress");
-            return PlotSingleSectorResult::Skipped;
-        }
-    }
-
-    let plotting_permit = plotting_semaphore.acquire().await;
-
     let maybe_old_sector_metadata = sectors_metadata
         .read()
         .await
@@ -332,20 +324,9 @@ where
         .cloned();
     let replotting = maybe_old_sector_metadata.is_some();
 
-    if let Some(metrics) = metrics {
-        metrics.sector_plotting.inc();
-    }
-    let sector_state = SectorUpdate::Plotting(SectorPlottingDetails::Starting {
-        progress,
-        replotting,
-        last_queued,
-    });
-    handlers
-        .sector_update
-        .call_simple(&(sector_index, sector_state));
-
-    let start = Instant::now();
-
+    // Wait until the sector can be plotted before taking the plotting permit or marking it as being
+    // modified, so neither is held while waiting.
+    //
     // This `loop` is a workaround for edge-case in local setup if expiration is configured to 1.
     // In that scenario we get replotting notification essentially straight from block import
     // pipeline of the node, before block is imported. This can result in subsequent request for
@@ -384,8 +365,47 @@ where
             }
         }
 
+        // Wait for history to pass the cutover before plotting, so a new sector isn't stamped at or
+        // below it and later read back with the old proof-of-space.
+        if let Some(cutover) = cutover
+            && farmer_app_info.protocol_info.history_size <= cutover
+        {
+            debug!(
+                current_history_size = %farmer_app_info.protocol_info.history_size,
+                %cutover,
+                "History size has not advanced past the proof-of-space cutover yet, waiting"
+            );
+            tokio::time::sleep(FARMER_APP_INFO_RETRY_INTERVAL).await;
+            continue;
+        }
+
         break farmer_app_info;
     };
+
+    // Inform others that this sector is being modified
+    {
+        let mut sectors_being_modified = sectors_being_modified.write().await;
+        if !sectors_being_modified.insert(sector_index) {
+            debug!("Skipped sector plotting, it is already in progress");
+            return PlotSingleSectorResult::Skipped;
+        }
+    }
+
+    let plotting_permit = plotting_semaphore.acquire().await;
+
+    if let Some(metrics) = metrics {
+        metrics.sector_plotting.inc();
+    }
+    let sector_state = SectorUpdate::Plotting(SectorPlottingDetails::Starting {
+        progress,
+        replotting,
+        last_queued,
+    });
+    handlers
+        .sector_update
+        .call_simple(&(sector_index, sector_state));
+
+    let start = Instant::now();
 
     let (progress_sender, mut progress_receiver) = mpsc::channel(10);
 
