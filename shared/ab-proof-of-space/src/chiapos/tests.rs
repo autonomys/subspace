@@ -56,16 +56,18 @@ fn self_verification() {
         }
 
         {
-            let raw_proofs = tables.find_proof_raw(challenge_index).collect::<Vec<_>>();
+            // Under Subspace's little-endian convention the proof binned at s-bucket `cs` is the
+            // one the search finds for challenge `cs`, using the same `to_le_bytes` seam the
+            // consensus verifier applies.
             let s_bucket = SBucket::from(challenge_index as u16);
             assert_eq!(
-                raw_proofs.first().copied(),
+                proofs.first().copied(),
                 all_proofs.for_s_bucket(s_bucket),
                 "challenge index {challenge_index}"
             );
             #[cfg(feature = "parallel")]
             assert_eq!(
-                raw_proofs.first().copied(),
+                proofs.first().copied(),
                 all_proofs_parallel.for_s_bucket(s_bucket),
                 "challenge index {challenge_index}"
             );

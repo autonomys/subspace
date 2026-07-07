@@ -1456,6 +1456,22 @@ where
     }
 }
 
+/// Subspace's little-endian s-bucket convention: maps a table-7 entry's `first_k_bits` to its
+/// s-bucket, returning a value `>= Record::NUM_S_BUCKETS` for entries whose low `K - 16` bits are
+/// set (those are discarded). Consensus verification derives the challenge from the s-bucket with
+/// the same little-endian byte layout, so this convention is fixed.
+#[cfg(feature = "alloc")]
+#[inline(always)]
+fn little_endian_s_bucket(first_k_bits: u32, k: u8) -> u32 {
+    let low_bits = u32::from(k) - 16;
+    if first_k_bits & ((1 << low_bits) - 1) != 0 {
+        return u32::MAX;
+    }
+    let cs_lo = (first_k_bits >> (u32::from(k) - 8)) & 0xff;
+    let cs_hi = (first_k_bits >> low_bits) & 0xff;
+    cs_lo | (cs_hi << 8)
+}
+
 #[cfg(feature = "alloc")]
 impl<const K: u8> Table<K, 7>
 where
@@ -1514,9 +1530,11 @@ where
                     const {
                         assert!(Record::NUM_S_BUCKETS == (u16::MAX as usize) + 1);
                     }
-                    let Ok(s_bucket) = u16::try_from(s_bucket) else {
+                    let s_bucket = little_endian_s_bucket(s_bucket, K);
+                    if s_bucket >= Record::NUM_S_BUCKETS as u32 {
                         continue;
-                    };
+                    }
+                    let s_bucket = s_bucket as u16;
                     let positions = &mut table_6_proof_targets[usize::from(s_bucket)];
                     if positions == &[Position::ZERO; 2] {
                         *positions = p;
@@ -1532,9 +1550,11 @@ where
                 const {
                     assert!(Record::NUM_S_BUCKETS == (u16::MAX as usize) + 1);
                 }
-                let Ok(s_bucket) = u16::try_from(s_bucket) else {
+                let s_bucket = little_endian_s_bucket(s_bucket, K);
+                if s_bucket >= Record::NUM_S_BUCKETS as u32 {
                     continue;
-                };
+                }
+                let s_bucket = s_bucket as u16;
 
                 let positions = &mut table_6_proof_targets[usize::from(s_bucket)];
                 if positions == &[Position::ZERO; 2] {
@@ -1635,9 +1655,11 @@ where
                             const {
                                 assert!(Record::NUM_S_BUCKETS == (u16::MAX as usize) + 1);
                             }
-                            let Ok(s_bucket) = u16::try_from(s_bucket) else {
+                            let s_bucket = little_endian_s_bucket(s_bucket, K);
+                            if s_bucket >= Record::NUM_S_BUCKETS as u32 {
                                 continue;
-                            };
+                            }
+                            let s_bucket = s_bucket as u16;
 
                             buckets_positions[reduced_count].write((s_bucket, p));
                             reduced_count += 1;
@@ -1653,9 +1675,11 @@ where
                         const {
                             assert!(Record::NUM_S_BUCKETS == (u16::MAX as usize) + 1);
                         }
-                        let Ok(s_bucket) = u16::try_from(s_bucket) else {
+                        let s_bucket = little_endian_s_bucket(s_bucket, K);
+                        if s_bucket >= Record::NUM_S_BUCKETS as u32 {
                             continue;
-                        };
+                        }
+                        let s_bucket = s_bucket as u16;
 
                         buckets_positions[reduced_count].write((s_bucket, p));
                         reduced_count += 1;

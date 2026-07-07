@@ -1,8 +1,7 @@
-
 use crate::shader::compute_fn::compute_fn_impl;
 use crate::shader::constants::{
-    MAX_BUCKET_SIZE, NUM_BUCKETS, NUM_MATCH_BUCKETS, NUM_S_BUCKETS, PARAM_BC, REDUCED_BUCKET_SIZE,
-    REDUCED_MATCHES_COUNT,
+    K, MAX_BUCKET_SIZE, NUM_BUCKETS, NUM_MATCH_BUCKETS, NUM_S_BUCKETS, PARAM_BC,
+    REDUCED_BUCKET_SIZE, REDUCED_MATCHES_COUNT,
 };
 use crate::shader::find_matches_in_buckets::{FindMatchesShared, find_matches_in_buckets_impl};
 #[cfg(target_arch = "spirv")]
@@ -104,6 +103,22 @@ impl fmt::Debug for FindMatchesAndComputeF7Shared {
     }
 }
 
+/// Subspace's little-endian s-bucket convention (duplicated in the CPU `ab-proof-of-space` chiapos):
+/// maps a table-7 entry's `first_k_bits` to its s-bucket, returning a value `>= NUM_S_BUCKETS` for
+/// entries whose low `K - 16` bits are set (the caller discards those). Consensus verification
+/// derives the challenge from the s-bucket with the same little-endian byte layout, so this
+/// convention is fixed.
+#[inline(always)]
+fn little_endian_s_bucket(first_k_bits: u32) -> u32 {
+    let low_bits = K as u32 - 16;
+    if first_k_bits & ((1 << low_bits) - 1) != 0 {
+        return u32::MAX;
+    }
+    let cs_lo = (first_k_bits >> (K as u32 - 8)) & 0xff;
+    let cs_hi = (first_k_bits >> low_bits) & 0xff;
+    cs_lo | (cs_hi << 8)
+}
+
 /// # Safety
 /// `bucket_index` must be within range `0..REDUCED_MATCHES_COUNT`. `matches_count` elements in
 /// `matches` must be initialized, `matches` must have valid pointers into left/right buckets and
@@ -175,7 +190,7 @@ unsafe fn compute_f7_into_buckets_inner(
         right_metadata,
     );
 
-    let s_bucket = y.first_k_bits() as usize;
+    let s_bucket = little_endian_s_bucket(y.first_k_bits()) as usize;
     // TODO: More idiomatic version currently doesn't compile:
     //  https://github.com/Rust-GPU/rust-gpu/issues/241#issuecomment-3005693043
     // let Some(bucket_count) = bucket_sizes.get_mut(s_bucket) else {
