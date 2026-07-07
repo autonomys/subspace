@@ -5,13 +5,12 @@ use std::fs;
 use std::path::PathBuf;
 use subspace_farmer::single_disk_farm::{ScrubTarget, SingleDiskFarm};
 use subspace_process::{init_logger, raise_fd_limit, set_exit_on_panic};
-use subspace_proof_of_space::chia::ChiaTable;
 use tracing::info;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-type PosTable = ChiaTable;
+type PosTable = subspace_proof_of_space::PosTable;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Parser)]

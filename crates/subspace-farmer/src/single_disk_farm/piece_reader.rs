@@ -12,6 +12,7 @@ use std::sync::Arc;
 use subspace_core_primitives::PublicKey;
 use subspace_core_primitives::pieces::{Piece, PieceOffset};
 use subspace_core_primitives::sectors::{SectorId, SectorIndex};
+use subspace_core_primitives::segments::HistorySize;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{SectorMetadataChecksummed, sector_size};
@@ -58,6 +59,7 @@ impl DiskPieceReader {
         erasure_coding: ErasureCoding,
         sectors_being_modified: Arc<AsyncRwLock<HashSet<SectorIndex>>>,
         read_sector_record_chunks_mode: ReadSectorRecordChunksMode,
+        cutover: Option<HistorySize>,
         global_mutex: Arc<AsyncMutex<()>>,
     ) -> (Self, impl Future<Output = ()>)
     where
@@ -75,6 +77,7 @@ impl DiskPieceReader {
                 sectors_being_modified,
                 read_piece_receiver,
                 read_sector_record_chunks_mode,
+                cutover,
                 global_mutex,
             )
             .await
@@ -118,12 +121,16 @@ async fn read_pieces<PosTable, S>(
     sectors_being_modified: Arc<AsyncRwLock<HashSet<SectorIndex>>>,
     mut read_piece_receiver: mpsc::Receiver<ReadPieceRequest>,
     mode: ReadSectorRecordChunksMode,
+    cutover: Option<HistorySize>,
     global_mutex: Arc<AsyncMutex<()>>,
 ) where
     PosTable: Table,
     S: ReadAtSync,
 {
-    let mut table_generator = PosTable::generator();
+    // Keep a warm generator for each proof-of-space so old and new sectors can be read without
+    // re-allocating table caches per request.
+    let mut table_generator_old = PosTable::generator_for(false);
+    let mut table_generator_new = PosTable::generator_for(true);
 
     while let Some(read_piece_request) = read_piece_receiver.next().await {
         let ReadPieceRequest {
@@ -194,6 +201,13 @@ async fn read_pieces<PosTable, S>(
         // Take mutex briefly to make sure piece reading is allowed right now
         global_mutex.lock().await;
 
+        let is_post_cutover = super::is_post_cutover(cutover, sector_metadata.history_size);
+        let table_generator = if is_post_cutover {
+            &mut table_generator_new
+        } else {
+            &mut table_generator_old
+        };
+
         let maybe_piece = read_piece::<PosTable, _, _>(
             &public_key,
             piece_offset,
@@ -202,7 +216,7 @@ async fn read_pieces<PosTable, S>(
             &ReadAt::from_sync(&sector),
             &erasure_coding,
             mode,
-            &mut table_generator,
+            table_generator,
         )
         .await;
 

@@ -319,6 +319,11 @@ impl Decode for PlotMetadataHeader {
     }
 }
 
+/// With no cutover (a fresh farm) every sector is post-cutover.
+fn is_post_cutover(cutover: Option<HistorySize>, history_size: HistorySize) -> bool {
+    cutover.is_none_or(|cutover| history_size > cutover)
+}
+
 /// Options used to open single disk farm
 #[derive(Debug)]
 pub struct SingleDiskFarmOptions<'a, NC>
@@ -1009,6 +1014,9 @@ impl SingleDiskFarm {
         let (farming_plot, farming_thread_pool) =
             AsyncJoinOnDrop::new(farming_plot_fut, false).await??;
 
+        // The plot's cutover decides which proof-of-space each sector reads and proves with.
+        let cutover = metadata_header.cutover;
+
         let plotting_join_handle = task::spawn_blocking({
             let sectors_metadata = Arc::clone(&sectors_metadata);
             let handlers = Arc::clone(&handlers);
@@ -1155,6 +1163,7 @@ impl SingleDiskFarm {
                         read_sector_record_chunks_mode,
                         global_mutex,
                         metrics,
+                        cutover,
                     };
                     farming::<PosTable, _, _>(farming_options).await
                 };
@@ -1198,6 +1207,7 @@ impl SingleDiskFarm {
             erasure_coding,
             sectors_being_modified,
             read_sector_record_chunks_mode,
+            cutover,
             global_mutex,
         );
 
@@ -1614,10 +1624,10 @@ impl SingleDiskFarm {
         Ok(effective_disk_usage)
     }
 
-    /// Read all sectors metadata
+    /// Read the proof-of-space cutover and all sectors metadata
     pub fn read_all_sectors_metadata(
         directory: &Path,
-    ) -> io::Result<Vec<SectorMetadataChecksummed>> {
+    ) -> io::Result<(Option<HistorySize>, Vec<SectorMetadataChecksummed>)> {
         let metadata_file = DirectIoFile::open(directory.join(Self::METADATA_FILE))?;
 
         let metadata_size = metadata_file.size()?;
@@ -1648,7 +1658,14 @@ impl SingleDiskFarm {
             );
         }
 
-        Ok(sectors_metadata)
+        // A version-0 plot has no stored cutover; derive it from its sectors, like the upgrade.
+        let cutover = if metadata_header.version < PlotMetadataVersion::LATEST {
+            sectors_metadata.iter().map(|m| m.history_size).max()
+        } else {
+            metadata_header.cutover
+        };
+
+        Ok((cutover, sectors_metadata))
     }
 
     /// ID of this farm
