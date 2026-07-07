@@ -71,3 +71,5 @@ impl Table for ChiaV2Table {
     }
 }
 
+#[cfg(test)]
+mod tests;
