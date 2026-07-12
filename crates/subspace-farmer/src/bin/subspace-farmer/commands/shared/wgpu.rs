@@ -39,6 +39,25 @@ pub(in super::super) struct WgpuPlottingOptions {
     cpu_only: bool,
 }
 
+/// Print the GPUs wgpu can plot on, with the device ids to pass to `--wgpu-gpus`.
+pub(crate) async fn list_gpus(verbose: bool) {
+    for device in Device::enumerate(|_| NonZeroU8::MIN).await {
+        let device_type = match device.device_type() {
+            DeviceType::Other => "other",
+            DeviceType::IntegratedGpu => "Integrated GPU",
+            DeviceType::DiscreteGpu => "Discrete GPU",
+            DeviceType::VirtualGpu => "Virtual GPU",
+            DeviceType::Cpu => "CPU emulation",
+        };
+        println!("{}: {} ({device_type})", device.id(), device.name());
+        if verbose {
+            println!("   Backend: {}", device.backend());
+            println!("   Driver: {}", device.driver());
+            println!("   Driver info: {}", device.driver_info());
+        }
+    }
+}
+
 /// Choose which enumerated GPU devices to plot on: an explicit `--wgpu-gpus` set is honored
 /// verbatim, otherwise discrete GPUs are preferred, then integrated, then a virtual GPU as a last
 /// resort, while unknown and CPU-emulated adapters are never auto-selected.

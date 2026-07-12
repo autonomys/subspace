@@ -23,6 +23,13 @@ enum Command {
     /// Run various benchmarks
     #[clap(subcommand)]
     Benchmark(commands::benchmark::BenchmarkArgs),
+    /// List the GPUs wgpu can plot on, with the device ids to pass to `--wgpu-gpus`
+    #[cfg(feature = "wgpu")]
+    ListGpus {
+        /// Also print each GPU's backend and driver details
+        #[arg(long)]
+        verbose: bool,
+    },
     /// Print information about farm and its content
     Info {
         /// One or more farm located at specified path.
@@ -77,6 +84,10 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::Benchmark(benchmark_args) => {
             commands::benchmark::benchmark(benchmark_args)?;
+        }
+        #[cfg(feature = "wgpu")]
+        Command::ListGpus { verbose } => {
+            commands::list_gpus(verbose).await;
         }
         Command::Info { disk_farms } => {
             if disk_farms.is_empty() {
