@@ -11,7 +11,7 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::plotter::gpu::GpuPlotter;
 use subspace_farmer::plotter::gpu::wgpu::WgpuRecordsEncoder;
 use subspace_kzg::Kzg;
-use subspace_proof_of_space_wgpu::{Device, DeviceType, WgpuDevice};
+use subspace_proof_of_space_wgpu::{Backend, Device, DeviceType, WgpuDevice};
 use tracing::{debug, info, warn};
 
 /// Plotting options for the wgpu GPU plotter.
@@ -37,10 +37,14 @@ pub(in super::super) struct WgpuPlottingOptions {
     /// Plot on the CPU only, skipping GPU plotting even when GPUs are available.
     #[arg(long)]
     cpu_only: bool,
+    /// Enable GPU plotting on Metal (Apple GPUs), which is untested.
+    #[arg(long)]
+    enable_metal: bool,
 }
 
 /// Print the GPUs wgpu can plot on, with the device ids to pass to `--wgpu-gpus`.
 pub(crate) async fn list_gpus(verbose: bool) {
+    let mut any_metal = false;
     for device in Device::enumerate(|_| NonZeroU8::MIN).await {
         let device_type = match device.device_type() {
             DeviceType::Other => "other",
@@ -49,12 +53,29 @@ pub(crate) async fn list_gpus(verbose: bool) {
             DeviceType::VirtualGpu => "Virtual GPU",
             DeviceType::Cpu => "CPU emulation",
         };
-        println!("{}: {} ({device_type})", device.id(), device.name());
+        let is_metal = device.backend() == Backend::Metal;
+        any_metal |= is_metal;
+        let disabled = if is_metal {
+            "  [untested; enable with --enable-metal]"
+        } else {
+            ""
+        };
+        println!(
+            "{}: {} ({device_type}){disabled}",
+            device.id(),
+            device.name()
+        );
         if verbose {
             println!("   Backend: {}", device.backend());
             println!("   Driver: {}", device.driver());
             println!("   Driver info: {}", device.driver_info());
         }
+    }
+    if any_metal {
+        println!();
+        println!(
+            "Metal GPUs are untested and disabled by default; pass --enable-metal to plot with them."
+        );
     }
 }
 
@@ -106,6 +127,7 @@ where
         wgpu_sector_downloading_concurrency,
         wgpu_gpus,
         cpu_only,
+        enable_metal,
     } = wgpu_plotting_options;
 
     if cpu_only {
@@ -121,6 +143,22 @@ where
         | DeviceType::Cpu => NonZeroU8::new(2).expect("Not zero; qed"),
     };
     let all_gpu_devices = Device::enumerate(number_of_queues).await;
+
+    let all_gpu_devices = if enable_metal {
+        all_gpu_devices
+    } else {
+        let (skipped_metal, all_gpu_devices): (Vec<_>, Vec<_>) = all_gpu_devices
+            .into_iter()
+            .partition(|device| device.backend() == Backend::Metal);
+        if !skipped_metal.is_empty() {
+            warn!(
+                count = skipped_metal.len(),
+                "Skipping Metal GPU(s); GPU plotting on Metal is untested, pass --enable-metal to \
+                 use them anyway"
+            );
+        }
+        all_gpu_devices
+    };
 
     let device_types = all_gpu_devices
         .iter()
