@@ -17,6 +17,14 @@ use tracing::{debug, info, warn};
 /// Plotting options for the wgpu GPU plotter.
 #[derive(Debug, Parser)]
 pub(in super::super) struct WgpuPlottingOptions {
+    /// How many records the farmer will encode concurrently on the same wgpu GPU.
+    ///
+    /// Increasing this value will cause higher VRAM usage and will not necessarily improve
+    /// performance.
+    ///
+    /// Defaults to 4 for dGPU and 2 otherwise (iGPU, etc.).
+    #[arg(long)]
+    wgpu_record_encoding_concurrency: Option<NonZeroU8>,
     /// How many sectors farmer will download concurrently during plotting with wgpu GPUs.
     /// Limits memory usage of the plotting process. Defaults to the number of wgpu GPUs * 3,
     /// to download future sectors ahead of time.
@@ -124,6 +132,7 @@ where
     PG: PieceGetter + Clone + Send + Sync + 'static,
 {
     let WgpuPlottingOptions {
+        wgpu_record_encoding_concurrency,
         wgpu_sector_downloading_concurrency,
         wgpu_gpus,
         cpu_only,
@@ -135,12 +144,17 @@ where
         return Ok(None);
     }
 
-    let number_of_queues = |device_type: DeviceType| match device_type {
-        DeviceType::DiscreteGpu => NonZeroU8::new(4).expect("Not zero; qed"),
-        DeviceType::Other
-        | DeviceType::IntegratedGpu
-        | DeviceType::VirtualGpu
-        | DeviceType::Cpu => NonZeroU8::new(2).expect("Not zero; qed"),
+    let number_of_queues = |device_type: DeviceType| {
+        if let Some(wgpu_record_encoding_concurrency) = wgpu_record_encoding_concurrency {
+            return wgpu_record_encoding_concurrency;
+        }
+        match device_type {
+            DeviceType::DiscreteGpu => NonZeroU8::new(4).expect("Not zero; qed"),
+            DeviceType::Other
+            | DeviceType::IntegratedGpu
+            | DeviceType::VirtualGpu
+            | DeviceType::Cpu => NonZeroU8::new(2).expect("Not zero; qed"),
+        }
     };
     let all_gpu_devices = Device::enumerate(number_of_queues).await;
 
