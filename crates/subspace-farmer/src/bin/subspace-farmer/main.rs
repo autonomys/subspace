@@ -23,7 +23,7 @@ enum Command {
     /// Run various benchmarks
     #[clap(subcommand)]
     Benchmark(commands::benchmark::BenchmarkArgs),
-    /// List the GPUs wgpu can plot on, with the device ids to pass to `--wgpu-gpus`
+    /// List the GPUs available for plotting, with the device ids to pass to `--gpus`
     #[cfg(feature = "wgpu")]
     ListGpus {
         /// Also print each GPU's backend and driver details

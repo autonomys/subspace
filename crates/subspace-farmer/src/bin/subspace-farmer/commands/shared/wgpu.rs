@@ -17,31 +17,31 @@ use tracing::{debug, info, warn};
 /// Plotting options for the wgpu GPU plotter.
 #[derive(Debug, Parser)]
 pub(in super::super) struct WgpuPlottingOptions {
-    /// How many records the farmer will encode concurrently on the same wgpu GPU.
+    /// How many records the farmer will encode concurrently on the same GPU.
     ///
     /// Increasing this value will cause higher VRAM usage and will not necessarily improve
     /// performance.
     ///
     /// Defaults to 4 for dGPU and 2 otherwise (iGPU, etc.).
     #[arg(long)]
-    wgpu_record_encoding_concurrency: Option<NonZeroU8>,
-    /// How many sectors farmer will download concurrently during plotting with wgpu GPUs.
-    /// Limits memory usage of the plotting process. Defaults to the number of wgpu GPUs * 3,
+    gpu_record_encoding_concurrency: Option<NonZeroU8>,
+    /// How many sectors farmer will download concurrently during plotting with GPUs.
+    /// Limits memory usage of the plotting process. Defaults to the number of GPUs * 3,
     /// to download future sectors ahead of time.
     ///
     /// Increasing this value will cause higher memory usage.
     #[arg(long)]
-    wgpu_sector_downloading_concurrency: Option<NonZeroUsize>,
+    gpu_sector_downloading_concurrency: Option<NonZeroUsize>,
     /// Set the exact GPUs to be used for plotting instead of using recommended GPUs (default
     /// behavior).
     ///
     /// By default, dGPUs are used if available, if not, then iGPUs are used, if neither dGPU nor
     /// iGPU is found, a virtual GPU will be used as the last resort.
     ///
-    /// GPUs are comma-separated: `--wgpu-gpus 0,1,3`. To disable GPU plotting entirely, use
+    /// GPUs are comma-separated: `--gpus 0,1,3`. To disable GPU plotting entirely, use
     /// `--cpu-only`.
     #[arg(long)]
-    wgpu_gpus: Option<String>,
+    gpus: Option<String>,
     /// Plot on the CPU only, skipping GPU plotting even when GPUs are available.
     #[arg(long)]
     cpu_only: bool,
@@ -50,7 +50,7 @@ pub(in super::super) struct WgpuPlottingOptions {
     enable_metal: bool,
 }
 
-/// Print the GPUs wgpu can plot on, with the device ids to pass to `--wgpu-gpus`.
+/// Print the GPUs wgpu can plot on, with the device ids to pass to `--gpus`.
 pub(crate) async fn list_gpus(verbose: bool) {
     let mut any_metal = false;
     for device in Device::enumerate(|_| NonZeroU8::MIN).await {
@@ -87,7 +87,7 @@ pub(crate) async fn list_gpus(verbose: bool) {
     }
 }
 
-/// Choose which enumerated GPU devices to plot on: an explicit `--wgpu-gpus` set is honored
+/// Choose which enumerated GPU devices to plot on: an explicit `--gpus` set is honored
 /// verbatim, otherwise discrete GPUs are preferred, then integrated, then a virtual GPU as a last
 /// resort, while unknown and CPU-emulated adapters are never auto-selected.
 fn select_gpu_devices(
@@ -132,9 +132,9 @@ where
     PG: PieceGetter + Clone + Send + Sync + 'static,
 {
     let WgpuPlottingOptions {
-        wgpu_record_encoding_concurrency,
-        wgpu_sector_downloading_concurrency,
-        wgpu_gpus,
+        gpu_record_encoding_concurrency,
+        gpu_sector_downloading_concurrency,
+        gpus,
         cpu_only,
         enable_metal,
     } = wgpu_plotting_options;
@@ -145,8 +145,8 @@ where
     }
 
     let number_of_queues = |device_type: DeviceType| {
-        if let Some(wgpu_record_encoding_concurrency) = wgpu_record_encoding_concurrency {
-            return wgpu_record_encoding_concurrency;
+        if let Some(gpu_record_encoding_concurrency) = gpu_record_encoding_concurrency {
+            return gpu_record_encoding_concurrency;
         }
         match device_type {
             DeviceType::DiscreteGpu => NonZeroU8::new(4).expect("Not zero; qed"),
@@ -179,9 +179,9 @@ where
         .map(Device::device_type)
         .collect::<Vec<_>>();
 
-    let explicit_gpus = match wgpu_gpus {
-        Some(wgpu_gpus) if !wgpu_gpus.is_empty() => {
-            let mut gpus_to_use = wgpu_gpus
+    let explicit_gpus = match gpus {
+        Some(gpus) if !gpus.is_empty() => {
+            let mut gpus_to_use = gpus
                 .split(',')
                 .map(str::parse)
                 .collect::<Result<BTreeSet<u32>, _>>()?;
@@ -193,7 +193,7 @@ where
                 .collect::<BTreeSet<usize>>();
 
             if !gpus_to_use.is_empty() {
-                warn!(?gpus_to_use, "Some wgpu GPUs were not found on the system");
+                warn!(?gpus_to_use, "Some GPUs were not found on the system");
             }
 
             Some(explicit_gpus)
@@ -250,8 +250,8 @@ where
     }
 
     let wgpu_downloading_semaphore = Arc::new(Semaphore::new(
-        wgpu_sector_downloading_concurrency
-            .map(|wgpu_sector_downloading_concurrency| wgpu_sector_downloading_concurrency.get())
+        gpu_sector_downloading_concurrency
+            .map(|gpu_sector_downloading_concurrency| gpu_sector_downloading_concurrency.get())
             .unwrap_or(used_gpu_devices.len() * 3),
     ));
 
