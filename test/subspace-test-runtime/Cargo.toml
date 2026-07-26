@@ -69,6 +69,9 @@ subspace-verification = { workspace = true, features = ["testing"] }
 [build-dependencies]
 substrate-wasm-builder = { workspace = true, optional = true }
 
+[dev-dependencies]
+sp-io = { workspace = true, features = ["std"] }
+
 [features]
 default = ["std"]
 std = [

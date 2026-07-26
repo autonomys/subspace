@@ -19,6 +19,7 @@ domain-runtime-primitives.workspace = true
 frame-benchmarking = { workspace = true, optional = true }
 frame-support.workspace = true
 frame-system.workspace = true
+log.workspace = true
 scale-info = { workspace = true, features = ["derive"] }
 sp-core.workspace = true
 sp-domains.workspace = true
@@ -40,6 +41,7 @@ std = [
     "frame-benchmarking?/std",
     "frame-support/std",
     "frame-system/std",
+    "log/std",
     "scale-info/std",
     "sp-core/std",
     "sp-domains/std",

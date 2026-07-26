@@ -28,6 +28,13 @@ sp_api::decl_runtime_apis! {
         /// Return the domain balance in the consensus chain bookkeeping
         fn domain_balance(domain_id: DomainId) -> Balance;
 
+        /// Return the consensus chain total issuance.
+        fn consensus_total_issuance() -> Balance;
+
+        /// Return the network-wide credit supply used for storage pricing
+        /// (consensus total issuance plus the all-domains supply).
+        fn consensus_credit_supply() -> Balance;
+
         /// Returns the domain stake summary
         fn domain_stake_summary(domain_id: DomainId) -> Option<StakingSummary<OperatorId, Balance>>;
     }
