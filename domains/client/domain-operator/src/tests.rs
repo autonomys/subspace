@@ -8565,6 +8565,263 @@ async fn test_domain_total_issuance_match_consensus_chain_bookkeeping_with_xdm()
     }
 }
 
+// CreditSupply (consensus total_issuance + all-domains supply) is the storage-fee input. An XDM
+// transfer burns/mints on one chain and offsets it in the all-domains supply, so CreditSupply must
+// not move when tokens cross the domain boundary even though consensus total_issuance alone does.
+// free_space is fixed in this harness, so an invariant CreditSupply is an invariant byte fee.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_credit_supply_invariant_across_xdm_transfers() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie (runs as Alice, the sudo key)
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (an EVM domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    ferdie.start_cross_domain_gossip_message_worker();
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Open XDM channel between the consensus chain and the EVM domain
+    open_xdm_channel(&mut ferdie, &mut alice).await;
+
+    let transfer_amount = 100_000_000_000_000_000u128;
+
+    // ----- consensus -> domain -----
+    let best_hash = ferdie.client.info().best_hash;
+    let cs_before = ferdie
+        .client
+        .runtime_api()
+        .consensus_credit_supply(best_hash)
+        .unwrap();
+    let ti_before = ferdie
+        .client
+        .runtime_api()
+        .consensus_total_issuance(best_hash)
+        .unwrap();
+    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    let ferdie_before_transfer = ferdie.free_balance(ferdie.key.to_account_id());
+
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Domain(EVM_DOMAIN_ID),
+                account_id: AccountId20Converter::convert(Alice.to_account_id()),
+            },
+            amount: transfer_amount,
+        })
+        .await
+        .expect("Failed to send consensus-to-domain transfer");
+
+    // In-flight: once the transfer is in a consensus block the source is burned and the amount sits
+    // in the unconfirmed-transfers bucket before the domain confirms it. Assert that state (source
+    // burned, destination not yet credited), then check CreditSupply is already invariant.
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+    assert!(
+        ferdie.free_balance(ferdie.key.to_account_id())
+            <= ferdie_before_transfer.saturating_sub(transfer_amount),
+        "the transfer must be burned on the source while in flight"
+    );
+    assert_eq!(
+        alice.free_balance(alice.key.to_account_id()),
+        pre_alice_free_balance,
+        "the destination must not be credited yet, confirming the transfer is in flight"
+    );
+    let in_flight_hash = ferdie.client.info().best_hash;
+    let cs_in_flight = ferdie
+        .client
+        .runtime_api()
+        .consensus_credit_supply(in_flight_hash)
+        .unwrap();
+    assert!(
+        cs_before.abs_diff(cs_in_flight) < transfer_amount / 10,
+        "CreditSupply must stay invariant while the transfer is in flight"
+    );
+
+    produce_blocks_until!(ferdie, alice, {
+        alice.free_balance(alice.key.to_account_id()) == pre_alice_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
+
+    let best_hash = ferdie.client.info().best_hash;
+    let cs_after = ferdie
+        .client
+        .runtime_api()
+        .consensus_credit_supply(best_hash)
+        .unwrap();
+    let ti_after = ferdie
+        .client
+        .runtime_api()
+        .consensus_total_issuance(best_hash)
+        .unwrap();
+
+    // Consensus burned the transfer amount, so total_issuance alone drops by ~the amount ...
+    assert!(
+        ti_before.saturating_sub(ti_after) > transfer_amount / 2,
+        "consensus total_issuance should drop by ~the transfer amount moving consensus->domain"
+    );
+    // ... but the all-domains supply rose by the same amount, so CreditSupply barely moves (only
+    // genuine per-block fee burns, orders of magnitude below the transfer).
+    assert!(
+        cs_before.abs_diff(cs_after) < transfer_amount / 10,
+        "CreditSupply must stay invariant when tokens move consensus->domain"
+    );
+
+    ferdie.clear_tx_pool().await.unwrap();
+    alice.clear_tx_pool().await;
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // ----- domain -> consensus (round trip back) -----
+    let best_hash = ferdie.client.info().best_hash;
+    let cs_before = ferdie
+        .client
+        .runtime_api()
+        .consensus_credit_supply(best_hash)
+        .unwrap();
+    let ti_before = ferdie
+        .client
+        .runtime_api()
+        .consensus_total_issuance(best_hash)
+        .unwrap();
+    let pre_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+
+    alice
+        .construct_and_send_extrinsic(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Consensus,
+                account_id: AccountIdConverter::convert(Sr25519Alice.into()),
+            },
+            amount: transfer_amount,
+        })
+        .await
+        .expect("Failed to send domain-to-consensus transfer");
+
+    produce_blocks_until!(ferdie, alice, {
+        ferdie.free_balance(ferdie.key.to_account_id()) == pre_ferdie_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
+
+    let best_hash = ferdie.client.info().best_hash;
+    let cs_after = ferdie
+        .client
+        .runtime_api()
+        .consensus_credit_supply(best_hash)
+        .unwrap();
+    let ti_after = ferdie
+        .client
+        .runtime_api()
+        .consensus_total_issuance(best_hash)
+        .unwrap();
+
+    // Consensus minted the transfer amount, so total_issuance alone rises by ~the amount ...
+    assert!(
+        ti_after.saturating_sub(ti_before) > transfer_amount / 2,
+        "consensus total_issuance should rise by ~the transfer amount moving domain->consensus"
+    );
+    // ... offset by the all-domains supply dropping by the same amount, so CreditSupply holds.
+    assert!(
+        cs_before.abs_diff(cs_after) < transfer_amount / 10,
+        "CreditSupply must stay invariant when tokens move domain->consensus"
+    );
+
+    ferdie.clear_tx_pool().await.unwrap();
+    alice.clear_tx_pool().await;
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // ----- rejected transfer: burned, held in flight then cancelled, then reclaimed -----
+    let best_hash = ferdie.client.info().best_hash;
+    let cs_before = ferdie
+        .client
+        .runtime_api()
+        .consensus_credit_supply(best_hash)
+        .unwrap();
+    let ti_before = ferdie
+        .client
+        .runtime_api()
+        .consensus_total_issuance(best_hash)
+        .unwrap();
+
+    // A substrate-format recipient on the EVM domain is rejected, so the transfer reverts and the
+    // fund is reclaimed to the sender.
+    let ferdie_before_rejected = ferdie.free_balance(ferdie.key.to_account_id());
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Domain(EVM_DOMAIN_ID),
+                account_id: AccountIdConverter::convert(Sr25519Alice.into()),
+            },
+            amount: transfer_amount,
+        })
+        .await
+        .expect("Failed to send rejected transfer");
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // In-flight before the rejection relays back: the source is burned (held while awaiting the
+    // reject then reclaim), not yet reclaimed. CreditSupply is already invariant (burn offset).
+    assert!(
+        ferdie.free_balance(ferdie.key.to_account_id())
+            <= ferdie_before_rejected.saturating_sub(transfer_amount),
+        "the rejected transfer must be burned on the source while in flight"
+    );
+    let in_flight_hash = ferdie.client.info().best_hash;
+    let cs_in_flight = ferdie
+        .client
+        .runtime_api()
+        .consensus_credit_supply(in_flight_hash)
+        .unwrap();
+    assert!(
+        cs_before.abs_diff(cs_in_flight) < transfer_amount / 10,
+        "CreditSupply must stay invariant while the rejected transfer is in flight"
+    );
+
+    let ferdie_after_send = ferdie.free_balance(ferdie.key.to_account_id());
+    produce_blocks_until!(ferdie, alice, {
+        ferdie.free_balance(ferdie.key.to_account_id()) == ferdie_after_send + transfer_amount
+    })
+    .await
+    .unwrap();
+
+    let best_hash = ferdie.client.info().best_hash;
+    let cs_after = ferdie
+        .client
+        .runtime_api()
+        .consensus_credit_supply(best_hash)
+        .unwrap();
+    let ti_after = ferdie
+        .client
+        .runtime_api()
+        .consensus_total_issuance(best_hash)
+        .unwrap();
+
+    // Reject then reclaim nets to nothing on consensus, so both CreditSupply and total_issuance
+    // return to their starting values (modulo genuine fees).
+    assert!(
+        cs_before.abs_diff(cs_after) < transfer_amount / 10,
+        "CreditSupply must stay invariant across a rejected and reclaimed transfer"
+    );
+    assert!(
+        ti_before.abs_diff(ti_after) < transfer_amount / 10,
+        "total_issuance must return to its starting value after the reclaim"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn test_false_bundle_author() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");

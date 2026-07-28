@@ -95,8 +95,8 @@ use sp_messenger::{ChannelNonce, XdmId};
 use sp_messenger_host_functions::{StorageKeyRequest, get_storage_key};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::traits::{
-    AccountIdConversion, AccountIdLookup, BlakeTwo256, ConstBool, DispatchInfoOf, Keccak256,
-    NumberFor, PostDispatchInfoOf, Zero,
+    AccountIdConversion, AccountIdLookup, BlakeTwo256, DispatchInfoOf, Keccak256, NumberFor,
+    PostDispatchInfoOf, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -404,7 +404,7 @@ pub struct CreditSupply;
 
 impl Get<Balance> for CreditSupply {
     fn get() -> Balance {
-        Balances::total_issuance()
+        Balances::total_issuance().saturating_add(Transporter::all_domains_supply())
     }
 }
 
@@ -430,6 +430,14 @@ impl Get<u128> for BlockchainHistorySize {
     }
 }
 
+pub struct DynamicCostOfStorage;
+
+impl Get<bool> for DynamicCostOfStorage {
+    fn get() -> bool {
+        RuntimeConfigs::enable_dynamic_cost_of_storage()
+    }
+}
+
 impl pallet_transaction_fees::Config for Runtime {
     type MinReplicationFactor = ConstU16<MIN_REPLICATION_FACTOR>;
     type CreditSupply = CreditSupply;
@@ -437,7 +445,7 @@ impl pallet_transaction_fees::Config for Runtime {
     type BlockchainHistorySize = BlockchainHistorySize;
     type Currency = Balances;
     type FindBlockRewardAddress = Subspace;
-    type DynamicCostOfStorage = ConstBool<false>;
+    type DynamicCostOfStorage = DynamicCostOfStorage;
     type WeightInfo = pallet_transaction_fees::weights::SubstrateWeight<Runtime>;
 }
 
@@ -1111,6 +1119,7 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
+    pallet_transporter::migrations::VersionCheckedMigrateTransporterV0ToV1<Runtime>,
 >;
 /// The payload being signed in transactions.
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, SignedExtra>;
@@ -1932,6 +1941,14 @@ impl_runtime_apis! {
             Transporter::domain_balances(domain_id)
         }
 
+        fn consensus_total_issuance() -> Balance {
+            Balances::total_issuance()
+        }
+
+        fn consensus_credit_supply() -> Balance {
+            CreditSupply::get()
+        }
+
         fn domain_stake_summary(domain_id: DomainId) -> Option<StakingSummary<OperatorId, Balance>>{
             Domains::domain_staking_summary(domain_id)
         }
@@ -1954,9 +1971,18 @@ impl_runtime_apis! {
 
 #[cfg(test)]
 mod tests {
-    use crate::Runtime;
+    use crate::{
+        AccountId, Balance, Balances, BlockchainHistorySize, MIN_REPLICATION_FACTOR, Runtime,
+        RuntimeConfigs, System, TotalSpacePledged, TransactionFees, Transporter,
+    };
+    use frame_support::traits::{
+        Currency, ExistenceRequirement, Get, OnFinalize, OnInitialize, WithdrawReasons,
+    };
     use pallet_domains::bundle_storage_fund::AccountType;
-    use sp_domains::OperatorId;
+    use pallet_runtime_configs::EnableDynamicCostOfStorage;
+    use sp_domains::{DomainId, DomainsTransfersTracker, OperatorId};
+    use sp_messenger::messages::ChainId;
+    use sp_runtime::BuildStorage;
     use sp_runtime::traits::AccountIdConversion;
 
     #[test]
@@ -1966,5 +1992,102 @@ mod tests {
             .expect(
                 "The `AccountId` type must be large enough to fit the seed of the bundle storage fund account",
             );
+    }
+
+    const TEST_ACCOUNT: [u8; 32] = [1u8; 32];
+    // Comfortably above the existential deposit (10_000_000_000_000 * SHANNON).
+    const INITIAL_BALANCE: Balance = 1_000_000_000_000_000_000;
+
+    fn new_test_ext() -> sp_io::TestExternalities {
+        let mut t = frame_system::GenesisConfig::<Runtime>::default()
+            .build_storage()
+            .unwrap();
+        pallet_balances::GenesisConfig::<Runtime> {
+            balances: vec![(AccountId::from(TEST_ACCOUNT), INITIAL_BALANCE)],
+            dev_accounts: None,
+        }
+        .assimilate_storage(&mut t)
+        .unwrap();
+        let mut ext: sp_io::TestExternalities = t.into();
+        ext.execute_with(|| System::set_block_number(1));
+        ext
+    }
+
+    #[test]
+    fn dynamic_byte_fee_tracks_all_domains_supply() {
+        new_test_ext().execute_with(|| {
+            EnableDynamicCostOfStorage::<Runtime>::put(true);
+
+            // the default solution range leaves free_space > 0, so this exercises the real
+            // `credit_supply / free_space` branch rather than the degenerate fallback
+            let free_space = TotalSpacePledged::get() / u128::from(MIN_REPLICATION_FACTOR)
+                - BlockchainHistorySize::get();
+            assert!(
+                free_space > 0,
+                "must exercise the credit_supply / free_space branch"
+            );
+
+            let fee_before = TransactionFees::calculate_transaction_byte_fee();
+
+            // tokens now held on a domain: a net-positive aggregate change (no offsetting burn)
+            Transporter::initialize_domain_balance(DomainId::new(0), free_space).unwrap();
+
+            let fee_after = TransactionFees::calculate_transaction_byte_fee();
+            assert_eq!(
+                fee_after,
+                fee_before + 1,
+                "raising the aggregate by one free_space raises the per-byte fee by exactly one"
+            );
+
+            // the flag-gated getter returns the dynamic value, not the disabled-path constant 1
+            TransactionFees::on_initialize(System::block_number());
+            TransactionFees::on_finalize(System::block_number());
+            let getter_fee = TransactionFees::transaction_byte_fee();
+            assert_eq!(getter_fee, fee_after);
+            assert!(getter_fee > 1);
+        });
+    }
+
+    #[test]
+    fn credit_supply_conservation_keeps_byte_fee_stable() {
+        new_test_ext().execute_with(|| {
+            EnableDynamicCostOfStorage::<Runtime>::put(true);
+            let account = AccountId::from(TEST_ACCOUNT);
+            let amount: Balance = 500_000_000;
+
+            let fee_before = TransactionFees::calculate_transaction_byte_fee();
+
+            // model a consensus->domain transfer: burn on consensus, then note + confirm to the
+            // domain. CreditSupply (= total_issuance + aggregate) is conserved, so the fee holds.
+            let _ = <Balances as Currency<AccountId>>::withdraw(
+                &account,
+                amount,
+                WithdrawReasons::TRANSFER,
+                ExistenceRequirement::AllowDeath,
+            )
+            .expect("account funded in genesis");
+            let domain = ChainId::Domain(DomainId::new(0));
+            Transporter::note_transfer(ChainId::Consensus, domain, amount).unwrap();
+            Transporter::confirm_transfer(ChainId::Consensus, domain, amount).unwrap();
+
+            let fee_after = TransactionFees::calculate_transaction_byte_fee();
+            assert_eq!(
+                fee_after, fee_before,
+                "a conserved consensus->domain transfer must not move the byte fee"
+            );
+        });
+    }
+
+    #[test]
+    fn byte_fee_is_constant_when_dynamic_cost_disabled() {
+        new_test_ext().execute_with(|| {
+            // dynamic cost is off by default (parity with production; existing behaviour unchanged)
+            assert!(!RuntimeConfigs::enable_dynamic_cost_of_storage());
+            assert_eq!(TransactionFees::transaction_byte_fee(), 1);
+
+            // even with a nonzero aggregate, the disabled path returns the constant
+            Transporter::initialize_domain_balance(DomainId::new(0), 1_000_000).unwrap();
+            assert_eq!(TransactionFees::transaction_byte_fee(), 1);
+        });
     }
 }

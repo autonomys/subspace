@@ -21,6 +21,7 @@
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
+pub mod migrations;
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
@@ -33,6 +34,7 @@ extern crate alloc;
 use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
 use frame_support::dispatch::DispatchResult;
 use frame_support::ensure;
+use frame_support::pallet_prelude::StorageVersion;
 use frame_support::traits::Currency;
 pub use pallet::*;
 use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
@@ -79,12 +81,14 @@ type MessageIdOf<T> = <<T as Config>::Sender as sp_messenger::endpoint::Sender<
     <T as frame_system::Config>::AccountId,
 >>::MessageId;
 
+const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
+
 #[frame_support::pallet]
 mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, Location, MessageIdOf, MultiAccountId, Transfer, TryConvertBack,
-        ZERO_EVM_ADDRESS, ZERO_SUBSTRATE_ADDRESS,
+        BalanceOf, Location, MessageIdOf, MultiAccountId, STORAGE_VERSION, Transfer,
+        TryConvertBack, ZERO_EVM_ADDRESS, ZERO_SUBSTRATE_ADDRESS,
     };
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
@@ -129,6 +133,7 @@ mod pallet {
     /// Pallet transporter to move funds between chains.
     #[pallet::pallet]
     #[pallet::without_storage_info]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     /// All the outgoing transfers on this execution environment.
@@ -149,6 +154,14 @@ mod pallet {
     #[pallet::getter(fn domain_balances)]
     pub(super) type DomainBalances<T: Config> =
         StorageMap<_, Identity, DomainId, BalanceOf<T>, ValueQuery>;
+
+    /// All-domains supply: network supply that has left consensus `total_issuance` but still
+    /// exists, kept equal to Σ DomainBalances + Σ UnconfirmedTransfers + Σ CancelledTransfers
+    /// (held on domains, in-flight across XDM, and rejected awaiting reclaim). Read on the
+    /// consensus runtime and added to `total_issuance` to price storage off network-wide supply.
+    #[pallet::storage]
+    #[pallet::getter(fn all_domains_supply)]
+    pub(super) type AllDomainsSupply<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
     /// A temporary storage that tracks total transfers from this chain.
     /// Clears on on_initialize for every block.
@@ -337,6 +350,30 @@ mod pallet {
             use frame_support::storage::generator::StorageValue;
             ChainTransfers::<T>::storage_value_final_key().to_vec()
         }
+
+        pub(super) fn increase_all_domains_supply(amount: BalanceOf<T>) {
+            let current = Self::all_domains_supply();
+            let updated = current.checked_add(&amount).unwrap_or_else(|| {
+                log::error!(
+                    target: "runtime::transporter",
+                    "all-domains supply overflow adding {amount:?}; keeping current (drift)"
+                );
+                current
+            });
+            AllDomainsSupply::<T>::put(updated);
+        }
+
+        pub(super) fn decrease_all_domains_supply(amount: BalanceOf<T>) {
+            let current = Self::all_domains_supply();
+            let updated = current.checked_sub(&amount).unwrap_or_else(|| {
+                log::error!(
+                    target: "runtime::transporter",
+                    "all-domains supply underflow subtracting {amount:?}; flooring at zero (drift)"
+                );
+                BalanceOf::<T>::default()
+            });
+            AllDomainsSupply::<T>::put(updated);
+        }
     }
 
     /// Endpoint handler implementation for pallet transporter.
@@ -489,6 +526,7 @@ impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> 
         );
 
         DomainBalances::<T>::set(domain_id, amount);
+        Self::increase_all_domains_supply(amount);
         Ok(())
     }
 
@@ -514,6 +552,11 @@ impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> 
                 .ok_or(Error::BalanceOverflow)?;
             Ok(())
         })?;
+
+        // Net: +amount from a consensus source; a domain source's DomainBalances debit cancels it.
+        if from_chain_id.maybe_domain_chain().is_none() {
+            Self::increase_all_domains_supply(amount);
+        }
 
         Ok(())
     }
@@ -541,6 +584,11 @@ impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> 
             Ok(())
         })?;
 
+        // Net: -amount to a consensus destination; a domain destination's DomainBalances credit cancels it.
+        if to_chain_id.maybe_domain_chain().is_none() {
+            Self::decrease_all_domains_supply(amount);
+        }
+
         Ok(())
     }
 
@@ -567,6 +615,11 @@ impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> 
             Ok(())
         })?;
 
+        // Net: -amount when reclaimed on consensus; a domain reclaim's DomainBalances credit cancels it.
+        if from_chain_id.maybe_domain_chain().is_none() {
+            Self::decrease_all_domains_supply(amount);
+        }
+
         Ok(())
     }
 
@@ -576,6 +629,8 @@ impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> 
         amount: BalanceOf<T>,
     ) -> Result<(), Self::Error> {
         Self::ensure_consensus_chain()?;
+        // No net aggregate change: the amount moves from the unconfirmed to the cancelled bucket,
+        // both already counted in the aggregate.
         UnconfirmedTransfers::<T>::try_mutate(from_chain_id, to_chain_id, |total_amount| {
             *total_amount = total_amount
                 .checked_sub(&amount)
@@ -600,31 +655,48 @@ impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> 
                 .checked_sub(&amount)
                 .ok_or(Error::LowBalanceOnDomain)?;
             Ok(())
-        })
+        })?;
+        Self::decrease_all_domains_supply(amount);
+        Ok(())
     }
 }
 
 impl<T: Config> NoteChainTransfer<BalanceOf<T>> for Pallet<T> {
     fn note_transfer_in(amount: BalanceOf<T>, from_chain_id: ChainId) -> bool {
-        if T::SelfChainId::get().is_consensus_chain() {
-            Pallet::<T>::confirm_transfer(from_chain_id, T::SelfChainId::get(), amount).is_ok()
+        let result: DispatchResult = if T::SelfChainId::get().is_consensus_chain() {
+            Pallet::<T>::confirm_transfer(from_chain_id, T::SelfChainId::get(), amount)
+                .map_err(Into::into)
         } else {
             ChainTransfers::<T>::try_mutate(|transfers| {
                 Pallet::<T>::update_transfer_in(transfers, from_chain_id, amount)
             })
-            .is_ok()
+        };
+        if let Err(err) = result {
+            log::error!(
+                target: "runtime::transporter",
+                "note_transfer_in from {from_chain_id:?} failed: {err:?}"
+            );
+            return false;
         }
+        true
     }
 
     fn note_transfer_out(amount: BalanceOf<T>, to_chain_id: ChainId) -> bool {
-        if T::SelfChainId::get().is_consensus_chain() {
-            Self::note_transfer(T::SelfChainId::get(), to_chain_id, amount).is_ok()
+        let result: DispatchResult = if T::SelfChainId::get().is_consensus_chain() {
+            Self::note_transfer(T::SelfChainId::get(), to_chain_id, amount).map_err(Into::into)
         } else {
             ChainTransfers::<T>::try_mutate(|transfers| {
                 Self::update_transfer_out(transfers, to_chain_id, amount)
             })
-            .is_ok()
+        };
+        if let Err(err) = result {
+            log::error!(
+                target: "runtime::transporter",
+                "note_transfer_out to {to_chain_id:?} failed: {err:?}"
+            );
+            return false;
         }
+        true
     }
 }
 

@@ -127,6 +127,7 @@ pub type Executive = domain_pallet_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
+    (pallet_transporter::migrations::VersionCheckedMigrateTransporterV0ToV1<Runtime>,),
 >;
 
 impl_opaque_keys! {

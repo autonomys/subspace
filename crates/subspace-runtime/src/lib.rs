@@ -390,7 +390,8 @@ impl pallet_balances::Config for Runtime {
 }
 
 parameter_types! {
-    pub CreditSupply: Balance = Balances::total_issuance();
+    pub CreditSupply: Balance =
+        Balances::total_issuance().saturating_add(Transporter::all_domains_supply());
     pub TotalSpacePledged: u128 = {
         let pieces = solution_range_to_pieces(Subspace::solution_ranges().current, SLOT_PROBABILITY);
         pieces as u128 * Piece::SIZE as u128
@@ -1166,7 +1167,10 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    pallet_domains::migrations::VersionCheckedMigrateDomainsV5ToV6<Runtime>,
+    (
+        pallet_domains::migrations::VersionCheckedMigrateDomainsV5ToV6<Runtime>,
+        pallet_transporter::migrations::VersionCheckedMigrateTransporterV0ToV1<Runtime>,
+    ),
 >;
 
 impl pallet_subspace::extensions::MaybeSubspaceCall<Runtime> for RuntimeCall {
