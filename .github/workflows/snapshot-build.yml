@@ -65,10 +65,10 @@ jobs:
         run: echo "SAFE_REF_NAME=$(echo "$REF_NAME" | tr '/' '-')" >> $GITHUB_ENV
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
         with:
           # Limit concurrency so it can complete with small official runners
           buildkitd-config-inline: |
@@ -76,7 +76,7 @@ jobs:
               max-parallelism = 1
 
       - name: Log into registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -84,7 +84,7 @@ jobs:
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: |
             ghcr.io/${{ github.repository_owner }}/${{ matrix.build.image }}
@@ -103,7 +103,7 @@ jobs:
           echo SUBSTRATE_CLI_GIT_COMMIT_HASH=$(echo ${{github.sha}} | cut -c 1-11) >> "$GITHUB_ENV"
 
       - name: Build and push ${{ matrix.build.image }} image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           file: docker/${{ matrix.build.image }}.Dockerfile
           # TODO: Add `linux/riscv64` once https://github.com/paritytech/polkadot-sdk/issues/5996 is resolved and ring
@@ -152,7 +152,7 @@ jobs:
         if: matrix.build.upload-executables
 
       - name: Upload node and farmer executables to assets
-        uses: alexellis/upload-assets@13926a61cdb2cb35f5fdef1c06b8b591523236d3 # 0.4.1
+        uses: alexellis/upload-assets@d8de0b9b956cfb3d7633afdb66ef24c36940a9f7 # 0.5.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
@@ -182,7 +182,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Replace slashes in suffix (from branch names like fix/pos-backport) so they
       # don't create subdirectories when used in filenames.
@@ -232,7 +232,7 @@ jobs:
         if: runner.os == 'Windows'
 
       - name: Configure ROCm cache (Windows)
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: rocm-cache
         with:
           path: C:\Program Files\AMD\ROCm
@@ -248,7 +248,7 @@ jobs:
         if: runner.os == 'Windows' && steps.rocm-cache.outputs.cache-hit != 'true'
 
       - name: Configure cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -355,7 +355,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload node and farmer executables to assets
-        uses: alexellis/upload-assets@13926a61cdb2cb35f5fdef1c06b8b591523236d3 # 0.4.1
+        uses: alexellis/upload-assets@d8de0b9b956cfb3d7633afdb66ef24c36940a9f7 # 0.5.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
