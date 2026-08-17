@@ -19,6 +19,8 @@ use spirv_std::spirv;
 pub const WORKGROUP_SIZE: u32 = 256;
 const TABLE_NUMBER: u8 = 7;
 const PARENT_TABLE_NUMBER: u8 = 6;
+/// Bits of a table-7 entry's `first_k_bits` that sit below the s-bucket index
+const LOW_BITS: u32 = K as u32 - NUM_S_BUCKETS.ilog2();
 
 const _: () = {
     assert!(crate::shader::find_matches_in_buckets::WORKGROUP_SIZE == WORKGROUP_SIZE);
@@ -105,18 +107,16 @@ impl fmt::Debug for FindMatchesAndComputeF7Shared {
 
 /// Subspace's little-endian s-bucket convention (duplicated in the CPU `ab-proof-of-space` chiapos):
 /// maps a table-7 entry's `first_k_bits` to its s-bucket, returning a value `>= NUM_S_BUCKETS` for
-/// entries whose low `K - 16` bits are set (the caller discards those). Consensus verification
+/// entries whose low `LOW_BITS` bits are set (the caller discards those). Consensus verification
 /// derives the challenge from the s-bucket with the same little-endian byte layout, so this
 /// convention is fixed.
 #[inline(always)]
 fn little_endian_s_bucket(first_k_bits: u32) -> u32 {
-    let low_bits = K as u32 - 16;
-    if first_k_bits & ((1 << low_bits) - 1) != 0 {
+    if first_k_bits.trailing_zeros() < LOW_BITS {
         return u32::MAX;
     }
-    let cs_lo = (first_k_bits >> (K as u32 - 8)) & 0xff;
-    let cs_hi = (first_k_bits >> low_bits) & 0xff;
-    cs_lo | (cs_hi << 8)
+    let s_bucket = (first_k_bits >> LOW_BITS) & 0xffff;
+    (s_bucket & 0xff) << 8 | s_bucket >> 8
 }
 
 /// # Safety
