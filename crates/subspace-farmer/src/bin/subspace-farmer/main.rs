@@ -24,7 +24,6 @@ enum Command {
     #[clap(subcommand)]
     Benchmark(commands::benchmark::BenchmarkArgs),
     /// List the GPUs available for plotting, with the device ids to pass to `--gpus`
-    #[cfg(feature = "wgpu")]
     ListGpus {
         /// Also print each GPU's backend and driver details
         #[arg(long)]
@@ -85,7 +84,6 @@ async fn main() -> anyhow::Result<()> {
         Command::Benchmark(benchmark_args) => {
             commands::benchmark::benchmark(benchmark_args)?;
         }
-        #[cfg(feature = "wgpu")]
         Command::ListGpus { verbose } => {
             commands::list_gpus(verbose).await;
         }

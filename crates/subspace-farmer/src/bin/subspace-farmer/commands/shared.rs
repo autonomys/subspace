@@ -1,5 +1,4 @@
 pub(super) mod network;
-#[cfg(feature = "wgpu")]
 pub(super) mod wgpu;
 
 use bytesize::ByteSize;

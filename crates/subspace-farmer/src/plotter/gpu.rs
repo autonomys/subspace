@@ -2,7 +2,6 @@
 
 mod gpu_encoders_manager;
 pub mod metrics;
-#[cfg(feature = "wgpu")]
 pub mod wgpu;
 
 use crate::plotter::gpu::gpu_encoders_manager::GpuRecordsEncoderManager;

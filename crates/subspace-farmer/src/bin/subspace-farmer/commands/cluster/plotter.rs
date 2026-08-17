@@ -1,5 +1,4 @@
 use crate::commands::shared::PlottingThreadPriority;
-#[cfg(feature = "wgpu")]
 use crate::commands::shared::wgpu::{WgpuPlottingOptions, init_wgpu_plotter};
 use anyhow::anyhow;
 use async_lock::{Mutex as AsyncMutex, Semaphore};
@@ -86,7 +85,6 @@ pub(super) struct PlotterArgs {
     #[clap(flatten)]
     cpu_plotting_options: CpuPlottingOptions,
     /// Plotting options only used by wgpu GPU plotter
-    #[cfg(feature = "wgpu")]
     #[clap(flatten)]
     wgpu_plotting_options: WgpuPlottingOptions,
     /// Cache group to use if specified, otherwise all caches are usable by this plotter
@@ -107,7 +105,6 @@ where
 {
     let PlotterArgs {
         cpu_plotting_options,
-        #[cfg(feature = "wgpu")]
         wgpu_plotting_options,
         cache_group,
         additional_components: _,
@@ -125,7 +122,6 @@ where
 
     let mut plotters = Vec::<Box<dyn Plotter + Send + Sync>>::new();
 
-    #[cfg(feature = "wgpu")]
     {
         let maybe_wgpu_plotter = init_wgpu_plotter(
             wgpu_plotting_options,

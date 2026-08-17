@@ -1,5 +1,4 @@
 use crate::commands::shared::network::{NetworkArgs, configure_network};
-#[cfg(feature = "wgpu")]
 use crate::commands::shared::wgpu::{WgpuPlottingOptions, init_wgpu_plotter};
 use crate::commands::shared::{DiskFarm, PlottingThreadPriority, derive_libp2p_keypair};
 use anyhow::anyhow;
@@ -205,7 +204,6 @@ pub(crate) struct FarmingArgs {
     #[clap(flatten)]
     cpu_plotting_options: CpuPlottingOptions,
     /// Plotting options only used by wgpu GPU plotter
-    #[cfg(feature = "wgpu")]
     #[clap(flatten)]
     wgpu_plotting_options: WgpuPlottingOptions,
     /// How many sectors a will be plotted concurrently per farm.
@@ -273,7 +271,6 @@ where
         prometheus_listen_on,
         farming_thread_pool_size,
         cpu_plotting_options,
-        #[cfg(feature = "wgpu")]
         wgpu_plotting_options,
         max_plotting_sectors_per_farm,
         plot_cache,
@@ -475,7 +472,6 @@ where
 
     let mut plotters = Vec::<Box<dyn Plotter + Send + Sync>>::new();
 
-    #[cfg(feature = "wgpu")]
     {
         let maybe_wgpu_plotter = init_wgpu_plotter(
             wgpu_plotting_options,

@@ -15,9 +15,8 @@ if [[ ! -d "./crates/pallet-domains" ]] || [[ ! -d "./domains/runtime/evm" ]]; t
   fi
 fi
 
-# This feature list is `--all-features`. wgpu (GPU plotting) is a default feature and builds on all
-# platforms, so it is part of the base list rather than a separate per-vendor check.
-BASE_FEATURES="async-trait,binary,cluster,default-library,domain-block-builder,domain-block-preprocessor,frame-benchmarking-cli,frame-system-benchmarking,hex-literal,kzg,numa,pallet-subspace,pallet-timestamp,pallet-utility,parallel,parking_lot,rand,runtime-benchmarks,sc-client-api,sc-executor,schnorrkel,serde,sp-blockchain,sp-core,sp-io,sp-state-machine,sp-std,sp-storage,static_assertions,std,substrate-wasm-builder,testing,wasm-builder,wgpu,with-tracing,x509-parser,fuzz"
+# This feature list is `--all-features`. GPU plotting is unconditional, so it has no feature here.
+BASE_FEATURES="async-trait,binary,cluster,default-library,domain-block-builder,domain-block-preprocessor,frame-benchmarking-cli,frame-system-benchmarking,hex-literal,kzg,numa,pallet-subspace,pallet-timestamp,pallet-utility,parallel,parking_lot,rand,runtime-benchmarks,sc-client-api,sc-executor,schnorrkel,serde,sp-blockchain,sp-core,sp-io,sp-state-machine,sp-std,sp-storage,static_assertions,std,substrate-wasm-builder,testing,wasm-builder,with-tracing,x509-parser,fuzz"
 
 # Show commands before executing them
 set -x

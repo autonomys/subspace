@@ -42,7 +42,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      # Build the rust crate docs (wgpu GPU plotting is a default feature)
+      # Build the rust crate docs (GPU plotting is built unconditionally)
       - name: Build Documentation
         run: cargo -Zgitoxide -Zgit doc --locked --all --no-deps --lib
         env:

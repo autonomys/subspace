@@ -59,7 +59,7 @@ subspace-metrics = { workspace = true, optional = true }
 subspace-networking.workspace = true
 subspace-process.workspace = true
 subspace-proof-of-space.workspace = true
-subspace-proof-of-space-wgpu = { workspace = true, optional = true }
+subspace-proof-of-space-wgpu.workspace = true
 subspace-rpc-primitives.workspace = true
 subspace-verification = { workspace = true, features = ["kzg"] }
 substrate-bip39.workspace = true
@@ -73,13 +73,9 @@ ulid = { workspace = true, features = ["serde"] }
 zeroize.workspace = true
 
 [features]
-default = ["default-library", "binary", "wgpu"]
+default = ["default-library", "binary"]
 cluster = ["dep:async-nats"]
 numa = ["dep:hwlocality"]
-# Vulkan/Metal plotting via wgpu
-wgpu = ["_gpu", "dep:subspace-proof-of-space-wgpu"]
-# Internal feature, shouldn't be used directly
-_gpu = []
 
 # TODO: This is a hack for https://github.com/rust-lang/cargo/issues/1982, `default-library` is what would essentially
 #  be default, but because binary compilation will require explicit feature to be specified without `binary` feature we

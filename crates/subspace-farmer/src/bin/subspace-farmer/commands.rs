@@ -7,5 +7,4 @@ mod shared;
 
 pub(crate) use info::info;
 pub(crate) use scrub::scrub;
-#[cfg(feature = "wgpu")]
 pub(crate) use shared::wgpu::list_gpus;
