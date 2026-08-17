@@ -29,7 +29,10 @@ members = [
 ]
 
 [workspace.dependencies]
+ab-blake3 = "0.1.0"
 ab-chacha8 = "0.1.0"
+ab-proof-of-space = { path = "shared/ab-proof-of-space", default-features = false }
+ab-proof-of-space-gpu = { path = "shared/ab-proof-of-space-gpu", default-features = false }
 actix-web = { version = "4.9.0", default-features = false }
 aes = "0.9.0"
 anyhow = "1.0.89"
@@ -50,8 +53,9 @@ blake3 = { version = "1.8.5", default-features = false }
 blst = "0.3.13"
 bytes = { version = "1.11.1", default-features = false }
 bytesize = "2.3.1"
+cargo-gpu-install = { version = "=0.10.0-alpha.1", git = "https://github.com/Rust-GPU/rust-gpu", rev = "bd49568baf08301107c9f698494735724980dee0" }
 cc = "1.2.62"
-chacha20 = { version = "0.10.0", default-features = false }
+chacha20 = { version = "0.10.1", default-features = false }
 clap = "4.6.1"
 console = "0.15.11"
 core_affinity = "0.8.1"
@@ -168,6 +172,7 @@ rand = { version = "0.8.5", default-features = false }
 rand_chacha = { version = "0.3.1", default-features = false }
 rand_core = "0.6.4"
 rayon = "1.12.0"
+rclite = "0.4.1"
 reqwest = { version = "0.12.9", default-features = false }
 ring = "0.17.8"
 rlp = "0.6"
@@ -260,7 +265,7 @@ sp-trie = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060
 sp-version = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
 sp-weights = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
 spin = "0.12.0"
-sppark = { version = "0.1.8", git = "https://github.com/autonomys/sppark", rev = "b2a181eb99c8200f1a604f04122551ea39fbf63f" }
+spirv-std = { version = "=0.10.0-alpha.1", git = "https://github.com/Rust-GPU/rust-gpu", rev = "bd49568baf08301107c9f698494735724980dee0" }
 ss58-registry = "1.51.0"
 static_assertions = "1.1.0"
 strum_macros = "0.28.0"
@@ -275,7 +280,7 @@ subspace-metrics = { version = "0.1.0", path = "shared/subspace-metrics" }
 subspace-networking = { version = "0.1.0", path = "crates/subspace-networking" }
 subspace-process = { version = "0.0.1", path = "shared/subspace-process" }
 subspace-proof-of-space = { version = "0.1.0", path = "crates/subspace-proof-of-space", default-features = false }
-subspace-proof-of-space-gpu = { version = "0.1.0", path = "shared/subspace-proof-of-space-gpu" }
+subspace-proof-of-space-wgpu = { version = "0.1.0", path = "shared/subspace-proof-of-space-wgpu" }
 subspace-proof-of-time = { version = "0.1.0", path = "crates/subspace-proof-of-time" }
 subspace-rpc-primitives = { version = "0.1.0", path = "crates/subspace-rpc-primitives" }
 subspace-runtime = { version = "0.1.0", path = "crates/subspace-runtime" }
@@ -306,6 +311,7 @@ uint = { version = "0.10.0", default-features = false }
 ulid = "1.1.3"
 unsigned-varint = "0.8.0"
 void = "1.0.2"
+wgpu = { version = "29.0.3", default-features = false, features = ["metal", "parking_lot", "spirv", "std", "vulkan"] }
 x509-parser = "0.18.1"
 zeroize = "1.8.1"
 ziggy = { version = "1.7.0", default-features = false }
@@ -318,6 +324,7 @@ ziggy = { version = "1.7.0", default-features = false }
 #
 # This list is ordered alphabetically.
 [profile.dev.package]
+ab-proof-of-space = { opt-level = 3 }
 bitvec = { opt-level = 3 }
 blake2 = { opt-level = 3 }
 blake3 = { opt-level = 3 }

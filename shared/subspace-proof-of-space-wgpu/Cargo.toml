@@ -1,0 +1,16 @@
+[package]
+name = "subspace-proof-of-space-wgpu"
+description = "Subspace proof of space plotting for GPU via wgpu (Vulkan/Metal)"
+license = "0BSD"
+version = "0.1.0"
+edition.workspace = true
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+ab-proof-of-space-gpu = { workspace = true }
+subspace-core-primitives = { workspace = true }
+subspace-erasure-coding = { workspace = true }
+subspace-kzg = { workspace = true }

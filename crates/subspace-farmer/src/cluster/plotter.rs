@@ -69,7 +69,7 @@ impl ClusterPlotterId {
 struct ClusterPlotterFreeInstanceRequest;
 
 impl GenericRequest for ClusterPlotterFreeInstanceRequest {
-    const SUBJECT: &'static str = "subspace.plotter.free-instance";
+    const SUBJECT: &'static str = "subspace.plotter.free-instance-v2";
     /// Might be `None` if instance had to respond, but turned out it was fully occupied already
     type Response = Option<String>;
 }
@@ -114,7 +114,7 @@ struct ClusterPlotterPlotSectorRequest {
 }
 
 impl GenericStreamRequest for ClusterPlotterPlotSectorRequest {
-    const SUBJECT: &'static str = "subspace.plotter.*.plot-sector";
+    const SUBJECT: &'static str = "subspace.plotter.*.plot-sector-v2";
     type Response = ClusterSectorPlottingProgress;
 }
 

@@ -6,7 +6,6 @@
 //! implementations without the rest of the library being aware of implementation details.
 
 pub mod cpu;
-#[cfg(feature = "_gpu")]
 pub mod gpu;
 pub mod pool;
 

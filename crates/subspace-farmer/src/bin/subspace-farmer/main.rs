@@ -5,13 +5,12 @@ use std::fs;
 use std::path::PathBuf;
 use subspace_farmer::single_disk_farm::{ScrubTarget, SingleDiskFarm};
 use subspace_process::{init_logger, raise_fd_limit, set_exit_on_panic};
-use subspace_proof_of_space::chia::ChiaTable;
 use tracing::info;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-type PosTable = ChiaTable;
+type PosTable = subspace_proof_of_space::PosTable;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Parser)]
@@ -24,6 +23,12 @@ enum Command {
     /// Run various benchmarks
     #[clap(subcommand)]
     Benchmark(commands::benchmark::BenchmarkArgs),
+    /// List the GPUs available for plotting, with the device ids to pass to `--gpus`
+    ListGpus {
+        /// Also print each GPU's backend and driver details
+        #[arg(long)]
+        verbose: bool,
+    },
     /// Print information about farm and its content
     Info {
         /// One or more farm located at specified path.
@@ -78,6 +83,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::Benchmark(benchmark_args) => {
             commands::benchmark::benchmark(benchmark_args)?;
+        }
+        Command::ListGpus { verbose } => {
+            commands::list_gpus(verbose).await;
         }
         Command::Info { disk_farms } => {
             if disk_farms.is_empty() {

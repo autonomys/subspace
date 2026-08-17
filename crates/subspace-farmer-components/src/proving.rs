@@ -17,6 +17,7 @@ use std::io;
 use subspace_core_primitives::pieces::{PieceOffset, Record};
 use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::sectors::{SBucket, SectorId};
+use subspace_core_primitives::segments::HistorySize;
 use subspace_core_primitives::solutions::{ChunkWitness, Solution, SolutionRange};
 use subspace_core_primitives::{PublicKey, ScalarBytes};
 use subspace_erasure_coding::ErasureCoding;
@@ -157,6 +158,11 @@ where
     /// Returns true if no candidates inside
     pub fn is_empty(&self) -> bool {
         self.chunk_candidates.is_empty()
+    }
+
+    /// History size of the sector these candidates belong to.
+    pub fn history_size(&self) -> HistorySize {
+        self.sector_metadata.history_size
     }
 
     /// Turn solution candidates into actual solutions

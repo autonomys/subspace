@@ -8,8 +8,15 @@
 #![cfg_attr(feature = "parallel", feature(exact_size_is_empty, sync_unsafe_cell))]
 
 pub mod chia;
+#[cfg(feature = "alloc")]
+pub mod chia_v2;
 pub mod chiapos;
+#[cfg(feature = "alloc")]
+pub mod pos_table;
 pub mod shim;
+
+#[cfg(feature = "alloc")]
+pub use pos_table::{PosTable, PosTableGenerator};
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -69,5 +76,12 @@ pub trait Table: SolutionPotVerifier + Sized + Send + Sync + 'static {
     #[cfg(feature = "alloc")]
     fn generator() -> Self::Generator {
         Self::Generator::default()
+    }
+
+    /// Table generator for a sector, given whether it was plotted after the cutover. Single-impl
+    /// tables ignore the argument.
+    #[cfg(feature = "alloc")]
+    fn generator_for(_is_post_cutover: bool) -> Self::Generator {
+        Self::generator()
     }
 }

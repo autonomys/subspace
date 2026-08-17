@@ -46,12 +46,12 @@ jobs:
     name: cargo-clippy (${{ strategy.job-index == 0 && 'Linux x86-64' || (strategy.job-index == 1 && 'Windows x86-64' || 'macOS arm64') }})
     strategy:
       matrix:
-        os: ["ubuntu-22.04", "windows-2022", "macos-14"]
+        os: ["ubuntu-22.04", "windows-2022", "macos-26"]
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      # Enable the sccache runs-on S3 backend for Linux runners, to cache C/C++/CUDA and Rust.
+      # Enable the sccache runs-on S3 backend for Linux runners, to cache C/C++ and Rust.
       # On GitHub-hosted or fork runners, the runs-on action is ignored.
       - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
         with:
@@ -101,44 +101,6 @@ jobs:
         run: brew install automake
         if: runner.os == 'macOS'
 
-      # TODO: cache CUDA from Program Files on Windows, because it takes 6+ minutes to install.
-      - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@3d45d157f327c09c04b50ee6ccdea2d9d017ec76 # v0.2.35
-        with:
-          cuda: '12.4.1'
-          method: network
-          sub-packages: '["nvcc", "cudart"]'
-        if: runner.os == 'Linux'|| runner.os == 'Windows'
-
-      - name: Configure ROCm cache (Windows)
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        id: rocm-cache
-        with:
-          path: C:\Program Files\AMD\ROCm
-          key: ${{ runner.os }}-rocm
-        if: runner.os == 'Windows' && false
-
-      - name: ROCm toolchain
-        run: |
-          ROCM_VERSION=6.2.2
-          sudo mkdir -p --mode=0755 /etc/apt/keyrings
-          curl -L https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
-          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION jammy main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
-          echo -e "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600" | sudo tee /etc/apt/preferences.d/rocm-pin-600 > /dev/null
-          sudo apt-get update
-          DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends rocm-hip-runtime-dev
-          echo "/opt/rocm/lib" | sudo tee /etc/ld.so.conf.d/rocm.conf > /dev/null
-          sudo ldconfig
-        if: runner.os == 'Linux'
-
-      - name: ROCm toolchain
-        run: |
-          $ErrorActionPreference = "Stop"
-          Invoke-WebRequest -Uri https://download.amd.com/developer/eula/rocm-hub/AMD-Software-PRO-Edition-24.Q3-WinSvr2022-For-HIP.exe -OutFile "${env:RUNNER_TEMP}\HIP-SDK-Installer.exe"
-          Start-Process "${env:RUNNER_TEMP}\HIP-SDK-Installer.exe" -ArgumentList '-install' -NoNewWindow -Wait
-          Remove-Item "${env:RUNNER_TEMP}\HIP-SDK-Installer.exe"
-        if: runner.os == 'Windows' && steps.rocm-cache.outputs.cache-hit != 'true'
-
       - name: Configure source deps cache
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
@@ -169,26 +131,6 @@ jobs:
       - name: cargo clippy
         run: |
           cargo -Zgitoxide -Zgit clippy --locked --all-targets --features runtime-benchmarks -- -D warnings
-        if: runner.os == 'macOS'
-
-      - name: cargo clippy
-        run: |
-          cargo -Zgitoxide -Zgit clippy --locked --all-targets --features runtime-benchmarks,cuda -- -D warnings
-        if: runner.os == 'Linux' || runner.os == 'Windows'
-
-      - name: cargo clippy (ROCm)
-        run: |
-          cargo -Zgitoxide -Zgit clippy --locked --all-targets --features rocm -- -D warnings
-        if: runner.os == 'Linux'
-
-      - name: cargo clippy (ROCm)
-        env:
-          # Why `PROGRA~1` instead of `Program Files`? Because Windows!
-          HIPCC: C:\PROGRA~1\AMD\ROCm\6.1\bin\hipcc.bin.exe
-          HIP_PLATFORM: amd
-        run: |
-          cargo -Zgitoxide -Zgit clippy --locked --all-targets --features rocm -- -D warnings
-        if: runner.os == 'Windows'
 
   cargo-runtime-build:
     name: cargo-runtime-build (Linux x86-64)
@@ -242,7 +184,7 @@ jobs:
     name: cargo-test (${{ strategy.job-index == 0 && 'Linux x86-64' || (strategy.job-index == 1 && 'Windows x86-64' || 'macOS arm64') }})
     strategy:
       matrix:
-        os: ["ubuntu-22.04", "windows-2022", "macos-14"]
+        os: ["ubuntu-22.04", "windows-2022", "macos-26"]
     runs-on: ${{ matrix.os }}
     # Don't use the full 6 hours if a test hangs
     timeout-minutes: 120
@@ -312,6 +254,77 @@ jobs:
       # /DEBUG:NONE tells the MSVC linker to skip PDB file creation entirely
       - name: Configure Windows linker
         run: echo "RUSTFLAGS=$env:RUSTFLAGS -C debuginfo=0 -C link-arg=/DEBUG:NONE" >> $env:GITHUB_ENV
+        if: runner.os == 'Windows'
+
+      # Software Vulkan (lavapipe) so the wgpu byte-identity test runs on the GPU-less runners;
+      # macOS uses the runner's native Metal adapter and needs nothing here.
+      - name: Install Vulkan runtime (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes mesa-vulkan-drivers
+        if: runner.os == 'Linux'
+
+      - name: Install Vulkan runtime (Windows)
+        run: |
+          & {
+            # See https://vulkan.lunarg.com/sdk/home for updates
+            $sdkVersion = "1.4.341.0"
+            if ("${{ runner.arch }}" -eq "ARM64") {
+              $arch = "ARM64"
+              $urlPath = "warm"
+              $expectedHash = "4a350fbeec743683494f746e9cf7e2052494ca9ae618931afc2abb8985e072b0"
+            } else {
+              $arch = "X64"
+              $urlPath = "windows"
+              $expectedHash = "20571dcc8292b80a47d68bbbfa4094d87044041f50f4e2e1f326a01e3732b226"
+            }
+
+            $url = "https://sdk.lunarg.com/sdk/download/$sdkVersion/$urlPath/VulkanRT-$arch-$sdkVersion-Components.zip"
+            Invoke-WebRequest -Uri $url -OutFile VulkanRT.zip
+
+            $actualHash = (Get-FileHash VulkanRT.zip -Algorithm SHA256).Hash.ToLower()
+            if ($actualHash -ne $expectedHash.ToLower()) {
+              throw "SHA256 mismatch: expected $expectedHash, got $actualHash"
+            }
+
+            7z e VulkanRT.zip -o"${{ runner.temp }}\vulkan" -r "vulkan-1.*"
+            Remove-Item VulkanRT.zip
+
+            $vulkanPath = "${{ runner.temp }}\vulkan"
+            "$vulkanPath" >> $env:GITHUB_PATH
+          }
+
+          & {
+            # See https://github.com/mmozeiko/build-mesa/releases for updates
+            $version = "26.0.5"
+            if ("${{ runner.arch }}" -eq "ARM64") {
+              $arch = "arm64"
+              $archJson = "aarch64"
+              $expectedHash = "6980c51ce19cff6318d001d05a5fbd9c53cff64d29ea04b5e0285a09b6fe7ae4"
+            } else {
+              $arch = "x64"
+              $archJson = "x86_64"
+              $expectedHash = "289b283fd13a0029d0226d9695807e62343bb25da2499545bb5f973c97146262"
+            }
+
+            $url = "https://github.com/mmozeiko/build-mesa/releases/download/$version/mesa-lavapipe-$arch-$version.7z"
+            Invoke-WebRequest -Uri $url -OutFile mesa-lavapipe.7z
+
+            $actualHash = (Get-FileHash mesa-lavapipe.7z -Algorithm SHA256).Hash.ToLower()
+            if ($actualHash -ne $expectedHash.ToLower()) {
+              throw "SHA256 mismatch: expected $expectedHash, got $actualHash"
+            }
+
+            7z x mesa-lavapipe.7z -o"${{ runner.temp }}\mesa"
+            Remove-Item mesa-lavapipe.7z
+
+            $mesaPath = "${{ runner.temp }}\mesa"
+            "$mesaPath" >> $env:GITHUB_PATH
+
+            $icdPath = "$mesaPath\lvp_icd.$archJson.json"
+            New-Item -Path "HKLM:\SOFTWARE\Khronos\Vulkan\Drivers" -Force| Out-Null
+            Set-ItemProperty -Path "HKLM:\SOFTWARE\Khronos\Vulkan\Drivers" -Name $icdPath -Value 0 -Type DWord
+          }
         if: runner.os == 'Windows'
 
       - name: cargo nextest run --locked
@@ -460,25 +473,6 @@ jobs:
         uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@3d45d157f327c09c04b50ee6ccdea2d9d017ec76 # v0.2.35
-        with:
-          cuda: '12.4.1'
-          method: network
-          sub-packages: '["nvcc", "cudart"]'
-
-      - name: ROCm toolchain
-        run: |
-          ROCM_VERSION=6.2.2
-          sudo mkdir -p --mode=0755 /etc/apt/keyrings
-          curl -L https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
-          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION jammy main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
-          echo -e "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600" | sudo tee /etc/apt/preferences.d/rocm-pin-600 > /dev/null
-          sudo apt-get update
-          DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends rocm-hip-runtime-dev
-          echo "/opt/rocm/lib" | sudo tee /etc/ld.so.conf.d/rocm.conf > /dev/null
-          sudo ldconfig
 
       - name: Install cargo-udeps
         uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # 2.81.10
