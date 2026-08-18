@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Bundle","BundleValidity","BundleVersion","InvalidBundleType","SealedBundleHeaderRef"],"fn":["dummy_opaque_bundle"],"mod":["bundle_v0"],"struct":["BundleDigest","InboxedBundle"],"type":["OpaqueBundle","OpaqueBundles"]};

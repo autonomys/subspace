@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ExtensionWeightData"],"mod":["weights"],"struct":["SubspaceExtension"],"trait":["MaybeSubspaceCall"]};

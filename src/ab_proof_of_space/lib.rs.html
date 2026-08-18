@@ -1,0 +1,86 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `shared/ab-proof-of-space/src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="ab_proof_of_space" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.0-nightly (20de910db 2026-05-02)" data-channel="nightly" data-search-js="search-b5634cc7.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-aa4d37ac.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">ab_proof_of_space/</div>lib.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-2"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! Proof of space implementation
+<a href=#2 id=2 data-nosnippet>2</a></span><span class="attr">#![no_std]
+<a href=#3 id=3 data-nosnippet>3</a>#![expect(incomplete_features, reason = <span class="string">"generic_const_exprs"</span>)]
+<a href=#4 id=4 data-nosnippet>4</a>#![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
+<a href=#5 id=5 data-nosnippet>5</a>#![feature(
+<a href=#6 id=6 data-nosnippet>6</a>    const_block_items,
+<a href=#7 id=7 data-nosnippet>7</a>    const_convert,
+<a href=#8 id=8 data-nosnippet>8</a>    const_trait_impl,
+<a href=#9 id=9 data-nosnippet>9</a>    generic_const_exprs,
+<a href=#10 id=10 data-nosnippet>10</a>    step_trait
+<a href=#11 id=11 data-nosnippet>11</a>)]
+<a href=#12 id=12 data-nosnippet>12</a>#![cfg_attr(test, feature(float_erf))]
+<a href=#13 id=13 data-nosnippet>13</a>#![cfg_attr(feature = <span class="string">"parallel"</span>, feature(exact_size_is_empty, sync_unsafe_cell))]
+<a href=#14 id=14 data-nosnippet>14</a>#![cfg_attr(feature = <span class="string">"alloc"</span>, feature(maybe_uninit_fill, ptr_as_uninit))]
+<a href=#15 id=15 data-nosnippet>15</a>#![cfg_attr(any(feature = <span class="string">"alloc"</span>, test), feature(portable_simd))]
+<a href=#16 id=16 data-nosnippet>16</a>
+<a href=#17 id=17 data-nosnippet>17</a></span><span class="kw">pub mod </span>chiapos;
+<a href=#18 id=18 data-nosnippet>18</a>
+<a href=#19 id=19 data-nosnippet>19</a><span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
+<a href=#20 id=20 data-nosnippet>20</a></span><span class="kw">extern crate </span>alloc;
+<a href=#21 id=21 data-nosnippet>21</a>
+<a href=#22 id=22 data-nosnippet>22</a><span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
+<a href=#23 id=23 data-nosnippet>23</a></span><span class="kw">use </span>subspace_core_primitives::pieces::Record;
+<a href=#24 id=24 data-nosnippet>24</a><span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
+<a href=#25 id=25 data-nosnippet>25</a></span><span class="kw">use </span>subspace_core_primitives::pos::PosProof;
+<a href=#26 id=26 data-nosnippet>26</a><span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
+<a href=#27 id=27 data-nosnippet>27</a></span><span class="kw">use </span>subspace_core_primitives::sectors::SBucket;
+<a href=#28 id=28 data-nosnippet>28</a>
+<a href=#29 id=29 data-nosnippet>29</a><span class="comment">// TODO: Return a single full proof and the rest as hashes instead to optimize memory usage and
+<a href=#30 id=30 data-nosnippet>30</a>//  parallelize compute more easily
+<a href=#31 id=31 data-nosnippet>31</a></span><span class="doccomment">/// Proof-of-space proofs
+<a href=#32 id=32 data-nosnippet>32</a></span><span class="attr">#[derive(Debug)]
+<a href=#33 id=33 data-nosnippet>33</a>#[cfg(feature = <span class="string">"alloc"</span>)]
+<a href=#34 id=34 data-nosnippet>34</a>#[repr(C)]
+<a href=#35 id=35 data-nosnippet>35</a></span><span class="kw">pub struct </span>PosProofs {
+<a href=#36 id=36 data-nosnippet>36</a>    <span class="doccomment">/// S-buckets at which proofs were found.
+<a href=#37 id=37 data-nosnippet>37</a>    ///
+<a href=#38 id=38 data-nosnippet>38</a>    /// S-buckets are grouped by 8, within each `u8` bits right to left (LSB) indicate the presence
+<a href=#39 id=39 data-nosnippet>39</a>    /// of a proof for corresponding s-bucket, so that the whole array of bytes can be thought as a
+<a href=#40 id=40 data-nosnippet>40</a>    /// large set of bits.
+<a href=#41 id=41 data-nosnippet>41</a>    ///
+<a href=#42 id=42 data-nosnippet>42</a>    /// There will be at most [`Record::NUM_CHUNKS`] proofs produced/bits set to `1`.
+<a href=#43 id=43 data-nosnippet>43</a>    </span><span class="kw">pub </span>found_proofs: [u8; Record::NUM_S_BUCKETS / u8::BITS <span class="kw">as </span>usize],
+<a href=#44 id=44 data-nosnippet>44</a>    <span class="doccomment">/// [`Record::NUM_CHUNKS`] proofs, corresponding to set bits of `found_proofs`.
+<a href=#45 id=45 data-nosnippet>45</a>    </span><span class="kw">pub </span>proofs: [PosProof; Record::NUM_CHUNKS],
+<a href=#46 id=46 data-nosnippet>46</a>}
+<a href=#47 id=47 data-nosnippet>47</a>
+<a href=#48 id=48 data-nosnippet>48</a><span class="comment">// TODO: A method that returns hashed proofs (with SIMD) for all s-buckets for plotting
+<a href=#49 id=49 data-nosnippet>49</a></span><span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
+<a href=#50 id=50 data-nosnippet>50</a></span><span class="kw">impl </span>PosProofs {
+<a href=#51 id=51 data-nosnippet>51</a>    <span class="doccomment">/// Get proof for specified s-bucket (if exists).
+<a href=#52 id=52 data-nosnippet>52</a>    ///
+<a href=#53 id=53 data-nosnippet>53</a>    /// Note that this is not the most efficient API possible, so prefer using the `proofs` field
+<a href=#54 id=54 data-nosnippet>54</a>    /// directly if the use case allows.
+<a href=#55 id=55 data-nosnippet>55</a>    </span><span class="attr">#[inline]
+<a href=#56 id=56 data-nosnippet>56</a>    </span><span class="kw">pub fn </span>for_s_bucket(<span class="kw-2">&amp;</span><span class="self">self</span>, s_bucket: SBucket) -&gt; <span class="prelude-ty">Option</span>&lt;PosProof&gt; {
+<a href=#57 id=57 data-nosnippet>57</a>        <span class="kw">let </span>proof_index = <span class="self">Self</span>::proof_index_for_s_bucket(<span class="kw-2">&amp;</span><span class="self">self</span>.found_proofs, s_bucket)<span class="question-mark">?</span>;
+<a href=#58 id=58 data-nosnippet>58</a>
+<a href=#59 id=59 data-nosnippet>59</a>        <span class="prelude-val">Some</span>(<span class="self">self</span>.proofs[proof_index])
+<a href=#60 id=60 data-nosnippet>60</a>    }
+<a href=#61 id=61 data-nosnippet>61</a>
+<a href=#62 id=62 data-nosnippet>62</a>    <span class="attr">#[inline(always)]
+<a href=#63 id=63 data-nosnippet>63</a>    </span><span class="kw">fn </span>proof_index_for_s_bucket(
+<a href=#64 id=64 data-nosnippet>64</a>        found_proofs: <span class="kw-2">&amp;</span>[u8; Record::NUM_S_BUCKETS / u8::BITS <span class="kw">as </span>usize],
+<a href=#65 id=65 data-nosnippet>65</a>        s_bucket: SBucket,
+<a href=#66 id=66 data-nosnippet>66</a>    ) -&gt; <span class="prelude-ty">Option</span>&lt;usize&gt; {
+<a href=#67 id=67 data-nosnippet>67</a>        <span class="kw">let </span>bits_offset = usize::from(s_bucket);
+<a href=#68 id=68 data-nosnippet>68</a>        <span class="kw">let </span>found_proofs_byte_offset = bits_offset / u8::BITS <span class="kw">as </span>usize;
+<a href=#69 id=69 data-nosnippet>69</a>        <span class="kw">let </span>found_proofs_bit_offset = bits_offset <span class="kw">as </span>u32 % u8::BITS;
+<a href=#70 id=70 data-nosnippet>70</a>        <span class="kw">let </span>(found_proofs_before, found_proofs_after) =
+<a href=#71 id=71 data-nosnippet>71</a>            found_proofs.split_at(found_proofs_byte_offset);
+<a href=#72 id=72 data-nosnippet>72</a>        <span class="kw">if </span>(found_proofs_after[<span class="number">0</span>] &amp; (<span class="number">1 </span>&lt;&lt; found_proofs_bit_offset)) == <span class="number">0 </span>{
+<a href=#73 id=73 data-nosnippet>73</a>            <span class="kw">return </span><span class="prelude-val">None</span>;
+<a href=#74 id=74 data-nosnippet>74</a>        }
+<a href=#75 id=75 data-nosnippet>75</a>        <span class="kw">let </span>proof_index = found_proofs_before
+<a href=#76 id=76 data-nosnippet>76</a>            .iter()
+<a href=#77 id=77 data-nosnippet>77</a>            .map(|<span class="kw-2">&amp;</span>bits| bits.count_ones())
+<a href=#78 id=78 data-nosnippet>78</a>            .sum::&lt;u32&gt;()
+<a href=#79 id=79 data-nosnippet>79</a>            + found_proofs_after[<span class="number">0</span>]
+<a href=#80 id=80 data-nosnippet>80</a>                .unbounded_shl(u8::BITS - found_proofs_bit_offset)
+<a href=#81 id=81 data-nosnippet>81</a>                .count_ones();
+<a href=#82 id=82 data-nosnippet>82</a>
+<a href=#83 id=83 data-nosnippet>83</a>        <span class="prelude-val">Some</span>(proof_index <span class="kw">as </span>usize)
+<a href=#84 id=84 data-nosnippet>84</a>    }
+<a href=#85 id=85 data-nosnippet>85</a>}
+</code></pre></div></section></main></body></html>
