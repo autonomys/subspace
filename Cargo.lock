@@ -5335,9 +5335,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.13"
+version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f44da3a8150a6703ed5d34e164b875fd14c2cdab9af1252a9a1020bde2bdc54"
+checksum = "a9f37a958b41b3b19ee2707c06439c0e9e547e847223eb791ecb0cb821c65e27"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -14532,7 +14532,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-bootstrap-node"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "clap",
  "futures",
@@ -14630,7 +14630,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-farmer"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "async-lock",
@@ -14742,7 +14742,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-gateway"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "actix-web",
  "anyhow",
@@ -14912,7 +14912,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-node"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "auto-id-domain-runtime",
  "bip39",
