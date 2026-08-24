@@ -38,7 +38,7 @@ aes = "0.9.0"
 anyhow = "1.0.89"
 async-channel = "1.9.0"
 async-lock = "3.4.0"
-async-nats = "0.49.1"
+async-nats = "0.50.0"
 async-oneshot = "0.5.9"
 async-trait = "0.1.88"
 auto-id-domain-runtime = { version = "0.1.0", path = "domains/runtime/auto-id" }
@@ -57,7 +57,7 @@ cargo-gpu-install = { version = "=0.10.0-alpha.1", git = "https://github.com/Rus
 cc = "1.2.62"
 chacha20 = { version = "0.10.1", default-features = false }
 clap = "4.6.1"
-console = "0.15.11"
+console = "0.16.4"
 core_affinity = "0.8.1"
 cpufeatures = "0.3.0"
 criterion = { version = "0.8.2", default-features = false }
@@ -162,7 +162,7 @@ pallet-transporter = { version = "0.1.0", path = "domains/pallets/transporter", 
 pallet-utility = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
 parity-scale-codec = { version = "3.7.5", default-features = false }
 parking_lot = "0.12.2"
-pem = "3.0.4"
+pem = "4.0.0"
 pin-project = "1.1.13"
 precompile-utils = { version = "0.1.0", git = "https://github.com/polkadot-evm/frontier", rev = "9d49e36ed5bac38241594f8ba055fdb94991483a", default-features = false }
 prometheus = { version = "0.13.4", default-features = false }
@@ -306,12 +306,12 @@ tokio-stream = "0.1.16"
 tracing = { version = "0.1.40", default-features = false }
 tracing-subscriber = "0.3.20"
 transporter-precompile = { version = "0.1.0", path = "domains/evm-precompiles/transporter", default-features = false }
-trie-db = { version = "0.31.0", default-features = false }
+trie-db = { version = "0.32.0", default-features = false }
 uint = { version = "0.10.0", default-features = false }
-ulid = "1.1.3"
+ulid = "3.0.0"
 unsigned-varint = "0.8.0"
 void = "1.0.2"
-wgpu = { version = "29.0.3", default-features = false, features = ["metal", "parking_lot", "spirv", "std", "vulkan"] }
+wgpu = { version = "30.0.0", default-features = false, features = ["metal", "parking_lot", "spirv", "std", "vulkan"] }
 x509-parser = "0.18.1"
 zeroize = "1.8.1"
 ziggy = { version = "1.7.0", default-features = false }
