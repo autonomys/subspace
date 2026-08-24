@@ -37,7 +37,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: cargo fmt
         run: cargo fmt --all -- --check
@@ -53,14 +53,14 @@ jobs:
     steps:
       # Enable the sccache runs-on S3 backend for Linux runners, to cache C/C++ and Rust.
       # On GitHub-hosted or fork runners, the runs-on action is ignored.
-      - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
+      - uses: runs-on/action@46910bf61b41721b0579f237e186afb35477007a # v2.3.0
         with:
           sccache: ${{ runner.os == 'Linux' && 's3' || '' }}
-      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         if: runner.os == 'Linux' && github.repository_owner == 'autonomys'
 
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # On macOS, we need a proper Clang version, not Apple's custom version without wasm32 support
       - name: Install LLVM and Clang for macOS
@@ -82,7 +82,7 @@ jobs:
 
       # We cache protoc because it sometimes fails to download, but cache is too slow on Windows.
       - name: Configure tool cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tool-cache
         with:
           path: '~/**/_tool'
@@ -102,7 +102,7 @@ jobs:
         if: runner.os == 'macOS'
 
       - name: Configure source deps cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           # We don't need to cache anything more than the crate packages and bare git clones.
           # <https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci>
@@ -115,7 +115,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('./Cargo.toml') }}
 
       - name: Configure compiled deps cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           # Clippy has no build artifacts, so we can save the whole target directory
           path: './target'
@@ -138,17 +138,17 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
+      - uses: runs-on/action@46910bf61b41721b0579f237e186afb35477007a # v2.3.0
         with:
           sccache: 's3'
-      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         if: github.repository_owner == 'autonomys'
 
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Configure tool cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tool-cache
         with:
           path: '~/**/_tool'
@@ -160,7 +160,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure source deps cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index
@@ -190,14 +190,14 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
+      - uses: runs-on/action@46910bf61b41721b0579f237e186afb35477007a # v2.3.0
         with:
           sccache: ${{ runner.os == 'Linux' && 's3' || '' }}
-      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         if: runner.os == 'Linux' && github.repository_owner == 'autonomys'
 
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # On macOS, we need a proper Clang version, not Apple's custom version without wasm32 support
       - name: Install LLVM and Clang for macOS
@@ -218,7 +218,7 @@ jobs:
         if: runner.os == 'macOS'
 
       - name: Configure tool cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tool-cache
         with:
           path: '~/**/_tool'
@@ -236,12 +236,12 @@ jobs:
         if: runner.os == 'macOS'
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # 2.81.10
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # 2.86.5
         with:
           tool: cargo-nextest
 
       - name: Configure source deps cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index
@@ -342,17 +342,17 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
+      - uses: runs-on/action@46910bf61b41721b0579f237e186afb35477007a # v2.3.0
         with:
           sccache: 's3'
-      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         if: github.repository_owner == 'autonomys'
 
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Configure tool cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tool-cache
         with:
           path: '~/**/_tool'
@@ -364,7 +364,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure source deps cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index
@@ -388,7 +388,7 @@ jobs:
       AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: 1
     steps:
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Apt update
         run: sudo apt-get update
@@ -411,17 +411,17 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
+      - uses: runs-on/action@46910bf61b41721b0579f237e186afb35477007a # v2.3.0
         with:
           sccache: 's3'
-      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         if: github.repository_owner == 'autonomys'
 
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Configure tool cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tool-cache
         with:
           path: '~/**/_tool'
@@ -434,7 +434,7 @@ jobs:
 
 
       - name: Configure source deps cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index
@@ -453,17 +453,17 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: runs-on/action@d141ef83eb66d096ce8afc767e09115a65c63b60 # v2.1.2
+      - uses: runs-on/action@46910bf61b41721b0579f237e186afb35477007a # v2.3.0
         with:
           sccache: 's3'
-      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         if: github.repository_owner == 'autonomys'
 
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Configure tool cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tool-cache
         with:
           path: '~/**/_tool'
@@ -475,12 +475,12 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cargo-udeps
-        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # 2.81.10
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # 2.86.5
         with:
           tool: cargo-udeps
 
       - name: Configure source deps cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index
