@@ -29,7 +29,7 @@ futures.workspace = true
 hex.workspace = true
 jsonrpsee = { workspace = true, features = ["server", "ws-client"] }
 mimalloc.workspace = true
-reqwest = { workspace = true, features = ["json", "rustls-tls"] }
+reqwest = { workspace = true, features = ["json"] }
 subspace-core-primitives.workspace = true
 subspace-data-retrieval.workspace = true
 subspace-gateway-rpc.workspace = true

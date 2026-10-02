@@ -72,7 +72,7 @@ impl Decode for ClusterFarmerId {
 impl ClusterFarmerId {
     /// Create a new cluster farmer ID
     pub fn new() -> Self {
-        Self(Ulid::new())
+        Self(Ulid::generate())
     }
 }
 
