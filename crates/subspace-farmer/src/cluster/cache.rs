@@ -77,7 +77,7 @@ impl ClusterCacheId {
     /// Creates new ID
     #[inline]
     pub fn new() -> Self {
-        Self::Ulid(Ulid::new())
+        Self::Ulid(Ulid::generate())
     }
 }
 

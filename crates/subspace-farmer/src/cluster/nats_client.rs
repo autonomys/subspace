@@ -632,7 +632,7 @@ impl NatsClient {
         Request: GenericStreamRequest,
     {
         let stream_request_subject = subject_with_instance(Request::SUBJECT, instance);
-        let stream_response_subject = format!("stream-response.{}", Ulid::new());
+        let stream_response_subject = format!("stream-response.{}", Ulid::generate());
 
         let subscriber = self
             .inner
@@ -829,7 +829,7 @@ impl NatsClient {
         let approximate_max_message_size = self.approximate_max_message_size();
         let max_responses_per_message = approximate_max_message_size / first_element.encoded_size();
 
-        let ack_subject = format!("stream-response-ack.{}", Ulid::new());
+        let ack_subject = format!("stream-response-ack.{}", Ulid::generate());
         let mut ack_subscription = match self.subscribe(ack_subject.clone()).await {
             Ok(ack_subscription) => ack_subscription,
             Err(error) => {

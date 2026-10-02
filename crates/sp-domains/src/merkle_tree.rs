@@ -5,7 +5,7 @@ use crate::OperatorPublicKey;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use blake2::digest::FixedOutput;
-use blake2::{Blake2b, Digest};
+use blake2::{Blake2b256, Digest};
 use parity_scale_codec::{Decode, Encode};
 use rs_merkle::Hasher;
 use scale_info::TypeInfo;
@@ -42,7 +42,7 @@ impl Hasher for Blake2b256Algorithm {
     type Hash = [u8; 32];
 
     fn hash(data: &[u8]) -> Self::Hash {
-        let mut hasher = Blake2b::new();
+        let mut hasher = Blake2b256::new();
         hasher.update(data);
         hasher.finalize_fixed().into()
     }

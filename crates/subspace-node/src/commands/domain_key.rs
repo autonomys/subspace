@@ -1,5 +1,5 @@
 use crate::commands::shared::{KeystoreOptions, derive_keypair, store_key_in_keystore};
-use bip39::Mnemonic;
+use bip39::{Mnemonic, WordCount};
 use clap::Parser;
 use sc_cli::{Error, KeystoreParams};
 use sc_service::config::KeystoreConfig;
@@ -52,7 +52,7 @@ pub fn create_domain_key(options: CreateDomainKeyOptions) -> Result<(), Error> {
 
     let has_password = password.is_some();
 
-    let mnemonic = Mnemonic::generate(12)
+    let mnemonic = Mnemonic::generate(WordCount::Words12)
         .map_err(|error| Error::Input(format!("Mnemonic generation failed: {error}")))?;
     let phrase = SecretString::from(mnemonic.to_string());
 

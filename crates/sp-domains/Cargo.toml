@@ -47,7 +47,6 @@ rand = { workspace = true, features = ["min_const_gen"] }
 [features]
 default = ["std"]
 std = [
-    "blake2/std",
     "domain-runtime-primitives/std",
     "frame-support/std",
     "hash-db/std",
