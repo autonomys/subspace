@@ -1672,7 +1672,7 @@ impl FarmerCaches {
     where
         RecordKey: From<Key>,
     {
-        let farmer_cache = self.caches.choose(&mut thread_rng())?;
+        let farmer_cache = self.caches.choose(&mut rand::rng())?;
         farmer_cache.get_piece(key).await
     }
 
@@ -1686,7 +1686,7 @@ impl FarmerCaches {
     where
         PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send + 'a> + Send + 'a,
     {
-        let Some(farmer_cache) = self.caches.choose(&mut thread_rng()) else {
+        let Some(farmer_cache) = self.caches.choose(&mut rand::rng()) else {
             return Either::Left(stream::iter(
                 piece_indices
                     .into_iter()
@@ -1699,7 +1699,7 @@ impl FarmerCaches {
 
     /// Returns a filtered list of pieces that were found in farmer cache, order is not guaranteed
     pub async fn has_pieces(&self, piece_indices: Vec<PieceIndex>) -> Vec<PieceIndex> {
-        let Some(farmer_cache) = self.caches.choose(&mut thread_rng()) else {
+        let Some(farmer_cache) = self.caches.choose(&mut rand::rng()) else {
             return Vec::new();
         };
 

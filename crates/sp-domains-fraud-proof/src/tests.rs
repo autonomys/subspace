@@ -15,7 +15,7 @@ use ethereum::TransactionV3 as EthereumTransaction;
 use evm_domain_test_runtime::construct_extrinsic_raw_payload;
 use fp_rpc::EthereumRuntimeRPCApi;
 use parity_scale_codec::Encode;
-use rand::distributions::{Distribution, Uniform};
+use rand::distr::{Distribution, Uniform};
 use sc_client_api::{HeaderBackend, StorageProof};
 use sc_service::{BasePath, Role};
 use sp_api::{ApiExt, ProvideRuntimeApi, TransactionOutcome};
@@ -66,8 +66,8 @@ async fn benchmark_bundle_with_evm_tx(
     }
 
     const TX_TYPES: u32 = 4;
-    let mut thread_rng = rand::thread_rng();
-    let between = Uniform::from(0..TX_TYPES);
+    let mut thread_rng = rand::rng();
+    let between = Uniform::new(0, TX_TYPES).expect("Range is not empty; qed");
     let (slot, _) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await

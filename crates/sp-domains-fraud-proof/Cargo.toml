@@ -55,7 +55,7 @@ futures.workspace = true
 pallet-balances.workspace = true
 pallet-domains.workspace = true
 pallet-ethereum.workspace = true
-rand = { workspace = true, features = ["min_const_gen"] }
+rand = { workspace = true, features = ["thread_rng"] }
 sp-core.workspace = true
 sp-externalities.workspace = true
 sp-weights.workspace = true

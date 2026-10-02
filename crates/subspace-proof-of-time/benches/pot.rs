@@ -1,7 +1,7 @@
 use core::num::NonZeroU32;
 use criterion::{Criterion, criterion_group, criterion_main};
 use rand_chacha::ChaCha8Rng;
-use rand_core::{RngCore, SeedableRng};
+use rand_core::{Rng, SeedableRng};
 use std::hint::black_box;
 use subspace_core_primitives::pot::PotSeed;
 use subspace_proof_of_time::{prove, verify};

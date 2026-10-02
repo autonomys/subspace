@@ -264,7 +264,7 @@ mod tests {
         let tempdir = tempdir().unwrap();
         let file_path = tempdir.as_ref().join("file.bin");
         let mut data = vec![0u8; MAX_READ_SIZE * 5];
-        thread_rng().fill(data.as_mut_slice());
+        rand::rng().fill(data.as_mut_slice());
         fs::write(&file_path, &data).unwrap();
 
         let file = DirectIoFile::open(&file_path).unwrap();
@@ -303,7 +303,7 @@ mod tests {
             assert_eq!(data, buffer.as_slice(), "Offset {offset}, size {size}");
 
             // Update data with random contents and write
-            thread_rng().fill(data);
+            rand::rng().fill(data);
             file.write_all_at(data, offset as u64)
                 .unwrap_or_else(|error| panic!("Offset {offset}, size {size}: {error}"));
 

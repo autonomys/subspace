@@ -97,7 +97,7 @@ where
     where
         PieceIndices: IntoIterator<Item = PieceIndex> + 'a,
     {
-        let download_id = random::<u64>();
+        let download_id = rand::random::<u64>();
         let (tx, mut rx) = mpsc::unbounded();
         let fut = async move {
             let not_downloaded_pieces = download_cached_pieces(
@@ -815,8 +815,8 @@ where
                 Some(*piece_index)
             }
         })
-        .choose_multiple(
-            &mut thread_rng(),
+        .sample(
+            &mut rand::rng(),
             CachedPieceByIndexRequest::RECOMMENDED_LIMIT,
         )
 }

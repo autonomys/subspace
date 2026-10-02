@@ -25,7 +25,7 @@ futures.workspace = true
 jsonrpsee = { workspace = true, features = ["server-core"] }
 pallet-transaction-payment.workspace = true
 mmr-gadget.workspace = true
-rand.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
 pallet-domains.workspace = true
 pallet-messenger.workspace = true
 pallet-subspace.workspace = true

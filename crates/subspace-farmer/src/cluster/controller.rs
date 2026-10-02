@@ -934,7 +934,7 @@ async fn find_piece_responder(
             Some(GLOBAL_CACHE_GROUP),
             Some("subspace.controller".to_string()),
             |ClusterControllerFindPieceInCacheRequest { piece_index }| async move {
-                let (_cache_group, farmer_cache) = farmer_caches.iter().choose(&mut thread_rng())?;
+                let (_cache_group, farmer_cache) = farmer_caches.iter().choose(&mut rand::rng())?;
                 Some(farmer_cache.find_piece(piece_index).await)
             },
         ),
@@ -966,7 +966,7 @@ async fn find_pieces_responder(
             Some(GLOBAL_CACHE_GROUP),
             Some("subspace.controller".to_string()),
             |ClusterControllerFindPiecesInCacheRequest { piece_indices }| async move {
-                let (_cache_group, farmer_cache) = farmer_caches.iter().choose(&mut thread_rng())?;
+                let (_cache_group, farmer_cache) = farmer_caches.iter().choose(&mut rand::rng())?;
                 Some(stream::iter(farmer_cache.find_pieces(piece_indices).await))
             },
         ),

@@ -1,4 +1,4 @@
-use rand::{Rng, thread_rng};
+use rand::RngExt;
 use std::num::NonZeroUsize;
 use std::{assert_matches, iter};
 use subspace_archiving::archiver::Archiver;
@@ -28,31 +28,31 @@ fn basic() {
     // Block that fits into the segment fully
     let block_0 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE / 2];
-        thread_rng().fill(block.as_mut_slice());
+        rand::rng().fill(block.as_mut_slice());
         block
     };
     // Block that overflows into the next segment
     let block_1 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE];
-        thread_rng().fill(block.as_mut_slice());
+        rand::rng().fill(block.as_mut_slice());
         block
     };
     // Block that also fits into the segment fully
     let block_2 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE / 4];
-        thread_rng().fill(block.as_mut_slice());
+        rand::rng().fill(block.as_mut_slice());
         block
     };
     // Block that occupies multiple segments
     let block_3 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE * 3];
-        thread_rng().fill(block.as_mut_slice());
+        rand::rng().fill(block.as_mut_slice());
         block
     };
     // Extra block
     let block_4 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE];
-        thread_rng().fill(block.as_mut_slice());
+        rand::rng().fill(block.as_mut_slice());
         block
     };
     let archived_segments = archiver
@@ -276,13 +276,13 @@ fn partial_data() {
     // Block that fits into the segment fully
     let block_0 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE / 2];
-        thread_rng().fill(block.as_mut_slice());
+        rand::rng().fill(block.as_mut_slice());
         block
     };
     // Block that overflows into the next segment
     let block_1 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE];
-        thread_rng().fill(block.as_mut_slice());
+        rand::rng().fill(block.as_mut_slice());
         block
     };
     let archived_segments = archiver
@@ -366,7 +366,7 @@ fn invalid_usage() {
     // Block that overflows into the next segments
     let block_0 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE * 4];
-        thread_rng().fill(block.as_mut_slice());
+        rand::rng().fill(block.as_mut_slice());
         block
     };
 
@@ -397,7 +397,7 @@ fn invalid_usage() {
         let result = Reconstructor::new(erasure_coding.clone()).add_segment(
             &iter::repeat_with(|| {
                 let mut piece = Piece::default();
-                thread_rng().fill(piece.as_mut());
+                rand::rng().fill(piece.as_mut());
                 Some(piece)
             })
             .take(ArchivedHistorySegment::NUM_PIECES)

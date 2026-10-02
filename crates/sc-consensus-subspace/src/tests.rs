@@ -555,7 +555,7 @@
 //                 .iter()
 //                 .flat_map(|flat_pieces| flat_pieces.iter())
 //                 .enumerate()
-//                 .choose(&mut thread_rng())
+//                 .choose(&mut rand::rng())
 //                 .map(|(piece_index, piece)| (piece_index as u64, Piece::from(piece)))
 //                 .unwrap();
 //

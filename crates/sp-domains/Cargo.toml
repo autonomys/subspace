@@ -19,8 +19,8 @@ hash-db.workspace = true
 memory-db.workspace = true
 hex-literal.workspace = true
 parity-scale-codec = { workspace = true, features = ["derive"] }
-rand.workspace = true
 rand_chacha.workspace = true
+rand_core.workspace = true
 rs_merkle.workspace = true
 scale-info = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["alloc", "derive"] }
@@ -42,7 +42,7 @@ trie-db.workspace = true
 [dev-dependencies]
 num-traits.workspace = true
 prop-test.workspace = true
-rand = { workspace = true, features = ["min_const_gen"] }
+rand = { workspace = true, features = ["std_rng"] }
 
 [features]
 default = ["std"]
@@ -52,7 +52,6 @@ std = [
     "hash-db/std",
     "memory-db/std",
     "parity-scale-codec/std",
-    "rand/std",
     "rand_chacha/std",
     "rs_merkle/std",
     "scale-info/std",

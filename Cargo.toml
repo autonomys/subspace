@@ -109,7 +109,7 @@ hash-db = { version = "0.16.0", default-features = false }
 hex = { version = "0.4.3", default-features = false }
 hex-literal = "1.1.0"
 hwlocality = "1.0.0-alpha.13"
-jsonrpsee = "0.24.10"
+jsonrpsee = "0.24.11"
 kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac", default-features = false }
 libc = "0.2.190"
 libp2p = { version = "0.57.0", git = "https://github.com/autonomys/rust-libp2p", rev = "5be7c854f715da73189a7e7847428bb2af71ccc3", default-features = false }
@@ -162,15 +162,15 @@ pallet-transporter = { version = "0.1.0", path = "domains/pallets/transporter", 
 pallet-utility = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
 parity-scale-codec = { version = "3.7.5", default-features = false }
 parking_lot = "0.12.5"
-pem = "3.0.4"
+pem = "4.0.0"
 pin-project = "1.1.13"
 precompile-utils = { version = "0.1.0", git = "https://github.com/polkadot-evm/frontier", rev = "9d49e36ed5bac38241594f8ba055fdb94991483a", default-features = false }
 prometheus = { version = "0.13.4", default-features = false }
-prometheus-client = "0.25.0"
+prometheus-client = "0.25.1"
 prop-test = "0.1.1"
-rand = { version = "0.8.5", default-features = false }
-rand_chacha = { version = "0.3.1", default-features = false }
-rand_core = "0.6.4"
+rand = { version = "0.10.3", default-features = false }
+rand_chacha = { version = "0.10.0", default-features = false }
+rand_core = "0.10.1"
 rayon = "1.12.0"
 rclite = "0.4.1"
 reqwest = { version = "0.13.5", default-features = false }
@@ -311,7 +311,7 @@ uint = { version = "0.10.2", default-features = false }
 ulid = "3.0.0"
 unsigned-varint = "0.8.0"
 void = "1.0.2"
-wgpu = { version = "29.0.3", default-features = false, features = ["metal", "parking_lot", "spirv", "std", "vulkan"] }
+wgpu = { version = "30.0.1", default-features = false, features = ["metal", "parking_lot", "spirv", "std", "vulkan"] }
 x509-parser = "0.18.1"
 zeroize = "1.9.0"
 ziggy = { version = "1.7.3", default-features = false }
@@ -448,5 +448,5 @@ substrate-bip39 = "=0.6.0"
 
 [patch.crates-io]
 # Patch away `libp2p-identity` in our dependency tree with the git version.
-# For details see: https://github.com/autonomys/rust-libp2p/blob/5be7c854f715da73189a7e7847428bb2af71ccc3/Cargo.toml#L140-L145
+# For details see: https://github.com/subspace/rust-libp2p/blob/399c4c7fcba821a7bac2663e090a7b155b08ebe1/Cargo.toml#L140-L145
 libp2p-identity = { git = "https://github.com/autonomys/rust-libp2p", rev = "5be7c854f715da73189a7e7847428bb2af71ccc3" }

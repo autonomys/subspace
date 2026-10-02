@@ -819,7 +819,7 @@ where
 
         // There is no urgent need to rush replotting sectors immediately and this delay allows for
         // newly archived pieces to be both cached locally and on other farmers on the network
-        let delay = Duration::from_secs(thread_rng().gen_range(
+        let delay = Duration::from_secs(rand::rng().random_range(
             new_segment_processing_delay.as_secs() / 10..=new_segment_processing_delay.as_secs(),
         ));
         tokio::time::sleep(delay).await;

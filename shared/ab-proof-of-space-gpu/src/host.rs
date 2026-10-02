@@ -20,9 +20,9 @@ use wgpu::{
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, Buffer, BufferAddress,
     BufferAsyncError, BufferBindingType, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
     ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, DeviceDescriptor,
-    DeviceType, Instance, InstanceDescriptor, InstanceFlags, MapMode, MemoryBudgetThresholds,
-    PipelineCompilationOptions, PipelineLayoutDescriptor, PollError, PollType, Queue,
-    RequestDeviceError, ShaderModule, ShaderRuntimeChecks, ShaderStages,
+    DeviceType, Instance, InstanceDescriptor, InstanceFlags, MapMode, MapRangeError,
+    MemoryBudgetThresholds, PipelineCompilationOptions, PipelineLayoutDescriptor, PollError,
+    PollType, Queue, RequestDeviceError, ShaderModule, ShaderRuntimeChecks, ShaderStages,
 };
 
 /// Proof creation error
@@ -34,6 +34,9 @@ pub enum RecordEncodingError {
     /// Failed to map buffer
     #[error("Failed to map buffer: {0}")]
     BufferMapping(#[from] BufferAsyncError),
+    /// Failed to get mapped buffer range
+    #[error("Failed to get mapped buffer range: {0}")]
+    MapRange(#[from] MapRangeError),
     /// Poll error
     #[error("Poll error: {0}")]
     DevicePoll(#[from] PollError),
@@ -535,7 +538,7 @@ impl GpuRecordsEncoderInstance {
 
         // Mapped initially and re-mapped at the end of the computation
         self.initial_state_host
-            .get_mapped_range_mut(..)
+            .get_mapped_range_mut(..)?
             .copy_from_slice(&block_to_bytes(
                 &ChaCha8State::init(seed, &[0; _]).to_repr(),
             ));
@@ -659,7 +662,7 @@ impl GpuRecordsEncoderInstance {
         let proofs = {
             let proofs_host_ptr = self
                 .proofs_host
-                .get_mapped_range(..)
+                .get_mapped_range(..)?
                 .as_ptr()
                 .cast::<ProofsHost>();
             // SAFETY: Initialized on the GPU

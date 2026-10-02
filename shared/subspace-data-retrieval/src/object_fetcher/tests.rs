@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use futures::lock::Mutex;
 use parity_scale_codec::{Compact, CompactLen, Encode};
-use rand::{RngCore, thread_rng};
+use rand::Rng;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::iter;
@@ -81,7 +81,7 @@ where
 /// Returns a piece filled with random data.
 fn random_piece() -> Piece {
     let mut piece_data = vec![0u8; Piece::SIZE];
-    thread_rng().fill_bytes(piece_data.as_mut_slice());
+    rand::rng().fill_bytes(piece_data.as_mut_slice());
     Piece::try_from(piece_data).unwrap()
 }
 

@@ -33,7 +33,7 @@ subspace-verification.workspace = true
 env_logger.workspace = true
 futures.workspace = true
 pallet-balances = { workspace = true, features = ["std"] }
-rand = { workspace = true, features = ["min_const_gen"] }
+rand = { workspace = true, features = ["thread_rng"] }
 sp-io.workspace = true
 subspace-archiving.workspace = true
 subspace-core-primitives.workspace = true

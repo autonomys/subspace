@@ -1,7 +1,7 @@
 use super::Blake3Checksummed;
 use crate::hashes::Blake3Hash;
 use parity_scale_codec::{Decode, Encode};
-use rand::prelude::*;
+use rand::random;
 
 #[test]
 fn basic() {
