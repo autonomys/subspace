@@ -10,7 +10,7 @@ include = [
 ]
 
 [dependencies]
-ab-proof-of-space-gpu = { workspace = true }
+ab-proof-of-space-gpu = { workspace = true, features = ["build-shader"] }
 subspace-core-primitives = { workspace = true }
 subspace-erasure-coding = { workspace = true }
 subspace-kzg = { workspace = true }

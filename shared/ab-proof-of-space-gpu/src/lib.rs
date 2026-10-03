@@ -4,8 +4,28 @@
 //! structures used (`ab-proof-of-space` also supports `K=25`, but this crate doesn't for now).
 
 #![cfg_attr(target_arch = "spirv", no_std)]
-#![feature(generic_const_exprs, step_trait)]
-#![expect(incomplete_features, reason = "generic_const_exprs")]
+#![cfg_attr(not(target_arch = "spirv"), feature(macroless_generic_const_args))]
+#![feature(
+    funnel_shifts,
+    generic_const_args,
+    generic_const_items,
+    min_generic_const_args,
+    step_trait
+)]
+#![expect(incomplete_features, reason = "generic_const_*")]
+#![cfg_attr(
+    all(test, not(target_arch = "spirv")),
+    feature(const_convert, const_trait_impl)
+)]
+#![cfg_attr(
+    all(test, not(any(miri, target_arch = "spirv"))),
+    feature(maybe_uninit_fill)
+)]
+// TODO: Remove if/when this is addressed:
+//  https://github.com/rust-lang/rust-clippy/issues/17524#issuecomment-5405010966
+#![cfg_attr(test, expect(clippy::manual_assert_eq, reason = "False-positive"))]
+// TODO: Remove once https://github.com/gfx-rs/wgpu/pull/9953 is released
+#![recursion_limit = "256"]
 
 #[cfg(not(target_arch = "spirv"))]
 mod host;

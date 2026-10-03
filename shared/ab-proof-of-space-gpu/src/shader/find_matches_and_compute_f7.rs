@@ -1,3 +1,8 @@
+#[cfg(all(test, not(miri), not(target_arch = "spirv")))]
+mod cpu_tests;
+#[cfg(all(test, not(miri), not(target_arch = "spirv")))]
+mod gpu_tests;
+
 use crate::shader::compute_fn::compute_fn_impl;
 use crate::shader::constants::{
     K, MAX_BUCKET_SIZE, NUM_BUCKETS, NUM_MATCH_BUCKETS, NUM_S_BUCKETS, PARAM_BC,
@@ -139,7 +144,7 @@ unsafe fn compute_f7_into_buckets_inner(
     // TODO: This should have been `&[[Metadata; REDUCED_MATCHES_COUNT]; NUM_MATCH_BUCKETS]`, but
     //  it currently doesn't compile if flattened:
     //  https://github.com/Rust-GPU/rust-gpu/issues/241#issuecomment-3005693043
-    parent_metadatas: &[Metadata; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
+    parent_metadatas: &[Metadata; const { REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS }],
     table_6_proof_targets_sizes: &mut [u32; NUM_S_BUCKETS],
     table_6_proof_targets: &mut [[MaybeUninit<ProofTargets>; NUM_ELEMENTS_PER_S_BUCKET];
              NUM_S_BUCKETS],
@@ -203,7 +208,7 @@ unsafe fn compute_f7_into_buckets_inner(
     // SAFETY: TODO: Probably should not be unsafe to begin with:
     //  https://github.com/Rust-GPU/rust-gpu/pull/394#issuecomment-3316594485
     let bucket_offset = unsafe {
-        atomic_i_increment::<_, { Scope::QueueFamily as u32 }, { Semantics::NONE.bits() }>(
+        atomic_i_increment::<_, const { Scope::QueueFamily as u32 }, const { Semantics::NONE.bits() }>(
             bucket_size,
         )
     };
@@ -246,7 +251,7 @@ unsafe fn compute_f7_into_buckets(
     // TODO: This should have been `&[[Metadata; REDUCED_MATCHES_COUNT]; NUM_MATCH_BUCKETS]`, but
     //  it currently doesn't compile if flattened:
     //  https://github.com/Rust-GPU/rust-gpu/issues/241#issuecomment-3005693043
-    parent_metadatas: &[Metadata; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
+    parent_metadatas: &[Metadata; const { REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS }],
     table_6_proof_targets_sizes: &mut [u32; NUM_S_BUCKETS],
     table_6_proof_targets: &mut [[MaybeUninit<ProofTargets>; NUM_ELEMENTS_PER_S_BUCKET];
              NUM_S_BUCKETS],
@@ -319,8 +324,10 @@ pub unsafe fn find_matches_and_compute_f7(
     #[spirv(workgroup_id)] workgroup_id: UVec3,
     #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] parent_buckets: &[[PositionR; MAX_BUCKET_SIZE];
          NUM_BUCKETS],
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)]
-    parent_metadatas: &[Metadata; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] parent_metadatas: &[Metadata;
+         const {
+             REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS
+         }],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 2)]
     table_6_proof_targets_sizes: &mut [u32; NUM_S_BUCKETS],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 3)]

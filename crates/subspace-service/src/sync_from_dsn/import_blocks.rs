@@ -31,6 +31,7 @@ const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
 ///
 /// Returns number of downloaded blocks.
 #[allow(clippy::too_many_arguments)]
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub(super) async fn import_blocks_from_dsn<Block, AS, Client, PG, IQS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     segment_header_downloader: &SegmentHeaderDownloader,

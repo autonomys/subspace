@@ -1,10 +1,13 @@
-use cargo_gpu_install::install::Install;
-use cargo_gpu_install::spirv_builder::{Capability, SpirvBuilderError, SpirvMetadata};
-use std::error::Error;
-use std::path::PathBuf;
-use std::{env, fs};
+#[cfg(not(feature = "build-shader"))]
+fn main() {}
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[cfg(feature = "build-shader")]
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use cargo_gpu_install::install::Install;
+    use cargo_gpu_install::spirv_builder::{Capability, SpirvBuilderError, SpirvMetadata};
+    use std::path::PathBuf;
+    use std::{env, fs};
+
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").expect("Always set by Cargo; qed");
 
     if target_arch == "spirv" {
@@ -36,6 +39,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     // SAFETY: Single-threaded
     unsafe {
         env::set_var("RUST_MIN_STACK", "16777216");
+        // TODO: `-Znext-solver=globally` is a requirement for `generic_const_args` on the toolchain
+        //  rust-gpu uses
+        env::set_var("RUSTGPU_RUSTFLAGS", "-Znext-solver=globally");
     }
 
     let mut spirv_builder = backend
@@ -53,7 +59,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         // TODO: This should not be needed: https://github.com/Rust-GPU/rust-gpu/issues/386
         .capability(Capability::GroupNonUniformShuffle)
         // Avoid Cargo deadlock, customize target
-        .target_dir_path(out_dir.clone());
+        .target_dir_path(out_dir.clone())
+        // The nested invocation compiles this build script again, and without `build-shader` it
+        // does not need any of the build dependencies
+        .shader_crate_default_features(false);
     spirv_builder.build_script.defaults = true;
     spirv_builder
         .build_script
@@ -64,7 +73,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let path_to_spv = if env::var("CLIPPY_ARGS").is_ok() {
         match spirv_builder.clippy() {
             Ok(compile_result) => compile_result.module.unwrap_single().to_path_buf(),
-            Err(SpirvBuilderError::NoArtifactProduced { .. }) => {
+            Err(SpirvBuilderError::NoArtifactProduced { stdout: _ }) => {
                 let empty_file = out_dir.join("empty.bin");
                 fs::write(&empty_file, [])?;
                 empty_file

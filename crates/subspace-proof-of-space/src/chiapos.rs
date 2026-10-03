@@ -3,13 +3,10 @@
 mod constants;
 mod table;
 mod tables;
-mod utils;
 
 #[cfg(feature = "alloc")]
 pub use crate::chiapos::table::TablesCache;
-use crate::chiapos::table::{metadata_size_bytes, num_buckets};
 use crate::chiapos::tables::TablesGeneric;
-use crate::chiapos::utils::EvaluatableUsize;
 
 type Seed = [u8; 32];
 #[cfg(any(feature = "full-chiapos", test))]
@@ -19,12 +16,7 @@ type Quality = [u8; 32];
 
 /// Collection of Chia tables
 #[derive(Debug)]
-pub struct Tables<const K: u8>(TablesGeneric<K>)
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 7) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:;
+pub struct Tables<const K: u8>(TablesGeneric<K>);
 
 macro_rules! impl_any {
     ($($k: expr$(,)? )*) => {

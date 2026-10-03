@@ -1,8 +1,15 @@
 //! Proof of space implementation
 #![no_std]
-#![expect(incomplete_features, reason = "generic_const_exprs")]
+#![expect(incomplete_features, reason = "generic_const_*")]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
-#![feature(const_trait_impl, generic_const_exprs, step_trait)]
+#![feature(
+    const_trait_impl,
+    generic_const_args,
+    generic_const_items,
+    macroless_generic_const_args,
+    min_generic_const_args,
+    step_trait
+)]
 #![cfg_attr(feature = "alloc", feature(get_mut_unchecked, maybe_uninit_fill))]
 #![cfg_attr(any(feature = "alloc", test), feature(portable_simd))]
 #![cfg_attr(feature = "parallel", feature(exact_size_is_empty, sync_unsafe_cell))]

@@ -227,7 +227,7 @@ impl NetworkBehaviour for Behaviour {
             Poll::Ready(()) => {
                 self.dialing_delay.reset(self.config.dialing_interval);
 
-                for (_, state) in self.reserved_peers_state.iter_mut() {
+                for state in self.reserved_peers_state.values_mut() {
                     trace!(?state, "Reserved peer state.");
 
                     if let ConnectionStatus::NotConnected = state.connection_status {

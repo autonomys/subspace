@@ -6,6 +6,8 @@
     try_blocks
 )]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
+// TODO: Remove once https://github.com/gfx-rs/wgpu/pull/9953 is released
+#![recursion_limit = "256"]
 
 //! `subspace-farmer` is both a library and an app for everything related to farming on Subspace.
 //!

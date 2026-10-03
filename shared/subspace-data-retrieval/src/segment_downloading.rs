@@ -141,6 +141,10 @@ where
 ///
 /// Prefers source pieces if available, on error returns the incomplete piece download (including
 /// existing pieces).
+#[expect(
+    clippy::result_large_err,
+    reason = "Same as the input, returned back to the caller to retry with"
+)]
 async fn download_missing_segment_pieces<PG>(
     segment_index: SegmentIndex,
     piece_getter: &PG,

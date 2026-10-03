@@ -720,6 +720,7 @@ where
 type FullNode<RuntimeApi> = NewFull<FullClient<RuntimeApi>>;
 
 /// Builds a new service for a full client.
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub async fn new_full<PosTable, RuntimeApi>(
     mut config: SubspaceConfiguration,
     partial_components: PartialComponents<RuntimeApi>,

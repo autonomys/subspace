@@ -13,6 +13,10 @@ impl ShaderBytes<[u8]> {
         assert!(align_of_val(self) == align_of::<u32>());
         let shader_bytes = &self.0;
 
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "Container holding bytes is correctly aligned, but Clippy doesn't see that"
+        )]
         // SAFETY: Correctly aligned, all bit patterns are valid, lifetime is static before and
         // after
         let shader_bytes = unsafe {

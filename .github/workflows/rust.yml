@@ -272,10 +272,13 @@ jobs:
             if ("${{ runner.arch }}" -eq "ARM64") {
               $arch = "ARM64"
               $urlPath = "warm"
+              $archDir = ""
               $expectedHash = "4a350fbeec743683494f746e9cf7e2052494ca9ae618931afc2abb8985e072b0"
             } else {
               $arch = "X64"
               $urlPath = "windows"
+              # The archive also contains 32-bit loader in `x86`, which can't be used by 64-bit tests
+              $archDir = "x64\"
               $expectedHash = "20571dcc8292b80a47d68bbbfa4094d87044041f50f4e2e1f326a01e3732b226"
             }
 
@@ -287,7 +290,10 @@ jobs:
               throw "SHA256 mismatch: expected $expectedHash, got $actualHash"
             }
 
-            7z e VulkanRT.zip -o"${{ runner.temp }}\vulkan" -r "vulkan-1.*"
+            7z e VulkanRT.zip -o"${{ runner.temp }}\vulkan" "VulkanRT-$arch-$sdkVersion-Components\${archDir}vulkan-1.dll"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to extract Vulkan loader"
+            }
             Remove-Item VulkanRT.zip
 
             $vulkanPath = "${{ runner.temp }}\vulkan"
@@ -316,6 +322,9 @@ jobs:
             }
 
             7z x mesa-lavapipe.7z -o"${{ runner.temp }}\mesa"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to extract lavapipe"
+            }
             Remove-Item mesa-lavapipe.7z
 
             $mesaPath = "${{ runner.temp }}\mesa"

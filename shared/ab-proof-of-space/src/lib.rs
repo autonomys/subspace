@@ -1,24 +1,33 @@
 //! Proof of space implementation
 #![no_std]
-#![expect(incomplete_features, reason = "generic_const_exprs")]
+#![expect(incomplete_features, reason = "generic_const_*")]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![feature(
     const_block_items,
     const_convert,
     const_trait_impl,
-    generic_const_exprs,
+    funnel_shifts,
+    generic_const_args,
+    generic_const_items,
+    impl_restriction,
+    inherent_associated_types,
+    macroless_generic_const_args,
+    min_generic_const_args,
+    mut_restriction,
+    portable_simd,
     step_trait
 )]
 #![cfg_attr(test, feature(float_erf))]
 #![cfg_attr(feature = "parallel", feature(exact_size_is_empty, sync_unsafe_cell))]
 #![cfg_attr(feature = "alloc", feature(maybe_uninit_fill, ptr_as_uninit))]
-#![cfg_attr(any(feature = "alloc", test), feature(portable_simd))]
 
 pub mod chiapos;
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+#[cfg(feature = "alloc")]
+use core::hint;
 #[cfg(feature = "alloc")]
 use subspace_core_primitives::pieces::Record;
 #[cfg(feature = "alloc")]
@@ -40,9 +49,9 @@ pub struct PosProofs {
     /// large set of bits.
     ///
     /// There will be at most [`Record::NUM_CHUNKS`] proofs produced/bits set to `1`.
-    pub found_proofs: [u8; Record::NUM_S_BUCKETS / u8::BITS as usize],
+    pub mut(self) found_proofs: [u8; Record::NUM_S_BUCKETS / u8::BITS as usize],
     /// [`Record::NUM_CHUNKS`] proofs, corresponding to set bits of `found_proofs`.
-    pub proofs: [PosProof; Record::NUM_CHUNKS],
+    pub mut(self) proofs: [PosProof; const { Record::NUM_CHUNKS }],
 }
 
 // TODO: A method that returns hashed proofs (with SIMD) for all s-buckets for plotting
@@ -53,13 +62,20 @@ impl PosProofs {
     /// Note that this is not the most efficient API possible, so prefer using the `proofs` field
     /// directly if the use case allows.
     #[inline]
+    #[cfg_attr(feature = "no-panic", no_panic::no_panic)]
     pub fn for_s_bucket(&self, s_bucket: SBucket) -> Option<PosProof> {
         let proof_index = Self::proof_index_for_s_bucket(&self.found_proofs, s_bucket)?;
+
+        // SAFETY: Protected invariant of the data structure
+        unsafe {
+            hint::assert_unchecked(proof_index < Record::NUM_CHUNKS);
+        }
 
         Some(self.proofs[proof_index])
     }
 
     #[inline(always)]
+    #[cfg_attr(feature = "no-panic", no_panic::no_panic)]
     fn proof_index_for_s_bucket(
         found_proofs: &[u8; Record::NUM_S_BUCKETS / u8::BITS as usize],
         s_bucket: SBucket,

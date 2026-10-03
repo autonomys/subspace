@@ -5,7 +5,7 @@
 
 use crate::chia::ChiaTable;
 use crate::{PosTableType, Table, TableGenerator};
-use ab_proof_of_space::chiapos::{Proofs, Tables, TablesCache};
+use ab_proof_of_space::chiapos::{Proofs, Tables};
 use alloc::boxed::Box;
 use core::fmt;
 use subspace_core_primitives::pos::{PosProof, PosSeed};
@@ -18,21 +18,19 @@ const K: u8 = PosProof::K;
 ///
 /// Chia implementation.
 #[derive(Debug, Default, Clone)]
-pub struct ChiaV2TableGenerator {
-    tables_cache: TablesCache,
-}
+pub struct ChiaV2TableGenerator;
 
 impl TableGenerator<ChiaV2Table> for ChiaV2TableGenerator {
     fn generate(&self, seed: &PosSeed) -> ChiaV2Table {
         ChiaV2Table {
-            proofs: Tables::<K>::create_proofs((*seed).into(), &self.tables_cache),
+            proofs: Tables::<K>::create_proofs((*seed).into()),
         }
     }
 
     #[cfg(feature = "parallel")]
     fn generate_parallel(&self, seed: &PosSeed) -> ChiaV2Table {
         ChiaV2Table {
-            proofs: Tables::<K>::create_proofs_parallel((*seed).into(), &self.tables_cache),
+            proofs: Tables::<K>::create_proofs_parallel((*seed).into()),
         }
     }
 }

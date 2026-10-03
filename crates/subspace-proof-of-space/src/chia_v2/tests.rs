@@ -7,7 +7,7 @@ use subspace_core_primitives::sectors::SBucket;
 // Every abundance-backed proof must verify under ChiaTable::is_proof_valid.
 #[test]
 fn proofs_verify_under_consensus() {
-    let generator = ChiaV2TableGenerator::default();
+    let generator = ChiaV2TableGenerator;
 
     for seed_byte in 0..3u8 {
         let seed = PosSeed::from([seed_byte; 32]);

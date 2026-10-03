@@ -1,3 +1,7 @@
+#[cfg(all(test, not(target_arch = "spirv")))]
+pub(super) mod cpu_tests;
+#[cfg(all(test, not(miri), not(target_arch = "spirv")))]
+mod gpu_tests;
 pub mod rmap;
 
 use crate::shader::constants::{
@@ -16,11 +20,50 @@ use spirv_std::spirv;
 //  https://github.com/Rust-GPU/rust-gpu/discussions/287 is resolved
 pub const WORKGROUP_SIZE: u32 = 256;
 
-fn calculate_left_target_on_demand(parity: u32, r: u32, m: u32) -> u32 {
-    let param_b = u32::from(PARAM_B);
-    let param_c = u32::from(PARAM_C);
+/// `a + b` modulo `modulus`.
+///
+/// Both `a` and `b` must be below `modulus`, which puts the sum below `modulus * 2` and turns the
+/// modulo into a single conditional subtraction.
+#[inline(always)]
+fn add_mod(a: u32, b: u32, modulus: u32) -> u32 {
+    let sum = a + b;
 
-    ((r / param_c + m) % param_b) * param_c + (((2 * m + parity) * (2 * m + parity) + r) % param_c)
+    if sum >= modulus { sum - modulus } else { sum }
+}
+
+/// Left target of a single `m` of the left bucket with a given parity.
+///
+/// Two `y`s match when `r` of the right entry is one of the [`PARAM_M`] targets of `r` of the left
+/// entry, and each invocation is responsible for exactly one of those `m`, so the part of the
+/// target that doesn't depend on `r` is computed once here rather than for every `r`.
+#[derive(Debug, Copy, Clone)]
+struct LeftTarget {
+    m: u32,
+    /// `(2 * m + parity)^2 % PARAM_C`
+    square: u32,
+}
+
+impl LeftTarget {
+    fn new(parity: u32, m: u32) -> Self {
+        let value = 2 * m + parity;
+
+        Self {
+            m,
+            square: (value * value) % u32::from(PARAM_C),
+        }
+    }
+
+    /// Calculate the target of `r`.
+    ///
+    /// `r / PARAM_C` is below `PARAM_B` and `m` is below `PARAM_M`, `r % PARAM_C` and the square
+    /// are both below `PARAM_C`, so both modulo operations are conditional subtractions rather
+    /// than real divisions, and the one division left is shared by both halves.
+    fn calculate(self, r: u32) -> u32 {
+        let param_b = u32::from(PARAM_B);
+        let param_c = u32::from(PARAM_C);
+
+        add_mod(r / param_c, self.m, param_b) * param_c + add_mod(r % param_c, self.square, param_c)
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -49,6 +92,15 @@ pub(super) unsafe fn find_matches_in_buckets_impl(
     matches: &mut [MaybeUninit<Match>; MAX_BUCKET_SIZE],
     shared: &mut FindMatchesShared,
 ) -> u32 {
+    const CHUNK_SIZE: usize = WORKGROUP_SIZE as usize / PARAM_M as usize;
+
+    const {
+        // `CHUNK_SIZE` with `PARAM_M` must cover workgroup exactly
+        assert!(CHUNK_SIZE as u32 * PARAM_M as u32 == WORKGROUP_SIZE);
+        // The bucket size should be possible to iterate in exact chunks
+        assert!(REDUCED_BUCKET_SIZE.is_multiple_of(CHUNK_SIZE));
+    }
+
     let FindMatchesShared {
         rmap,
         matches_counter,
@@ -70,14 +122,10 @@ pub(super) unsafe fn find_matches_in_buckets_impl(
     workgroup_memory_barrier_with_group_sync();
 
     let parity = left_bucket_index % 2;
-
-    const CHUNK_SIZE: usize = WORKGROUP_SIZE as usize / PARAM_M as usize;
-    const {
-        // `CHUNK_SIZE` with `PARAM_M` must cover workgroup exactly
-        assert!(CHUNK_SIZE as u32 * PARAM_M as u32 == WORKGROUP_SIZE);
-        // The bucket size should be possible to iterate in exact chunks
-        assert!(REDUCED_BUCKET_SIZE.is_multiple_of(CHUNK_SIZE));
-    }
+    // `m` and hence its square are the same for every iteration of the loop below, which is why
+    // the square is computed here rather than for each `r` separately
+    let m = local_invocation_id % u32::from(PARAM_M);
+    let left_target = LeftTarget::new(parity, m);
     // TODO: More idiomatic version currently doesn't compile:
     //  https://github.com/Rust-GPU/rust-gpu/issues/241#issuecomment-3005693043
     for chunk_index in 0..REDUCED_BUCKET_SIZE / CHUNK_SIZE {
@@ -94,8 +142,7 @@ pub(super) unsafe fn find_matches_in_buckets_impl(
         let (m, local_matches_count) = if position == Position::SENTINEL {
             (Match::SENTINEL, 0)
         } else {
-            let m = local_invocation_id % u32::from(PARAM_M);
-            let r_target = calculate_left_target_on_demand(parity, left_r, m);
+            let r_target = left_target.calculate(left_r);
 
             // SAFETY: Right targets are guaranteed to be within `0..PARAM_BC` range
             let local_matches_count = rmap.num_r_items(unsafe { R::new(r_target) });
@@ -117,7 +164,7 @@ pub(super) unsafe fn find_matches_in_buckets_impl(
             // SAFETY: TODO: Probably should not be unsafe to begin with:
             //  https://github.com/Rust-GPU/rust-gpu/pull/394#issuecomment-3316594485
             let local_matches_offset = unsafe {
-                atomic_i_add::<_, { Scope::Workgroup as u32 }, { Semantics::NONE.bits() }>(
+                atomic_i_add::<_, const { Scope::Workgroup as u32 }, const { Semantics::NONE.bits() }>(
                     matches_counter,
                     local_matches_count,
                 )

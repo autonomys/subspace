@@ -13,7 +13,6 @@ use crate::chiapos::table::rmap::Rmap;
 use crate::chiapos::table::types::{Metadata, X, Y};
 #[cfg(feature = "alloc")]
 use crate::chiapos::table::types::{Position, R};
-use crate::chiapos::utils::EvaluatableUsize;
 use ab_chacha8::{ChaCha8Block, ChaCha8State};
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
@@ -45,7 +44,8 @@ use seq_macro::seq;
 use alloc::sync::Arc;
 use subspace_core_primitives::hashes::blake3_hash;
 
-pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
+#[cfg(any(feature = "alloc", test))]
+const COMPUTE_F1_SIMD_FACTOR: usize = 8;
 #[cfg(any(feature = "alloc", test))]
 const COMPUTE_FN_SIMD_FACTOR: usize = 16;
 #[allow(dead_code, reason = "unused when crate is compiled separately")]
@@ -79,11 +79,6 @@ pub(super) const fn y_size_bits(k: u8) -> usize {
     k as usize + PARAM_EXT as usize
 }
 
-/// Metadata size in bytes
-pub const fn metadata_size_bytes(k: u8, table_number: u8) -> usize {
-    metadata_size_bits(k, table_number).div_ceil(u8::BITS as usize)
-}
-
 /// Metadata size in bits
 pub(super) const fn metadata_size_bits(k: u8, table_number: u8) -> usize {
     k as usize
@@ -99,11 +94,25 @@ pub(super) const fn metadata_size_bits(k: u8, table_number: u8) -> usize {
 }
 
 /// Number of buckets for a given `k`
-pub const fn num_buckets(k: u8) -> usize {
+#[cfg(feature = "alloc")]
+const fn num_buckets(k: u8) -> usize {
     2_usize
         .pow(y_size_bits(k) as u32)
         .div_ceil(PARAM_BC as usize)
 }
+
+/// Number of buckets for a given `K`
+#[cfg(feature = "alloc")]
+pub(super) const NUM_BUCKETS<const K: u8>: usize = num_buckets(K);
+/// Number of bucket pairs for a given `K`
+#[cfg(feature = "parallel")]
+const NUM_BUCKET_PAIRS<const K: u8>: usize = num_buckets(K) - 1;
+/// Size of the first table and max size for other tables
+#[cfg(feature = "alloc")]
+const MAX_TABLE_SIZE<const K: u8>: usize = 1 << K;
+#[cfg(any(feature = "alloc", test))]
+pub(super) const TABLE_1_YS_BATCH_SIMD<const K: u8>: usize =
+    K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize;
 
 /// Upper bound on entries in a non-first table: `num_buckets(K) - 1` bucket pairs, each yielding at
 /// most `REDUCED_MATCHES_COUNT` matches. The actual count is data-dependent and can exceed `2^K`.
@@ -186,14 +195,11 @@ const fn bucket_size_upper_bound(k: u8, security_bits: u8) -> usize {
 #[cfg(feature = "alloc")]
 fn group_by_buckets<const K: u8>(
     ys: &[Y],
-) -> Box<[[(Position, Y); REDUCED_BUCKET_SIZE]; num_buckets(K)]>
-where
-    [(); num_buckets(K)]:,
-{
-    let mut bucket_offsets = [0_u16; num_buckets(K)];
+) -> Box<[[(Position, Y); REDUCED_BUCKET_SIZE]; NUM_BUCKETS::<K>]> {
+    let mut bucket_offsets = [0_u16; NUM_BUCKETS::<K>];
     // SAFETY: Contents is `MaybeUninit`
     let mut buckets = unsafe {
-        Box::<[[MaybeUninit<(Position, Y)>; REDUCED_BUCKET_SIZE]; num_buckets(K)]>::new_uninit()
+        Box::<[[MaybeUninit<(Position, Y)>; REDUCED_BUCKET_SIZE]; NUM_BUCKETS::<K>]>::new_uninit()
             .assume_init()
     };
 
@@ -227,15 +233,14 @@ where
 #[cfg(feature = "parallel")]
 unsafe fn group_by_buckets_from_buckets<'a, const K: u8, I>(
     iter: I,
-) -> Box<[[(Position, Y); REDUCED_BUCKET_SIZE]; num_buckets(K)]>
+) -> Box<[[(Position, Y); REDUCED_BUCKET_SIZE]; NUM_BUCKETS::<K>]>
 where
     I: Iterator<Item = (&'a [MaybeUninit<Y>; REDUCED_MATCHES_COUNT], usize)> + 'a,
-    [(); num_buckets(K)]:,
 {
-    let mut bucket_offsets = [0_u16; num_buckets(K)];
+    let mut bucket_offsets = [0_u16; NUM_BUCKETS::<K>];
     // SAFETY: Contents is `MaybeUninit`
     let mut buckets = unsafe {
-        Box::<[[MaybeUninit<(Position, Y)>; REDUCED_BUCKET_SIZE]; num_buckets(K)]>::new_uninit()
+        Box::<[[MaybeUninit<(Position, Y)>; REDUCED_BUCKET_SIZE]; NUM_BUCKETS::<K>]>::new_uninit()
             .assume_init()
     };
 
@@ -268,10 +273,9 @@ where
 /// Sort entries within each bucket by Y value to ensure deterministic proof ordering.
 /// This matches the old code's behavior where entries were globally Y-sorted before bucketing.
 #[cfg(feature = "alloc")]
-fn sort_buckets<const K: u8>(buckets: &mut [[(Position, Y); REDUCED_BUCKET_SIZE]; num_buckets(K)])
-where
-    [(); num_buckets(K)]:,
-{
+fn sort_buckets<const K: u8>(
+    buckets: &mut [[(Position, Y); REDUCED_BUCKET_SIZE]; NUM_BUCKETS::<K>],
+) {
     for bucket in buckets.iter_mut() {
         let len = bucket
             .iter()
@@ -288,7 +292,8 @@ struct CacheLineAligned<T>(T);
 
 /// Mapping from `parity` to `r` to `m`
 #[cfg(feature = "alloc")]
-type LeftTargets = [[CacheLineAligned<[R; PARAM_M as usize]>; PARAM_BC as usize]; 2];
+type LeftTargets =
+    [[CacheLineAligned<[R; const { PARAM_M as usize }]>; const { PARAM_BC as usize }]; 2];
 
 #[cfg(feature = "alloc")]
 fn calculate_left_targets() -> Arc<LeftTargets> {
@@ -296,8 +301,13 @@ fn calculate_left_targets() -> Arc<LeftTargets> {
     // SAFETY: Same layout and uninitialized in both cases
     let left_targets_slice = unsafe {
         mem::transmute::<
-            &mut MaybeUninit<[[CacheLineAligned<[R; PARAM_M as usize]>; PARAM_BC as usize]; 2]>,
-            &mut [[MaybeUninit<CacheLineAligned<[R; PARAM_M as usize]>>; PARAM_BC as usize]; 2],
+            &mut MaybeUninit<
+                [[CacheLineAligned<[R; const { PARAM_M as usize }]>; const { PARAM_BC as usize }];
+                    2],
+            >,
+            &mut [[MaybeUninit<CacheLineAligned<[R; const { PARAM_M as usize }]>>; const {
+                     PARAM_BC as usize
+                 }]; 2],
         >(Arc::get_mut_unchecked(&mut left_targets))
     };
 
@@ -396,7 +406,7 @@ pub(super) fn compute_f1<const K: u8>(x: X, seed: &Seed) -> Y {
 #[cfg(any(feature = "alloc", test))]
 pub(super) fn compute_f1_simd<const K: u8>(
     xs: Simd<u32, COMPUTE_F1_SIMD_FACTOR>,
-    partial_ys: &[u8; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize],
+    partial_ys: &[u8; TABLE_1_YS_BATCH_SIMD::<K>],
 ) -> [Y; COMPUTE_F1_SIMD_FACTOR] {
     // Each element contains `K` desired bits of `partial_ys` in the final offset of eventual `ys`
     // with the rest of bits being in undefined state
@@ -512,7 +522,7 @@ pub(super) fn has_match(left_y: Y, right_y: Y) -> bool {
     let parity = (u32::from(left_y) / u32::from(PARAM_BC)) % 2;
     let left_r = u32::from(left_y) % u32::from(PARAM_BC);
 
-    let r_targets = array::from_fn::<_, { PARAM_M as usize }, _>(|i| {
+    let r_targets = array::from_fn::<_, const { PARAM_M as usize }, _>(|i| {
         calculate_left_target_on_demand(parity, left_r, i as u32)
     });
 
@@ -524,11 +534,7 @@ pub(super) fn compute_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE
     y: Y,
     left_metadata: Metadata<K, PARENT_TABLE_NUMBER>,
     right_metadata: Metadata<K, PARENT_TABLE_NUMBER>,
-) -> (Y, Metadata<K, TABLE_NUMBER>)
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-{
+) -> (Y, Metadata<K, TABLE_NUMBER>) {
     let left_metadata = u128::from(left_metadata);
     let right_metadata = u128::from(right_metadata);
 
@@ -615,11 +621,7 @@ fn compute_fn_simd<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBE
 ) -> (
     [Y; COMPUTE_FN_SIMD_FACTOR],
     [Metadata<K, TABLE_NUMBER>; COMPUTE_FN_SIMD_FACTOR],
-)
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-{
+) {
     let parent_metadata_bits = metadata_size_bits(K, PARENT_TABLE_NUMBER);
     let metadata_size_bits = metadata_size_bits(K, TABLE_NUMBER);
 
@@ -744,11 +746,6 @@ unsafe fn match_to_result<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABL
 ) -> (Y, [Position; 2], Metadata<K, TABLE_NUMBER>)
 where
     Table<K, PARENT_TABLE_NUMBER>: private::NotLastTable,
-    EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
 {
     // SAFETY: Guaranteed by function contract
     let left_metadata = unsafe { parent_table.metadata(m.left_position) };
@@ -775,11 +772,6 @@ unsafe fn match_to_result_simd<const K: u8, const TABLE_NUMBER: u8, const PARENT
 )
 where
     Table<K, PARENT_TABLE_NUMBER>: private::NotLastTable,
-    EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
 {
     let left_ys: [_; COMPUTE_FN_SIMD_FACTOR] = seq!(N in 0..16 {
         [
@@ -842,11 +834,6 @@ unsafe fn matches_to_results<const K: u8, const TABLE_NUMBER: u8, const PARENT_T
     metadatas: &mut [MaybeUninit<Metadata<K, TABLE_NUMBER>>],
 ) where
     Table<K, PARENT_TABLE_NUMBER>: private::NotLastTable,
-    EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
 {
     let (grouped_matches, other_matches) = matches.as_chunks::<COMPUTE_FN_SIMD_FACTOR>();
     let (grouped_ys, other_ys) = ys.split_at_mut(grouped_matches.as_flattened().len());
@@ -899,11 +886,7 @@ unsafe fn matches_to_results<const K: u8, const TABLE_NUMBER: u8, const PARENT_T
 /// Similar to [`Table`], but smaller size for later processing stages
 #[cfg(feature = "alloc")]
 #[derive(Debug)]
-pub(super) enum PrunedTable<const K: u8, const TABLE_NUMBER: u8>
-where
-    [(); 1 << K]:,
-    [(); num_buckets(K) - 1]:,
-{
+pub(super) enum PrunedTable<const K: u8, const TABLE_NUMBER: u8> {
     First,
     /// Other tables
     Other {
@@ -916,16 +899,13 @@ where
         /// Left and right entry positions in a previous table encoded into bits.
         ///
         /// Only positions from the `buckets` field are guaranteed to be initialized.
-        positions: Box<[[MaybeUninit<[Position; 2]>; REDUCED_MATCHES_COUNT]; num_buckets(K) - 1]>,
+        positions:
+            Box<[[MaybeUninit<[Position; 2]>; REDUCED_MATCHES_COUNT]; NUM_BUCKET_PAIRS::<K>]>,
     },
 }
 
 #[cfg(feature = "alloc")]
-impl<const K: u8, const TABLE_NUMBER: u8> PrunedTable<K, TABLE_NUMBER>
-where
-    [(); 1 << K]:,
-    [(); num_buckets(K) - 1]:,
-{
+impl<const K: u8, const TABLE_NUMBER: u8> PrunedTable<K, TABLE_NUMBER> {
     /// Get `[left_position, right_position]` of a previous table for a specified position in a
     /// current table.
     ///
@@ -958,19 +938,13 @@ where
 
 #[cfg(feature = "alloc")]
 #[derive(Debug)]
-pub(super) enum Table<const K: u8, const TABLE_NUMBER: u8>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
+pub(super) enum Table<const K: u8, const TABLE_NUMBER: u8> {
     /// First table
     First {
         /// Each bucket contains positions of `Y` values that belong to it and corresponding `y`.
         ///
         /// Buckets are padded with sentinel values to `REDUCED_BUCKETS_SIZE`.
-        buckets: Box<[[(Position, Y); REDUCED_BUCKET_SIZE]; num_buckets(K)]>,
+        buckets: Box<[[(Position, Y); REDUCED_BUCKET_SIZE]; NUM_BUCKETS::<K>]>,
     },
     /// Other tables
     Other {
@@ -981,7 +955,7 @@ where
         /// Each bucket contains positions of `Y` values that belong to it and corresponding `y`.
         ///
         /// Buckets are padded with sentinel values to `REDUCED_BUCKETS_SIZE`.
-        buckets: Box<[[(Position, Y); REDUCED_BUCKET_SIZE]; num_buckets(K)]>,
+        buckets: Box<[[(Position, Y); REDUCED_BUCKET_SIZE]; NUM_BUCKETS::<K>]>,
     },
     /// Other tables
     #[cfg(feature = "parallel")]
@@ -989,33 +963,26 @@ where
         /// Left and right entry positions in a previous table encoded into bits.
         ///
         /// Only positions from the `buckets` field are guaranteed to be initialized.
-        positions: Box<[[MaybeUninit<[Position; 2]>; REDUCED_MATCHES_COUNT]; num_buckets(K) - 1]>,
+        positions:
+            Box<[[MaybeUninit<[Position; 2]>; REDUCED_MATCHES_COUNT]; NUM_BUCKET_PAIRS::<K>]>,
         /// Metadata corresponding to each entry.
         ///
         /// Only positions from the `buckets` field are guaranteed to be initialized.
         metadatas: Box<
-            [[MaybeUninit<Metadata<K, TABLE_NUMBER>>; REDUCED_MATCHES_COUNT]; num_buckets(K) - 1],
+            [[MaybeUninit<Metadata<K, TABLE_NUMBER>>; REDUCED_MATCHES_COUNT];
+                NUM_BUCKET_PAIRS::<K>],
         >,
         /// Each bucket contains positions of `Y` values that belong to it and corresponding `y`.
         ///
         /// Buckets are padded with sentinel values to `REDUCED_BUCKETS_SIZE`.
-        buckets: Box<[[(Position, Y); REDUCED_BUCKET_SIZE]; num_buckets(K)]>,
+        buckets: Box<[[(Position, Y); REDUCED_BUCKET_SIZE]; NUM_BUCKETS::<K>]>,
     },
 }
 
 #[cfg(feature = "alloc")]
-impl<const K: u8> Table<K, 1>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 1) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
+impl<const K: u8> Table<K, 1> {
     /// Create the table
-    pub(super) fn create(seed: Seed) -> Self
-    where
-        EvaluatableUsize<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>: Sized,
-    {
+    pub(super) fn create(seed: Seed) -> Self {
         // `MAX_BUCKET_SIZE` is not actively used, but is an upper-bound reference for the other
         // parameters
         debug_assert!(
@@ -1026,18 +993,15 @@ where
         let partial_ys = partial_ys::<K>(seed);
 
         // SAFETY: Contents is `MaybeUninit`
-        let mut ys = unsafe { Box::<[MaybeUninit<Y>; 1 << K]>::new_uninit().assume_init() };
+        let mut ys =
+            unsafe { Box::<[MaybeUninit<Y>; MAX_TABLE_SIZE::<K>]>::new_uninit().assume_init() };
 
         for ((ys, xs_batch_start), partial_ys) in ys
             .as_chunks_mut::<COMPUTE_F1_SIMD_FACTOR>()
             .0
             .iter_mut()
             .zip((X::ZERO..).step_by(COMPUTE_F1_SIMD_FACTOR))
-            .zip(
-                partial_ys
-                    .as_chunks::<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>()
-                    .0,
-            )
+            .zip(partial_ys.as_chunks::<{ TABLE_1_YS_BATCH_SIMD::<K> }>().0)
         {
             let xs = Simd::splat(u32::from(xs_batch_start))
                 + Simd::from_array(array::from_fn(|i| i as u32));
@@ -1063,10 +1027,7 @@ where
 
     /// Create the table, leverages available parallelism
     #[cfg(feature = "parallel")]
-    pub(super) fn create_parallel(seed: Seed) -> Self
-    where
-        EvaluatableUsize<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>: Sized,
-    {
+    pub(super) fn create_parallel(seed: Seed) -> Self {
         // `MAX_BUCKET_SIZE` is not actively used, but is an upper-bound reference for the other
         // parameters
         debug_assert!(
@@ -1077,7 +1038,8 @@ where
         let partial_ys = partial_ys::<K>(seed);
 
         // SAFETY: Contents is `MaybeUninit`
-        let mut ys = unsafe { Box::<[MaybeUninit<Y>; 1 << K]>::new_uninit().assume_init() };
+        let mut ys =
+            unsafe { Box::<[MaybeUninit<Y>; MAX_TABLE_SIZE::<K>]>::new_uninit().assume_init() };
 
         // TODO: Try parallelism here?
         for ((ys, xs_batch_start), partial_ys) in ys
@@ -1085,11 +1047,7 @@ where
             .0
             .iter_mut()
             .zip((X::ZERO..).step_by(COMPUTE_F1_SIMD_FACTOR))
-            .zip(
-                partial_ys
-                    .as_chunks::<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>()
-                    .0,
-            )
+            .zip(partial_ys.as_chunks::<{ TABLE_1_YS_BATCH_SIMD::<K> }>().0)
         {
             let xs = Simd::splat(u32::from(xs_batch_start))
                 + Simd::from_array(array::from_fn(|i| i as u32));
@@ -1121,123 +1079,35 @@ mod private {
 }
 
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::SupportedOtherTables for Table<K, 2>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 2) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
-}
+impl<const K: u8> private::SupportedOtherTables for Table<K, 2> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::SupportedOtherTables for Table<K, 3>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 3) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
-}
+impl<const K: u8> private::SupportedOtherTables for Table<K, 3> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::SupportedOtherTables for Table<K, 4>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 4) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
-}
+impl<const K: u8> private::SupportedOtherTables for Table<K, 4> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::SupportedOtherTables for Table<K, 5>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 5) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
-}
+impl<const K: u8> private::SupportedOtherTables for Table<K, 5> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::SupportedOtherTables for Table<K, 6>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 6) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
-}
+impl<const K: u8> private::SupportedOtherTables for Table<K, 6> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::SupportedOtherTables for Table<K, 7>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 7) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
-}
+impl<const K: u8> private::SupportedOtherTables for Table<K, 7> {}
 
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::NotLastTable for Table<K, 1>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 1) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
-}
+impl<const K: u8> private::NotLastTable for Table<K, 1> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::NotLastTable for Table<K, 2>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 2) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
-}
+impl<const K: u8> private::NotLastTable for Table<K, 2> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::NotLastTable for Table<K, 3>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 3) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
-}
+impl<const K: u8> private::NotLastTable for Table<K, 3> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::NotLastTable for Table<K, 4>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 4) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
-}
+impl<const K: u8> private::NotLastTable for Table<K, 4> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::NotLastTable for Table<K, 5>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 5) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
-}
+impl<const K: u8> private::NotLastTable for Table<K, 5> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::NotLastTable for Table<K, 6>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 6) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
-}
+impl<const K: u8> private::NotLastTable for Table<K, 6> {}
 
 #[cfg(feature = "alloc")]
 impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER>
 where
     Self: private::SupportedOtherTables,
-    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
 {
     /// Creates a new [`TABLE_NUMBER`] table. There also exists [`Self::create_parallel()`] that
     /// trades CPU efficiency and memory usage for lower latency and with multiple parallel calls,
@@ -1248,7 +1118,6 @@ where
     ) -> (Self, PrunedTable<K, PARENT_TABLE_NUMBER>)
     where
         Table<K, PARENT_TABLE_NUMBER>: private::NotLastTable,
-        EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     {
         let left_targets = &*cache.left_targets;
         let mut initialized_elements = 0_usize;
@@ -1337,22 +1206,21 @@ where
     ) -> (Self, PrunedTable<K, PARENT_TABLE_NUMBER>)
     where
         Table<K, PARENT_TABLE_NUMBER>: private::NotLastTable,
-        EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     {
         // SAFETY: Contents is `MaybeUninit`
         let ys = unsafe {
-            Box::<[SyncUnsafeCell<[MaybeUninit<_>; REDUCED_MATCHES_COUNT]>; num_buckets(K) - 1]>::new_uninit().assume_init()
+            Box::<[SyncUnsafeCell<[MaybeUninit<_>; REDUCED_MATCHES_COUNT]>; NUM_BUCKET_PAIRS::<K>]>::new_uninit().assume_init()
         };
         // SAFETY: Contents is `MaybeUninit`
         let positions = unsafe {
-            Box::<[SyncUnsafeCell<[MaybeUninit<_>; REDUCED_MATCHES_COUNT]>; num_buckets(K) - 1]>::new_uninit().assume_init()
+            Box::<[SyncUnsafeCell<[MaybeUninit<_>; REDUCED_MATCHES_COUNT]>; NUM_BUCKET_PAIRS::<K>]>::new_uninit().assume_init()
         };
         // SAFETY: Contents is `MaybeUninit`
         let metadatas = unsafe {
-            Box::<[SyncUnsafeCell<[MaybeUninit<_>; REDUCED_MATCHES_COUNT]>; num_buckets(K) - 1]>::new_uninit().assume_init()
+            Box::<[SyncUnsafeCell<[MaybeUninit<_>; REDUCED_MATCHES_COUNT]>; NUM_BUCKET_PAIRS::<K>]>::new_uninit().assume_init()
         };
         let global_results_counts =
-            array::from_fn::<_, { num_buckets(K) - 1 }, _>(|_| SyncUnsafeCell::new(0u16));
+            array::from_fn::<_, { NUM_BUCKET_PAIRS::<K> }, _>(|_| SyncUnsafeCell::new(0u16));
 
         let left_targets = &*cache.left_targets;
 
@@ -1487,10 +1355,6 @@ where
 impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER>
 where
     Self: private::NotLastTable,
-    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
 {
     /// Returns `None` for an invalid position or for table number 7.
     ///
@@ -1522,13 +1386,7 @@ where
 }
 
 #[cfg(feature = "alloc")]
-impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
+impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER> {
     #[inline(always)]
     fn prune(self) -> PrunedTable<K, TABLE_NUMBER> {
         match self {
@@ -1541,7 +1399,7 @@ where
 
     /// Positions of `y`s grouped by the bucket they belong to
     #[inline(always)]
-    pub(super) fn buckets(&self) -> &[[(Position, Y); REDUCED_BUCKET_SIZE]; num_buckets(K)] {
+    pub(super) fn buckets(&self) -> &[[(Position, Y); REDUCED_BUCKET_SIZE]; NUM_BUCKETS::<K>] {
         match self {
             Self::First { buckets, .. } => buckets,
             Self::Other { buckets, .. } => buckets,

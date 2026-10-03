@@ -8,12 +8,10 @@ use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT};
 use crate::chiapos::table::types::Position;
 use crate::chiapos::table::types::{Metadata, X, Y};
 use crate::chiapos::table::{
-    COMPUTE_F1_SIMD_FACTOR, compute_f1, compute_f1_simd, compute_fn, compute_fn_simd,
-    metadata_size_bytes,
+    TABLE_1_YS_BATCH_SIMD, compute_f1, compute_f1_simd, compute_fn, compute_fn_simd,
 };
 #[cfg(feature = "alloc")]
 use crate::chiapos::table::{calculate_left_targets, find_matches_in_buckets};
-use crate::chiapos::utils::EvaluatableUsize;
 #[cfg(feature = "alloc")]
 use alloc::collections::BTreeMap;
 #[cfg(feature = "alloc")]
@@ -46,7 +44,7 @@ fn test_compute_f1_k25() {
         assert_eq!(y, Y::from(expected_y));
 
         // Make sure SIMD matches non-SIMD version
-        let mut partial_ys = [0; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize];
+        let mut partial_ys = [0; TABLE_1_YS_BATCH_SIMD::<K>];
         let starts_with_partial_y_bits = y.first_k_bits() << (u32::BITS - u32::from(K));
         partial_ys[..size_of::<u32>()].copy_from_slice(&starts_with_partial_y_bits.to_be_bytes());
         let y = compute_f1_simd::<K>(Simd::splat(x.into()), &partial_ys);
@@ -71,7 +69,7 @@ fn test_compute_f1_k22() {
         assert_eq!(y, Y::from(expected_y));
 
         // Make sure SIMD matches non-SIMD version
-        let mut partial_ys = [0; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize];
+        let mut partial_ys = [0; TABLE_1_YS_BATCH_SIMD::<K>];
         let starts_with_partial_y_bits = y.first_k_bits() << (u32::BITS - u32::from(K));
         partial_ys[..size_of::<u32>()].copy_from_slice(&starts_with_partial_y_bits.to_be_bytes());
         let y = compute_f1_simd::<K>(Simd::splat(x.into()), &partial_ys);
@@ -216,10 +214,7 @@ fn verify_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>
     y: u32,
     y_output_expected: u32,
     metadata_expected: u128,
-) where
-    EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-{
+) {
     let (y_output, metadata) = compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
         Y::from(y),
         Metadata::from(left_metadata),

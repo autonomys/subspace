@@ -1,8 +1,12 @@
+#[cfg(all(test, not(target_arch = "spirv")))]
+mod cpu_tests;
+#[cfg(all(test, not(miri), not(target_arch = "spirv")))]
+mod gpu_tests;
+
 use crate::shader::constants::{K, MAX_BUCKET_SIZE, MAX_TABLE_SIZE, NUM_BUCKETS, PARAM_EXT};
 #[cfg(target_arch = "spirv")]
 use crate::shader::polyfills::ArrayIndexingPolyfill;
 use crate::shader::types::{Position, PositionExt, PositionR, X, Y};
-use crate::shader::u32n::U32N;
 use ab_chacha8::{ChaCha8Block, ChaCha8State};
 use core::mem::MaybeUninit;
 use spirv_std::arch::atomic_i_increment;
@@ -108,12 +112,14 @@ fn compute_f1_impl(x: X, chacha8_keystream: &[u32; INVOCATION_KEYSTREAM_WORDS]) 
 
     let high = chacha8_keystream[skip_u32s as usize].to_be();
     let low = chacha8_keystream[skip_u32s as usize + 1].to_be();
-    let partial_y = U32N::from_low_high(low, high);
 
-    let pre_y = partial_y >> (u64::BITS - u32::from(K + PARAM_EXT) - partial_y_offset);
-    let pre_y = pre_y.as_u32();
+    // `K` bits of `partial_y` followed by `PARAM_EXT` extra bits that will be cleared
+    // TODO: Only unchecked because ` % u32::BITS` is not taken into consideration
+    // SAFETY: `partial_y_offset` is a remainder of division by `u32::BITS`
+    let pre_y = unsafe { high.unchecked_funnel_shl(low, partial_y_offset) }
+        >> (u32::BITS - u32::from(K + PARAM_EXT));
     // Mask for clearing the rest of bits of `pre_y`.
-    let pre_y_mask = (u32::MAX << PARAM_EXT) & (u32::MAX >> (u32::BITS - u32::from(K + PARAM_EXT)));
+    let pre_y_mask = u32::MAX << PARAM_EXT;
 
     // Extract `PARAM_EXT` most significant bits from `x` and store in the final offset of
     // eventual `y` with the rest of bits being zero (`x` is `0..2^K`)
@@ -179,9 +185,11 @@ pub unsafe fn compute_f1(
         // SAFETY: TODO: Probably should not be unsafe to begin with:
         //  https://github.com/Rust-GPU/rust-gpu/pull/394#issuecomment-3316594485
         let bucket_offset = unsafe {
-            atomic_i_increment::<_, { Scope::QueueFamily as u32 }, { Semantics::NONE.bits() }>(
-                bucket_size,
-            )
+            atomic_i_increment::<
+                _,
+                const { Scope::QueueFamily as u32 },
+                const { Semantics::NONE.bits() },
+            >(bucket_size)
         };
 
         // SAFETY: Bucket is obtained using division by `PARAM_BC` and fits by definition. Bucket

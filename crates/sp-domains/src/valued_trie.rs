@@ -377,7 +377,7 @@ mod test {
         let root = backend.storage_root(std::iter::empty(), state_version).0;
         let proof = prove_read(
             backend,
-            &[&b"key1"[..], &b"key2"[..], &b"key4"[..], &b"key22"[..]],
+            [&b"key1"[..], &b"key2"[..], &b"key4"[..], &b"key22"[..]],
         )
         .unwrap();
 

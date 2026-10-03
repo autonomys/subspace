@@ -2,20 +2,16 @@
 //! https://github.com/Chia-Network/chiapos/blob/a2049c5367fe60930533a995f7ffded538f04dc4/tests/test.cpp
 
 use crate::chiapos::Seed;
-use crate::chiapos::constants::{NUM_TABLES, PARAM_BC, PARAM_EXT};
+use crate::chiapos::constants::{NUM_TABLES, PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT};
 #[cfg(feature = "alloc")]
-use crate::chiapos::constants::{PARAM_B, PARAM_C};
+use crate::chiapos::table::find_matches_in_buckets;
 #[cfg(feature = "alloc")]
 use crate::chiapos::table::types::Position;
 use crate::chiapos::table::types::{Metadata, X, Y};
 use crate::chiapos::table::{
-    BUCKET_SIZE_UPPER_BOUND_SECURITY_BITS, COMPUTE_F1_SIMD_FACTOR, REDUCED_BUCKET_SIZE,
-    REDUCED_MATCHES_COUNT, compute_f1, compute_f1_simd, compute_fn, compute_fn_simd,
-    metadata_size_bytes,
+    BUCKET_SIZE_UPPER_BOUND_SECURITY_BITS, REDUCED_BUCKET_SIZE, REDUCED_MATCHES_COUNT,
+    TABLE_1_YS_BATCH_SIMD, compute_f1, compute_f1_simd, compute_fn, compute_fn_simd, has_match,
 };
-#[cfg(feature = "alloc")]
-use crate::chiapos::table::{calculate_left_targets, find_matches_in_buckets};
-use crate::chiapos::utils::EvaluatableUsize;
 #[cfg(feature = "alloc")]
 use alloc::collections::BTreeMap;
 #[cfg(feature = "alloc")]
@@ -50,7 +46,7 @@ fn test_compute_f1_k25() {
         assert_eq!(y, Y::from(expected_y));
 
         // Make sure SIMD matches non-SIMD version
-        let mut partial_ys = [0; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize];
+        let mut partial_ys = [0; TABLE_1_YS_BATCH_SIMD::<K>];
         let starts_with_partial_y_bits = y.first_k_bits() << (u32::BITS - u32::from(K));
         partial_ys[..size_of::<u32>()].copy_from_slice(&starts_with_partial_y_bits.to_be_bytes());
         let y = compute_f1_simd::<K>(Simd::splat(x.into()), &partial_ys);
@@ -75,7 +71,7 @@ fn test_compute_f1_k22() {
         assert_eq!(y, Y::from(expected_y));
 
         // Make sure SIMD matches non-SIMD version
-        let mut partial_ys = [0; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize];
+        let mut partial_ys = [0; TABLE_1_YS_BATCH_SIMD::<K>];
         let starts_with_partial_y_bits = y.first_k_bits() << (u32::BITS - u32::from(K));
         partial_ys[..size_of::<u32>()].copy_from_slice(&starts_with_partial_y_bits.to_be_bytes());
         let y = compute_f1_simd::<K>(Simd::splat(x.into()), &partial_ys);
@@ -83,7 +79,6 @@ fn test_compute_f1_k22() {
     }
 }
 
-#[cfg(feature = "alloc")]
 fn check_match(yl: u32, yr: u32) -> bool {
     let param_b = u64::from(PARAM_B);
     let param_c = u64::from(PARAM_C);
@@ -115,6 +110,27 @@ fn check_match(yl: u32, yr: u32) -> bool {
     }
 
     false
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn test_has_match() {
+    // Both parities of the left bucket, every possible `r` of the right bucket
+    for left_bucket_index in [0_u32, 1] {
+        for left_r in (0..u32::from(PARAM_BC)).step_by(997) {
+            let left_y = left_bucket_index * u32::from(PARAM_BC) + left_r;
+
+            for right_r in 0..u32::from(PARAM_BC) {
+                let right_y = (left_bucket_index + 1) * u32::from(PARAM_BC) + right_r;
+
+                assert_eq!(
+                    has_match(Y::from(left_y), Y::from(right_y)),
+                    check_match(left_y, right_y),
+                    "left_y {left_y}, right_y {right_y}"
+                );
+            }
+        }
+    }
 }
 
 // TODO: This test should be rewritten into something more readable, currently it is more or less
@@ -150,7 +166,6 @@ fn test_matches() {
         }
     }
 
-    let left_targets = calculate_left_targets();
     let bucket_ys = bucket_ys.into_values().collect::<Vec<_>>();
     let mut total_matches = 0_usize;
     for (left_bucket_index, [left_bucket_ys, right_bucket_ys]) in
@@ -190,7 +205,6 @@ fn test_matches() {
                 &left_bucket,
                 &right_bucket,
                 &mut matches,
-                &left_targets,
             )
         };
         for m in matches {
@@ -218,10 +232,7 @@ fn verify_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>
     y: u32,
     y_output_expected: u32,
     metadata_expected: u128,
-) where
-    EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-{
+) {
     let (y_output, metadata) = compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
         Y::from(y),
         Metadata::from(left_metadata),

@@ -1,3 +1,6 @@
+// TODO: Remove once https://github.com/gfx-rs/wgpu/pull/9953 is released
+#![recursion_limit = "256"]
+
 mod commands;
 
 use clap::Parser;

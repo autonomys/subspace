@@ -10,13 +10,14 @@ pub(super) struct Rmap {
     ///
     /// Physical pointer must be increased by `1` to get a virtual pointer before storing. Virtual
     /// pointer must be decreased by `1` before reading to get a physical pointer.
-    virtual_pointers: [u16; PARAM_BC as usize],
+    virtual_pointers: [u16; const { usize::from(PARAM_BC) }],
     positions: [[Position; 2]; REDUCED_BUCKET_SIZE],
     next_physical_pointer: u16,
 }
 
 impl Rmap {
     #[inline(always)]
+    #[cfg_attr(feature = "no-panic", no_panic::no_panic)]
     pub(super) fn new() -> Self {
         Self {
             virtual_pointers: [0; _],
@@ -29,6 +30,7 @@ impl Rmap {
     /// `r` must be in the range `0..PARAM_BC`, there must be at most [`REDUCED_BUCKET_SIZE`] items
     /// inserted
     #[inline(always)]
+    #[cfg_attr(feature = "no-panic", no_panic::no_panic)]
     unsafe fn insertion_item(&mut self, r: R) -> &mut [Position; 2] {
         // SAFETY: Guaranteed by function contract
         let virtual_pointer = unsafe { self.virtual_pointers.get_unchecked_mut(usize::from(r)) };
@@ -52,6 +54,7 @@ impl Rmap {
     /// `r` must be in the range `0..PARAM_BC`, there must be at most [`REDUCED_BUCKET_SIZE`] items
     /// inserted
     #[inline(always)]
+    #[cfg_attr(feature = "no-panic", no_panic::no_panic)]
     pub(super) unsafe fn add(&mut self, r: R, position: Position) {
         // SAFETY: Guaranteed by function contract
         let rmap_item = unsafe { self.insertion_item(r) };
@@ -67,6 +70,7 @@ impl Rmap {
     /// # Safety
     /// `r` must be in the range `0..PARAM_BC`
     #[inline(always)]
+    #[cfg_attr(feature = "no-panic", no_panic::no_panic)]
     pub(super) unsafe fn get(&self, r: R) -> [Position; 2] {
         // SAFETY: Guaranteed by function contract
         let virtual_pointer = *unsafe { self.virtual_pointers.get_unchecked(usize::from(r)) };

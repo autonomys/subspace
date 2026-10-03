@@ -4,23 +4,25 @@
 mod tests;
 
 use crate::chiapos::Seed;
+#[cfg(all(feature = "alloc", test))]
+use crate::chiapos::table::NUM_BUCKETS;
 #[cfg(feature = "alloc")]
 pub use crate::chiapos::table::TablesCache;
 #[cfg(feature = "alloc")]
 use crate::chiapos::table::types::Position;
 use crate::chiapos::table::types::{Metadata, X, Y};
-use crate::chiapos::table::{
-    COMPUTE_F1_SIMD_FACTOR, compute_f1, compute_fn, has_match, metadata_size_bytes, num_buckets,
-};
 #[cfg(feature = "alloc")]
 use crate::chiapos::table::{PrunedTable, Table};
-use crate::chiapos::utils::EvaluatableUsize;
+use crate::chiapos::table::{compute_f1, compute_fn, has_match};
 #[cfg(any(feature = "full-chiapos", test))]
 use crate::chiapos::{Challenge, Quality};
 use core::array;
 use core::mem::MaybeUninit;
 #[cfg(any(feature = "full-chiapos", test))]
 use sha2::{Digest, Sha256};
+
+/// Size of the proof in bytes for a given `K` value
+const PROOF_SIZE<const K: u8>: usize = 64 * K as usize / 8;
 
 /// Pick position in `table_number` based on challenge bits
 #[cfg(all(feature = "alloc", any(feature = "full-chiapos", test)))]
@@ -38,13 +40,7 @@ const fn pick_position(
 
 /// Collection of Chia tables
 #[derive(Debug)]
-pub(super) struct TablesGeneric<const K: u8>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 7) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
+pub(super) struct TablesGeneric<const K: u8> {
     #[cfg(feature = "alloc")]
     table_2: PrunedTable<K, 2>,
     #[cfg(feature = "alloc")]
@@ -59,21 +55,7 @@ where
     table_7: Table<K, 7>,
 }
 
-impl<const K: u8> TablesGeneric<K>
-where
-    EvaluatableUsize<{ metadata_size_bytes(K, 1) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 2) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 3) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 4) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 5) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 6) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 7) }>: Sized,
-    EvaluatableUsize<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>: Sized,
-    EvaluatableUsize<{ 64 * K as usize / 8 }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
-{
+impl<const K: u8> TablesGeneric<K> {
     /// Create Chia proof of space tables. There also exists [`Self::create_parallel()`] that trades
     /// CPU efficiency and memory usage for lower latency.
     #[cfg(feature = "alloc")]
@@ -191,7 +173,7 @@ where
     pub(super) fn find_proof<'a>(
         &'a self,
         first_challenge_bytes: [u8; 4],
-    ) -> impl Iterator<Item = [u8; 64 * K as usize / 8]> + 'a {
+    ) -> impl Iterator<Item = [u8; PROOF_SIZE::<K>]> + 'a {
         let first_k_challenge_bits =
             u32::from_be_bytes(first_challenge_bytes) >> (u32::BITS as usize - usize::from(K));
 
@@ -228,8 +210,8 @@ where
         table_5: &PrunedTable<K, 5>,
         table_6: &PrunedTable<K, 6>,
         table_6_proof_targets: [Position; 2],
-    ) -> [u8; 64 * K as usize / 8] {
-        let mut proof = [0u8; 64 * K as usize / 8];
+    ) -> [u8; PROOF_SIZE::<K>] {
+        let mut proof = [0u8; PROOF_SIZE::<K>];
 
         table_6_proof_targets
             .into_iter()
@@ -288,7 +270,7 @@ where
     #[cfg(all(feature = "alloc", test))]
     pub(super) fn table_7_buckets(
         &self,
-    ) -> &[[(Position, Y); crate::chiapos::table::REDUCED_BUCKET_SIZE]; num_buckets(K)] {
+    ) -> &[[(Position, Y); crate::chiapos::table::REDUCED_BUCKET_SIZE]; NUM_BUCKETS::<K>] {
         self.table_7.buckets()
     }
 
@@ -296,11 +278,8 @@ where
     pub(super) fn verify_only(
         seed: &Seed,
         first_challenge_bytes: [u8; 4],
-        proof_of_space: &[u8; 64 * K as usize / 8],
-    ) -> bool
-    where
-        EvaluatableUsize<{ (K as usize * 2).div_ceil(u8::BITS as usize) }>: Sized,
-    {
+        proof_of_space: &[u8; PROOF_SIZE::<K>],
+    ) -> bool {
         let first_k_challenge_bits =
             u32::from_be_bytes(first_challenge_bytes) >> (u32::BITS as usize - usize::from(K));
 
@@ -358,11 +337,8 @@ where
     pub(super) fn verify(
         seed: &Seed,
         challenge: &Challenge,
-        proof_of_space: &[u8; 64 * K as usize / 8],
-    ) -> Option<Quality>
-    where
-        EvaluatableUsize<{ (K as usize * 2).div_ceil(u8::BITS as usize) }>: Sized,
-    {
+        proof_of_space: &[u8; PROOF_SIZE::<K>],
+    ) -> Option<Quality> {
         if !Self::verify_only(
             seed,
             [challenge[0], challenge[1], challenge[2], challenge[3]],
@@ -410,11 +386,7 @@ where
     >(
         ys_and_metadata: &[(Y, Metadata<K, PARENT_TABLE_NUMBER>)],
         next_ys_and_metadata: &'a mut [MaybeUninit<(Y, Metadata<K, TABLE_NUMBER>)>; N],
-    ) -> &'a [(Y, Metadata<K, TABLE_NUMBER>)]
-    where
-        EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-        EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
-    {
+    ) -> &'a [(Y, Metadata<K, TABLE_NUMBER>)] {
         let mut next_offset = 0_usize;
         for &[(left_y, left_metadata), (right_y, right_metadata)] in
             ys_and_metadata.as_chunks::<2>().0

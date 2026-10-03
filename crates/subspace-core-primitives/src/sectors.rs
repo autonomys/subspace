@@ -82,7 +82,7 @@ impl SectorId {
         // policy for recent pieces
         let min_history_size_in_pieces = recent_segments_in_pieces
             * recent_history_fraction.1.in_pieces().get()
-            / recent_history_fraction.0.in_pieces().get();
+            / recent_history_fraction.0.in_pieces();
         let input_hash = {
             let piece_offset_bytes = piece_offset.to_bytes();
             let mut key = [0; 32];
@@ -92,7 +92,7 @@ impl SectorId {
         let history_size_in_pieces = history_size.in_pieces().get();
         let num_interleaved_pieces = 1.max(
             u64::from(max_pieces_in_sector) * recent_history_fraction.0.in_pieces().get()
-                / recent_history_fraction.1.in_pieces().get()
+                / recent_history_fraction.1.in_pieces()
                 * 2,
         );
 
@@ -205,8 +205,20 @@ impl Step for SBucket {
     }
 
     #[inline]
+    fn forward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (n, overflowing) = u16::forward_overflowing(start.0, count);
+        (Self(n), overflowing)
+    }
+
+    #[inline]
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         u16::backward_checked(start.0, count).map(Self)
+    }
+
+    #[inline]
+    fn backward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (n, overflowing) = u16::backward_overflowing(start.0, count);
+        (Self(n), overflowing)
     }
 }
 

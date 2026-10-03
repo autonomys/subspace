@@ -1,3 +1,8 @@
+#[cfg(all(test, not(miri), not(target_arch = "spirv")))]
+mod cpu_tests;
+#[cfg(all(test, not(miri), not(target_arch = "spirv")))]
+mod gpu_tests;
+
 use crate::shader::compute_fn::compute_fn_impl;
 use crate::shader::constants::{
     MAX_BUCKET_SIZE, NUM_BUCKETS, NUM_MATCH_BUCKETS, PARAM_BC, REDUCED_BUCKET_SIZE,
@@ -108,7 +113,7 @@ unsafe fn compute_f2_into_buckets_inner(
     // SAFETY: TODO: Probably should not be unsafe to begin with:
     //  https://github.com/Rust-GPU/rust-gpu/pull/394#issuecomment-3316594485
     let bucket_offset = unsafe {
-        atomic_i_increment::<_, { Scope::QueueFamily as u32 }, { Semantics::NONE.bits() }>(
+        atomic_i_increment::<_, const { Scope::QueueFamily as u32 }, const { Semantics::NONE.bits() }>(
             bucket_size,
         )
     };

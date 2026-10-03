@@ -461,6 +461,7 @@ pub(super) struct DomainStartOptions {
     pub(super) domain_backend: Arc<FullBackend<DomainBlock>>,
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub(super) async fn run_domain(
     bootstrap_result: BootstrapResult<CBlock>,
     domain_configuration: DomainConfiguration,
