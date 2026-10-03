@@ -53,7 +53,7 @@ blake3 = { version = "1.8.7", default-features = false }
 blst = "0.3.17"
 bytes = { version = "1.12.1", default-features = false }
 bytesize = "2.7.0"
-cargo-gpu-install = { version = "=0.10.0-alpha.1", git = "https://github.com/Rust-GPU/rust-gpu", rev = "7895fd1d58878c8ff80dc44751081807d0535962" }
+cargo-gpu-install = { version = "=0.10.0-alpha.1", git = "https://github.com/Rust-GPU/rust-gpu", rev = "63d5a41422010cd3f732b587b9dcd1d1a2b42de7" }
 cc = "1.5.1"
 chacha20 = { version = "0.10.2", default-features = false }
 clap = "4.6.7"
@@ -265,7 +265,7 @@ sp-trie = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11
 sp-version = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 sp-weights = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 spin = "0.12.3"
-spirv-std = { version = "=0.10.0-alpha.1", git = "https://github.com/Rust-GPU/rust-gpu", rev = "7895fd1d58878c8ff80dc44751081807d0535962" }
+spirv-std = { version = "=0.10.0-alpha.1", git = "https://github.com/Rust-GPU/rust-gpu", rev = "63d5a41422010cd3f732b587b9dcd1d1a2b42de7" }
 ss58-registry = "1.51.0"
 static_assertions = "1.1.0"
 strum_macros = "0.28.0"

@@ -9,6 +9,7 @@
     generic_const_args,
     generic_const_items,
     inherent_associated_types,
+    macroless_generic_const_args,
     min_generic_const_args,
     step_trait
 )]
