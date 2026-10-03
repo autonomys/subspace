@@ -36,7 +36,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // SAFETY: Single-threaded
     unsafe {
         env::set_var("RUST_MIN_STACK", "16777216");
-        // TODO: `-Znext-solver=globally` is a requirement for `generic_const_args`
+        // TODO: `-Znext-solver=globally` is a requirement for `generic_const_args` on the toolchain
+        //  rust-gpu uses
         env::set_var("RUSTGPU_RUSTFLAGS", "-Znext-solver=globally");
     }
 

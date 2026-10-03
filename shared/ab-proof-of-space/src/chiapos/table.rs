@@ -723,7 +723,7 @@ unsafe fn match_to_result<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABL
     m: &Match,
 ) -> (Y, [Position; 2], Metadata<K, TABLE_NUMBER>)
 where
-    Table<K, PARENT_TABLE_NUMBER>: private::NotLastTable,
+    Table<K, PARENT_TABLE_NUMBER>: NotLastTable,
 {
     // SAFETY: Guaranteed by function contract
     let left_metadata = unsafe { parent_table.metadata(m.left_position) };
@@ -749,7 +749,7 @@ unsafe fn match_to_result_simd<const K: u8, const TABLE_NUMBER: u8, const PARENT
     [Metadata<K, TABLE_NUMBER>; COMPUTE_FN_SIMD_FACTOR],
 )
 where
-    Table<K, PARENT_TABLE_NUMBER>: private::NotLastTable,
+    Table<K, PARENT_TABLE_NUMBER>: NotLastTable,
 {
     let left_ys: [_; COMPUTE_FN_SIMD_FACTOR] = seq!(N in 0..16 {
         [
@@ -811,7 +811,7 @@ unsafe fn matches_to_results<const K: u8, const TABLE_NUMBER: u8, const PARENT_T
     positions: &mut [MaybeUninit<[Position; 2]>],
     metadatas: &mut [MaybeUninit<Metadata<K, TABLE_NUMBER>>],
 ) where
-    Table<K, PARENT_TABLE_NUMBER>: private::NotLastTable,
+    Table<K, PARENT_TABLE_NUMBER>: NotLastTable,
 {
     let (grouped_matches, other_matches) = matches.as_chunks::<COMPUTE_FN_SIMD_FACTOR>();
     let (grouped_ys, other_ys) = ys.split_at_mut(grouped_matches.as_flattened().len());
@@ -1040,42 +1040,41 @@ impl<const K: u8> Table<K, 1> {
 }
 
 #[cfg(feature = "alloc")]
-#[expect(clippy::inline_modules, reason = "Intentional tiny module inline")]
-mod private {
-    pub(in super::super) trait SupportedOtherTables {}
-    pub(in super::super) trait NotLastTable {}
-}
+pub(super) impl(self) trait SupportedOtherTables {}
 
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::SupportedOtherTables for Table<K, 2> {}
+impl<const K: u8> SupportedOtherTables for Table<K, 2> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::SupportedOtherTables for Table<K, 3> {}
+impl<const K: u8> SupportedOtherTables for Table<K, 3> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::SupportedOtherTables for Table<K, 4> {}
+impl<const K: u8> SupportedOtherTables for Table<K, 4> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::SupportedOtherTables for Table<K, 5> {}
+impl<const K: u8> SupportedOtherTables for Table<K, 5> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::SupportedOtherTables for Table<K, 6> {}
+impl<const K: u8> SupportedOtherTables for Table<K, 6> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::SupportedOtherTables for Table<K, 7> {}
+impl<const K: u8> SupportedOtherTables for Table<K, 7> {}
 
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::NotLastTable for Table<K, 1> {}
+pub(super) impl(self) trait NotLastTable {}
+
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::NotLastTable for Table<K, 2> {}
+impl<const K: u8> NotLastTable for Table<K, 1> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::NotLastTable for Table<K, 3> {}
+impl<const K: u8> NotLastTable for Table<K, 2> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::NotLastTable for Table<K, 4> {}
+impl<const K: u8> NotLastTable for Table<K, 3> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::NotLastTable for Table<K, 5> {}
+impl<const K: u8> NotLastTable for Table<K, 4> {}
 #[cfg(feature = "alloc")]
-impl<const K: u8> private::NotLastTable for Table<K, 6> {}
+impl<const K: u8> NotLastTable for Table<K, 5> {}
+#[cfg(feature = "alloc")]
+impl<const K: u8> NotLastTable for Table<K, 6> {}
 
 #[cfg(feature = "alloc")]
 impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER>
 where
-    Self: private::SupportedOtherTables,
+    Self: SupportedOtherTables,
 {
     /// Creates a new [`TABLE_NUMBER`] table. There also exists [`Self::create_parallel()`] that
     /// trades CPU efficiency and memory usage for lower latency and with multiple parallel calls,
@@ -1085,7 +1084,7 @@ where
         cache: &TablesCache,
     ) -> (Self, PrunedTable<K, PARENT_TABLE_NUMBER>)
     where
-        Table<K, PARENT_TABLE_NUMBER>: private::NotLastTable,
+        Table<K, PARENT_TABLE_NUMBER>: NotLastTable,
     {
         let left_targets = &*cache.left_targets;
         let mut initialized_elements = 0_usize;
@@ -1177,7 +1176,7 @@ where
         cache: &TablesCache,
     ) -> (Self, PrunedTable<K, PARENT_TABLE_NUMBER>)
     where
-        Table<K, PARENT_TABLE_NUMBER>: private::NotLastTable,
+        Table<K, PARENT_TABLE_NUMBER>: NotLastTable,
     {
         // SAFETY: Contents is `MaybeUninit`
         let ys = unsafe {
@@ -1345,7 +1344,7 @@ fn little_endian_s_bucket(first_k_bits: u32, k: u8) -> u32 {
 #[cfg(feature = "alloc")]
 impl<const K: u8> Table<K, 7>
 where
-    Self: private::SupportedOtherTables,
+    Self: SupportedOtherTables,
 {
     /// Proof targets from the last table into the previous table, one for each
     /// [`Record::NUM_S_BUCKETS`].
@@ -1357,7 +1356,7 @@ where
         PrunedTable<K, 6>,
     )
     where
-        Table<K, 6>: private::NotLastTable,
+        Table<K, 6>: NotLastTable,
     {
         let left_targets = &*cache.left_targets;
         // SAFETY: Data structure filled with zeroes is a valid invariant
@@ -1446,7 +1445,7 @@ where
         PrunedTable<K, 6>,
     )
     where
-        Table<K, 6>: private::NotLastTable,
+        Table<K, 6>: NotLastTable,
     {
         // SAFETY: Contents is `MaybeUninit`
         let buckets_positions = unsafe {
@@ -1585,7 +1584,7 @@ where
 #[cfg(feature = "alloc")]
 impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER>
 where
-    Self: private::NotLastTable,
+    Self: NotLastTable,
 {
     /// Returns `None` for an invalid position or for table number 7.
     ///

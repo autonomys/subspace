@@ -12,7 +12,7 @@ const U32_WORDS_TO_BYTES<const N: usize>: usize = N * 4;
 
 /// Generalized unsigned integer as an array of u32 words, least significant word first
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[repr(C)]
+#[repr(transparent)]
 pub struct U32N<const N: usize>([u32; N]);
 
 impl<const N: usize> U32N<N> {

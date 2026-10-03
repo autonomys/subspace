@@ -31,10 +31,8 @@ use subspace_core_primitives::pos::PosProof;
 #[cfg(feature = "alloc")]
 use subspace_core_primitives::sectors::SBucket;
 
-#[expect(clippy::inline_modules, reason = "Intentional tiny module inline")]
-mod private {
-    pub trait Supported {}
-}
+/// Supported K values for Chia proof of space tables
+pub impl(self) trait SupportedKValue {}
 
 /// Size of the proof in bytes for a given `K` value
 pub const PROOF_SIZE<const K: u8>: usize =
@@ -113,7 +111,7 @@ const fn pick_position(
 #[derive(Debug)]
 pub struct Tables<const K: u8>
 where
-    Self: private::Supported,
+    Self: SupportedKValue,
 {
     #[cfg(feature = "alloc")]
     table_2: PrunedTable<K, 2>,
@@ -131,7 +129,7 @@ where
 
 impl<const K: u8> Tables<K>
 where
-    Self: private::Supported,
+    Self: SupportedKValue,
 {
     /// Create Chia proof of space tables.
     ///
@@ -641,7 +639,7 @@ where
 macro_rules! impl_supported {
     ($($k: expr$(,)? )*) => {
         $(
-impl private::Supported for Tables<$k> {}
+impl SupportedKValue for Tables<$k> {}
         )*
     }
 }

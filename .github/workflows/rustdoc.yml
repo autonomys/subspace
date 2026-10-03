@@ -46,9 +46,7 @@ jobs:
       - name: Build Documentation
         run: cargo -Zgitoxide -Zgit doc --locked --all --no-deps --lib
         env:
-          # TODO: `-Znext-solver=globally` is a requirement for `generic_const_args`, `-Zmin-recursion-limit=256` is in
-          #  turn needed for some crates due to `-Znext-solver=globally`
-          RUSTDOCFLAGS: "-Znext-solver=globally -Zmin-recursion-limit=256 -D rustdoc::broken-intra-doc-links -D rustdoc::private_intra_doc_links -Z unstable-options --enable-index-page"
+          RUSTDOCFLAGS: "-D rustdoc::broken-intra-doc-links -D rustdoc::private_intra_doc_links -Z unstable-options --enable-index-page"
 
       - name: Deploy Docs
         uses: JamesIves/github-pages-deploy-action@d92aa235d04922e8f08b40ce78cc5442fcfbfa2f # v4.8.0

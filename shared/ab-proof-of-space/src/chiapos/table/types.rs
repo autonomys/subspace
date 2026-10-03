@@ -15,7 +15,7 @@ const METADATA_SIZE_BYTES<const K: u8, const TABLE_NUMBER: u8>: usize =
 
 /// Stores data in lower bits
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into, Add, AddAssign)]
-#[repr(C)]
+#[repr(transparent)]
 pub(in super::super) struct X(u32);
 
 impl Step for X {
@@ -68,7 +68,7 @@ impl X {
 
 /// Stores data in lower bits
 #[derive(Debug, Copy, Clone, Eq, PartialEq, From, Into)]
-#[repr(C)]
+#[repr(transparent)]
 pub(in super::super) struct Y(u32);
 
 impl From<Y> for u128 {
@@ -109,13 +109,13 @@ impl Y {
     #[inline(always)]
     pub(super) const fn array_from_repr<const N: usize>(array: [u32; N]) -> [Self; N] {
         // TODO: Should have been transmute, but https://github.com/rust-lang/rust/issues/152507
-        // SAFETY: `Y` is `#[repr(C)]` and guaranteed to have the same memory layout
+        // SAFETY: `Y` is `#[repr(transparent)]` and guaranteed to have the same memory layout
         unsafe { mem::transmute_copy(&array) }
     }
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into)]
-#[repr(C)]
+#[repr(transparent)]
 pub(in super::super) struct Position(u32);
 
 impl Step for Position {
@@ -164,7 +164,7 @@ impl Position {
 
 /// Stores data in lower bits
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(C)]
+#[repr(transparent)]
 pub(in super::super) struct Metadata<const K: u8, const TABLE_NUMBER: u8>(
     [u8; METADATA_SIZE_BYTES::<K, TABLE_NUMBER>],
 );
@@ -209,7 +209,7 @@ impl<const K: u8, const TABLE_NUMBER: u8> From<X> for Metadata<K, TABLE_NUMBER> 
 
 /// `r` is a value of `y` minus bucket base
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into)]
-#[repr(C)]
+#[repr(transparent)]
 pub(in super::super) struct R(u16);
 
 impl From<R> for usize {

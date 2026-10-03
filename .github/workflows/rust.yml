@@ -17,9 +17,7 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
   # Build smaller artifacts to avoid running out of space in CI and make it a bit faster
-  # TODO: `-Znext-solver=globally` is a requirement for `generic_const_args`, `-Zmin-recursion-limit=256` is in turn
-  #  needed for some crates due to `-Znext-solver=globally`
-  RUSTFLAGS: -Znext-solver=globally -Zmin-recursion-limit=256 -C strip=symbols
+  RUSTFLAGS: -C strip=symbols
   RUST_BACKTRACE: full
   # If a property test fails, we want to shrink it as much as possible to find the minimal failing
   # case. This only happens on test failure, so it's not a big deal if it's slow.

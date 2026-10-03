@@ -8,6 +8,7 @@
     const_trait_impl,
     generic_const_args,
     generic_const_items,
+    impl_restriction,
     inherent_associated_types,
     macroless_generic_const_args,
     min_generic_const_args,

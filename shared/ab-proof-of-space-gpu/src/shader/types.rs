@@ -6,7 +6,7 @@ use derive_more::{From, Into};
 
 /// Stores data in lower bits
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into)]
-#[repr(C)]
+#[repr(transparent)]
 pub(super) struct X(u32);
 
 impl Step for X {
@@ -47,7 +47,7 @@ impl X {
 
 /// Stores data in lower bits
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into)]
-#[repr(C)]
+#[repr(transparent)]
 pub struct Y(u32);
 
 impl From<Y> for U32N<4> {
@@ -76,7 +76,7 @@ impl Y {
 // TODO: The struct in this form currently doesn't compile:
 //  https://github.com/Rust-GPU/rust-gpu/issues/241#issuecomment-3005693043
 // #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into)]
-// #[repr(C)]
+// #[repr(transparent)]
 // pub struct Position(u32);
 //
 // impl From<Position> for usize {
@@ -114,7 +114,7 @@ impl PositionExt for Position {
 
 /// Stores data in lower bits
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(C)]
+#[repr(transparent)]
 pub struct Metadata(U32N<3>);
 
 impl Default for Metadata {
@@ -153,7 +153,7 @@ impl From<Position> for Metadata {
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-#[repr(C)]
+#[repr(transparent)]
 pub struct R(u32);
 
 impl R {
@@ -197,7 +197,7 @@ impl PositionR {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
-#[repr(C)]
+#[repr(transparent)]
 pub struct Match(u32);
 
 impl fmt::Debug for Match {
