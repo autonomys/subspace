@@ -5,9 +5,7 @@ use crate::farmer_cache::FarmerCaches;
 use crate::node_client::NodeClient;
 use async_lock::RwLock as AsyncRwLock;
 use async_trait::async_trait;
-use backoff::ExponentialBackoff;
-use backoff::backoff::Backoff;
-use backoff::future::retry;
+use backon::{ExponentialBuilder, Retryable};
 use futures::channel::mpsc;
 use futures::future::FusedFuture;
 use futures::stream::FuturesUnordered;
@@ -34,7 +32,7 @@ pub struct DsnCacheRetryPolicy {
     /// Max number of retries when trying to get piece from DSN cache
     pub max_retries: u16,
     /// Exponential backoff between retries
-    pub backoff: ExponentialBackoff,
+    pub backoff: ExponentialBuilder,
 }
 
 struct Inner<FarmIndex, PV, NC> {
@@ -216,10 +214,7 @@ where
         {
             let retries = AtomicU32::new(0);
             let max_retries = u32::from(self.inner.dsn_cache_retry_policy.max_retries);
-            let mut backoff = self.inner.dsn_cache_retry_policy.backoff.clone();
-            backoff.reset();
-
-            let maybe_piece_fut = retry(backoff, || async {
+            let maybe_piece_fut = (|| async {
                 let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
 
                 if let Some(piece) = self.get_piece_fast_internal(piece_index).await {
@@ -240,8 +235,9 @@ where
 
                 trace!(%piece_index, current_attempt, "Couldn't get a piece fast, retrying...");
 
-                Err(backoff::Error::transient("Couldn't get piece fast"))
-            });
+                Err("Couldn't get piece fast")
+            })
+            .retry(self.inner.dsn_cache_retry_policy.backoff);
 
             if let Ok(Some(piece)) = maybe_piece_fut.await {
                 trace!(%piece_index, "Got piece from cache successfully");

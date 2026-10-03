@@ -3,7 +3,7 @@
 use crate::commands::shared::DiskFarm;
 use anyhow::anyhow;
 use async_lock::Mutex as AsyncMutex;
-use backoff::ExponentialBackoff;
+use backon::ExponentialBuilder;
 use bytesize::ByteSize;
 use clap::Parser;
 use futures::stream::FuturesUnordered;
@@ -244,10 +244,7 @@ where
     let plotter = Arc::new(ClusterPlotter::new(
         nats_client.clone(),
         sector_encoding_concurrency,
-        ExponentialBackoff {
-            max_elapsed_time: None,
-            ..ExponentialBackoff::default()
-        },
+        ExponentialBuilder::default().without_max_times(),
     ));
 
     let farms = {

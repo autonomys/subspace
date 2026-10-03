@@ -13,8 +13,7 @@ use crate::sector::{
 };
 use crate::segment_reconstruction::recover_missing_piece;
 use async_lock::{Mutex as AsyncMutex, Semaphore};
-use backoff::future::retry;
-use backoff::{Error as BackoffError, ExponentialBackoff};
+use backon::{ExponentialBuilder, Retryable};
 use futures::stream::FuturesUnordered;
 use futures::{StreamExt, select};
 use parity_scale_codec::{Decode, Encode};
@@ -39,16 +38,6 @@ use thiserror::Error;
 use tracing::{debug, trace, warn};
 
 const RECONSTRUCTION_CONCURRENCY_LIMIT: usize = 1;
-
-fn default_backoff() -> ExponentialBackoff {
-    ExponentialBackoff {
-        initial_interval: Duration::from_secs(15),
-        max_interval: Duration::from_secs(10 * 60),
-        // Try until we get a valid piece
-        max_elapsed_time: None,
-        ..ExponentialBackoff::default()
-    }
-}
 
 /// Information about sector that was plotted
 #[derive(Debug, Clone, Encode, Decode)]
@@ -285,7 +274,7 @@ where
         // This map will be mutated, removing piece indices we have already processed
         let pieces_to_download = AsyncMutex::new(pieces_to_download);
 
-        retry(default_backoff(), || async {
+        (|| async {
             let mut pieces_to_download = pieces_to_download.lock().await;
 
             if let Err(error) =
@@ -300,13 +289,20 @@ where
                     "Sector downloading attempt failed, will retry later"
                 );
 
-                return Err(BackoffError::transient(error));
+                return Err(error);
             }
 
             debug!(%sector_index, "Sector downloaded successfully");
 
             Ok(())
         })
+        .retry(
+            ExponentialBuilder::default()
+                .with_min_delay(Duration::from_secs(15))
+                .with_max_delay(Duration::from_mins(10))
+                // Try until we get a valid piece
+                .without_max_times(),
+        )
         .await?;
 
         raw_sector

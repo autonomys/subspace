@@ -13,7 +13,7 @@ use crate::protocols::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
 use crate::utils::rate_limiter::RateLimiter;
 use crate::utils::{SubspaceMetrics, strip_peer_id};
-use backoff::{ExponentialBackoff, SystemClock};
+use backon::ExponentialBuilder;
 use futures::channel::mpsc;
 use libp2p::autonat::Config as AutonatConfig;
 use libp2p::connection_limits::ConnectionLimits;
@@ -36,7 +36,7 @@ use prometheus_client::registry::Registry;
 use std::borrow::Cow;
 use std::iter::Empty;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{fmt, io, iter};
 use subspace_core_primitives::hashes;
 use subspace_core_primitives::pieces::Piece;
@@ -69,7 +69,6 @@ const ENABLE_GOSSIP_PROTOCOL: bool = false;
 
 const TEMPORARY_BANS_CACHE_SIZE: u32 = 10_000;
 const TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
-const TEMPORARY_BANS_DEFAULT_BACKOFF_RANDOMIZATION_FACTOR: f64 = 0.1;
 const TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER: f64 = 1.5;
 const TEMPORARY_BANS_DEFAULT_MAX_INTERVAL: Duration = Duration::from_secs(30 * 60);
 
@@ -202,7 +201,7 @@ pub struct Config {
     /// How many temporarily banned unreachable peers to keep in memory.
     pub temporary_bans_cache_size: u32,
     /// Backoff policy for temporary banning of unreachable peers.
-    pub temporary_ban_backoff: ExponentialBackoff,
+    pub temporary_ban_backoff: ExponentialBuilder,
     /// Optional libp2p prometheus metrics. None will disable metrics gathering.
     pub libp2p_metrics: Option<Metrics>,
     /// Internal prometheus metrics. None will disable metrics gathering.
@@ -293,16 +292,11 @@ impl Config {
         let protocol_version = format!("/subspace/2/{protocol_version}");
         let identify = IdentifyConfig::new(protocol_version.clone(), keypair.public());
 
-        let temporary_ban_backoff = ExponentialBackoff {
-            current_interval: TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL,
-            initial_interval: TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL,
-            randomization_factor: TEMPORARY_BANS_DEFAULT_BACKOFF_RANDOMIZATION_FACTOR,
-            multiplier: TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER,
-            max_interval: TEMPORARY_BANS_DEFAULT_MAX_INTERVAL,
-            start_time: Instant::now(),
-            max_elapsed_time: None,
-            clock: SystemClock::default(),
-        };
+        let temporary_ban_backoff = ExponentialBuilder::default()
+            .with_factor(TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER as f32)
+            .with_min_delay(TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL)
+            .with_max_delay(TEMPORARY_BANS_DEFAULT_MAX_INTERVAL)
+            .without_max_times();
 
         Self {
             keypair,
