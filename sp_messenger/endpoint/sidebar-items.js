@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Endpoint"],"struct":["CollectedFee","EndpointRequest","EndpointRequestWithCollectedFee"],"trait":["EndpointHandler","Sender"],"type":["EndpointId","EndpointPayload","EndpointResponse"]};

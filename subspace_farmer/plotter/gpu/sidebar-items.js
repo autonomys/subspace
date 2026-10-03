@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["metrics","wgpu"],"struct":["GpuPlotter"],"trait":["GpuRecordsEncoder"],"type":["HandlerFn3"]};
