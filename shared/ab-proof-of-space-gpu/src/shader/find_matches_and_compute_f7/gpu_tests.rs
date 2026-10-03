@@ -382,6 +382,10 @@ async fn find_matches_and_compute_f7_adapter(
     device.poll(PollType::wait_indefinitely()).unwrap();
 
     let table_6_proof_targets_sizes = {
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "The pointer is to correctly initialized and aligned memory"
+        )]
         let table_6_proof_targets_sizes_host_ptr = table_6_proof_targets_sizes_host
             .get_mapped_range(..)
             .unwrap()
@@ -401,6 +405,10 @@ async fn find_matches_and_compute_f7_adapter(
         }
     };
     let table_6_proof_targets = {
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "The pointer is to correctly initialized and aligned memory"
+        )]
         let buckets_host_ptr = table_6_proof_targets_host
             .get_mapped_range(..)
             .unwrap()

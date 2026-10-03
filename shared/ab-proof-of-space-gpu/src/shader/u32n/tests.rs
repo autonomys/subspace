@@ -1,29 +1,10 @@
 use crate::shader::u32n::U32N;
 
 #[test]
-fn test_from_low_high() {
-    for num in [0u32, 1, 42, 0x7FFF_FFFF, u32::MAX] {
-        let low = num;
-        let high = 42u32;
-        let correct = (u64::from(high) << u32::BITS) | u64::from(low);
-        let u32n = U32N::<2>::from_low_high(low, high);
-        assert_eq!(u32n.to_be_bytes(), correct.to_be_bytes());
-    }
-}
-
-#[test]
 fn test_from_u32() {
     for num in [0u32, 1, 42, 0x7FFF_FFFF, u32::MAX] {
         let u32n = U32N::<2>::from(num);
         assert_eq!(u32n.to_be_bytes(), u64::from(num).to_be_bytes());
-    }
-}
-
-#[test]
-fn test_as_u32() {
-    for num in [0u32, 1, 42, 0x7FFF_FFFF, u32::MAX] {
-        let u32n = U32N::<2>::from_be_bytes(u64::from(num).to_be_bytes());
-        assert_eq!(u32n.as_u32(), num);
     }
 }
 

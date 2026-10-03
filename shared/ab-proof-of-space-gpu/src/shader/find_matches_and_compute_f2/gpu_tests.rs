@@ -418,6 +418,10 @@ async fn find_matches_and_compute_f2_adapter(
     device.poll(PollType::wait_indefinitely()).unwrap();
 
     let bucket_sizes = {
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "The pointer is to correctly initialized and aligned memory"
+        )]
         let bucket_sizes_host_ptr = bucket_sizes_host
             .get_mapped_range(..)
             .unwrap()
@@ -437,6 +441,10 @@ async fn find_matches_and_compute_f2_adapter(
         }
     };
     let buckets = {
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "The pointer is to correctly initialized and aligned memory"
+        )]
         let buckets_host_ptr = buckets_host
             .get_mapped_range(..)
             .unwrap()
@@ -458,6 +466,10 @@ async fn find_matches_and_compute_f2_adapter(
         }
     };
     let positions = {
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "The pointer is to correctly initialized and aligned memory"
+        )]
         let positions_host_ptr = positions_host
             .get_mapped_range(..)
             .unwrap()
@@ -479,6 +491,10 @@ async fn find_matches_and_compute_f2_adapter(
         }
     };
     let metadatas = {
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "The pointer is to correctly initialized and aligned memory"
+        )]
         let metadatas_host_ptr = metadatas_host
             .get_mapped_range(..)
             .unwrap()

@@ -2,7 +2,7 @@
 use crate::shader::constants::{MAX_BUCKET_SIZE, PARAM_M, REDUCED_MATCHES_COUNT};
 use crate::shader::constants::{PARAM_BC, REDUCED_BUCKET_SIZE};
 #[cfg(all(not(miri), not(target_arch = "spirv")))]
-use crate::shader::find_matches_in_buckets::calculate_left_target_on_demand;
+use crate::shader::find_matches_in_buckets::LeftTarget;
 #[cfg(all(not(miri), not(target_arch = "spirv")))]
 use crate::shader::types::{Match, PositionR};
 use crate::shader::types::{Position, PositionExt};
@@ -123,7 +123,7 @@ pub(in super::super) fn find_matches_in_buckets_correct<'a>(
         let left_r = r.get();
 
         for m in 0..u32::from(PARAM_M) {
-            let r_target = calculate_left_target_on_demand(parity, left_r, m);
+            let r_target = LeftTarget::new(parity, m).calculate(left_r);
             // SAFETY: Targets are always limited to `PARAM_BC`
             let [right_position_a, right_position_b] = unsafe { rmap.get(r_target) };
 

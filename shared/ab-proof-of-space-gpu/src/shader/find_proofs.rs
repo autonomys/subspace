@@ -50,10 +50,14 @@ pub struct ProofsHost {
     // TODO: Would have been nice to avoid filtering-out on the host
     /// S-buckets at which proofs were found, there will be more than `Record::NUM_CHUNKS` proofs
     /// here, needs to be filtered-out by the host
+    // TODO: Use `mut(self)` after rust-gpu toolchain upgrade
+    // pub mut(self) found_proofs: [u8; const { NUM_S_BUCKETS / u8::BITS as usize }],
     pub found_proofs: [u8; const { NUM_S_BUCKETS / u8::BITS as usize }],
     // TODO: Calculate bit mask for proofs found upfront and reduce the size here to just
     //  `NUM_CHUNKS`
     /// All proofs, those that correspond to set bits of `found_proofs` exist
+    // TODO: Use `mut(self)` after rust-gpu toolchain upgrade
+    // pub mut(self) proofs: [PosProof; NUM_S_BUCKETS],
     pub proofs: [PosProof; NUM_S_BUCKETS],
 }
 

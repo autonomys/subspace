@@ -14,9 +14,9 @@ dependencies = [
 
 [[package]]
 name = "ab-blake3"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11b86172b9a93eed540aa8bcabf8e4f3f6fcfdbfcd3573dcc284fed94722c5da"
+checksum = "02cf5982ca33b3ff819f4f66e17a23d7c7adbf02ac9e7055596ce282cb06ebb4"
 dependencies = [
  "blake3",
 ]
@@ -33,13 +33,17 @@ version = "0.1.0"
 dependencies = [
  "ab-blake3",
  "ab-chacha8",
+ "array-reshape",
+ "blake3",
  "chacha20 0.10.2",
  "derive_more 2.1.1",
+ "no-panic",
  "rayon",
  "rclite",
  "seq-macro",
  "sha2 0.11.0",
  "subspace-core-primitives",
+ "transparent-wrapper",
 ]
 
 [[package]]
@@ -751,6 +755,12 @@ name = "array-bytes"
 version = "6.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d5dde061bd34119e902bbb2d9b90c5692635cf59fb91d582c2b68043f1b8293"
+
+[[package]]
+name = "array-reshape"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e88ea8f13a4f89b874524ffaccd8e36a3f90476437ff7b17d9ff79cb4fb58a0"
 
 [[package]]
 name = "arrayref"
@@ -1696,8 +1706,9 @@ dependencies = [
 
 [[package]]
 name = "cargo-gpu-install"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu?rev=eb73c07837c31b4eca701237e04ef1a46432e57b#eb73c07837c31b4eca701237e04ef1a46432e57b"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "668b4bd1b59810c4f907eeb36bb0f0a450c824219b2e599b9b8ef2b3ae056e94"
 dependencies = [
  "anyhow",
  "cargo_metadata 0.21.0",
@@ -8117,6 +8128,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "no-panic"
+version = "0.1.37"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc80370b4544f28ffa317e3c3474ee3ecbfe269196c01ae657d9f837a7d944a1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
+]
+
+[[package]]
 name = "no-std-compat"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10280,9 +10302,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.106"
+version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
+checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
 ]
@@ -10613,9 +10635,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.46"
+version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfbc457d0c7a0759a614551b11a6409e5951f6c7537be1f1b7682b9ae9230368"
+checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
 dependencies = [
  "proc-macro2",
 ]
@@ -11167,8 +11189,9 @@ checksum = "3e75f6a532d0fd9f7f13144f392b6ad56a32696bfcd9c78f797f16bbb6f072d6"
 
 [[package]]
 name = "rustc_codegen_spirv-types"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu?rev=eb73c07837c31b4eca701237e04ef1a46432e57b#eb73c07837c31b4eca701237e04ef1a46432e57b"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d703f5624720c5b6012f4b88d6e6766f43ed50d80144eaffd6791c3270754cdc"
 dependencies = [
  "rspirv",
  "semver 1.0.27",
@@ -14512,8 +14535,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-builder"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu?rev=eb73c07837c31b4eca701237e04ef1a46432e57b#eb73c07837c31b4eca701237e04ef1a46432e57b"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57fa119866f0311546e5309b18770b72141c25d185452c11a812be2c7b9d84e9"
 dependencies = [
  "cargo_metadata 0.21.0",
  "log",
@@ -14528,8 +14552,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu?rev=eb73c07837c31b4eca701237e04ef1a46432e57b#eb73c07837c31b4eca701237e04ef1a46432e57b"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d98471765e294d4dd6289350e3633b5c5ba57bb382c3287d83e69ee737179e0"
 dependencies = [
  "bitflags 2.13.2",
  "glam",
@@ -14541,8 +14566,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-macros"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu?rev=eb73c07837c31b4eca701237e04ef1a46432e57b#eb73c07837c31b4eca701237e04ef1a46432e57b"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13a6a0d063d4dd003e43818135b7aa4a30c41c48b5d0efe2cac02220448d4f19"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -14552,8 +14578,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-types"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu?rev=eb73c07837c31b4eca701237e04ef1a46432e57b#eb73c07837c31b4eca701237e04ef1a46432e57b"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "655632248eaaa205cea4656bc73c8285cbd8109fc784010b24ea6bd0bab79ac1"
 
 [[package]]
 name = "spki"
@@ -16655,6 +16682,26 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
+]
+
+[[package]]
+name = "transparent-wrapper"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "409be8a74aad43f4b7e3fb973d6c5ca5f6026936bdfe0da99ca53f0fb39f34f9"
+dependencies = [
+ "transparent-wrapper-derive",
+]
+
+[[package]]
+name = "transparent-wrapper-derive"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4847ec095ec01ff4ff76c996e391ca89bdf854c062cbdb7727ee2208ec611661"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
 ]
 
 [[package]]

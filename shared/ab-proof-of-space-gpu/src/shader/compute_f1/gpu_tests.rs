@@ -259,6 +259,10 @@ async fn compute_f1_adapter(
     device.poll(PollType::wait_indefinitely()).unwrap();
 
     let buckets = {
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "The pointer is to correctly initialized and aligned memory"
+        )]
         let bucket_sizes_host_ptr = bucket_sizes_host
             .get_mapped_range(..)
             .unwrap()
@@ -267,6 +271,10 @@ async fn compute_f1_adapter(
         // SAFETY: The pointer is to correctly initialized and aligned memory
         let bucket_sizes = unsafe { &*bucket_sizes_host_ptr };
 
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "The pointer is to correctly initialized and aligned memory"
+        )]
         let buckets_host_ptr = buckets_host
             .get_mapped_range(..)
             .unwrap()

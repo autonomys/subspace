@@ -20,12 +20,17 @@ bench = false
 ab-blake3 = { workspace = true }
 ab-chacha8 = { workspace = true }
 subspace-core-primitives = { workspace = true }
+array-reshape = { workspace = true }
+# NOTE: `blake3` is here only for `no-panic` feature
+blake3 = { workspace = true, optional = true }
 chacha20 = { workspace = true, features = ["cipher"], optional = true }
 derive_more = { workspace = true, features = ["full"] }
+no-panic = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 rclite = { workspace = true, optional = true }
 seq-macro = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
+transparent-wrapper = { workspace = true }
 
 [dev-dependencies]
 chacha20 = { workspace = true, features = ["cipher"] }
@@ -44,6 +49,13 @@ alloc = [
 # only K=20 is exposed)
 full-chiapos = [
     "dep:sha2",
+]
+# Check that code can't panic under any conditions.
+# Not the whole crate is annotated, but the majority of it is.
+no-panic = [
+    "dep:no-panic",
+    # Helps with testing on CPUs without AVX512 support
+    "blake3/no_avx512",
 ]
 parallel = [
     "alloc",

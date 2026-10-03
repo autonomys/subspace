@@ -36,9 +36,17 @@ chacha20 = { workspace = true, features = ["rng"] }
 futures = { workspace = true, features = ["executor"] }
 rand = { workspace = true }
 
-# TODO: This will be built in the shader as well, figure out a way to avoid that
 [build-dependencies]
-cargo-gpu-install = { workspace = true }
+cargo-gpu-install = { workspace = true, optional = true }
+
+[features]
+default = [
+    "build-shader",
+]
+# Enabled by default for the host, shader code disables this feature to remove build dependencies
+build-shader = [
+    "dep:cargo-gpu-install",
+]
 
 [lints.rust]
 # `spirv` is the rust-gpu target this crate compiles to, unknown to rustc's built-in cfg checking

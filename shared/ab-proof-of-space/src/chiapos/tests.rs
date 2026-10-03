@@ -1,6 +1,6 @@
 #![cfg(not(miri))]
 
-use crate::chiapos::{Tables, TablesCache};
+use crate::chiapos::Tables;
 use alloc::vec::Vec;
 use subspace_core_primitives::sectors::SBucket;
 
@@ -9,14 +9,13 @@ const K: u8 = 17;
 #[test]
 fn self_verification() {
     let seed = [1; 32];
-    let cache = TablesCache::default();
-    let tables = Tables::<K>::create(seed, &cache);
+    let tables = Tables::<K>::create(seed);
     #[cfg(feature = "parallel")]
-    let tables_parallel = Tables::<K>::create_parallel(seed, &cache);
+    let tables_parallel = Tables::<K>::create_parallel(seed);
 
-    let all_proofs = Tables::<K>::create_proofs(seed, &cache);
+    let all_proofs = Tables::<K>::create_proofs(seed);
     #[cfg(feature = "parallel")]
-    let all_proofs_parallel = Tables::<K>::create_proofs_parallel(seed, &cache);
+    let all_proofs_parallel = Tables::<K>::create_proofs_parallel(seed);
 
     for challenge_index in 0..1000_u32 {
         let mut challenge = [0; 32];

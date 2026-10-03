@@ -1,10 +1,13 @@
-use cargo_gpu_install::install::Install;
-use cargo_gpu_install::spirv_builder::{Capability, SpirvBuilderError, SpirvMetadata};
-use std::error::Error;
-use std::path::PathBuf;
-use std::{env, fs};
+#[cfg(not(feature = "build-shader"))]
+fn main() {}
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[cfg(feature = "build-shader")]
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use cargo_gpu_install::install::Install;
+    use cargo_gpu_install::spirv_builder::{Capability, SpirvBuilderError, SpirvMetadata};
+    use std::path::PathBuf;
+    use std::{env, fs};
+
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").expect("Always set by Cargo; qed");
 
     if target_arch == "spirv" {
@@ -56,7 +59,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         // TODO: This should not be needed: https://github.com/Rust-GPU/rust-gpu/issues/386
         .capability(Capability::GroupNonUniformShuffle)
         // Avoid Cargo deadlock, customize target
-        .target_dir_path(out_dir.clone());
+        .target_dir_path(out_dir.clone())
+        // The nested invocation compiles this build script again, and without `build-shader` it
+        // does not need any of the build dependencies
+        .shader_crate_default_features(false);
     spirv_builder.build_script.defaults = true;
     spirv_builder
         .build_script

@@ -46,11 +46,6 @@ impl<const N: usize> U32N<N> {
         Self(words)
     }
 
-    #[inline(always)]
-    pub(super) fn as_u32(&self) -> u32 {
-        self.0[0]
-    }
-
     pub(super) fn cast<const O: usize>(self) -> U32N<O> {
         let mut output = [0u32; O];
         if N.min(O) > 0 {
@@ -69,13 +64,6 @@ impl<const N: usize> U32N<N> {
             unimplemented!();
         }
         U32N(output)
-    }
-}
-
-impl U32N<2> {
-    #[inline(always)]
-    pub(super) fn from_low_high(low: u32, high: u32) -> Self {
-        Self([low, high])
     }
 }
 
@@ -179,15 +167,10 @@ impl Shl<u32> for U32N<2> {
 
     #[inline(always)]
     fn shl(mut self, rhs: u32) -> Self {
-        if rhs == 0 {
-            return self;
-        }
-
         let bit_shift = rhs % u32::BITS;
         match rhs / u32::BITS {
             0 => {
-                self.0[1] =
-                    (self.0[1] << bit_shift) | (self.0[0].unbounded_shr(u32::BITS - bit_shift));
+                self.0[1] = self.0[1].funnel_shl(self.0[0], bit_shift);
                 self.0[0] <<= bit_shift;
             }
             1 => {
@@ -213,15 +196,10 @@ impl Shr<u32> for U32N<2> {
 
     #[inline(always)]
     fn shr(mut self, rhs: u32) -> Self {
-        if rhs == 0 {
-            return self;
-        }
-
         let bit_shift = rhs % u32::BITS;
         match rhs / u32::BITS {
             0 => {
-                self.0[0] =
-                    (self.0[0] >> bit_shift) | (self.0[1].unbounded_shl(u32::BITS - bit_shift));
+                self.0[0] = self.0[1].funnel_shr(self.0[0], bit_shift);
                 self.0[1] >>= bit_shift;
             }
             1 => {
@@ -356,22 +334,15 @@ impl Shl<u32> for U32N<3> {
 
     #[inline(always)]
     fn shl(mut self, rhs: u32) -> Self {
-        if rhs == 0 {
-            return self;
-        }
-
         let bit_shift = rhs % u32::BITS;
         match rhs / u32::BITS {
             0 => {
-                self.0[2] =
-                    (self.0[2] << bit_shift) | (self.0[1].unbounded_shr(u32::BITS - bit_shift));
-                self.0[1] =
-                    (self.0[1] << bit_shift) | (self.0[0].unbounded_shr(u32::BITS - bit_shift));
+                self.0[2] = self.0[2].funnel_shl(self.0[1], bit_shift);
+                self.0[1] = self.0[1].funnel_shl(self.0[0], bit_shift);
                 self.0[0] <<= bit_shift;
             }
             1 => {
-                self.0[2] =
-                    (self.0[1] << bit_shift) | (self.0[0].unbounded_shr(u32::BITS - bit_shift));
+                self.0[2] = self.0[1].funnel_shl(self.0[0], bit_shift);
                 self.0[1] = self.0[0] << bit_shift;
                 self.0[0] = 0;
             }
@@ -399,22 +370,15 @@ impl Shr<u32> for U32N<3> {
 
     #[inline(always)]
     fn shr(mut self, rhs: u32) -> Self {
-        if rhs == 0 {
-            return self;
-        }
-
         let bit_shift = rhs % u32::BITS;
         match rhs / u32::BITS {
             0 => {
-                self.0[0] =
-                    (self.0[0] >> bit_shift) | (self.0[1].unbounded_shl(u32::BITS - bit_shift));
-                self.0[1] =
-                    (self.0[1] >> bit_shift) | (self.0[2].unbounded_shl(u32::BITS - bit_shift));
+                self.0[0] = self.0[1].funnel_shr(self.0[0], bit_shift);
+                self.0[1] = self.0[2].funnel_shr(self.0[1], bit_shift);
                 self.0[2] >>= bit_shift;
             }
             1 => {
-                self.0[0] =
-                    (self.0[1] >> bit_shift) | (self.0[2].unbounded_shl(u32::BITS - bit_shift));
+                self.0[0] = self.0[2].funnel_shr(self.0[1], bit_shift);
                 self.0[1] = self.0[2] >> bit_shift;
                 self.0[2] = 0;
             }
@@ -578,32 +542,22 @@ impl Shl<u32> for U32N<4> {
 
     #[inline(always)]
     fn shl(mut self, rhs: u32) -> Self {
-        if rhs == 0 {
-            return self;
-        }
-
         let bit_shift = rhs % u32::BITS;
         match rhs / u32::BITS {
             0 => {
-                self.0[3] =
-                    (self.0[3] << bit_shift) | (self.0[2].unbounded_shr(u32::BITS - bit_shift));
-                self.0[2] =
-                    (self.0[2] << bit_shift) | (self.0[1].unbounded_shr(u32::BITS - bit_shift));
-                self.0[1] =
-                    (self.0[1] << bit_shift) | (self.0[0].unbounded_shr(u32::BITS - bit_shift));
+                self.0[3] = self.0[3].funnel_shl(self.0[2], bit_shift);
+                self.0[2] = self.0[2].funnel_shl(self.0[1], bit_shift);
+                self.0[1] = self.0[1].funnel_shl(self.0[0], bit_shift);
                 self.0[0] <<= bit_shift;
             }
             1 => {
-                self.0[3] =
-                    (self.0[2] << bit_shift) | (self.0[1].unbounded_shr(u32::BITS - bit_shift));
-                self.0[2] =
-                    (self.0[1] << bit_shift) | (self.0[0].unbounded_shr(u32::BITS - bit_shift));
+                self.0[3] = self.0[2].funnel_shl(self.0[1], bit_shift);
+                self.0[2] = self.0[1].funnel_shl(self.0[0], bit_shift);
                 self.0[1] = self.0[0] << bit_shift;
                 self.0[0] = 0;
             }
             2 => {
-                self.0[3] =
-                    (self.0[1] << bit_shift) | (self.0[0].unbounded_shr(u32::BITS - bit_shift));
+                self.0[3] = self.0[1].funnel_shl(self.0[0], bit_shift);
                 self.0[2] = self.0[0] << bit_shift;
                 self.0[1] = 0;
                 self.0[0] = 0;
@@ -633,32 +587,22 @@ impl Shr<u32> for U32N<4> {
 
     #[inline(always)]
     fn shr(mut self, rhs: u32) -> Self {
-        if rhs == 0 {
-            return self;
-        }
-
         let bit_shift = rhs % u32::BITS;
         match rhs / u32::BITS {
             0 => {
-                self.0[0] =
-                    (self.0[0] >> bit_shift) | (self.0[1].unbounded_shl(u32::BITS - bit_shift));
-                self.0[1] =
-                    (self.0[1] >> bit_shift) | (self.0[2].unbounded_shl(u32::BITS - bit_shift));
-                self.0[2] =
-                    (self.0[2] >> bit_shift) | (self.0[3].unbounded_shl(u32::BITS - bit_shift));
+                self.0[0] = self.0[1].funnel_shr(self.0[0], bit_shift);
+                self.0[1] = self.0[2].funnel_shr(self.0[1], bit_shift);
+                self.0[2] = self.0[3].funnel_shr(self.0[2], bit_shift);
                 self.0[3] >>= bit_shift;
             }
             1 => {
-                self.0[0] =
-                    (self.0[1] >> bit_shift) | (self.0[2].unbounded_shl(u32::BITS - bit_shift));
-                self.0[1] =
-                    (self.0[2] >> bit_shift) | (self.0[3].unbounded_shl(u32::BITS - bit_shift));
+                self.0[0] = self.0[2].funnel_shr(self.0[1], bit_shift);
+                self.0[1] = self.0[3].funnel_shr(self.0[2], bit_shift);
                 self.0[2] = self.0[3] >> bit_shift;
                 self.0[3] = 0;
             }
             2 => {
-                self.0[0] =
-                    (self.0[2] >> bit_shift) | (self.0[3].unbounded_shl(u32::BITS - bit_shift));
+                self.0[0] = self.0[3].funnel_shr(self.0[2], bit_shift);
                 self.0[1] = self.0[3] >> bit_shift;
                 self.0[2] = 0;
                 self.0[3] = 0;

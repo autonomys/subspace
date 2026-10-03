@@ -236,6 +236,10 @@ async fn sort_buckets_adapter(
     device.poll(PollType::wait_indefinitely()).unwrap();
 
     let buckets = {
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "The pointer is to correctly initialized and aligned memory"
+        )]
         let buckets_host_ptr = buckets_host
             .get_mapped_range(..)
             .unwrap()

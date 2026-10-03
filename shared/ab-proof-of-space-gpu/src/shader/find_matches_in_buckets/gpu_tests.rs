@@ -270,11 +270,19 @@ async fn find_matches_in_buckets_adapter(
     device.poll(PollType::wait_indefinitely()).unwrap();
 
     let matches = {
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "The pointer is to correctly initialized and aligned memory"
+        )]
         let matches_host_ptr = matches_host
             .get_mapped_range(..)
             .unwrap()
             .as_ptr()
             .cast::<[Match; MAX_BUCKET_SIZE]>();
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "The pointer is to correctly initialized and aligned memory"
+        )]
         let matches_counts_host_ptr = matches_counts_host
             .get_mapped_range(..)
             .unwrap()
