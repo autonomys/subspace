@@ -28,7 +28,6 @@ futures = { workspace = true, features = ["std"] }
 parking_lot = { workspace = true }
 rclite = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 wgpu = { workspace = true }
 
 [dev-dependencies]

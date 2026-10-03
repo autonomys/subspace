@@ -27,7 +27,6 @@ chacha20 = { workspace = true, features = ["cipher"], optional = true }
 derive_more = { workspace = true, features = ["full"] }
 no-panic = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
-rclite = { workspace = true, optional = true }
 seq-macro = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 transparent-wrapper = { workspace = true }
@@ -42,7 +41,6 @@ sha2 = { workspace = true }
 default = []
 alloc = [
     "dep:chacha20",
-    "dep:rclite",
     "dep:seq-macro",
 ]
 # Enabling this feature exposes quality search on `chiapos` module as well as enables support for K=15..=25 (by default

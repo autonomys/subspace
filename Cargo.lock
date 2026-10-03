@@ -39,7 +39,6 @@ dependencies = [
  "derive_more 2.1.1",
  "no-panic",
  "rayon",
- "rclite",
  "seq-macro",
  "sha2 0.11.0",
  "subspace-core-primitives",
@@ -62,7 +61,6 @@ dependencies = [
  "spirv-std",
  "subspace-core-primitives",
  "thiserror 2.0.21",
- "tracing",
  "wgpu",
 ]
 
