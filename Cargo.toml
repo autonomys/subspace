@@ -62,7 +62,7 @@ core_affinity = "0.8.3"
 cpufeatures = "0.3.1"
 criterion = { version = "0.8.2", default-features = false }
 cross-domain-message-gossip = { version = "0.1.0", path = "domains/client/cross-domain-message-gossip" }
-cumulus-primitives-proof-size-hostfunction = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+cumulus-primitives-proof-size-hostfunction = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 derive_more = { version = "2.1.1", default-features = false }
 domain-block-builder = { version = "0.1.0", path = "domains/client/block-builder", default-features = false }
 domain-block-preprocessor = { version = "0.1.0", path = "domains/client/block-preprocessor", default-features = false }
@@ -94,13 +94,13 @@ fp-account = { version = "1.0.0-dev", git = "https://github.com/polkadot-evm/fro
 fp-evm = { version = "3.0.0-dev", git = "https://github.com/polkadot-evm/frontier", rev = "9d49e36ed5bac38241594f8ba055fdb94991483a", default-features = false }
 fp-rpc = { version = "3.0.0-dev", git = "https://github.com/polkadot-evm/frontier", rev = "9d49e36ed5bac38241594f8ba055fdb94991483a", default-features = false }
 fp-self-contained = { version = "1.0.0-dev", git = "https://github.com/polkadot-evm/frontier", rev = "9d49e36ed5bac38241594f8ba055fdb94991483a", default-features = false }
-frame-benchmarking = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-frame-benchmarking-cli = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-frame-executive = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-frame-support = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-frame-system = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-frame-system-benchmarking = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-frame-system-rpc-runtime-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+frame-benchmarking = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+frame-benchmarking-cli = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+frame-executive = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+frame-support = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+frame-system = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+frame-system-benchmarking = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+frame-system-rpc-runtime-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 fs2 = "0.4.3"
 fs4 = "1.1.0"
 futures = "0.3.34"
@@ -112,15 +112,15 @@ hwlocality = "1.0.0-alpha.13"
 jsonrpsee = "0.24.11"
 kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac", default-features = false }
 libc = "0.2.190"
-libp2p = { version = "0.57.0", git = "https://github.com/autonomys/rust-libp2p", rev = "5be7c854f715da73189a7e7847428bb2af71ccc3", default-features = false }
-libp2p-swarm-test = { version = "0.7.0", git = "https://github.com/autonomys/rust-libp2p", rev = "5be7c854f715da73189a7e7847428bb2af71ccc3" }
+libp2p = { version = "0.57.0", git = "https://github.com/autonomys/rust-libp2p", rev = "5914c8763c6073b31208ca343a4da779c90e481f", default-features = false }
+libp2p-swarm-test = { version = "0.7.0", git = "https://github.com/autonomys/rust-libp2p", rev = "5914c8763c6073b31208ca343a4da779c90e481f" }
 libsecp256k1 = "0.7.2"
 log = { version = "0.4.34", default-features = false }
 memmap2 = "0.9.11"
 memory-db = { version = "0.34.0", default-features = false }
 mimalloc = "0.1.52"
-mmr-gadget = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-mmr-rpc = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
+mmr-gadget = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+mmr-rpc = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
 multihash = "0.19.5"
 nohash-hasher = "0.2.0"
 num-traits = { version = "0.2.19", default-features = false }
@@ -128,10 +128,10 @@ num_cpus = "1.17.0"
 num_enum = { version = "0.7.6", default-features = false }
 ouroboros = "0.18.5"
 pallet-auto-id = { version = "0.1.0", path = "domains/pallets/auto-id", default-features = false }
-pallet-balances = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+pallet-balances = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 pallet-block-fees = { version = "0.1.0", path = "domains/pallets/block-fees", default-features = false }
-pallet-collective = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-pallet-democracy = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+pallet-collective = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+pallet-democracy = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 pallet-domain-id = { version = "0.1.0", path = "domains/pallets/domain-id", default-features = false }
 pallet-domain-sudo = { version = "0.1.0", path = "domains/pallets/domain-sudo", default-features = false }
 pallet-domains = { version = "0.1.0", path = "crates/pallet-domains", default-features = false }
@@ -143,23 +143,23 @@ pallet-evm-precompile-sha3fips = { version = "2.0.0-dev", git = "https://github.
 pallet-evm-precompile-simple = { version = "2.0.0-dev", git = "https://github.com/polkadot-evm/frontier", rev = "9d49e36ed5bac38241594f8ba055fdb94991483a", default-features = false }
 pallet-evm-tracker = { version = "0.1.0", path = "domains/pallets/evm-tracker", default-features = false }
 pallet-messenger = { version = "0.1.0", path = "domains/pallets/messenger", default-features = false }
-pallet-mmr = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-pallet-multisig = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-pallet-preimage = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+pallet-mmr = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+pallet-multisig = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+pallet-preimage = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 pallet-rewards = { version = "0.1.0", path = "crates/pallet-rewards", default-features = false }
 pallet-runtime-configs = { version = "0.1.0", path = "crates/pallet-runtime-configs", default-features = false }
-pallet-scheduler = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+pallet-scheduler = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 pallet-storage-overlay-checks = { version = "0.1.0", path = "domains/test/pallets/storage_overlay_checks", default-features = false }
 pallet-subspace = { version = "0.1.0", path = "crates/pallet-subspace", default-features = false }
 pallet-subspace-mmr = { version = "0.1.0", path = "crates/pallet-subspace-mmr", default-features = false }
-pallet-sudo = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-pallet-timestamp = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+pallet-sudo = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+pallet-timestamp = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 pallet-transaction-fees = { version = "0.1.0", path = "crates/pallet-transaction-fees", default-features = false }
-pallet-transaction-payment = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-pallet-transaction-payment-rpc = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-pallet-transaction-payment-rpc-runtime-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+pallet-transaction-payment = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+pallet-transaction-payment-rpc = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+pallet-transaction-payment-rpc-runtime-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 pallet-transporter = { version = "0.1.0", path = "domains/pallets/transporter", default-features = false }
-pallet-utility = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+pallet-utility = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 parity-scale-codec = { version = "3.7.5", default-features = false }
 parking_lot = "0.12.5"
 pem = "4.0.0"
@@ -178,42 +178,42 @@ ring = "0.17.14"
 rlp = "0.6.1"
 rs_merkle = { version = "1.5.0", default-features = false }
 rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac", default-features = false }
-sc-basic-authorship = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-block-builder = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-chain-spec = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-cli = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sc-client-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-client-db = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-consensus = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-consensus-slots = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
+sc-basic-authorship = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-block-builder = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-chain-spec = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-cli = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sc-client-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-client-db = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-consensus = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-consensus-slots = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
 sc-consensus-subspace = { version = "0.1.0", path = "crates/sc-consensus-subspace" }
 sc-consensus-subspace-rpc = { version = "0.1.0", path = "crates/sc-consensus-subspace-rpc" }
 sc-domains = { version = "0.1.0", path = "crates/sc-domains" }
-sc-executor = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sc-informant = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-keystore = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-network = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-network-common = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-network-gossip = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-network-sync = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sc-network-transactions = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-offchain = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
+sc-executor = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sc-informant = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-keystore = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-network = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-network-common = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-network-gossip = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-network-sync = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sc-network-transactions = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-offchain = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
 sc-proof-of-time = { version = "0.1.0", path = "crates/sc-proof-of-time" }
-sc-rpc = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-rpc-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-rpc-server = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-service = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sc-state-db = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-storage-monitor = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+sc-rpc = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-rpc-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-rpc-server = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-service = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sc-state-db = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-storage-monitor = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 sc-subspace-block-relay = { version = "0.1.0", path = "crates/sc-subspace-block-relay" }
 sc-subspace-chain-specs = { version = "0.1.0", path = "crates/sc-subspace-chain-specs" }
 sc-subspace-sync-common = { version = "0.1.0", path = "shared/sc-subspace-sync-common", default-features = false }
-sc-sysinfo = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sc-telemetry = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-tracing = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-transaction-pool = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-transaction-pool-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-utils = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
+sc-sysinfo = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sc-telemetry = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-tracing = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-transaction-pool = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-transaction-pool-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-utils = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
 scale-info = { version = "2.11.6", default-features = false }
 schnellru = "0.2.4"
 schnorrkel = { version = "0.11.5", default-features = false }
@@ -222,48 +222,48 @@ serde = { version = "1.0.229", default-features = false }
 serde-big-array = "0.5.1"
 serde_json = "1.0.151"
 sha2 = { version = "0.11.0", default-features = false }
-sp-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-application-crypto = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-arithmetic = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+sp-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-application-crypto = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-arithmetic = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 sp-auto-id = { version = "0.1.0", path = "domains/primitives/auto-id", default-features = false }
-sp-block-builder = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+sp-block-builder = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 sp-block-fees = { version = "0.1.0", path = "domains/primitives/block-fees", default-features = false }
-sp-blockchain = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-consensus = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-consensus-slots = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+sp-blockchain = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-consensus = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-consensus-slots = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 sp-consensus-subspace = { version = "0.1.0", path = "crates/sp-consensus-subspace", default-features = false }
-sp-core = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+sp-core = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 sp-domain-digests = { version = "0.1.0", path = "domains/primitives/digests", default-features = false }
 sp-domain-sudo = { version = "0.1.0", path = "domains/primitives/domain-sudo", default-features = false }
 sp-domains = { version = "0.1.0", path = "crates/sp-domains", default-features = false }
 sp-domains-fraud-proof = { version = "0.1.0", path = "crates/sp-domains-fraud-proof", default-features = false }
 sp-evm-tracker = { version = "0.1.0", path = "domains/primitives/evm-tracker", default-features = false }
 sp-executive = { version = "0.1.0", path = "domains/primitives/executive", default-features = false }
-sp-externalities = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+sp-externalities = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 sp-evm-precompiles = { version = "0.1.0", path = "domains/primitives/evm-precompiles", default-features = false }
-sp-genesis-builder = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-inherents = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-io = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-keyring = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-keystore = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
+sp-genesis-builder = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-inherents = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-io = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-keyring = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-keystore = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
 sp-messenger = { version = "0.1.0", path = "domains/primitives/messenger", default-features = false }
 sp-messenger-host-functions = { version = "0.1.0", path = "domains/primitives/messenger-host-functions", default-features = false }
-sp-mmr-primitives = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+sp-mmr-primitives = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 sp-objects = { version = "0.1.0", path = "crates/sp-objects", default-features = false }
-sp-offchain = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-runtime = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-runtime-interface = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-session = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-state-machine = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-std = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-storage = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+sp-offchain = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-runtime = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-runtime-interface = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-session = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-state-machine = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-std = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-storage = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 sp-subspace-mmr = { version = "0.1.0", path = "crates/sp-subspace-mmr", default-features = false }
-sp-timestamp = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-tracing = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-transaction-pool = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-trie = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-version = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
-sp-weights = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610", default-features = false }
+sp-timestamp = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-tracing = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-transaction-pool = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-trie = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-version = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
+sp-weights = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 spin = "0.12.3"
 spirv-std = { version = "=0.10.0-alpha.1", git = "https://github.com/Rust-GPU/rust-gpu", rev = "bd49568baf08301107c9f698494735724980dee0" }
 ss58-registry = "1.51.0"
@@ -292,11 +292,11 @@ subspace-test-runtime = { version = "0.1.0", path = "test/subspace-test-runtime"
 subspace-test-service = { version = "0.1.0", path = "test/subspace-test-service" }
 subspace-verification = { version = "0.1.0", path = "crates/subspace-verification", default-features = false }
 substrate-bip39 = "=0.6.0"
-substrate-build-script-utils = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-substrate-frame-rpc-system = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-substrate-prometheus-endpoint = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-substrate-test-client = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-substrate-wasm-builder = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
+substrate-build-script-utils = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+substrate-frame-rpc-system = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+substrate-prometheus-endpoint = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+substrate-test-client = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+substrate-wasm-builder = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
 supports-color = "3.0.2"
 tempfile = "3.27.0"
 thiserror = { version = "2.0.21", default-features = false }
@@ -396,51 +396,51 @@ lto = "fat"
 # Reason: We need to patch substrate dependency of frontier to our fork
 # TODO: Remove if/when we are using upstream substrate instead of fork
 [patch."https://github.com/paritytech/polkadot-sdk.git"]
-cumulus-primitives-storage-weight-reclaim = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-frame-benchmarking = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-frame-support = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-frame-system = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-block-builder = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-client-db = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-consensus = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-consensus-slots = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-client-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-network = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-network-common = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-network-sync = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-rpc = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-service = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-telemetry = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-transaction-pool = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-transaction-pool-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sc-utils = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-application-crypto = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-arithmetic = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-block-builder = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-blockchain = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-consensus = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-consensus-slots = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-core = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-crypto-hashing = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-database = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-debug-derive = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-externalities = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-inherents = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-io = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-keystore = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-runtime = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-runtime-interface = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-state-machine = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-std = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-storage = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-timestamp = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-trie = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-version = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-sp-weights = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-staging-xcm = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-substrate-prometheus-endpoint = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
-xcm-procedural = { git = "https://github.com/autonomys/polkadot-sdk", rev = "962a09e060d0d07dacadca5cd3a2864fb456d610" }
+cumulus-primitives-storage-weight-reclaim = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+frame-benchmarking = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+frame-support = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+frame-system = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-block-builder = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-client-db = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-consensus = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-consensus-slots = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-client-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-network = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-network-common = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-network-sync = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-rpc = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-service = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-telemetry = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-transaction-pool = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-transaction-pool-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sc-utils = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-application-crypto = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-arithmetic = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-block-builder = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-blockchain = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-consensus = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-consensus-slots = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-core = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-crypto-hashing = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-database = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-debug-derive = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-externalities = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-inherents = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-io = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-keystore = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-runtime = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-runtime-interface = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-state-machine = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-std = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-storage = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-timestamp = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-trie = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-version = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+sp-weights = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+staging-xcm = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+substrate-prometheus-endpoint = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
+xcm-procedural = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888" }
 
 [patch."https://github.com/autonomys/polkadot-sdk.git"]
 # De-duplicate extra copy that comes from Substrate repo
@@ -449,4 +449,4 @@ substrate-bip39 = "=0.6.0"
 [patch.crates-io]
 # Patch away `libp2p-identity` in our dependency tree with the git version.
 # For details see: https://github.com/subspace/rust-libp2p/blob/399c4c7fcba821a7bac2663e090a7b155b08ebe1/Cargo.toml#L140-L145
-libp2p-identity = { git = "https://github.com/autonomys/rust-libp2p", rev = "5be7c854f715da73189a7e7847428bb2af71ccc3" }
+libp2p-identity = { git = "https://github.com/autonomys/rust-libp2p", rev = "5914c8763c6073b31208ca343a4da779c90e481f" }
