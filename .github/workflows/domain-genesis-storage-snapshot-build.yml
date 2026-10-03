@@ -20,11 +20,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build node image
         id: build
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           file: docker/node.Dockerfile
           pull: true
@@ -57,7 +57,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload domain genesis storages to assets
-        uses: alexellis/upload-assets@13926a61cdb2cb35f5fdef1c06b8b591523236d3 # 0.4.1
+        uses: alexellis/upload-assets@d8de0b9b956cfb3d7633afdb66ef24c36940a9f7 # 0.5.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
