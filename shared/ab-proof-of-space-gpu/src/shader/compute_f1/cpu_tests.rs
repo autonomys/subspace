@@ -61,7 +61,7 @@ fn compute_f1_cpu() {
 
     for x in (X::ZERO..).take(ELEMENTS_PER_INVOCATION as usize) {
         assert_eq!(
-            correct_compute_f1::<{ PosProof::K }>(x, &seed),
+            correct_compute_f1::<const { PosProof::K }>(x, &seed),
             compute_f1_impl(x, &chacha8_keystream),
             "X={x:?}"
         );

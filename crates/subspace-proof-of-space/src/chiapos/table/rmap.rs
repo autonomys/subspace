@@ -12,7 +12,7 @@ pub(super) struct Rmap {
     ///
     /// Physical pointer must be increased by `1` to get a virtual pointer before storing. Virtual
     /// pointer must be decreased by `1` before reading to get a physical pointer.
-    virtual_pointers: [u16; PARAM_BC as usize],
+    virtual_pointers: [u16; const { PARAM_BC as usize }],
     /// `(start_index_in_positions, count)` per distinct r-value.
     entries: [(u16, u8); REDUCED_BUCKET_SIZE],
     /// Flat storage for all positions. Positions for the same r-value are consecutive here because

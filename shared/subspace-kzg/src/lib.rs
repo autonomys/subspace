@@ -58,12 +58,16 @@ fn bytes_to_kzg_settings(
 
     let (secret_g1_bytes, secret_g2_bytes) = bytes.split_at(BYTES_PER_G1 * num_g1_powers);
     let secret_g1 = secret_g1_bytes
-        .chunks_exact(BYTES_PER_G1)
-        .map(FsG1::from_bytes)
+        .as_chunks::<BYTES_PER_G1>()
+        .0
+        .iter()
+        .map(|bytes| FsG1::from_bytes(bytes))
         .collect::<Result<Vec<_>, _>>()?;
     let secret_g2 = secret_g2_bytes
-        .chunks_exact(BYTES_PER_G2)
-        .map(FsG2::from_bytes)
+        .as_chunks::<BYTES_PER_G2>()
+        .0
+        .iter()
+        .map(|bytes| FsG2::from_bytes(bytes))
         .collect::<Result<Vec<_>, _>>()?;
 
     let fft_settings = FsFFTSettings::new(

@@ -10,7 +10,7 @@ pub(super) struct Rmap {
     ///
     /// Physical pointer must be increased by `1` to get a virtual pointer before storing. Virtual
     /// pointer must be decreased by `1` before reading to get a physical pointer.
-    virtual_pointers: [u16; PARAM_BC as usize],
+    virtual_pointers: [u16; const { usize::from(PARAM_BC) }],
     positions: [[Position; 2]; REDUCED_BUCKET_SIZE],
     next_physical_pointer: u16,
 }

@@ -70,6 +70,7 @@ impl From<String> for Error {
 /// Run a snap sync, return an error if snap sync is impossible and user intervention is required.
 /// Otherwise, just log the error and return `Ok(())` so that regular sync continues.
 #[allow(clippy::too_many_arguments)]
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub(crate) async fn snap_sync<Block, AS, Client, PG, OS>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: Node,
@@ -156,6 +157,7 @@ where
 
 // Get blocks from the last segment or from the segment containing the target block.
 // Returns encoded blocks collection and used segment index.
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub(crate) async fn get_blocks_from_target_segment<AS, PG>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
@@ -334,6 +336,7 @@ where
 #[allow(clippy::too_many_arguments)]
 /// Synchronize the blockchain to the target_block (approximate value based on the containing
 /// segment) or to the last archived block. Returns false when sync is skipped.
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 async fn sync<PG, AS, Block, Client, IQS, OS, NR>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
@@ -504,6 +507,7 @@ where
     Ok(())
 }
 
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 async fn sync_segment_headers<AS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
@@ -533,6 +537,7 @@ where
 }
 
 /// Download and return state for specified block
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 async fn download_state<Block, Client>(
     header: &Block::Header,
     client: &Arc<Client>,

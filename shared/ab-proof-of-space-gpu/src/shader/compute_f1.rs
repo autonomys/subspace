@@ -184,9 +184,11 @@ pub unsafe fn compute_f1(
         // SAFETY: TODO: Probably should not be unsafe to begin with:
         //  https://github.com/Rust-GPU/rust-gpu/pull/394#issuecomment-3316594485
         let bucket_offset = unsafe {
-            atomic_i_increment::<_, { Scope::QueueFamily as u32 }, { Semantics::NONE.bits() }>(
-                bucket_size,
-            )
+            atomic_i_increment::<
+                _,
+                const { Scope::QueueFamily as u32 },
+                const { Semantics::NONE.bits() },
+            >(bucket_size)
         };
 
         // SAFETY: Bucket is obtained using division by `PARAM_BC` and fits by definition. Bucket

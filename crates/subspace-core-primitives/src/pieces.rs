@@ -75,8 +75,20 @@ impl Step for PieceIndex {
     }
 
     #[inline]
+    fn forward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (n, overflowing) = u64::forward_overflowing(start.0, count);
+        (Self(n), overflowing)
+    }
+
+    #[inline]
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         u64::backward_checked(start.0, count).map(Self)
+    }
+
+    #[inline]
+    fn backward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (n, overflowing) = u64::backward_overflowing(start.0, count);
+        (Self(n), overflowing)
     }
 }
 
@@ -240,8 +252,20 @@ impl Step for PieceOffset {
     }
 
     #[inline]
+    fn forward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (n, overflowing) = u16::forward_overflowing(start.0, count);
+        (Self(n), overflowing)
+    }
+
+    #[inline]
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         u16::backward_checked(start.0, count).map(Self)
+    }
+
+    #[inline]
+    fn backward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (n, overflowing) = u16::backward_overflowing(start.0, count);
+        (Self(n), overflowing)
     }
 }
 
@@ -1495,12 +1519,16 @@ impl FlatPieces {
         match &self.0 {
             CowBytes::Shared(bytes) => Box::new(
                 bytes
-                    .chunks_exact(Piece::SIZE)
+                    .as_chunks::<{ Piece::SIZE }>()
+                    .0
+                    .iter()
                     .map(|slice| Piece(CowBytes::Shared(bytes.slice_ref(slice)))),
             ),
             CowBytes::Owned(bytes) => Box::new(
                 bytes
-                    .chunks_exact(Piece::SIZE)
+                    .as_chunks::<{ Piece::SIZE }>()
+                    .0
+                    .iter()
                     .map(|slice| Piece(CowBytes::Shared(Bytes::copy_from_slice(slice)))),
             ),
         }

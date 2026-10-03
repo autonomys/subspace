@@ -4,7 +4,6 @@ mod constants;
 mod table;
 #[cfg(all(feature = "alloc", test))]
 mod tests;
-mod utils;
 
 #[cfg(feature = "alloc")]
 use crate::PosProofs;
@@ -14,12 +13,9 @@ pub use crate::chiapos::table::TablesCache;
 #[cfg(feature = "alloc")]
 use crate::chiapos::table::types::Position;
 use crate::chiapos::table::types::{Metadata, X, Y};
-use crate::chiapos::table::{
-    COMPUTE_F1_SIMD_FACTOR, compute_f1, compute_fn, has_match, metadata_size_bytes, num_buckets,
-};
 #[cfg(feature = "alloc")]
 use crate::chiapos::table::{PrunedTable, Table};
-use crate::chiapos::utils::EvaluatableUsize;
+use crate::chiapos::table::{compute_f1, compute_fn, has_match};
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
 use core::array;
@@ -35,18 +31,20 @@ use subspace_core_primitives::pos::PosProof;
 #[cfg(feature = "alloc")]
 use subspace_core_primitives::sectors::SBucket;
 
+#[expect(clippy::inline_modules, reason = "Intentional tiny module inline")]
 mod private {
     pub trait Supported {}
 }
+
+/// Size of the proof in bytes for a given `K` value
+pub const PROOF_SIZE<const K: u8>: usize =
+    2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K) / u8::BITS as usize;
 
 /// Proof-of-space proofs
 #[derive(Debug)]
 #[cfg(feature = "alloc")]
 #[repr(C)]
-pub struct Proofs<const K: u8>
-where
-    [(); 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K) / u8::BITS as usize]:,
-{
+pub struct Proofs<const K: u8> {
     /// S-buckets at which proofs were found.
     ///
     /// S-buckets are grouped by 8, within each `u8` bits right to left (LSB) indicate the presence
@@ -56,13 +54,12 @@ where
     /// There will be at most [`Record::NUM_CHUNKS`] proofs produced/bits set to `1`.
     pub found_proofs: [u8; Record::NUM_S_BUCKETS / u8::BITS as usize],
     /// [`Record::NUM_CHUNKS`] proofs, corresponding to set bits of `found_proofs`.
-    pub proofs: [[u8; 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K) / u8::BITS as usize];
-        Record::NUM_CHUNKS],
+    pub proofs: [[u8; PROOF_SIZE::<K>]; const { Record::NUM_CHUNKS }],
 }
 
 #[cfg(feature = "alloc")]
-impl From<Box<Proofs<{ PosProof::K }>>> for Box<PosProofs> {
-    fn from(proofs: Box<Proofs<{ PosProof::K }>>) -> Self {
+impl From<Box<Proofs<const { PosProof::K }>>> for Box<PosProofs> {
+    fn from(proofs: Box<Proofs<const { PosProof::K }>>) -> Self {
         // Statically ensure types are the same
         const {
             // TODO: Latest nightly can't understand `{ PosProof::K }` for some reason, hence a
@@ -79,20 +76,13 @@ impl From<Box<Proofs<{ PosProof::K }>>> for Box<PosProofs> {
 }
 
 #[cfg(feature = "alloc")]
-impl<const K: u8> Proofs<K>
-where
-    [(); 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K) / u8::BITS as usize]:,
-{
+impl<const K: u8> Proofs<K> {
     /// Get proof for specified s-bucket (if exists).
     ///
     /// Note that this is not the most efficient API possible, so prefer using the `proofs` field
     /// directly if the use case allows.
     #[inline]
-    pub fn for_s_bucket(
-        &self,
-        s_bucket: SBucket,
-    ) -> Option<[u8; 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K) / u8::BITS as usize]>
-    {
+    pub fn for_s_bucket(&self, s_bucket: SBucket) -> Option<[u8; PROOF_SIZE::<K>]> {
         let proof_index = PosProofs::proof_index_for_s_bucket(&self.found_proofs, s_bucket)?;
 
         Some(self.proofs[proof_index])
@@ -124,10 +114,6 @@ const fn pick_position(
 pub struct Tables<const K: u8>
 where
     Self: private::Supported,
-    EvaluatableUsize<{ metadata_size_bytes(K, 7) }>: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
 {
     #[cfg(feature = "alloc")]
     table_2: PrunedTable<K, 2>,
@@ -146,20 +132,6 @@ where
 impl<const K: u8> Tables<K>
 where
     Self: private::Supported,
-    EvaluatableUsize<{ metadata_size_bytes(K, 1) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 2) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 3) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 4) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 5) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 6) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 7) }>: Sized,
-    EvaluatableUsize<{ usize::from(K) * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>: Sized,
-    EvaluatableUsize<
-        { 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K) / u8::BITS as usize },
-    >: Sized,
-    [(); 1 << K]:,
-    [(); num_buckets(K)]:,
-    [(); num_buckets(K) - 1]:,
 {
     /// Create Chia proof of space tables.
     ///
@@ -192,10 +164,7 @@ where
     /// There is also `Self::create_proofs_parallel()` that can achieve higher performance and lower
     /// latency at the cost of lower CPU efficiency and higher memory usage.
     #[cfg(feature = "alloc")]
-    pub fn create_proofs(seed: Seed, cache: &TablesCache) -> Box<Proofs<K>>
-    where
-        [(); 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K) / u8::BITS as usize]:,
-    {
+    pub fn create_proofs(seed: Seed, cache: &TablesCache) -> Box<Proofs<K>> {
         let table_1 = Table::<K, 1>::create(seed);
         let (table_2, _) = Table::<K, 2>::create(table_1, cache);
         let (table_3, table_2) = Table::<K, 3>::create(table_2, cache);
@@ -218,7 +187,7 @@ where
             // SAFETY: This is the correct way to access uninit reference to the inner field
             let proofs = unsafe {
                 (&raw mut (*proofs_ptr).proofs)
-                    .cast::<[MaybeUninit<_>; Record::NUM_CHUNKS]>()
+                    .cast::<[MaybeUninit<_>; const { Record::NUM_CHUNKS }]>()
                     .as_mut_unchecked()
             };
 
@@ -289,10 +258,7 @@ where
     /// Almost the same as [`Self::create_proofs()`], but uses parallelism internally for better
     /// performance and lower latency at the cost of lower CPU efficiency and higher memory usage
     #[cfg(feature = "parallel")]
-    pub fn create_proofs_parallel(seed: Seed, cache: &TablesCache) -> Box<Proofs<K>>
-    where
-        [(); 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K) / u8::BITS as usize]:,
-    {
+    pub fn create_proofs_parallel(seed: Seed, cache: &TablesCache) -> Box<Proofs<K>> {
         let table_1 = Table::<K, 1>::create_parallel(seed);
         let (table_2, _) = Table::<K, 2>::create_parallel(table_1, cache);
         let (table_3, table_2) = Table::<K, 3>::create_parallel(table_2, cache);
@@ -316,7 +282,7 @@ where
             // SAFETY: This is the correct way to access uninit reference to the inner field
             let proofs = unsafe {
                 (&raw mut (*proofs_ptr).proofs)
-                    .cast::<[MaybeUninit<_>; Record::NUM_CHUNKS]>()
+                    .cast::<[MaybeUninit<_>; const { Record::NUM_CHUNKS }]>()
                     .as_mut_unchecked()
             };
 
@@ -436,9 +402,7 @@ where
     pub fn find_proof_raw(
         &self,
         first_k_challenge_bits: u32,
-    ) -> impl Iterator<
-        Item = [u8; 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K) / u8::BITS as usize],
-    > + '_ {
+    ) -> impl Iterator<Item = [u8; PROOF_SIZE::<K>]> + '_ {
         // Iterate just over elements that are matching `first_k_challenge_bits` prefix
         self.table_7.buckets()[Y::bucket_range_from_first_k_bits(first_k_challenge_bits)]
             .iter()
@@ -472,9 +436,8 @@ where
         table_5: &PrunedTable<K, 5>,
         table_6: &PrunedTable<K, 6>,
         table_6_proof_targets: [Position; 2],
-    ) -> [u8; 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K) / u8::BITS as usize] {
-        let mut proof =
-            [0u8; 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K) / u8::BITS as usize];
+    ) -> [u8; PROOF_SIZE::<K>] {
+        let mut proof = [0u8; _];
 
         // TODO: Optimize with SIMD
         table_6_proof_targets
@@ -536,9 +499,7 @@ where
     pub fn find_proof(
         &self,
         first_challenge_bytes: [u8; 4],
-    ) -> impl Iterator<
-        Item = [u8; 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K) / u8::BITS as usize],
-    > + '_ {
+    ) -> impl Iterator<Item = [u8; PROOF_SIZE::<K>]> + '_ {
         let first_k_challenge_bits =
             u32::from_be_bytes(first_challenge_bytes) >> (u32::BITS as usize - usize::from(K));
 
@@ -550,8 +511,7 @@ where
     pub fn verify_only_raw(
         seed: &Seed,
         first_k_challenge_bits: u32,
-        proof_of_space: &[u8; 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K)
-             / u8::BITS as usize],
+        proof_of_space: &[u8; PROOF_SIZE::<K>],
     ) -> bool {
         let ys_and_metadata = array::from_fn::<_, 64, _>(|offset| {
             let mut pre_x_bytes = 0u64.to_be_bytes();
@@ -605,12 +565,8 @@ where
     pub fn verify(
         seed: &Seed,
         challenge: &Challenge,
-        proof_of_space: &[u8; 2usize.pow(u32::from(NUM_TABLES - 1)) * usize::from(K)
-             / u8::BITS as usize],
-    ) -> Option<Quality>
-    where
-        EvaluatableUsize<{ (usize::from(K) * 2).div_ceil(u8::BITS as usize) }>: Sized,
-    {
+        proof_of_space: &[u8; PROOF_SIZE::<K>],
+    ) -> Option<Quality> {
         let first_k_challenge_bits =
             u32::from_be_bytes([challenge[0], challenge[1], challenge[2], challenge[3]])
                 >> (u32::BITS as usize - usize::from(K));
@@ -658,11 +614,7 @@ where
     >(
         ys_and_metadata: &[(Y, Metadata<K, PARENT_TABLE_NUMBER>)],
         next_ys_and_metadata: &'a mut [MaybeUninit<(Y, Metadata<K, TABLE_NUMBER>)>; N],
-    ) -> &'a [(Y, Metadata<K, TABLE_NUMBER>)]
-    where
-        EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-        EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
-    {
+    ) -> &'a [(Y, Metadata<K, TABLE_NUMBER>)] {
         let mut next_offset = 0_usize;
         for &[(left_y, left_metadata), (right_y, right_metadata)] in
             ys_and_metadata.as_chunks::<2>().0

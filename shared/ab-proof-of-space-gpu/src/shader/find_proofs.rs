@@ -39,7 +39,7 @@ pub struct Proofs {
     found_proofs: [MaybeUninit<u32>; FOUND_PROOFS_U32_WORDS],
     // TODO: Calculate bit mask for proofs found upfront and reduce the size here to just
     //  `NUM_CHUNKS`
-    proofs: [MaybeUninit<u32>; PROOF_U32_WORDS * NUM_S_BUCKETS],
+    proofs: [MaybeUninit<u32>; const { PROOF_U32_WORDS * NUM_S_BUCKETS }],
 }
 
 // This is equivalent to the above but used for interpretation by the host
@@ -50,7 +50,7 @@ pub struct ProofsHost {
     // TODO: Would have been nice to avoid filtering-out on the host
     /// S-buckets at which proofs were found, there will be more than `Record::NUM_CHUNKS` proofs
     /// here, needs to be filtered-out by the host
-    pub found_proofs: [u8; NUM_S_BUCKETS / u8::BITS as usize],
+    pub found_proofs: [u8; const { NUM_S_BUCKETS / u8::BITS as usize }],
     // TODO: Calculate bit mask for proofs found upfront and reduce the size here to just
     //  `NUM_CHUNKS`
     /// All proofs, those that correspond to set bits of `found_proofs` exist
@@ -80,7 +80,7 @@ fn find_local_proof_targets<const SUBGROUP_SIZE: u32>(
     bucket_sizes: &mut [u32; NUM_S_BUCKETS],
     buckets: &[[ProofTargets; NUM_ELEMENTS_PER_S_BUCKET]; NUM_S_BUCKETS],
     found_proofs: &mut [MaybeUninit<u32>; FOUND_PROOFS_U32_WORDS],
-    found_proofs_scratch: &mut [MaybeUninit<u32>; (WORKGROUP_SIZE / u32::BITS) as usize],
+    found_proofs_scratch: &mut [MaybeUninit<u32>; const { (WORKGROUP_SIZE / u32::BITS) as usize }],
 ) -> [Position; 2] {
     let local_invocation_id = local_invocation_id as usize;
     let base = positions_group_index * SUBGROUP_SIZE;
@@ -183,7 +183,7 @@ fn find_local_proof_targets<const SUBGROUP_SIZE: u32>(
             // SAFETY: TODO: Probably should not be unsafe to begin with:
             //  https://github.com/Rust-GPU/rust-gpu/pull/394#issuecomment-3316594485
             unsafe {
-                atomic_or::<_, { Scope::Workgroup as u32 }, { Semantics::NONE.bits() }>(
+                atomic_or::<_, const { Scope::Workgroup as u32 }, const { Semantics::NONE.bits() }>(
                     found_proofs_word,
                     found_proofs_words.x << local_word_shift,
                 );
@@ -220,23 +220,20 @@ fn find_proofs_impl<const SUBGROUP_SIZE: u32>(
     // TODO: This should have been `&[[[Position; 2]; REDUCED_MATCHES_COUNT]; NUM_MATCH_BUCKETS]`,
     //  but it currently doesn't compile if flattened:
     //  https://github.com/Rust-GPU/rust-gpu/issues/241#issuecomment-3005693043
-    table_2_positions: &[[Position; 2]; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
-    table_3_positions: &[[Position; 2]; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
-    table_4_positions: &[[Position; 2]; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
-    table_5_positions: &[[Position; 2]; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
-    table_6_positions: &[[Position; 2]; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
+    table_2_positions: &[[Position; 2]; const { REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS }],
+    table_3_positions: &[[Position; 2]; const { REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS }],
+    table_4_positions: &[[Position; 2]; const { REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS }],
+    table_5_positions: &[[Position; 2]; const { REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS }],
+    table_6_positions: &[[Position; 2]; const { REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS }],
     bucket_sizes: &mut [u32; NUM_S_BUCKETS],
     buckets: &[[ProofTargets; NUM_ELEMENTS_PER_S_BUCKET]; NUM_S_BUCKETS],
     found_proofs: &mut [MaybeUninit<u32>; FOUND_PROOFS_U32_WORDS],
     // TODO: This should have been `&mut [[MaybeUninit<u32>; PROOF_U32_WORDS]; NUM_S_BUCKETS]`,
     //  but it currently doesn't compile if flattened:
     //  https://github.com/Rust-GPU/rust-gpu/issues/241#issuecomment-3005693043
-    proofs: &mut [MaybeUninit<u32>; PROOF_U32_WORDS * NUM_S_BUCKETS],
-    found_proofs_scratch: &mut [MaybeUninit<u32>; (WORKGROUP_SIZE / u32::BITS) as usize],
-) where
-    [(); PROOF_X_SOURCES.div_ceil(SUBGROUP_SIZE as usize)]:,
-    [(); PROOF_U32_WORDS.div_ceil(SUBGROUP_SIZE as usize)]:,
-{
+    proofs: &mut [MaybeUninit<u32>; const { PROOF_U32_WORDS * NUM_S_BUCKETS }],
+    found_proofs_scratch: &mut [MaybeUninit<u32>; const { (WORKGROUP_SIZE / u32::BITS) as usize }],
+) {
     let table_6_proof_targets = find_local_proof_targets::<SUBGROUP_SIZE>(
         local_invocation_id,
         subgroup_id,
@@ -408,8 +405,8 @@ fn find_proofs_impl<const SUBGROUP_SIZE: u32>(
                             unsafe {
                                 atomic_or::<
                                     _,
-                                    { Scope::Subgroup as u32 },
-                                    { Semantics::NONE.bits() },
+                                    const { Scope::Subgroup as u32 },
+                                    const { Semantics::NONE.bits() },
                                 >(
                                     word, local_proof_words[0].to_be()
                                 );
@@ -427,8 +424,8 @@ fn find_proofs_impl<const SUBGROUP_SIZE: u32>(
                             unsafe {
                                 atomic_or::<
                                     _,
-                                    { Scope::Subgroup as u32 },
-                                    { Semantics::NONE.bits() },
+                                    const { Scope::Subgroup as u32 },
+                                    const { Semantics::NONE.bits() },
                                 >(
                                     word, local_proof_words[1].to_be()
                                 );
@@ -445,8 +442,8 @@ fn find_proofs_impl<const SUBGROUP_SIZE: u32>(
                             unsafe {
                                 atomic_or::<
                                     _,
-                                    { Scope::Subgroup as u32 },
-                                    { Semantics::NONE.bits() },
+                                    const { Scope::Subgroup as u32 },
+                                    const { Semantics::NONE.bits() },
                                 >(
                                     word, local_proof_words[2].to_be()
                                 );
@@ -504,23 +501,34 @@ pub fn find_proofs(
     #[spirv(subgroup_size)] subgroup_size: u32,
     #[spirv(num_subgroups)] num_subgroups: u32,
     #[spirv(subgroup_local_invocation_id)] subgroup_local_invocation_id: u32,
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 0)]
-    table_2_positions: &[[Position; 2]; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)]
-    table_3_positions: &[[Position; 2]; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 2)]
-    table_4_positions: &[[Position; 2]; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 3)]
-    table_5_positions: &[[Position; 2]; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 4)]
-    table_6_positions: &[[Position; 2]; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] table_2_positions: &[[Position; 2];
+         const {
+             REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS
+         }],
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] table_3_positions: &[[Position; 2];
+         const {
+             REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS
+         }],
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 2)] table_4_positions: &[[Position; 2];
+         const {
+             REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS
+         }],
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 3)] table_5_positions: &[[Position; 2];
+         const {
+             REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS
+         }],
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 4)] table_6_positions: &[[Position; 2];
+         const {
+             REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS
+         }],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 5)] bucket_sizes: &mut [u32;
              NUM_S_BUCKETS],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 6)] buckets: &[[ProofTargets; NUM_ELEMENTS_PER_S_BUCKET];
          NUM_S_BUCKETS],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 7)] proofs: &mut Proofs,
-    #[spirv(workgroup)] found_proofs_scratch: &mut [MaybeUninit<u32>;
-             (WORKGROUP_SIZE / u32::BITS) as usize],
+    #[spirv(workgroup)] found_proofs_scratch: &mut [MaybeUninit<u32>; const {
+             (WORKGROUP_SIZE / u32::BITS) as usize
+         }],
 ) {
     let local_invocation_id = local_invocation_id.x;
     let workgroup_id = workgroup_id.x;

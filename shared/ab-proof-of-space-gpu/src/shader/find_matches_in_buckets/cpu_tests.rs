@@ -14,7 +14,7 @@ pub(in super::super) struct Rmap {
     ///
     /// Physical pointer must be increased by `1` to get a virtual pointer before storing. Virtual
     /// pointer must be decreased by `1` before reading to get a physical pointer.
-    virtual_pointers: [u16; PARAM_BC as usize],
+    virtual_pointers: [u16; const { usize::from(PARAM_BC) }],
     positions: [[Position; 2]; REDUCED_BUCKET_SIZE],
     next_physical_pointer: u16,
 }
@@ -92,7 +92,7 @@ pub(in super::super) fn find_matches_in_buckets_correct<'a>(
     right_bucket: &[PositionR; MAX_BUCKET_SIZE],
     // `PARAM_M as usize * 2` corresponds to the upper bound number of matches a single `y` in the
     // left bucket might have here
-    matches: &'a mut [MaybeUninit<Match>; REDUCED_MATCHES_COUNT + PARAM_M as usize * 2],
+    matches: &'a mut [MaybeUninit<Match>; REDUCED_MATCHES_COUNT + usize::from(PARAM_M) * 2],
 ) -> (&'a [Match], Rmap) {
     let left_base = left_bucket_index * u32::from(PARAM_BC);
 

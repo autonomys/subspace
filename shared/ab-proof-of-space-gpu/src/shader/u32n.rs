@@ -7,6 +7,9 @@ use core::ops::{
     Shr, ShrAssign, Sub, SubAssign,
 };
 
+#[cfg(test)]
+const U32_WORDS_TO_BYTES<const N: usize>: usize = N * 4;
+
 /// Generalized unsigned integer as an array of u32 words, least significant word first
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[repr(C)]
@@ -19,7 +22,7 @@ impl<const N: usize> U32N<N> {
 
     #[cfg(test)]
     #[inline(always)]
-    pub(super) fn to_be_bytes(self) -> [u8; N * 4] {
+    pub(super) fn to_be_bytes(self) -> [u8; U32_WORDS_TO_BYTES::<N>] {
         let mut bytes = [0u8; _];
         let mut idx = 0;
         for &word in self.0.iter().rev() {
@@ -32,7 +35,7 @@ impl<const N: usize> U32N<N> {
 
     #[cfg(test)]
     #[inline(always)]
-    pub(super) fn from_be_bytes(bytes: [u8; N * 4]) -> Self {
+    pub(super) fn from_be_bytes(bytes: [u8; U32_WORDS_TO_BYTES::<N>]) -> Self {
         let mut words = [0u32; _];
         let mut idx = 0;
         for i in (0..N).rev() {

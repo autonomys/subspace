@@ -277,6 +277,7 @@ where
 }
 
 /// Builds service for a domain full node.
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub async fn new_full<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, RuntimeApi, AccountId, Provider>(
     domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>,
 ) -> sc_service::error::Result<

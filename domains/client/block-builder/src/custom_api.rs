@@ -16,6 +16,7 @@ use sp_state_machine::{
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::mem;
 use std::sync::Arc;
 use subspace_runtime_primitives::ExtrinsicFor;
 
@@ -381,7 +382,7 @@ where
     pub(crate) fn collect_storage_changes(
         &mut self,
     ) -> Option<CollectedStorageChanges<HashingFor<Block>>> {
-        let mut intermediate_roots = self.intermediate_roots.drain(..).collect::<Vec<_>>();
+        let mut intermediate_roots = mem::take(&mut self.intermediate_roots);
         // we did not add the last transaction storage root.
         // include that and then return
         let maybe_storage_changes = self.maybe_storage_changes.take();

@@ -103,7 +103,10 @@ async fn find_matches_in_buckets(
 
         match &result {
             Some(result) => {
-                assert!(result == &adapter_result);
+                #[expect(clippy::manual_assert_eq, reason = "Value is too large")]
+                {
+                    assert!(result == &adapter_result);
+                }
             }
             None => {
                 result.replace(adapter_result);

@@ -267,6 +267,7 @@ async fn create_substrate_network_observer(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 async fn create_worker<Block, AS, IQS, NB, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,

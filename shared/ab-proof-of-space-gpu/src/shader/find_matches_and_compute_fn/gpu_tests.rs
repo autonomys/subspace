@@ -226,7 +226,10 @@ async fn find_matches_and_compute_fn<const TABLE_NUMBER: u8>(
 
         match &result {
             Some(result) => {
-                assert!(result == &adapter_result);
+                #[expect(clippy::manual_assert_eq, reason = "Value is too large")]
+                {
+                    assert!(result == &adapter_result);
+                }
             }
             None => {
                 result.replace(adapter_result);

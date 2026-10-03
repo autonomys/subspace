@@ -48,7 +48,7 @@ fn sort_buckets_gpu() {
     for entry in &mut expected_output.last_mut().unwrap()[reduced_last_bucket_size as usize..] {
         *entry = PositionR::SENTINEL;
     }
-    for bucket in expected_output.iter_mut() {
+    for bucket in &mut expected_output {
         bucket.sort();
     }
 

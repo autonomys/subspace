@@ -21,8 +21,22 @@ impl Step for X {
     }
 
     #[inline(always)]
+    #[cfg(not(target_arch = "spirv"))]
+    fn forward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (n, overflowing) = u32::forward_overflowing(start.0, count);
+        (Self(n), overflowing)
+    }
+
+    #[inline(always)]
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         u32::backward_checked(start.0, count).map(Self)
+    }
+
+    #[inline(always)]
+    #[cfg(not(target_arch = "spirv"))]
+    fn backward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (n, overflowing) = u32::backward_overflowing(start.0, count);
+        (Self(n), overflowing)
     }
 }
 

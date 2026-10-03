@@ -53,6 +53,15 @@ pub(super) unsafe fn find_matches_in_buckets_impl(
     matches: &mut [MaybeUninit<Match>; MAX_BUCKET_SIZE],
     shared: &mut FindMatchesShared,
 ) -> u32 {
+    const CHUNK_SIZE: usize = WORKGROUP_SIZE as usize / PARAM_M as usize;
+
+    const {
+        // `CHUNK_SIZE` with `PARAM_M` must cover workgroup exactly
+        assert!(CHUNK_SIZE as u32 * PARAM_M as u32 == WORKGROUP_SIZE);
+        // The bucket size should be possible to iterate in exact chunks
+        assert!(REDUCED_BUCKET_SIZE.is_multiple_of(CHUNK_SIZE));
+    }
+
     let FindMatchesShared {
         rmap,
         matches_counter,
@@ -74,14 +83,6 @@ pub(super) unsafe fn find_matches_in_buckets_impl(
     workgroup_memory_barrier_with_group_sync();
 
     let parity = left_bucket_index % 2;
-
-    const CHUNK_SIZE: usize = WORKGROUP_SIZE as usize / PARAM_M as usize;
-    const {
-        // `CHUNK_SIZE` with `PARAM_M` must cover workgroup exactly
-        assert!(CHUNK_SIZE as u32 * PARAM_M as u32 == WORKGROUP_SIZE);
-        // The bucket size should be possible to iterate in exact chunks
-        assert!(REDUCED_BUCKET_SIZE.is_multiple_of(CHUNK_SIZE));
-    }
     // TODO: More idiomatic version currently doesn't compile:
     //  https://github.com/Rust-GPU/rust-gpu/issues/241#issuecomment-3005693043
     for chunk_index in 0..REDUCED_BUCKET_SIZE / CHUNK_SIZE {
@@ -121,7 +122,7 @@ pub(super) unsafe fn find_matches_in_buckets_impl(
             // SAFETY: TODO: Probably should not be unsafe to begin with:
             //  https://github.com/Rust-GPU/rust-gpu/pull/394#issuecomment-3316594485
             let local_matches_offset = unsafe {
-                atomic_i_add::<_, { Scope::Workgroup as u32 }, { Semantics::NONE.bits() }>(
+                atomic_i_add::<_, const { Scope::Workgroup as u32 }, const { Semantics::NONE.bits() }>(
                     matches_counter,
                     local_matches_count,
                 )

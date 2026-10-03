@@ -205,8 +205,20 @@ impl Step for SBucket {
     }
 
     #[inline]
+    fn forward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (n, overflowing) = u16::forward_overflowing(start.0, count);
+        (Self(n), overflowing)
+    }
+
+    #[inline]
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         u16::backward_checked(start.0, count).map(Self)
+    }
+
+    #[inline]
+    fn backward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (n, overflowing) = u16::backward_overflowing(start.0, count);
+        (Self(n), overflowing)
     }
 }
 

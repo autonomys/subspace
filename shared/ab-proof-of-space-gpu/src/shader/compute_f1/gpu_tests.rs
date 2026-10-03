@@ -29,7 +29,7 @@ fn compute_f1_gpu() {
 
     let expected_output = (X::ZERO..)
         .take(MAX_TABLE_SIZE as usize)
-        .map(|x| correct_compute_f1::<{ PosProof::K }>(x, &seed))
+        .map(|x| correct_compute_f1::<const { PosProof::K }>(x, &seed))
         .collect::<Vec<_>>();
 
     assert_eq!(

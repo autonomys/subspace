@@ -1,12 +1,15 @@
 //! Proof of space implementation
 #![no_std]
-#![expect(incomplete_features, reason = "generic_const_exprs")]
+#![expect(incomplete_features, reason = "generic_const_*")]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![feature(
     const_block_items,
     const_convert,
     const_trait_impl,
-    generic_const_exprs,
+    generic_const_args,
+    generic_const_items,
+    inherent_associated_types,
+    min_generic_const_args,
     step_trait
 )]
 #![cfg_attr(test, feature(float_erf))]
@@ -42,7 +45,7 @@ pub struct PosProofs {
     /// There will be at most [`Record::NUM_CHUNKS`] proofs produced/bits set to `1`.
     pub found_proofs: [u8; Record::NUM_S_BUCKETS / u8::BITS as usize],
     /// [`Record::NUM_CHUNKS`] proofs, corresponding to set bits of `found_proofs`.
-    pub proofs: [PosProof; Record::NUM_CHUNKS],
+    pub proofs: [PosProof; const { Record::NUM_CHUNKS }],
 }
 
 // TODO: A method that returns hashed proofs (with SIMD) for all s-buckets for plotting

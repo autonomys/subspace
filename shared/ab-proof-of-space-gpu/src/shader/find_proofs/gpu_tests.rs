@@ -83,7 +83,7 @@ fn generate_buckets(
         Box::from_raw(ptr.cast::<[[ProofTargets; NUM_ELEMENTS_PER_S_BUCKET]; NUM_S_BUCKETS]>())
     };
 
-    for bucket in buckets.iter_mut() {
+    for bucket in &mut buckets {
         bucket.shuffle(rng);
     }
 
@@ -195,7 +195,10 @@ async fn find_proofs(
 
         match &result {
             Some(result) => {
-                assert!(result == &adapter_result);
+                #[expect(clippy::manual_assert_eq, reason = "Value is too large")]
+                {
+                    assert!(result == &adapter_result);
+                }
             }
             None => {
                 result.replace(adapter_result);

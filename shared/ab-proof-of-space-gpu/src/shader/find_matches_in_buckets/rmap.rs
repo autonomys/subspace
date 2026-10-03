@@ -52,7 +52,9 @@ impl Rmap {
             // SAFETY: TODO: Probably should not be unsafe to begin with:
             //  https://github.com/Rust-GPU/rust-gpu/pull/394#issuecomment-3316594485
             let prev_word_value = unsafe {
-                atomic_or::<_, { Scope::Workgroup as u32 }, { Semantics::NONE.bits() }>(word, mask)
+                atomic_or::<_, const { Scope::Workgroup as u32 }, const { Semantics::NONE.bits() }>(
+                    word, mask,
+                )
             };
 
             if prev_word_value & mask != 0 {
@@ -61,10 +63,11 @@ impl Rmap {
                 // SAFETY: TODO: Probably should not be unsafe to begin with:
                 //  https://github.com/Rust-GPU/rust-gpu/pull/394#issuecomment-3316594485
                 unsafe {
-                    atomic_or::<_, { Scope::Workgroup as u32 }, { Semantics::NONE.bits() }>(
-                        word,
-                        mask << 1u8,
-                    );
+                    atomic_or::<
+                        _,
+                        const { Scope::Workgroup as u32 },
+                        const { Semantics::NONE.bits() },
+                    >(word, mask << 1u8);
                 }
             }
         } else if *word & mask != 0 {

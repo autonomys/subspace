@@ -99,7 +99,7 @@ fn test_transfer_response_missing_request() {
         }
         .encode();
         let res = submit_response(dst_chain_id, encoded_payload, Ok(vec![]));
-        assert_err!(res, Error::<MockRuntime>::MissingTransferRequest)
+        assert_err!(res, Error::<MockRuntime>::MissingTransferRequest);
     })
 }
 
@@ -174,7 +174,7 @@ fn test_transfer_response_invalid_request() {
         }
         .encode();
         let res = submit_response(dst_chain_id, encoded_payload, Ok(vec![]));
-        assert_err!(res, Error::<MockRuntime>::InvalidTransferRequest)
+        assert_err!(res, Error::<MockRuntime>::InvalidTransferRequest);
     })
 }
 
@@ -191,7 +191,7 @@ fn test_transfer_invalid_account_id() {
         };
 
         let res = Transporter::transfer(RuntimeOrigin::signed(account), dst_location, amount);
-        assert_err!(res, Error::<MockRuntime>::InvalidAccountId)
+        assert_err!(res, Error::<MockRuntime>::InvalidAccountId);
     })
 }
 
@@ -208,7 +208,7 @@ fn test_transfer_invalid_account_id_substrate() {
         };
 
         let res = Transporter::transfer(RuntimeOrigin::signed(account), dst_location, amount);
-        assert_err!(res, Error::<MockRuntime>::InvalidAccountId)
+        assert_err!(res, Error::<MockRuntime>::InvalidAccountId);
     })
 }
 

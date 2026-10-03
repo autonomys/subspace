@@ -84,7 +84,7 @@ mod tests {
     use super::*;
     use hex::FromHex;
 
-    type RawProof = [u8; PosProof::SIZE];
+    type RawProof = [u8; const { PosProof::SIZE }];
 
     #[test]
     fn basic() {

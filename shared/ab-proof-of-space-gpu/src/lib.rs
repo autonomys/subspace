@@ -4,9 +4,13 @@
 //! structures used (`ab-proof-of-space` also supports `K=25`, but this crate doesn't for now).
 
 #![cfg_attr(target_arch = "spirv", no_std)]
-#![feature(generic_const_exprs, step_trait)]
-#![expect(incomplete_features, reason = "generic_const_exprs")]
-#![cfg_attr(all(test, not(target_arch = "spirv")), feature(maybe_uninit_fill))]
+#![feature(step_trait)]
+#![feature(generic_const_args, generic_const_items, min_generic_const_args)]
+#![expect(incomplete_features, reason = "generic_const_*")]
+#![cfg_attr(
+    all(test, not(target_arch = "spirv")),
+    feature(const_convert, const_trait_impl, maybe_uninit_fill)
+)]
 
 #[cfg(not(target_arch = "spirv"))]
 mod host;

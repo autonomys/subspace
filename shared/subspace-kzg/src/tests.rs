@@ -33,19 +33,18 @@ fn bytes_scalars_conversion() {
         rand::rng().fill_bytes(&mut bytes);
 
         let scalars = bytes
-            .chunks_exact(ScalarBytes::SAFE_BYTES)
-            .map(|bytes| {
-                Scalar::from(
-                    <&[u8; ScalarBytes::SAFE_BYTES]>::try_from(bytes)
-                        .expect("Chunked into correct size; qed"),
-                )
-            })
+            .as_chunks::<{ ScalarBytes::SAFE_BYTES }>()
+            .0
+            .iter()
+            .map(Scalar::from)
             .collect::<Vec<_>>();
 
         {
             let mut decoded_bytes = vec![0u8; bytes.len()];
             decoded_bytes
-                .chunks_exact_mut(ScalarBytes::SAFE_BYTES)
+                .as_chunks_mut::<{ ScalarBytes::SAFE_BYTES }>()
+                .0
+                .iter_mut()
                 .zip(scalars.iter())
                 .for_each(|(bytes, scalar)| {
                     bytes.copy_from_slice(&scalar.to_bytes()[1..]);
@@ -57,7 +56,9 @@ fn bytes_scalars_conversion() {
         {
             let mut decoded_bytes = vec![0u8; bytes.len()];
             decoded_bytes
-                .chunks_exact_mut(ScalarBytes::SAFE_BYTES)
+                .as_chunks_mut::<{ ScalarBytes::SAFE_BYTES }>()
+                .0
+                .iter_mut()
                 .zip(scalars.iter())
                 .for_each(|(bytes, scalar)| {
                     bytes.copy_from_slice(&scalar.to_bytes()[1..]);

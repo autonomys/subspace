@@ -1,4 +1,4 @@
-use super::*;
+use crate::shader::u32n::U32N;
 
 #[test]
 fn test_from_low_high() {
