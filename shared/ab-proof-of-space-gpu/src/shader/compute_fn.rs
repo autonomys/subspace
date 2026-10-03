@@ -1,3 +1,6 @@
+#[cfg(all(test, not(target_arch = "spirv")))]
+pub(super) mod cpu_tests;
+
 use crate::shader::constants::{K, PARAM_EXT};
 use crate::shader::types::{Metadata, Y};
 use crate::shader::u32n::U32N;

@@ -1,3 +1,6 @@
+#[cfg(all(test, not(miri), not(target_arch = "spirv")))]
+mod gpu_tests;
+
 use crate::shader::constants::{MAX_BUCKET_SIZE, NUM_BUCKETS};
 use crate::shader::types::PositionR;
 use spirv_std::arch::workgroup_memory_barrier_with_group_sync;

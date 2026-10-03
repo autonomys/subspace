@@ -1,3 +1,8 @@
+#[cfg(all(test, not(miri), not(target_arch = "spirv")))]
+mod cpu_tests;
+#[cfg(all(test, not(miri), not(target_arch = "spirv")))]
+mod gpu_tests;
+
 use crate::shader::compute_fn::compute_fn_impl;
 use crate::shader::constants::{
     MAX_BUCKET_SIZE, NUM_BUCKETS, NUM_MATCH_BUCKETS, PARAM_BC, REDUCED_BUCKET_SIZE,

@@ -1,3 +1,8 @@
+#[cfg(all(test, not(target_arch = "spirv")))]
+mod cpu_tests;
+#[cfg(all(test, not(miri), not(target_arch = "spirv")))]
+mod gpu_tests;
+
 use crate::shader::constants::{K, MAX_BUCKET_SIZE, MAX_TABLE_SIZE, NUM_BUCKETS, PARAM_EXT};
 #[cfg(target_arch = "spirv")]
 use crate::shader::polyfills::ArrayIndexingPolyfill;

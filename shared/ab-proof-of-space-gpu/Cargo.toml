@@ -31,6 +31,11 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 wgpu = { workspace = true }
 
+[target.'cfg(not(target_arch = "spirv"))'.dev-dependencies]
+chacha20 = { workspace = true, features = ["rng"] }
+futures = { workspace = true, features = ["executor"] }
+rand = { workspace = true }
+
 # TODO: This will be built in the shader as well, figure out a way to avoid that
 [build-dependencies]
 cargo-gpu-install = { workspace = true }

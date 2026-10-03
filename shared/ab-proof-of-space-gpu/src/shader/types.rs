@@ -26,6 +26,11 @@ impl Step for X {
     }
 }
 
+impl X {
+    #[cfg(test)]
+    pub(super) const ZERO: Self = Self(0);
+}
+
 /// Stores data in lower bits
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into)]
 #[repr(C)]

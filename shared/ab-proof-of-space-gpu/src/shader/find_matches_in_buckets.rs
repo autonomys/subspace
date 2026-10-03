@@ -1,3 +1,7 @@
+#[cfg(all(test, not(target_arch = "spirv")))]
+pub(super) mod cpu_tests;
+#[cfg(all(test, not(miri), not(target_arch = "spirv")))]
+mod gpu_tests;
 pub mod rmap;
 
 use crate::shader::constants::{

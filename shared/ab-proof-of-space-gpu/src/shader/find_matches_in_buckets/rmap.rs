@@ -1,3 +1,6 @@
+#[cfg(all(test, not(target_arch = "spirv")))]
+mod tests;
+
 use crate::shader::constants::PARAM_BC;
 #[cfg(target_arch = "spirv")]
 use crate::shader::polyfills::ArrayIndexingPolyfill;
@@ -14,6 +17,14 @@ pub(super) struct Rmap {
 }
 
 impl Rmap {
+    #[cfg(test)]
+    #[inline(always)]
+    fn new() -> Self {
+        Self {
+            presence_flags: [0; _],
+        }
+    }
+
     /// Returns `0`, `1` or `2` depending on whether `r` was present and whether there were
     /// duplicates.
     ///
