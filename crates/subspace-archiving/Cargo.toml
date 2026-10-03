@@ -30,7 +30,7 @@ rand = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion.workspace = true
-rand = { workspace = true, features = ["min_const_gen"] }
+rand = { workspace = true, features = ["thread_rng"] }
 subspace-core-primitives.workspace = true
 subspace-verification = { workspace = true, features = ["kzg"] }
 

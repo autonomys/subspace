@@ -77,7 +77,7 @@ subspace-runtime-primitives.workspace = true
 subspace-service.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-rand.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
 tracing.workspace = true
 
 [build-dependencies]

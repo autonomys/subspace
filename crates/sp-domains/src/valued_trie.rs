@@ -259,7 +259,7 @@ mod test {
     use frame_support::assert_err;
     use parity_scale_codec::{Compact, Encode};
     use rand::rngs::StdRng;
-    use rand::{Rng, SeedableRng};
+    use rand::{RngExt, SeedableRng};
     use sp_core::H256;
     use sp_core::storage::StorageKey;
     use sp_runtime::traits::{BlakeTwo256, Hash};

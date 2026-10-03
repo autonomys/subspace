@@ -44,17 +44,17 @@ async fn basic() {
     let piece_index_2 = PieceIndex::from(2);
     let piece_0 = {
         let mut piece = Piece::default();
-        thread_rng().fill(piece.as_mut());
+        rand::rng().fill(piece.as_mut());
         piece
     };
     let piece_1 = {
         let mut piece = Piece::default();
-        thread_rng().fill(piece.as_mut());
+        rand::rng().fill(piece.as_mut());
         piece
     };
     let piece_2 = {
         let mut piece = Piece::default();
-        thread_rng().fill(piece.as_mut());
+        rand::rng().fill(piece.as_mut());
         piece
     };
     let record_key_0 = RecordKey::from(piece_index_0.to_multihash());

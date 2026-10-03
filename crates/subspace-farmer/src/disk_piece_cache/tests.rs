@@ -27,7 +27,7 @@ fn basic() {
             let piece_index = PieceIndex::ZERO;
             let piece = {
                 let mut piece = Piece::default();
-                thread_rng().fill(piece.as_mut());
+                rand::rng().fill(piece.as_mut());
                 piece
             };
 
@@ -60,7 +60,7 @@ fn basic() {
             let piece_index = PieceIndex::from(10);
             let piece = {
                 let mut piece = Piece::default();
-                thread_rng().fill(piece.as_mut());
+                rand::rng().fill(piece.as_mut());
                 piece
             };
 
@@ -99,7 +99,7 @@ fn basic() {
             let piece_index = PieceIndex::from(13);
             let piece = {
                 let mut piece = Piece::default();
-                thread_rng().fill(piece.as_mut());
+                rand::rng().fill(piece.as_mut());
                 piece
             };
 

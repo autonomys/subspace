@@ -114,7 +114,7 @@ impl NodeClient for MockNodeClient {
                 .entry(piece_index)
                 .or_insert_with(|| {
                     let mut piece = Piece::default();
-                    thread_rng().fill(piece.as_mut());
+                    rand::rng().fill(piece.as_mut());
                     piece
                 })
                 .clone(),
@@ -148,7 +148,7 @@ impl PieceGetter for MockPieceGetter {
                 .entry(piece_index)
                 .or_insert_with(|| {
                     let mut piece = Piece::default();
-                    thread_rng().fill(piece.as_mut());
+                    rand::rng().fill(piece.as_mut());
                     piece
                 })
                 .clone(),

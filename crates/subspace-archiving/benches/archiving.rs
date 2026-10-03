@@ -1,5 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use rand::{Rng, thread_rng};
+use rand::RngExt;
 use std::hint::black_box;
 use std::num::NonZeroUsize;
 use subspace_archiving::archiver::Archiver;
@@ -12,7 +12,7 @@ const SMALL_BLOCK_SIZE: usize = 500;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut input = vec![0u8; AMOUNT_OF_DATA];
-    thread_rng().fill(input.as_mut_slice());
+    rand::rng().fill(input.as_mut_slice());
     let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)

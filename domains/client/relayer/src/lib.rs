@@ -563,7 +563,7 @@ where
     let queries = if queries.len() <= MAXIMUM_CHANNELS_TO_PROCESS_IN_BLOCK {
         queries
     } else {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         queries.shuffle(&mut rng);
         queries.truncate(MAXIMUM_CHANNELS_TO_PROCESS_IN_BLOCK);
         queries

@@ -35,7 +35,7 @@ parity-scale-codec = { workspace = true, features = ["std"] }
 parking_lot.workspace = true
 pin-project.workspace = true
 prometheus-client.workspace = true
-rand.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
 schnellru.workspace = true
 subspace-core-primitives.workspace = true
 subspace-metrics.workspace = true
@@ -49,5 +49,5 @@ unsigned-varint = { workspace = true, features = ["futures", "asynchronous_codec
 void.workspace = true
 
 [dev-dependencies]
-rand.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
 libp2p-swarm-test.workspace = true

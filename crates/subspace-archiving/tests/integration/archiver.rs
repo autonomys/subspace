@@ -1,5 +1,5 @@
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
-use rand::{Rng, thread_rng};
+use rand::RngExt;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::io::Write;
@@ -72,7 +72,7 @@ fn archiver() {
 
     let (block_0, block_0_object_mapping) = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE / 2];
-        thread_rng().fill(block.as_mut_slice());
+        rand::rng().fill(block.as_mut_slice());
 
         block[0..]
             .as_mut()
@@ -107,7 +107,7 @@ fn archiver() {
 
     let (block_1, block_1_object_mapping) = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE / 3 * 2];
-        thread_rng().fill(block.as_mut_slice());
+        rand::rng().fill(block.as_mut_slice());
 
         block[RecordedHistorySegment::SIZE / 6..]
             .as_mut()
@@ -215,7 +215,7 @@ fn archiver() {
 
     let block_2 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE * 2];
-        thread_rng().fill(block.as_mut_slice());
+        rand::rng().fill(block.as_mut_slice());
         block
     };
     // This should be big enough to produce two archived segments in one go
@@ -342,7 +342,7 @@ fn archiver() {
     // Add a block such that it fits in the next segment exactly
     let block_3 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE - 21670908];
-        thread_rng().fill(block.as_mut_slice());
+        rand::rng().fill(block.as_mut_slice());
         block
     };
     let block_3_outcome = archiver.add_block(block_3.clone(), BlockObjectMapping::default(), true);

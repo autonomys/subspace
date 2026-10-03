@@ -69,7 +69,7 @@ pallet-messenger.workspace = true
 pallet-sudo.workspace = true
 pallet-timestamp.workspace = true
 pallet-transporter.workspace = true
-rand.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
 sc-cli.workspace = true
 sc-service.workspace = true
 sp-domains = { workspace = true }

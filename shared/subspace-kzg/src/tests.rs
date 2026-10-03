@@ -1,6 +1,5 @@
 use crate::{Kzg, Scalar};
-use rand::thread_rng;
-use rand_core::RngCore;
+use rand_core::Rng;
 use subspace_core_primitives::ScalarBytes;
 
 #[test]
@@ -31,7 +30,7 @@ fn basic() {
 fn bytes_scalars_conversion() {
     {
         let mut bytes = vec![0u8; ScalarBytes::SAFE_BYTES * 16];
-        thread_rng().fill_bytes(&mut bytes);
+        rand::rng().fill_bytes(&mut bytes);
 
         let scalars = bytes
             .chunks_exact(ScalarBytes::SAFE_BYTES)

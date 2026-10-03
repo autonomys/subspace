@@ -43,7 +43,7 @@ parity-scale-codec.workspace = true
 parking_lot.workspace = true
 pin-project.workspace = true
 prometheus-client.workspace = true
-rand.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
 rayon.workspace = true
 schnorrkel.workspace = true
 serde = { workspace = true, features = ["derive"] }

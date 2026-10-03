@@ -16,7 +16,7 @@ async-channel.workspace = true
 cross-domain-message-gossip.workspace = true
 futures.workspace = true
 parity-scale-codec = { workspace = true, features = ["derive"] }
-rand.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
 sc-client-api.workspace = true
 sc-utils.workspace = true
 sp-api.workspace = true

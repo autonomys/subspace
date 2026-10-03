@@ -193,7 +193,7 @@ where
             _ => diff / 1_000,
         };
 
-        let n = thread_rng().gen_range(0..=diff);
+        let n = rand::rng().random_range(0..=diff);
 
         n < sample_size
     }

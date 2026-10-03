@@ -26,7 +26,7 @@ hex.workspace = true
 libc.workspace = true
 parity-scale-codec.workspace = true
 parking_lot.workspace = true
-rand.workspace = true
+rand = { workspace = true, features = ["std_rng"] }
 rayon.workspace = true
 schnorrkel.workspace = true
 serde = { workspace = true, features = ["derive"] }
