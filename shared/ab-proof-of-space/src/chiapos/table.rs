@@ -897,12 +897,12 @@ impl<const K: u8, const TABLE_NUMBER: u8> PrunedTable<K, TABLE_NUMBER> {
             Self::First => {
                 unreachable!("Not the first table");
             }
-            Self::Other { positions, .. } => {
+            Self::Other { positions } => {
                 // SAFETY: All non-sentinel positions returned by [`Self::buckets()`] are valid
                 unsafe { positions.get_unchecked(usize::from(position)).assume_init() }
             }
             #[cfg(feature = "parallel")]
-            Self::OtherBuckets { positions, .. } => {
+            Self::OtherBuckets { positions } => {
                 // SAFETY: All non-sentinel positions returned by [`Self::buckets()`] are valid
                 unsafe {
                     positions
@@ -1300,6 +1300,10 @@ where
     /// [`PrunedTable::position()`] and not be a sentinel value.
     #[inline(always)]
     pub(super) unsafe fn position(&self, position: Position) -> [Position; 2] {
+        #[expect(
+            clippy::rest_pattern_accessible_field,
+            reason = "Do not need other fields"
+        )]
         match self {
             Self::First { .. } => {
                 unreachable!("Not the first table");
@@ -1589,6 +1593,10 @@ where
     /// `position` must come from [`Self::buckets()`] and not be a sentinel value.
     #[inline(always)]
     unsafe fn metadata(&self, position: Position) -> Metadata<K, TABLE_NUMBER> {
+        #[expect(
+            clippy::rest_pattern_accessible_field,
+            reason = "Do not need other fields"
+        )]
         match self {
             Self::First { .. } => {
                 // X matches position
@@ -1616,6 +1624,10 @@ where
 impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER> {
     #[inline(always)]
     fn prune(self) -> PrunedTable<K, TABLE_NUMBER> {
+        #[expect(
+            clippy::rest_pattern_accessible_field,
+            reason = "Do not need other fields"
+        )]
         match self {
             Self::First { .. } => PrunedTable::First,
             Self::Other { positions, .. } => PrunedTable::Other { positions },
@@ -1627,8 +1639,12 @@ impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER> {
     /// Positions of `y`s grouped by the bucket they belong to
     #[inline(always)]
     pub(super) fn buckets(&self) -> &[[(Position, Y); REDUCED_BUCKET_SIZE]; NUM_BUCKETS::<K>] {
+        #[expect(
+            clippy::rest_pattern_accessible_field,
+            reason = "Do not need other fields"
+        )]
         match self {
-            Self::First { buckets, .. } => buckets,
+            Self::First { buckets } => buckets,
             Self::Other { buckets, .. } => buckets,
             #[cfg(feature = "parallel")]
             Self::OtherBuckets { buckets, .. } => buckets,

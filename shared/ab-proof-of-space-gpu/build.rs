@@ -66,7 +66,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let path_to_spv = if env::var("CLIPPY_ARGS").is_ok() {
         match spirv_builder.clippy() {
             Ok(compile_result) => compile_result.module.unwrap_single().to_path_buf(),
-            Err(SpirvBuilderError::NoArtifactProduced { .. }) => {
+            Err(SpirvBuilderError::NoArtifactProduced { stdout: _ }) => {
                 let empty_file = out_dir.join("empty.bin");
                 fs::write(&empty_file, [])?;
                 empty_file

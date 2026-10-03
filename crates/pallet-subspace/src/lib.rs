@@ -1,5 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(feature = "std"), no_std)]
+// TODO: Remove once FRAME macros stop generating `.clone()` calls on `Copy` types with user spans
+#![expect(clippy::clone_on_copy, reason = "Comes from Substrate")]
 #![cfg_attr(test, feature(portable_simd))]
 #![warn(unused_must_use, unsafe_code, unused_variables)]
 

@@ -31,7 +31,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 wgpu = { workspace = true }
 
-[target.'cfg(not(target_arch = "spirv"))'.dev-dependencies]
+[dev-dependencies]
 chacha20 = { workspace = true, features = ["rng"] }
 futures = { workspace = true, features = ["executor"] }
 rand = { workspace = true }

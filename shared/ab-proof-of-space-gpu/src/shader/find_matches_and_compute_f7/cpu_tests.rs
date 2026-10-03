@@ -32,7 +32,6 @@ pub(super) fn find_matches_and_compute_f7_correct<'a>(
         );
 
         for m in matches {
-            // SAFETY: Guaranteed by function contract
             let (bucket_offset, r_target, positions_offset) = m.split();
 
             let left_position_r = left_bucket[bucket_offset as usize];

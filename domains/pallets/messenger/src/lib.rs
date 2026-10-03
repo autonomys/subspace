@@ -16,6 +16,8 @@
 //! Pallet messenger used to communicate between domains and other blockchains.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+// TODO: Remove once FRAME macros stop generating `.clone()` calls on `Copy` types with user spans
+#![expect(clippy::clone_on_copy, reason = "Comes from Substrate")]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms)]
 #![cfg_attr(test, feature(variant_count))]

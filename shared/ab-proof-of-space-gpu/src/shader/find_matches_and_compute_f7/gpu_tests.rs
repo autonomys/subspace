@@ -173,10 +173,7 @@ async fn find_matches_and_compute_f7(
 
         match &result {
             Some(result) => {
-                #[expect(clippy::manual_assert_eq, reason = "Value is too large")]
-                {
-                    assert!(result == &adapter_result);
-                }
+                assert!(result == &adapter_result);
             }
             None => {
                 result.replace(adapter_result);

@@ -1,6 +1,8 @@
 //! Pallet for tweaking the runtime configs for multiple network.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+// TODO: Remove once FRAME macros stop generating `.clone()` calls on `Copy` types with user spans
+#![expect(clippy::clone_on_copy, reason = "Comes from Substrate")]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
