@@ -10,8 +10,15 @@
 #![expect(incomplete_features, reason = "generic_const_*")]
 #![cfg_attr(
     all(test, not(target_arch = "spirv")),
-    feature(const_convert, const_trait_impl, maybe_uninit_fill)
+    feature(const_convert, const_trait_impl)
 )]
+#![cfg_attr(
+    all(test, not(any(miri, target_arch = "spirv"))),
+    feature(maybe_uninit_fill)
+)]
+// TODO: Remove if/when this is addressed:
+//  https://github.com/rust-lang/rust-clippy/issues/17524#issuecomment-5405010966
+#![cfg_attr(test, expect(clippy::manual_assert_eq, reason = "False-positive"))]
 // TODO: Remove once https://github.com/gfx-rs/wgpu/pull/9953 is released
 #![recursion_limit = "256"]
 

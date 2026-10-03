@@ -183,6 +183,10 @@ impl NetworkBehaviour for Behaviour {
         connection_id: ConnectionId,
         event: THandlerOutEvent<Self>,
     ) {
+        #[expect(
+            unreachable_code,
+            reason = "Some kind of false-positive related unreachable handling"
+        )]
         self.inner
             .on_connection_handler_event(id, connection_id, event)
     }

@@ -1,3 +1,8 @@
+#![expect(
+    unreachable_code,
+    reason = "Some kind of false-positive related to proc macro handling"
+)]
+
 pub(crate) mod persistent_parameters;
 #[cfg(test)]
 mod tests;
@@ -26,7 +31,6 @@ use libp2p::kad::{Behaviour as Kademlia, Config as KademliaConfig, Event as Kade
 use libp2p::ping::{Behaviour as Ping, Event as PingEvent};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::swarm::behaviour::toggle::Toggle;
-use std::convert::Infallible;
 use void::Void as VoidEvent;
 
 type BlockListBehaviour = AllowBlockListBehaviour<BlockedPeers>;
@@ -119,8 +123,8 @@ pub(crate) enum Event {
 }
 
 // Infallible instances can never be created.
-impl From<Infallible> for Event {
-    fn from(_: Infallible) -> Self {
+impl From<!> for Event {
+    fn from(_: !) -> Self {
         unreachable!()
     }
 }
