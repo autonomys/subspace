@@ -18,8 +18,7 @@ use async_nats::{
     Client, ConnectOptions, HeaderMap, HeaderValue, Message, PublishError, RequestError,
     RequestErrorKind, Subject, SubscribeError, Subscriber, ToServerAddrs,
 };
-use backoff::ExponentialBackoff;
-use backoff::backoff::Backoff;
+use backon::{BackoffBuilder, ExponentialBuilder};
 use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, Stream, StreamExt, select};
@@ -353,7 +352,7 @@ where
 #[derive(Debug)]
 struct Inner {
     client: Client,
-    request_retry_backoff_policy: ExponentialBackoff,
+    request_retry_backoff_policy: ExponentialBuilder,
     approximate_max_message_size: usize,
     max_message_size: usize,
 }
@@ -377,7 +376,7 @@ impl NatsClient {
     /// Create new instance by connecting to specified addresses
     pub async fn new<A: ToServerAddrs>(
         addrs: A,
-        request_retry_backoff_policy: ExponentialBackoff,
+        request_retry_backoff_policy: ExponentialBuilder,
     ) -> Result<Self, async_nats::Error> {
         let servers = addrs.to_server_addrs()?.collect::<Vec<_>>();
         Self::from_client(
@@ -393,7 +392,7 @@ impl NatsClient {
     /// Create new client from existing NATS instance
     pub fn from_client(
         client: Client,
-        request_retry_backoff_policy: ExponentialBackoff,
+        request_retry_backoff_policy: ExponentialBuilder,
     ) -> Result<Self, async_nats::Error> {
         let max_payload = client.server_info().max_payload;
         if max_payload < EXPECTED_MESSAGE_SIZE {
@@ -457,13 +456,10 @@ impl NatsClient {
                         }
                     }
 
-                    let retry_backoff = maybe_retry_backoff.get_or_insert_with(|| {
-                        let mut retry_backoff = self.inner.request_retry_backoff_policy.clone();
-                        retry_backoff.reset();
-                        retry_backoff
-                    });
+                    let retry_backoff = maybe_retry_backoff
+                        .get_or_insert_with(|| self.inner.request_retry_backoff_policy.build());
 
-                    if let Some(delay) = retry_backoff.next_backoff() {
+                    if let Some(delay) = retry_backoff.next() {
                         debug!(
                             %subject,
                             %error,

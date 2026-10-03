@@ -1,5 +1,4 @@
-use backoff::ExponentialBackoff;
-use backoff::backoff::Backoff;
+use backon::{BackoffBuilder, ExponentialBackoff, ExponentialBuilder};
 use libp2p::PeerId;
 use schnellru::{ByLength, LruMap};
 use std::ops::Add;
@@ -14,17 +13,14 @@ struct TemporaryBan {
 
 impl TemporaryBan {
     /// Create new temporary ban
-    fn new(backoff: ExponentialBackoff) -> Self {
-        let mut instance = Self {
+    fn new(backoff: ExponentialBuilder) -> Self {
+        let mut backoff = backoff.build();
+        let next_release = backoff.next().map(|duration| Instant::now().add(duration));
+
+        Self {
             backoff,
-            next_release: None,
-        };
-        instance.backoff.reset();
-        instance.next_release = instance
-            .backoff
-            .next_backoff()
-            .map(|duration| Instant::now().add(duration));
-        instance
+            next_release,
+        }
     }
 
     /// Whether ban is currently active and not expired
@@ -50,10 +46,7 @@ impl TemporaryBan {
             return;
         }
 
-        self.next_release = self
-            .backoff
-            .next_backoff()
-            .map(|duration| now.add(duration));
+        self.next_release = self.backoff.next().map(|duration| now.add(duration));
     }
 }
 
@@ -61,12 +54,12 @@ impl TemporaryBan {
 /// over again.
 #[derive(Debug)]
 pub(crate) struct TemporaryBans {
-    backoff: ExponentialBackoff,
+    backoff: ExponentialBuilder,
     list: LruMap<PeerId, TemporaryBan>,
 }
 
 impl TemporaryBans {
-    pub(super) fn new(capacity: u32, backoff: ExponentialBackoff) -> Self {
+    pub(super) fn new(capacity: u32, backoff: ExponentialBuilder) -> Self {
         Self {
             backoff,
             list: LruMap::new(ByLength::new(capacity)),
@@ -89,8 +82,7 @@ impl TemporaryBans {
         if let Some(ban) = self.list.get(peer_id) {
             ban.try_extend();
         } else {
-            self.list
-                .insert(*peer_id, TemporaryBan::new(self.backoff.clone()));
+            self.list.insert(*peer_id, TemporaryBan::new(self.backoff));
         }
     }
 

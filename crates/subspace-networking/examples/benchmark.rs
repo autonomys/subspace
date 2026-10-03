@@ -1,6 +1,5 @@
 use async_lock::Semaphore;
-use backoff::ExponentialBackoff;
-use backoff::future::retry;
+use backon::{ExponentialBuilder, Retryable};
 use clap::Parser;
 use futures::StreamExt;
 use futures::channel::oneshot;
@@ -10,7 +9,7 @@ use libp2p::Multiaddr;
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
-use std::error::Error;
+use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
@@ -32,24 +31,22 @@ async fn get_piece_from_dsn_cache_with_retries<PV>(
     piece_provider: &PieceProvider<PV>,
     piece_index: PieceIndex,
     max_retries: u32,
-) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>
+) -> Result<Option<Piece>, io::Error>
 where
     PV: PieceValidator,
 {
     trace!(%piece_index, "Piece request.");
 
-    let backoff = ExponentialBackoff {
-        initial_interval: GET_PIECE_INITIAL_INTERVAL,
-        max_interval: GET_PIECE_MAX_INTERVAL,
+    let backoff = ExponentialBuilder::default()
+        .with_factor(1.75)
+        .with_min_delay(GET_PIECE_INITIAL_INTERVAL)
+        .with_max_delay(GET_PIECE_MAX_INTERVAL)
         // Try until we get a valid piece
-        max_elapsed_time: None,
-        multiplier: 1.75,
-        ..ExponentialBackoff::default()
-    };
+        .without_max_times();
 
     let retries = AtomicU32::default();
 
-    retry(backoff, || async {
+    (|| async {
         let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
 
         if let Some(piece) = piece_provider.get_piece_from_cache(piece_index).await {
@@ -71,10 +68,9 @@ where
 
         trace!(%piece_index, current_attempt, "Couldn't get a piece from DSN L2. Retrying...");
 
-        Err(backoff::Error::transient(
-            "Couldn't get piece from DSN".into(),
-        ))
+        Err(io::Error::other("Couldn't get piece from DSN"))
     })
+    .retry(backoff)
     .await
 }
 

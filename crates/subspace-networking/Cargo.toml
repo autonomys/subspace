@@ -18,7 +18,7 @@ include = [
 [dependencies]
 async-lock.workspace = true
 async-trait.workspace = true
-backoff = { workspace = true, features = ["futures", "tokio"] }
+backon = { workspace = true, features = ["tokio-sleep"] }
 bytes.workspace = true
 clap = { workspace = true, features = ["color", "derive"] }
 derive_more = { workspace = true, features = ["full"] }

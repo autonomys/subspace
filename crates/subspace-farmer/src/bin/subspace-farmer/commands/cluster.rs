@@ -9,7 +9,7 @@ use crate::commands::cluster::farmer::{FarmerArgs, farmer};
 use crate::commands::cluster::plotter::{PlotterArgs, plotter};
 use anyhow::anyhow;
 use async_nats::ServerAddr;
-use backoff::ExponentialBackoff;
+use backon::ExponentialBuilder;
 use clap::{Parser, Subcommand};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt, select};
@@ -103,10 +103,9 @@ where
 
     let nats_client = NatsClient::new(
         nats_servers,
-        ExponentialBackoff {
-            max_elapsed_time: Some(REQUEST_RETRY_MAX_ELAPSED_TIME),
-            ..ExponentialBackoff::default()
-        },
+        ExponentialBuilder::default()
+            .with_total_delay(Some(REQUEST_RETRY_MAX_ELAPSED_TIME))
+            .without_max_times(),
     )
     .await
     .map_err(|error| anyhow!("Failed to connect to NATS server: {error}"))?;

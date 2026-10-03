@@ -44,7 +44,7 @@ async-oneshot = "0.5.9"
 async-trait = "0.1.92"
 auto-id-domain-runtime = { version = "0.1.0", path = "domains/runtime/auto-id" }
 auto-id-domain-test-runtime = { version = "0.1.0", path = "domains/test/runtime/auto-id" }
-backoff = "0.4.0"
+backon = { version = "1.6.0", default-features = false }
 base58 = "0.2.0"
 bincode = { version = "2.0.1" }
 bip39 = "3.0.0"
