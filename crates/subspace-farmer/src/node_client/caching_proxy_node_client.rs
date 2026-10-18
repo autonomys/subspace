@@ -21,7 +21,7 @@ use subspace_rpc_primitives::{
 };
 use tokio::sync::watch;
 use tokio_stream::wrappers::WatchStream;
-use tracing::{info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
 const SEGMENT_HEADERS_SYNC_INTERVAL: Duration = Duration::from_secs(1);
 const FARMER_APP_INFO_DEDUPLICATION_WINDOW: Duration = Duration::from_secs(1);
@@ -68,7 +68,13 @@ impl SegmentHeaders {
             .collect()
     }
 
-    /// Get uncached headers from the node, if we're not rate-limited.
+    /// Whether the last sync was too recent to sync again.
+    fn is_sync_rate_limited(&self) -> bool {
+        self.last_synced
+            .is_some_and(|last_synced| last_synced.elapsed() < SEGMENT_HEADERS_SYNC_INTERVAL)
+    }
+
+    /// Get uncached headers from the node.
     /// This only requires a read lock.
     ///
     /// Returns any extra segment headers if the download succeeds, or an error if it fails.
@@ -78,13 +84,6 @@ impl SegmentHeaders {
     where
         NC: NodeClient,
     {
-        // Skip the sync if we're still within the sync rate limit.
-        if let Some(last_synced) = &self.last_synced
-            && last_synced.elapsed() < SEGMENT_HEADERS_SYNC_INTERVAL
-        {
-            return Ok(Vec::new());
-        }
-
         let mut extra_segment_headers = Vec::new();
         let mut segment_index_offset = SegmentIndex::from(self.segment_headers.len() as u64);
         let segment_index_step = SegmentIndex::from(MAX_SEGMENT_HEADERS_PER_REQUEST as u64);
@@ -218,6 +217,49 @@ where
                     }
                     last_archived_segment_index.replace(segment_index);
 
+                    // Notifications are not guaranteed to be delivered (for example, they are
+                    // skipped when not processed in time or lost while the source is restarting),
+                    // download missing headers before handling this one to not end up with a gap
+                    loop {
+                        let cached_count =
+                            segment_headers.read().await.segment_headers.len() as u64;
+                        if cached_count >= u64::from(segment_index) {
+                            break;
+                        }
+
+                        let result = segment_headers
+                            .read()
+                            .await
+                            .request_uncached_headers(&client)
+                            .await;
+                        match result {
+                            Ok(extra_segment_headers) => {
+                                if !extra_segment_headers.is_empty() {
+                                    segment_headers
+                                        .write()
+                                        .await
+                                        .write_cache(extra_segment_headers);
+                                    continue;
+                                }
+
+                                debug!(
+                                    %segment_index,
+                                    "Missing segment headers are not available yet, retrying"
+                                );
+                            }
+                            Err(error) => {
+                                warn!(
+                                    %error,
+                                    %segment_index,
+                                    "Failed to download missing segment headers, retrying"
+                                );
+                            }
+                        }
+
+                        tokio::time::sleep(SEGMENT_HEADERS_SYNC_INTERVAL).await;
+                    }
+
+                    // Usually already downloaded above, but the source might not have it yet
                     segment_headers.write().await.push(archived_segment_header);
 
                     if let Err(error) =
@@ -366,14 +408,18 @@ where
                 return Ok(retrieved_segment_headers);
             }
 
+            // Skip the sync if we're still within the sync rate limit.
+            if segment_headers.is_sync_rate_limited() {
+                return Ok(retrieved_segment_headers);
+            }
+
             // Try to sync the cache with the node.
             let extra_segment_headers = segment_headers
                 .request_uncached_headers(&self.inner)
                 .await?;
 
             if extra_segment_headers.is_empty() {
-                // No extra segment headers on the node, or we are rate-limited.
-                // So just return what we have in the cache.
+                // No extra segment headers on the node, so just return what we have in the cache.
                 return Ok(retrieved_segment_headers);
             }
 
