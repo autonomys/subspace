@@ -14810,7 +14810,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-bootstrap-node"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "clap",
  "futures",
@@ -14908,7 +14908,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-farmer"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "async-lock",
@@ -15020,7 +15020,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-gateway"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "actix-web",
  "anyhow",
@@ -15190,7 +15190,7 @@ dependencies = [
 
 [[package]]
 name = "subspace-node"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "auto-id-domain-runtime",
  "bip39 3.0.0",
