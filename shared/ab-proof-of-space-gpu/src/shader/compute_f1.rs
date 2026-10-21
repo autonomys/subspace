@@ -9,10 +9,10 @@ use crate::shader::polyfills::ArrayIndexingPolyfill;
 use crate::shader::types::{Position, PositionExt, PositionR, X, Y};
 use ab_chacha8::{ChaCha8Block, ChaCha8State};
 use core::mem::MaybeUninit;
-use spirv_std::arch::atomic_i_increment;
-use spirv_std::glam::{UVec3, UVec4};
-use spirv_std::memory::{Scope, Semantics};
-use spirv_std::spirv;
+use spirv_std_nightly::arch::atomic_i_increment;
+use spirv_std_nightly::glam::{UVec3, UVec4};
+use spirv_std_nightly::memory::{Scope, Semantics};
+use spirv_std_nightly::spirv;
 
 const fn gcd(mut a: u32, mut b: u32) -> u32 {
     while b != 0 {
@@ -185,11 +185,7 @@ pub unsafe fn compute_f1(
         // SAFETY: TODO: Probably should not be unsafe to begin with:
         //  https://github.com/Rust-GPU/rust-gpu/pull/394#issuecomment-3316594485
         let bucket_offset = unsafe {
-            atomic_i_increment::<
-                _,
-                const { Scope::QueueFamily as u32 },
-                const { Semantics::NONE.bits() },
-            >(bucket_size)
+            atomic_i_increment::<_, { Scope::QueueFamily }, const { Semantics::NONE }>(bucket_size)
         };
 
         // SAFETY: Bucket is obtained using division by `PARAM_BC` and fits by definition. Bucket

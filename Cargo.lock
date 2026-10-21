@@ -57,10 +57,10 @@ dependencies = [
  "futures",
  "parking_lot 0.13.0",
  "rand 0.10.3",
- "rclite",
- "spirv-std",
+ "spirv-std-nightly",
  "subspace-core-primitives",
  "thiserror 2.0.21",
+ "triomphe",
  "wgpu",
 ]
 
@@ -1582,15 +1582,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "branches"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7436b21fd6195415058eb41c9090e156b556bc7e0377bb57c5c026a421521525"
-dependencies = [
- "rustc_version",
-]
-
-[[package]]
 name = "bs58"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1701,9 +1692,9 @@ dependencies = [
 
 [[package]]
 name = "cargo-gpu-install"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "668b4bd1b59810c4f907eeb36bb0f0a450c824219b2e599b9b8ef2b3ae056e94"
+checksum = "b8c6cf4445c1a98835b492cc3840743bb48530c9fb793a83b8059f3544a67ae8"
 dependencies = [
  "anyhow",
  "cargo_metadata 0.21.0",
@@ -5397,9 +5388,9 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.33.2"
+version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f22fb22f065b308be0d8724e3706c7fa3fc2a6c7d6899df4cad7860e7a75436"
+checksum = "fc148d4ddd3930c52f9e5ae79b89805c6f07e9ff417e7b083e0348cea60a5aba"
 dependencies = [
  "libm",
 ]
@@ -10883,15 +10874,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rclite"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6716a637a8a17bce72da6b6ddab8548619cc748658c41ab6ee5c4a3c1001385"
-dependencies = [
- "branches",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11234,9 +11216,9 @@ checksum = "3e75f6a532d0fd9f7f13144f392b6ad56a32696bfcd9c78f797f16bbb6f072d6"
 
 [[package]]
 name = "rustc_codegen_spirv-types"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d703f5624720c5b6012f4b88d6e6766f43ed50d80144eaffd6791c3270754cdc"
+checksum = "bea10c6f2c154049f810e5cb154b32467f02a6b3eb58e4cb9837eca39545adca"
 dependencies = [
  "rspirv",
  "semver 1.0.27",
@@ -14582,9 +14564,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-builder"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57fa119866f0311546e5309b18770b72141c25d185452c11a812be2c7b9d84e9"
+checksum = "e7cf86e49e88ca58b901c3c586a73d9e1d6e25cafb6b36de9b53e09dc34ff15a"
 dependencies = [
  "cargo_metadata 0.21.0",
  "log",
@@ -14599,9 +14581,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d98471765e294d4dd6289350e3633b5c5ba57bb382c3287d83e69ee737179e0"
+checksum = "dfc9588ef2583f006a87af3f6fccda3a425bbc35ef9665a0cca5b1778c38b2d7"
 dependencies = [
  "bitflags 2.13.2",
  "glam",
@@ -14613,9 +14595,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-macros"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13a6a0d063d4dd003e43818135b7aa4a30c41c48b5d0efe2cac02220448d4f19"
+checksum = "a22441c9289917af52f3062dbd8abc443c757ba3e84f5fe5d42685846fdc11f4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -14624,10 +14606,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "spirv-std-types"
-version = "0.10.0"
+name = "spirv-std-nightly"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "655632248eaaa205cea4656bc73c8285cbd8109fc784010b24ea6bd0bab79ac1"
+checksum = "6784558f73b9d3e1c8c986537c5801738e67454eb26960961fc1a53269f7858d"
+dependencies = [
+ "spirv-std",
+ "spirv-std-macros",
+]
+
+[[package]]
+name = "spirv-std-types"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02a52487ced352ef71eadfa854e30ca3f3e6e3dde5ba57b14c78dd9c0fb995aa"
 
 [[package]]
 name = "spki"
@@ -16789,6 +16781,12 @@ checksum = "d4ed310ef5ab98f5fa467900ed906cb9232dd5376597e00fd4cba2a449d06c0b"
 dependencies = [
  "hash-db",
 ]
+
+[[package]]
+name = "triomphe"
+version = "0.1.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d15f4f5898bcfc5d8a8e45ed30b2f108d710c1a2e5489dbf80e078f707181bc"
 
 [[package]]
 name = "try-lock"

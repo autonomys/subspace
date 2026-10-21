@@ -1,5 +1,5 @@
 #[cfg(target_arch = "spirv")]
-use spirv_std::arch::IndexUnchecked;
+use spirv_std_nightly::arch::IndexUnchecked;
 
 // TODO: This is a polyfill to work around for this issue:
 //  https://github.com/Rust-GPU/rust-gpu/issues/241#issuecomment-3005693043

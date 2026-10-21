@@ -14,10 +14,10 @@ use crate::shader::polyfills::ArrayIndexingPolyfill;
 use crate::shader::types::{Match, Metadata, Position, PositionExt, PositionR, Y};
 use core::fmt;
 use core::mem::MaybeUninit;
-use spirv_std::arch::{atomic_i_increment, workgroup_memory_barrier_with_group_sync};
-use spirv_std::glam::UVec3;
-use spirv_std::memory::{Scope, Semantics};
-use spirv_std::spirv;
+use spirv_std_nightly::arch::{atomic_i_increment, workgroup_memory_barrier_with_group_sync};
+use spirv_std_nightly::glam::UVec3;
+use spirv_std_nightly::memory::{Scope, Semantics};
+use spirv_std_nightly::spirv;
 
 // TODO: Same number as hardcoded in `#[spirv(compute(threads(..)))]` below, can be removed once
 //  https://github.com/Rust-GPU/rust-gpu/discussions/287 is resolved
@@ -63,7 +63,7 @@ unsafe fn compute_fn_into_buckets_inner<const TABLE_NUMBER: u8, const PARENT_TAB
     // TODO: This should have been `&[[Metadata; REDUCED_MATCHES_COUNT]; NUM_MATCH_BUCKETS]`, but
     //  it currently doesn't compile if flattened:
     //  https://github.com/Rust-GPU/rust-gpu/issues/241#issuecomment-3005693043
-    parent_metadatas: &[Metadata; const { REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS }],
+    parent_metadatas: &[Metadata; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
     bucket_sizes: &mut [u32; NUM_BUCKETS],
     buckets: &mut [[MaybeUninit<PositionR>; MAX_BUCKET_SIZE]; NUM_BUCKETS],
     positions: &mut [MaybeUninit<[Position; 2]>; REDUCED_MATCHES_COUNT],
@@ -121,9 +121,7 @@ unsafe fn compute_fn_into_buckets_inner<const TABLE_NUMBER: u8, const PARENT_TAB
     // SAFETY: TODO: Probably should not be unsafe to begin with:
     //  https://github.com/Rust-GPU/rust-gpu/pull/394#issuecomment-3316594485
     let bucket_offset = unsafe {
-        atomic_i_increment::<_, const { Scope::QueueFamily as u32 }, const { Semantics::NONE.bits() }>(
-            bucket_size,
-        )
+        atomic_i_increment::<_, { Scope::QueueFamily }, const { Semantics::NONE }>(bucket_size)
     };
 
     // SAFETY: Bucket is obtained using division by `PARAM_BC` and fits by definition. Bucket
@@ -168,7 +166,7 @@ unsafe fn compute_fn_into_buckets<const TABLE_NUMBER: u8, const PARENT_TABLE_NUM
     // TODO: This should have been `&[[Metadata; REDUCED_MATCHES_COUNT]; NUM_MATCH_BUCKETS]`, but
     //  it currently doesn't compile if flattened:
     //  https://github.com/Rust-GPU/rust-gpu/issues/241#issuecomment-3005693043
-    parent_metadatas: &[Metadata; const { REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS }],
+    parent_metadatas: &[Metadata; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
     bucket_sizes: &mut [u32; NUM_BUCKETS],
     buckets: &mut [[MaybeUninit<PositionR>; MAX_BUCKET_SIZE]; NUM_BUCKETS],
     positions: &mut [MaybeUninit<[Position; 2]>; REDUCED_MATCHES_COUNT],
@@ -237,7 +235,7 @@ pub unsafe fn find_matches_and_compute_fn<const TABLE_NUMBER: u8, const PARENT_T
     local_invocation_id: UVec3,
     workgroup_id: UVec3,
     parent_buckets: &[[PositionR; MAX_BUCKET_SIZE]; NUM_BUCKETS],
-    parent_metadatas: &[Metadata; const { REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS }],
+    parent_metadatas: &[Metadata; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
     bucket_sizes: &mut [u32; NUM_BUCKETS],
     buckets: &mut [[MaybeUninit<PositionR>; MAX_BUCKET_SIZE]; NUM_BUCKETS],
     positions: &mut [[MaybeUninit<[Position; 2]>; REDUCED_MATCHES_COUNT]; NUM_MATCH_BUCKETS],
@@ -304,10 +302,8 @@ pub unsafe fn find_matches_and_compute_f3(
     #[spirv(workgroup_id)] workgroup_id: UVec3,
     #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] parent_buckets: &[[PositionR; MAX_BUCKET_SIZE];
          NUM_BUCKETS],
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] parent_metadatas: &[Metadata;
-         const {
-             REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS
-         }],
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)]
+    parent_metadatas: &[Metadata; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 2)] bucket_sizes: &mut [u32; NUM_BUCKETS],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 3)] buckets: &mut [[MaybeUninit<PositionR>; MAX_BUCKET_SIZE];
              NUM_BUCKETS],
@@ -351,10 +347,8 @@ pub unsafe fn find_matches_and_compute_f4(
     #[spirv(workgroup_id)] workgroup_id: UVec3,
     #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] parent_buckets: &[[PositionR; MAX_BUCKET_SIZE];
          NUM_BUCKETS],
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] parent_metadatas: &[Metadata;
-         const {
-             REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS
-         }],
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)]
+    parent_metadatas: &[Metadata; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 2)] bucket_sizes: &mut [u32; NUM_BUCKETS],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 3)] buckets: &mut [[MaybeUninit<PositionR>; MAX_BUCKET_SIZE];
              NUM_BUCKETS],
@@ -398,10 +392,8 @@ pub unsafe fn find_matches_and_compute_f5(
     #[spirv(workgroup_id)] workgroup_id: UVec3,
     #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] parent_buckets: &[[PositionR; MAX_BUCKET_SIZE];
          NUM_BUCKETS],
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] parent_metadatas: &[Metadata;
-         const {
-             REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS
-         }],
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)]
+    parent_metadatas: &[Metadata; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 2)] bucket_sizes: &mut [u32; NUM_BUCKETS],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 3)] buckets: &mut [[MaybeUninit<PositionR>; MAX_BUCKET_SIZE];
              NUM_BUCKETS],
@@ -445,10 +437,8 @@ pub unsafe fn find_matches_and_compute_f6(
     #[spirv(workgroup_id)] workgroup_id: UVec3,
     #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] parent_buckets: &[[PositionR; MAX_BUCKET_SIZE];
          NUM_BUCKETS],
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] parent_metadatas: &[Metadata;
-         const {
-             REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS
-         }],
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)]
+    parent_metadatas: &[Metadata; REDUCED_MATCHES_COUNT * NUM_MATCH_BUCKETS],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 2)] bucket_sizes: &mut [u32; NUM_BUCKETS],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 3)] buckets: &mut [[MaybeUninit<PositionR>; MAX_BUCKET_SIZE];
              NUM_BUCKETS],

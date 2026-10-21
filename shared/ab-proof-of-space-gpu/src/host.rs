@@ -10,10 +10,10 @@ use ab_chacha8::{ChaCha8Block, ChaCha8State, block_to_bytes};
 use futures::stream::FuturesOrdered;
 use futures::{StreamExt, TryStreamExt};
 use parking_lot::Mutex;
-use rclite::Arc;
 use std::num::NonZeroU8;
 use std::{fmt, iter};
 use subspace_core_primitives::pos::PosSeed;
+use triomphe::Arc;
 use wgpu::{
     AdapterInfo, Backend, BackendOptions, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry,
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, Buffer, BufferAddress,

@@ -17,6 +17,8 @@ use ab_chacha8::{ChaCha8Block, ChaCha8State};
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
 #[cfg(feature = "alloc")]
+use alloc::sync::Arc;
+#[cfg(feature = "alloc")]
 use alloc::vec;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -39,9 +41,6 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use derive_more::Deref;
 #[cfg(any(feature = "alloc", test))]
 use seq_macro::seq;
-// TODO: Switch to `rclite` once https://github.com/fereidani/rclite/issues/11 is resolved
-#[cfg(feature = "alloc")]
-use alloc::sync::Arc;
 use subspace_core_primitives::hashes::blake3_hash;
 
 #[cfg(any(feature = "alloc", test))]

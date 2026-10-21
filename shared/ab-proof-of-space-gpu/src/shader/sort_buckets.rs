@@ -3,9 +3,9 @@ mod gpu_tests;
 
 use crate::shader::constants::{MAX_BUCKET_SIZE, NUM_BUCKETS};
 use crate::shader::types::PositionR;
-use spirv_std::arch::workgroup_memory_barrier_with_group_sync;
-use spirv_std::glam::UVec3;
-use spirv_std::spirv;
+use spirv_std_nightly::arch::workgroup_memory_barrier_with_group_sync;
+use spirv_std_nightly::glam::UVec3;
+use spirv_std_nightly::spirv;
 
 // TODO: Same number as hardcoded in `#[spirv(compute(threads(..)))]` below, can be removed once
 //  https://github.com/Rust-GPU/rust-gpu/discussions/287 is resolved
