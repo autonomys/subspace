@@ -33,7 +33,7 @@ ab-blake3 = "0.2.0"
 ab-chacha8 = "0.1.1"
 ab-proof-of-space = { path = "shared/ab-proof-of-space", default-features = false }
 ab-proof-of-space-gpu = { path = "shared/ab-proof-of-space-gpu", default-features = false }
-actix-web = { version = "4.15.0", default-features = false }
+actix-web = { version = "4.17.0", default-features = false }
 aes = "0.9.3"
 anyhow = "1.0.104"
 array-reshape = { version = "0.1.1", features = ["const-trait"] }
@@ -55,7 +55,7 @@ blst = "0.3.17"
 bytes = { version = "1.12.1", default-features = false }
 bytesize = "2.7.0"
 cargo-gpu-install = "0.10.0"
-cc = "1.5.1"
+cc = "1.9.0"
 chacha20 = { version = "0.10.2", default-features = false }
 clap = "4.6.7"
 console = "0.16.6"
@@ -112,7 +112,7 @@ hex-literal = "1.1.0"
 hwlocality = "1.0.0-alpha.13"
 jsonrpsee = "0.24.11"
 kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "8f5f1a0f73b3c529c77cb880ff8d265830c7d7ac", default-features = false }
-libc = "0.2.190"
+libc = "0.2.191"
 libp2p = { version = "0.57.0", git = "https://github.com/autonomys/rust-libp2p", rev = "5914c8763c6073b31208ca343a4da779c90e481f", default-features = false }
 libp2p-swarm-test = { version = "0.7.0", git = "https://github.com/autonomys/rust-libp2p", rev = "5914c8763c6073b31208ca343a4da779c90e481f" }
 libsecp256k1 = "0.7.2"
@@ -163,7 +163,7 @@ pallet-transaction-payment-rpc-runtime-api = { git = "https://github.com/autonom
 pallet-transporter = { version = "0.1.0", path = "domains/pallets/transporter", default-features = false }
 pallet-utility = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 parity-scale-codec = { version = "3.7.5", default-features = false }
-parking_lot = "0.12.5"
+parking_lot = "0.13.0"
 pem = "4.0.0"
 pin-project = "1.1.13"
 precompile-utils = { version = "0.1.0", git = "https://github.com/polkadot-evm/frontier", rev = "9d49e36ed5bac38241594f8ba055fdb94991483a", default-features = false }
@@ -174,7 +174,8 @@ rand = { version = "0.10.3", default-features = false }
 rand_chacha = { version = "0.10.0", default-features = false }
 rand_core = "0.10.1"
 rayon = "1.12.0"
-rclite = "0.4.1"
+# TODO: Pinned because of https://github.com/fereidani/branches/issues/13, replace with `triomphe` altogther
+rclite = "=0.4.1"
 reqwest = { version = "0.13.5", default-features = false }
 ring = "0.17.14"
 rlp = "0.6.1"
@@ -222,8 +223,8 @@ schnorrkel = { version = "0.11.5", default-features = false }
 seq-macro = "0.3.6"
 serde = { version = "1.0.229", default-features = false }
 serde-big-array = "0.5.1"
-serde_json = "1.0.151"
-sha2 = { version = "0.11.0", default-features = false }
+serde_json = "1.0.154"
+sha2 = { version = "0.11.1", default-features = false }
 sp-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 sp-application-crypto = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
 sp-arithmetic = { git = "https://github.com/autonomys/polkadot-sdk", rev = "1c50901c11df00351b12feaadfec60457a5f8888", default-features = false }
@@ -303,7 +304,7 @@ supports-color = "3.0.2"
 tempfile = "3.27.0"
 thiserror = { version = "2.0.21", default-features = false }
 thread-priority = "3.1.1"
-tokio = "1.53.1"
+tokio = "1.54.0"
 tokio-stream = "0.1.19"
 tracing = { version = "0.1.44", default-features = false }
 tracing-subscriber = "0.3.23"
@@ -316,7 +317,7 @@ unsigned-varint = "0.8.0"
 void = "1.0.2"
 wgpu = { version = "30.0.1", default-features = false, features = ["metal", "parking_lot", "spirv", "std", "vulkan"] }
 x509-parser = "0.18.1"
-zeroize = "1.9.0"
+zeroize = "1.9.1"
 ziggy = { version = "1.7.3", default-features = false }
 
 # The list of dependencies below (which can be both direct and indirect dependencies) are crates
