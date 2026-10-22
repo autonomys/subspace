@@ -87,7 +87,7 @@ RUN \
         --profile $PROFILE \
         --bin subspace-gateway \
         --target $RUSTC_TARGET_ARCH-unknown-linux-gnu && \
-    mv target/*/*/subspace-gateway subspace-gateway && \
+    mv target/$RUSTC_TARGET_ARCH-unknown-linux-gnu/$PROFILE/subspace-gateway subspace-gateway && \
     rm -rf target
 
 FROM ubuntu:22.04

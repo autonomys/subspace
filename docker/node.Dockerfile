@@ -88,7 +88,7 @@ RUN \
         --profile $PROFILE \
         --bin subspace-node \
         --target $RUSTC_TARGET_ARCH-unknown-linux-gnu && \
-    mv target/*/*/subspace-node subspace-node && \
+    mv target/$RUSTC_TARGET_ARCH-unknown-linux-gnu/$PROFILE/subspace-node subspace-node && \
     rm -rf target
 
 FROM ubuntu:22.04

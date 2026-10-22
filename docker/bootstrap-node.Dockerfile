@@ -87,7 +87,7 @@ RUN \
         --profile $PROFILE \
         --bin subspace-bootstrap-node \
         --target $RUSTC_TARGET_ARCH-unknown-linux-gnu && \
-    mv target/*/*/subspace-bootstrap-node subspace-bootstrap-node && \
+    mv target/$RUSTC_TARGET_ARCH-unknown-linux-gnu/$PROFILE/subspace-bootstrap-node subspace-bootstrap-node && \
     rm -rf target
 
 FROM ubuntu:22.04
