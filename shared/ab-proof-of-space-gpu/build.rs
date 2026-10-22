@@ -69,6 +69,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .forward_rustc_warnings
         .replace(true);
 
+    // Emitting any `rerun-if-*` disables Cargo's default of rerunning on any package file change,
+    // and in Clippy mode `spirv-builder` doesn't emit dependency info for sources
+    println!("cargo::rerun-if-changed=src");
+    println!("cargo::rerun-if-changed=Cargo.toml");
     println!("cargo::rerun-if-env-changed=CLIPPY_ARGS");
     let path_to_spv = if env::var("CLIPPY_ARGS").is_ok() {
         match spirv_builder.clippy() {

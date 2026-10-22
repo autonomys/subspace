@@ -11,10 +11,10 @@ use crate::shader::find_matches_in_buckets::rmap::Rmap;
 use crate::shader::sort_buckets::sort_shared_bucket;
 use crate::shader::types::{Match, Position, PositionExt, PositionR, R};
 use core::mem::MaybeUninit;
-use spirv_std::arch::{atomic_i_add, workgroup_memory_barrier_with_group_sync};
-use spirv_std::glam::UVec3;
-use spirv_std::memory::{Scope, Semantics};
-use spirv_std::spirv;
+use spirv_std_nightly::arch::{atomic_i_add, workgroup_memory_barrier_with_group_sync};
+use spirv_std_nightly::glam::UVec3;
+use spirv_std_nightly::memory::{Scope, Semantics};
+use spirv_std_nightly::spirv;
 
 // TODO: Same number as hardcoded in `#[spirv(compute(threads(..)))]` below, can be removed once
 //  https://github.com/Rust-GPU/rust-gpu/discussions/287 is resolved
@@ -164,7 +164,7 @@ pub(super) unsafe fn find_matches_in_buckets_impl(
             // SAFETY: TODO: Probably should not be unsafe to begin with:
             //  https://github.com/Rust-GPU/rust-gpu/pull/394#issuecomment-3316594485
             let local_matches_offset = unsafe {
-                atomic_i_add::<_, const { Scope::Workgroup as u32 }, const { Semantics::NONE.bits() }>(
+                atomic_i_add::<_, { Scope::Workgroup }, const { Semantics::NONE }>(
                     matches_counter,
                     local_matches_count,
                 )

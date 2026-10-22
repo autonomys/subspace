@@ -10,6 +10,7 @@
     generic_const_args,
     generic_const_items,
     min_generic_const_args,
+    mut_restriction,
     step_trait
 )]
 #![expect(incomplete_features, reason = "generic_const_*")]
