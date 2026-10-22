@@ -12,16 +12,20 @@ on:
       - "runtime-chronos-*"
       - "runtime-mainnet-*"
 
+permissions:
+  contents: read
+
 jobs:
   runtime:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
-      packages: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: Build runtime
         id: build

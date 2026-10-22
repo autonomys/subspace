@@ -13,11 +13,19 @@ on:
       - ".github/workflows/rustsec-audit.yml"
   schedule:
     - cron: "40 13 * * 0"
+permissions:
+  contents: read
 jobs:
   security_audit:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      checks: write
+      issues: write
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 #v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
