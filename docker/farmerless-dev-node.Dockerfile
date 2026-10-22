@@ -88,7 +88,7 @@ RUN \
         --profile $PROFILE \
         --bin subspace-farmerless-dev-node \
         --target $RUSTC_TARGET_ARCH-unknown-linux-gnu && \
-    mv target/*/*/subspace-farmerless-dev-node subspace-farmerless-dev-node && \
+    mv target/$RUSTC_TARGET_ARCH-unknown-linux-gnu/$PROFILE/subspace-farmerless-dev-node subspace-farmerless-dev-node && \
     rm -rf target
 
 FROM ubuntu:22.04

@@ -90,7 +90,7 @@ RUN \
         --profile $PROFILE \
         --bin subspace-farmer \
         --target $RUSTC_TARGET_ARCH-unknown-linux-gnu && \
-    mv target/*/*/subspace-farmer subspace-farmer && \
+    mv target/$RUSTC_TARGET_ARCH-unknown-linux-gnu/$PROFILE/subspace-farmer subspace-farmer && \
     rm -rf target
 
 FROM ubuntu:22.04
