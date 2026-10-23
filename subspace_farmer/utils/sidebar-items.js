@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["all_cpu_cores","create_plotting_thread_pool_manager","parse_cpu_cores_sets","rayon_custom_spawn_handler","recommended_number_of_farming_threads","thread_pool_core_indices","tokio_rayon_spawn_handler"],"mod":["ss58"],"struct":["CpuCoreSet"]};
