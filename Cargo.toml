@@ -308,7 +308,7 @@ tracing = { version = "0.1.44", default-features = false }
 tracing-subscriber = "0.3.23"
 transparent-wrapper = { version = "0.1.0", features = ["const-trait"] }
 transporter-precompile = { version = "0.1.0", path = "domains/evm-precompiles/transporter", default-features = false }
-trie-db = { version = "0.31.0", default-features = false }
+trie-db = { version = "0.32.0", default-features = false }
 triomphe = { version = "0.1.17", default-features = false }
 uint = { version = "0.10.2", default-features = false }
 ulid = "3.0.0"
