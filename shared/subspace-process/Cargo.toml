@@ -11,7 +11,11 @@ include = [
 ]
 
 [dependencies]
+# Substrate crates (and therefore their `console`-styled log messages) still link
+# against console 0.15.x, whose color state is independent of console 0.16.x.
+# Depend on both so `init_logger` can disable colors in each version's global state.
 console.workspace = true
+console-0-15 = { package = "console", version = "0.15.11" }
 fdlimit.workspace = true
 futures.workspace = true
 supports-color.workspace = true

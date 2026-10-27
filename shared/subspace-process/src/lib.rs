@@ -23,8 +23,14 @@ pub fn init_logger() {
     // sc_informant and other substrate crates colorize log content via `console`;
     // tracing-subscriber 0.3.20+ escapes those embedded ANSI codes into literal `\x1b[`
     // text in the message. Turn console color off at the source so nothing is emitted.
+    //
+    // The workspace uses console 0.16.x, but substrate still links against console
+    // 0.15.x, which keeps its own global color state. Disable colors in both so the
+    // workaround remains effective for substrate's messages.
     console::set_colors_enabled(false);
     console::set_colors_enabled_stderr(false);
+    console_0_15::set_colors_enabled(false);
+    console_0_15::set_colors_enabled_stderr(false);
 
     // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
     //  Windows terminal doesn't support the same colors as bash does
