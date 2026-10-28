@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["REWARD_SIGNING_CONTEXT"],"mod":["checksum","hashes","objects","pieces","pos","pot","sectors","segments","solutions"],"struct":["PublicKey","Randomness","ScalarBytes","U256"],"type":["BlockForkWeight","BlockHash","BlockNumber","SlotNumber"]};

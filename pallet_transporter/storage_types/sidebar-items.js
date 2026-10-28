@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["AllDomainsSupply","CancelledTransfers","ChainTransfers","DomainBalances","OutgoingTransfers","UnconfirmedTransfers"]};
