@@ -13,7 +13,15 @@ fn init_logger_disables_console_ansi() {
     let styled = format!("{}", console::style("x").white().bold());
     assert_eq!(
         styled, "x",
-        "console emitted ANSI after init_logger: {styled:?}"
+        "console 0.16 emitted ANSI after init_logger: {styled:?}"
+    );
+
+    // Substrate still links against console 0.15.x; ensure its global color state is
+    // disabled too.
+    let styled_legacy = format!("{}", console_0_15::style("x").white().bold());
+    assert_eq!(
+        styled_legacy, "x",
+        "console 0.15 emitted ANSI after init_logger: {styled_legacy:?}"
     );
 }
 
