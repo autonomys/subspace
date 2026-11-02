@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["BundleHeaderFor","DomainProposal"],"fn":["uses_default_bundle_producer_params"],"struct":["DomainBundleProducer","TestBundleProducer"],"trait":["BundleProducer"],"type":["BundleHeaderV0For","SealedSingletonReceiptFor"]};

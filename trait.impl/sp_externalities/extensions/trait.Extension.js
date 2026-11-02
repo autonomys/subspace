@@ -1,0 +1,9 @@
+(function() {
+    const implementors = Object.fromEntries([["sp_auto_id",[["impl Extension for <a class=\"struct\" href=\"sp_auto_id/host_functions/struct.HostFunctionExtension.html\" title=\"struct sp_auto_id::host_functions::HostFunctionExtension\">HostFunctionExtension</a>",0]]],["sp_consensus_subspace",[["impl Extension for <a class=\"struct\" href=\"sp_consensus_subspace/struct.KzgExtension.html\" title=\"struct sp_consensus_subspace::KzgExtension\">KzgExtension</a>",0],["impl Extension for <a class=\"struct\" href=\"sp_consensus_subspace/struct.PosExtension.html\" title=\"struct sp_consensus_subspace::PosExtension\">PosExtension</a>",0],["impl Extension for <a class=\"struct\" href=\"sp_consensus_subspace/struct.PotExtension.html\" title=\"struct sp_consensus_subspace::PotExtension\">PotExtension</a>",0]]],["sp_domains_fraud_proof",[["impl Extension for <a class=\"struct\" href=\"sp_domains_fraud_proof/struct.FraudProofExtension.html\" title=\"struct sp_domains_fraud_proof::FraudProofExtension\">FraudProofExtension</a>",0]]],["sp_messenger_host_functions",[["impl Extension for <a class=\"struct\" href=\"sp_messenger_host_functions/struct.MessengerExtension.html\" title=\"struct sp_messenger_host_functions::MessengerExtension\">MessengerExtension</a>",0]]],["sp_subspace_mmr",[["impl Extension for <a class=\"struct\" href=\"sp_subspace_mmr/host_functions/struct.SubspaceMmrExtension.html\" title=\"struct sp_subspace_mmr::host_functions::SubspaceMmrExtension\">SubspaceMmrExtension</a>",0]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":59,"fragment_lengths":[223,541,223,235,236]}

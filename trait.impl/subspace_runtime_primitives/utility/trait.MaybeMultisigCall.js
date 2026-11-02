@@ -1,0 +1,9 @@
+(function() {
+    const implementors = Object.fromEntries([["subspace_runtime",[["impl <a class=\"trait\" href=\"subspace_runtime_primitives/utility/trait.MaybeMultisigCall.html\" title=\"trait subspace_runtime_primitives::utility::MaybeMultisigCall\">MaybeMultisigCall</a>&lt;<a class=\"struct\" href=\"subspace_runtime/struct.Runtime.html\" title=\"struct subspace_runtime::Runtime\">Runtime</a>&gt; for <a class=\"enum\" href=\"subspace_runtime/enum.RuntimeCall.html\" title=\"enum subspace_runtime::RuntimeCall\">RuntimeCall</a>",0]]],["subspace_test_runtime",[["impl <a class=\"trait\" href=\"subspace_runtime_primitives/utility/trait.MaybeMultisigCall.html\" title=\"trait subspace_runtime_primitives::utility::MaybeMultisigCall\">MaybeMultisigCall</a>&lt;<a class=\"struct\" href=\"subspace_test_runtime/struct.Runtime.html\" title=\"struct subspace_test_runtime::Runtime\">Runtime</a>&gt; for <a class=\"enum\" href=\"subspace_test_runtime/enum.RuntimeCall.html\" title=\"enum subspace_test_runtime::RuntimeCall\">RuntimeCall</a>",0]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":59,"fragment_lengths":[479,505]}

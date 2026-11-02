@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["GAS_PER_SECOND","INHERENT_IDENTIFIER","WEIGHT_PER_GAS"],"enum":["InherentError"],"struct":["BlockGasLimit","GasLimitPovSizeRatio","GasPerByte","InherentDataProvider","InherentType","StorageFeeRatio","WeightPerGas"],"trait":["EvmTrackerApi"]};

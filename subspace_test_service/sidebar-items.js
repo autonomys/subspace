@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["construct_extrinsic_generic","node_config"],"macro":[["produce_block_with",1],["produce_blocks",1],["produce_blocks_until",1]],"struct":["MockConsensusNode","MockConsensusNodeRpcConfig"],"type":["FraudProofFor"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["ChiaV2Table","ChiaV2TableGenerator"]};

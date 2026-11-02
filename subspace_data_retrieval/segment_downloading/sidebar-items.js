@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["SEGMENT_DOWNLOAD_RETRIES","SEGMENT_DOWNLOAD_RETRY_DELAY"],"enum":["SegmentDownloadingError"],"fn":["download_segment","download_segment_pieces"]};

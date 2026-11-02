@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ExecutionReceipt","ExecutionReceiptMutRef","ExecutionReceiptRef","ExecutionReceiptVersion"],"mod":["execution_receipt_v0"],"struct":["BlockFees","SealedSingletonReceipt","SingletonReceipt","Transfers"],"type":["ExecutionReceiptFor"]};

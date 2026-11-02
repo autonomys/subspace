@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["execution_receipt_protocol","receipt_receiver"]};
