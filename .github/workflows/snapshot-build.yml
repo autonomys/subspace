@@ -132,11 +132,11 @@ jobs:
           cd executables
           IMAGE="${{ fromJSON(steps.meta.outputs.json).tags[0] }}"
           ARTIFACT="${{ matrix.build.base-artifact }}"
-          docker run --rm --platform linux/amd64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-x86_64-skylake-$SAFE_REF_NAME
+          docker run --rm --platform linux/amd64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > "$ARTIFACT-ubuntu-x86_64-skylake-$SAFE_REF_NAME"
           # TODO: Pull is a workaround for https://github.com/moby/moby/issues/48197#issuecomment-2472265028
           docker pull --platform linux/amd64/v2 $IMAGE
-          docker run --rm --platform linux/amd64/v2 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-x86_64-v2-$SAFE_REF_NAME
-          docker run --rm --platform linux/arm64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-aarch64-$SAFE_REF_NAME
+          docker run --rm --platform linux/amd64/v2 --entrypoint /bin/cat $IMAGE /$ARTIFACT > "$ARTIFACT-ubuntu-x86_64-v2-$SAFE_REF_NAME"
+          docker run --rm --platform linux/arm64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > "$ARTIFACT-ubuntu-aarch64-$SAFE_REF_NAME"
         if: matrix.build.upload-executables
 
       - name: Upload node and farmer executables to artifacts
@@ -156,9 +156,11 @@ jobs:
           asset_paths: '["executables/*"]'
         if: matrix.build.upload-executables && github.event_name == 'push' && github.ref_type == 'tag'
 
-  executables:
+  # Builds the executables without any signing credentials
+  executables-build:
     strategy:
-      matrix:
+      # Shared with executables-sign so the two matrices cannot drift
+      matrix: &executables-matrix
         build:
           - os: macos-26
             target: aarch64-apple-darwin
@@ -174,7 +176,7 @@ jobs:
       fail-fast: false
     runs-on: ${{ matrix.build.os }}
     permissions:
-      contents: write
+      contents: read
     env:
       PRODUCTION_TARGET: target/${{ matrix.build.target }}/production
       RUSTFLAGS: ${{ matrix.build.rustflags }}
@@ -232,6 +234,55 @@ jobs:
         run: |
           cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-node
 
+      - name: Upload unsigned executables to artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.1.3
+        with:
+          name: unsigned-executables-${{ env.SAFE_SUFFIX }}
+          path: |
+            ${{ env.PRODUCTION_TARGET }}/subspace-farmer
+            ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe
+            ${{ env.PRODUCTION_TARGET }}/subspace-node
+            ${{ env.PRODUCTION_TARGET }}/subspace-node.exe
+          if-no-files-found: error
+
+  # Signs the pre-built executables, so no build step runs alongside the signing credentials
+  executables-sign:
+    needs: executables-build
+    if: ${{ !cancelled() }}
+    strategy:
+      matrix: *executables-matrix
+      fail-fast: false
+    runs-on: ${{ matrix.build.os }}
+    permissions:
+      contents: write
+    env:
+      PRODUCTION_TARGET: target/${{ matrix.build.target }}/production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      # Replace slashes in suffix (from branch names like fix/pos-backport) so they
+      # don't create subdirectories when used in filenames.
+      - name: Sanitize suffix for filenames
+        shell: bash
+        env:
+          SUFFIX: ${{ matrix.build.suffix }}
+        run: echo "SAFE_SUFFIX=$(echo "$SUFFIX" | tr '/' '-')" >> "$GITHUB_ENV"
+
+      - name: Download unsigned executables
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned-executables-${{ env.SAFE_SUFFIX }}
+          path: ${{ env.PRODUCTION_TARGET }}
+
+      # Artifact upload drops the executable bit, restore it before packaging
+      - name: Make executables executable (macOS)
+        run: chmod +x ${{ env.PRODUCTION_TARGET }}/subspace-farmer ${{ env.PRODUCTION_TARGET }}/subspace-node
+        if: runner.os == 'macOS'
+
       - name: Sign Application (macOS)
         run: |
           echo "Importing certificate"
@@ -277,20 +328,20 @@ jobs:
       - name: Prepare executables for uploading (macOS)
         run: |
           mkdir executables
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer executables/subspace-farmer-${{ env.SAFE_SUFFIX }}
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-node executables/subspace-node-${{ env.SAFE_SUFFIX }}
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer "executables/subspace-farmer-${SAFE_SUFFIX}"
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-node "executables/subspace-node-${SAFE_SUFFIX}"
           # Zip it so that signature is not lost
-          ditto -c -k --rsrc executables/subspace-farmer-${{ env.SAFE_SUFFIX }} executables/subspace-farmer-${{ env.SAFE_SUFFIX }}.zip
-          ditto -c -k --rsrc executables/subspace-node-${{ env.SAFE_SUFFIX }} executables/subspace-node-${{ env.SAFE_SUFFIX }}.zip
-          rm executables/subspace-farmer-${{ env.SAFE_SUFFIX }}
-          rm executables/subspace-node-${{ env.SAFE_SUFFIX }}
+          ditto -c -k --rsrc "executables/subspace-farmer-${SAFE_SUFFIX}" "executables/subspace-farmer-${SAFE_SUFFIX}.zip"
+          ditto -c -k --rsrc "executables/subspace-node-${SAFE_SUFFIX}" "executables/subspace-node-${SAFE_SUFFIX}.zip"
+          rm "executables/subspace-farmer-${SAFE_SUFFIX}"
+          rm "executables/subspace-node-${SAFE_SUFFIX}"
         if: runner.os == 'macOS'
 
       - name: Prepare executables for uploading (Windows)
         run: |
           mkdir executables
-          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe executables/subspace-farmer-${{ env.SAFE_SUFFIX }}.exe
-          move ${{ env.PRODUCTION_TARGET }}/subspace-node.exe executables/subspace-node-${{ env.SAFE_SUFFIX }}.exe
+          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe "executables/subspace-farmer-${env:SAFE_SUFFIX}.exe"
+          move ${{ env.PRODUCTION_TARGET }}/subspace-node.exe "executables/subspace-node-${env:SAFE_SUFFIX}.exe"
         if: runner.os == 'Windows'
 
       - name: Upload node and farmer executables to artifacts
