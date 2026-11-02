@@ -159,7 +159,8 @@ jobs:
   # Builds the executables without any signing credentials
   executables-build:
     strategy:
-      matrix:
+      # Shared with executables-sign so the two matrices cannot drift
+      matrix: &executables-matrix
         build:
           - os: macos-26
             target: aarch64-apple-darwin
@@ -247,20 +248,9 @@ jobs:
   # Signs the pre-built executables, so no build step runs alongside the signing credentials
   executables-sign:
     needs: executables-build
+    if: ${{ !cancelled() }}
     strategy:
-      matrix:
-        build:
-          - os: macos-26
-            target: aarch64-apple-darwin
-            suffix: macos-aarch64-${{ github.ref_name }}
-          - os: windows-2022
-            target: x86_64-pc-windows-msvc
-            suffix: windows-x86_64-skylake-${{ github.ref_name }}
-            rustflags: "-C target-cpu=skylake"
-          - os: windows-2022
-            target: x86_64-pc-windows-msvc
-            suffix: windows-x86_64-v2-${{ github.ref_name }}
-            rustflags: "-C target-cpu=x86-64-v2"
+      matrix: *executables-matrix
       fail-fast: false
     runs-on: ${{ matrix.build.os }}
     permissions:
