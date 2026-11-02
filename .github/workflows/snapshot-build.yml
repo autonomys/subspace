@@ -132,11 +132,11 @@ jobs:
           cd executables
           IMAGE="${{ fromJSON(steps.meta.outputs.json).tags[0] }}"
           ARTIFACT="${{ matrix.build.base-artifact }}"
-          docker run --rm --platform linux/amd64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-x86_64-skylake-$SAFE_REF_NAME
+          docker run --rm --platform linux/amd64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > "$ARTIFACT-ubuntu-x86_64-skylake-$SAFE_REF_NAME"
           # TODO: Pull is a workaround for https://github.com/moby/moby/issues/48197#issuecomment-2472265028
           docker pull --platform linux/amd64/v2 $IMAGE
-          docker run --rm --platform linux/amd64/v2 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-x86_64-v2-$SAFE_REF_NAME
-          docker run --rm --platform linux/arm64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-aarch64-$SAFE_REF_NAME
+          docker run --rm --platform linux/amd64/v2 --entrypoint /bin/cat $IMAGE /$ARTIFACT > "$ARTIFACT-ubuntu-x86_64-v2-$SAFE_REF_NAME"
+          docker run --rm --platform linux/arm64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > "$ARTIFACT-ubuntu-aarch64-$SAFE_REF_NAME"
         if: matrix.build.upload-executables
 
       - name: Upload node and farmer executables to artifacts
@@ -328,20 +328,20 @@ jobs:
       - name: Prepare executables for uploading (macOS)
         run: |
           mkdir executables
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer executables/subspace-farmer-${{ env.SAFE_SUFFIX }}
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-node executables/subspace-node-${{ env.SAFE_SUFFIX }}
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer "executables/subspace-farmer-${SAFE_SUFFIX}"
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-node "executables/subspace-node-${SAFE_SUFFIX}"
           # Zip it so that signature is not lost
-          ditto -c -k --rsrc executables/subspace-farmer-${{ env.SAFE_SUFFIX }} executables/subspace-farmer-${{ env.SAFE_SUFFIX }}.zip
-          ditto -c -k --rsrc executables/subspace-node-${{ env.SAFE_SUFFIX }} executables/subspace-node-${{ env.SAFE_SUFFIX }}.zip
-          rm executables/subspace-farmer-${{ env.SAFE_SUFFIX }}
-          rm executables/subspace-node-${{ env.SAFE_SUFFIX }}
+          ditto -c -k --rsrc "executables/subspace-farmer-${SAFE_SUFFIX}" "executables/subspace-farmer-${SAFE_SUFFIX}.zip"
+          ditto -c -k --rsrc "executables/subspace-node-${SAFE_SUFFIX}" "executables/subspace-node-${SAFE_SUFFIX}.zip"
+          rm "executables/subspace-farmer-${SAFE_SUFFIX}"
+          rm "executables/subspace-node-${SAFE_SUFFIX}"
         if: runner.os == 'macOS'
 
       - name: Prepare executables for uploading (Windows)
         run: |
           mkdir executables
-          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe executables/subspace-farmer-${{ env.SAFE_SUFFIX }}.exe
-          move ${{ env.PRODUCTION_TARGET }}/subspace-node.exe executables/subspace-node-${{ env.SAFE_SUFFIX }}.exe
+          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe "executables/subspace-farmer-${env:SAFE_SUFFIX}.exe"
+          move ${{ env.PRODUCTION_TARGET }}/subspace-node.exe "executables/subspace-node-${env:SAFE_SUFFIX}.exe"
         if: runner.os == 'Windows'
 
       - name: Upload node and farmer executables to artifacts
