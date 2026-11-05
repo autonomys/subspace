@@ -26,7 +26,7 @@ pub enum ReconstructorError {
     /// Segment size is not bigger than record size
     #[error("Error during segment decoding: {0}")]
     SegmentDecoding(parity_scale_codec::Error),
-    /// Incorrect segment order, each next segment must have monotonically increasing segment index
+    /// Incorrect segment order, each next segment must directly follow the previous one
     #[error(
         "Incorrect segment order, expected index {expected_segment_index}, actual \
         {actual_segment_index}"
@@ -184,29 +184,10 @@ impl Reconstructor {
         let mut next_block_number: BlockNumber = 0;
 
         // Only the first segment has no parent segment header, all other segments start with it
-        if let Some(&SegmentItem::ParentSegmentHeader(parent_segment_header)) = segment_items.peek()
+        let segment_index = if let Some(&SegmentItem::ParentSegmentHeader(parent_segment_header)) =
+            segment_items.peek()
         {
             segment_items.next();
-
-            let segment_index = parent_segment_header
-                .segment_index()
-                .checked_add(SegmentIndex::ONE)
-                .ok_or(ReconstructorError::SegmentIndexOverflow)?;
-
-            if let Some(last_segment_index) = self.last_segment_index {
-                let expected_segment_index = last_segment_index
-                    .checked_add(SegmentIndex::ONE)
-                    .ok_or(ReconstructorError::SegmentIndexOverflow)?;
-
-                if segment_index != expected_segment_index {
-                    return Err(ReconstructorError::IncorrectSegmentOrder {
-                        expected_segment_index,
-                        actual_segment_index: segment_index,
-                    });
-                }
-            }
-
-            self.last_segment_index.replace(segment_index);
 
             let LastArchivedBlock {
                 number,
@@ -242,7 +223,29 @@ impl Reconstructor {
                     }
                 }
             }
+
+            parent_segment_header
+                .segment_index()
+                .checked_add(SegmentIndex::ONE)
+                .ok_or(ReconstructorError::SegmentIndexOverflow)?
+        } else {
+            SegmentIndex::ZERO
+        };
+
+        if let Some(last_segment_index) = self.last_segment_index {
+            let expected_segment_index = last_segment_index
+                .checked_add(SegmentIndex::ONE)
+                .ok_or(ReconstructorError::SegmentIndexOverflow)?;
+
+            if segment_index != expected_segment_index {
+                return Err(ReconstructorError::IncorrectSegmentOrder {
+                    expected_segment_index,
+                    actual_segment_index: segment_index,
+                });
+            }
         }
+
+        self.last_segment_index.replace(segment_index);
 
         for segment_item in segment_items {
             match segment_item {
@@ -294,10 +297,6 @@ impl Reconstructor {
                     return Err(ReconstructorError::UnexpectedParentSegmentHeader);
                 }
             }
-        }
-
-        if self.last_segment_index.is_none() {
-            self.last_segment_index.replace(SegmentIndex::ZERO);
         }
 
         Ok((self, reconstructed_contents))
