@@ -2,9 +2,8 @@ use parity_scale_codec::Encode;
 use rand::RngExt;
 use std::num::NonZeroUsize;
 use std::{assert_matches, iter};
-use subspace_archiving::archiver::{Archiver, Segment, SegmentItem};
+use subspace_archiving::archiver::{Archiver, NewArchivedSegment, Segment, SegmentItem};
 use subspace_archiving::reconstructor::{Reconstructor, ReconstructorError};
-use subspace_core_primitives::BlockNumber;
 use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::pieces::{FlatPieces, Piece, Record};
@@ -12,11 +11,80 @@ use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
     SegmentCommitment, SegmentHeader, SegmentIndex,
 };
+use subspace_core_primitives::{BlockNumber, ScalarBytes};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::Kzg;
 
 fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
     pieces.pieces().map(Some).collect()
+}
+
+fn new_erasure_coding() -> ErasureCoding {
+    ErasureCoding::new(
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+            .expect("Not zero; qed"),
+    )
+    .unwrap()
+}
+
+/// Encode a segment the same way the archiver does, with only source pieces present, which is
+/// enough to reconstruct it
+fn segment_to_pieces(segment: &Segment) -> Vec<Option<Piece>> {
+    let encoded_segment = segment.encode();
+    assert!(encoded_segment.len() <= RecordedHistorySegment::SIZE);
+
+    let mut encoded_segment_chunks = encoded_segment.chunks(ScalarBytes::SAFE_BYTES);
+    iter::repeat_with(|| {
+        let mut piece = Piece::default();
+        piece
+            .record_mut()
+            .to_mut_raw_record_chunks()
+            .zip(&mut encoded_segment_chunks)
+            .for_each(|(target, source)| {
+                target[..source.len()].copy_from_slice(source);
+            });
+        // Source pieces are interleaved with parity pieces
+        [Some(piece), None]
+    })
+    .take(RecordedHistorySegment::NUM_RAW_RECORDS)
+    .flatten()
+    .collect()
+}
+
+/// Archive blocks into three segments, such that the second segment contains its parent segment
+/// header, the end of the first block, the whole second block and the beginning of the third block,
+/// which is a good base for forged segments
+fn archive_blocks_for_forging(
+    erasure_coding: &ErasureCoding,
+) -> ([Vec<u8>; 4], Vec<NewArchivedSegment>) {
+    let mut archiver = Archiver::new(Kzg::new(), erasure_coding.clone());
+    let blocks = [
+        // Block that overflows into the next segment
+        RecordedHistorySegment::SIZE * 3 / 2,
+        // Block that fits into the second segment fully and is larger than a segment header
+        1024,
+        // Block that overflows into the next segment
+        RecordedHistorySegment::SIZE,
+        // Block that overflows into the next segment
+        RecordedHistorySegment::SIZE,
+    ]
+    .map(|block_size| {
+        let mut block = vec![0u8; block_size];
+        rand::rng().fill(block.as_mut_slice());
+        block
+    });
+    let archived_segments = blocks
+        .iter()
+        .flat_map(|block| {
+            archiver
+                .add_block(block.clone(), BlockObjectMapping::default(), true)
+                .archived_segments
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(archived_segments.len(), 3);
+
+    (blocks, archived_segments)
 }
 
 /// Compare block numbers and sizes before contents, such that a mismatch doesn't print whole blocks
@@ -109,7 +177,8 @@ fn basic() {
     let mut reconstructor = Reconstructor::new(erasure_coding.clone());
 
     {
-        let contents = reconstructor
+        let contents;
+        (reconstructor, contents) = reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[0].pieces))
             .unwrap();
 
@@ -119,7 +188,8 @@ fn basic() {
     }
 
     {
-        let contents = reconstructor
+        let contents;
+        (reconstructor, contents) = reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[1].pieces))
             .unwrap();
 
@@ -138,8 +208,7 @@ fn basic() {
             }
         );
 
-        let mut partial_reconstructor = Reconstructor::new(erasure_coding.clone());
-        let contents = partial_reconstructor
+        let (_, contents) = Reconstructor::new(erasure_coding.clone())
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[1].pieces))
             .unwrap();
 
@@ -160,7 +229,8 @@ fn basic() {
     }
 
     {
-        let contents = reconstructor
+        let contents;
+        (reconstructor, contents) = reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[2].pieces))
             .unwrap();
 
@@ -179,8 +249,7 @@ fn basic() {
             }
         );
 
-        let mut partial_reconstructor = Reconstructor::new(erasure_coding.clone());
-        let contents = partial_reconstructor
+        let (_, contents) = Reconstructor::new(erasure_coding.clone())
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[2].pieces))
             .unwrap();
 
@@ -201,7 +270,8 @@ fn basic() {
     }
 
     {
-        let contents = reconstructor
+        let contents;
+        (reconstructor, contents) = reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[3].pieces))
             .unwrap();
 
@@ -222,8 +292,7 @@ fn basic() {
     }
 
     {
-        let mut partial_reconstructor = Reconstructor::new(erasure_coding.clone());
-        let contents = partial_reconstructor
+        let (_, contents) = Reconstructor::new(erasure_coding.clone())
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[3].pieces))
             .unwrap();
 
@@ -244,7 +313,7 @@ fn basic() {
     }
 
     {
-        let contents = reconstructor
+        let (_, contents) = reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[4].pieces))
             .unwrap();
 
@@ -265,8 +334,7 @@ fn basic() {
     }
 
     {
-        let mut partial_reconstructor = Reconstructor::new(erasure_coding);
-        let contents = partial_reconstructor
+        let (_, contents) = Reconstructor::new(erasure_coding)
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[4].pieces))
             .unwrap();
 
@@ -325,7 +393,7 @@ fn partial_data() {
 
     {
         // Take just source shards
-        let contents = Reconstructor::new(erasure_coding.clone())
+        let (_, contents) = Reconstructor::new(erasure_coding.clone())
             .add_segment(
                 &pieces
                     .source_pieces()
@@ -344,7 +412,7 @@ fn partial_data() {
 
     {
         // Take just parity shards
-        let contents = Reconstructor::new(erasure_coding.clone())
+        let (_, contents) = Reconstructor::new(erasure_coding.clone())
             .add_segment(
                 &iter::repeat_n(None, RecordedHistorySegment::NUM_RAW_RECORDS)
                     .chain(
@@ -369,7 +437,7 @@ fn partial_data() {
             .for_each(|piece| {
                 piece.take();
             });
-        let contents = Reconstructor::new(erasure_coding)
+        let (_, contents) = Reconstructor::new(erasure_coding)
             .add_segment(&pieces)
             .unwrap();
 
@@ -412,7 +480,10 @@ fn invalid_usage() {
                 .collect::<Vec<_>>(),
         );
 
-        assert_matches!(result, Err(ReconstructorError::DataShardsReconstruction(_)));
+        assert_matches!(
+            result.err(),
+            Some(ReconstructorError::DataShardsReconstruction(_))
+        );
     }
 
     {
@@ -427,37 +498,52 @@ fn invalid_usage() {
             .collect::<Vec<_>>(),
         );
 
-        assert_matches!(result, Err(ReconstructorError::SegmentDecoding(_)));
+        assert_matches!(result.err(), Some(ReconstructorError::SegmentDecoding(_)));
     }
 
     {
-        let mut reconstructor = Reconstructor::new(erasure_coding);
-
-        reconstructor
+        let (reconstructor, _) = Reconstructor::new(erasure_coding)
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[0].pieces))
             .unwrap();
 
-        let result =
-            reconstructor.add_segment(&pieces_to_option_of_pieces(&archived_segments[2].pieces));
+        let result = reconstructor
+            .clone()
+            .add_segment(&pieces_to_option_of_pieces(&archived_segments[2].pieces))
+            .err();
 
         assert_eq!(
             result,
-            Err(ReconstructorError::IncorrectSegmentOrder {
+            Some(ReconstructorError::IncorrectSegmentOrder {
                 expected_segment_index: SegmentIndex::ONE,
                 actual_segment_index: SegmentIndex::from(2)
             })
         );
 
-        reconstructor
+        let (reconstructor, _) = reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[1].pieces))
             .unwrap();
 
-        let result =
-            reconstructor.add_segment(&pieces_to_option_of_pieces(&archived_segments[3].pieces));
+        // The same segment again
+        let result = reconstructor
+            .clone()
+            .add_segment(&pieces_to_option_of_pieces(&archived_segments[1].pieces))
+            .err();
 
         assert_eq!(
             result,
-            Err(ReconstructorError::IncorrectSegmentOrder {
+            Some(ReconstructorError::IncorrectSegmentOrder {
+                expected_segment_index: SegmentIndex::from(2),
+                actual_segment_index: SegmentIndex::ONE
+            })
+        );
+
+        let result = reconstructor
+            .add_segment(&pieces_to_option_of_pieces(&archived_segments[3].pieces))
+            .err();
+
+        assert_eq!(
+            result,
+            Some(ReconstructorError::IncorrectSegmentOrder {
                 expected_segment_index: SegmentIndex::from(2),
                 actual_segment_index: SegmentIndex::from(3)
             })
@@ -574,7 +660,8 @@ fn blocks_completed_at_segment_end() {
     let mut reconstructor = Reconstructor::new(erasure_coding.clone());
 
     {
-        let contents = reconstructor
+        let contents;
+        (reconstructor, contents) = reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[0].pieces))
             .unwrap();
 
@@ -583,7 +670,8 @@ fn blocks_completed_at_segment_end() {
     }
 
     for archived_segment in &archived_segments[1..3] {
-        let contents = reconstructor
+        let contents;
+        (reconstructor, contents) = reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segment.pieces))
             .unwrap();
 
@@ -591,7 +679,7 @@ fn blocks_completed_at_segment_end() {
         // from the next segment
         assert_blocks(&contents.blocks, &[]);
 
-        let contents = Reconstructor::new(erasure_coding.clone())
+        let (_, contents) = Reconstructor::new(erasure_coding.clone())
             .add_segment(&pieces_to_option_of_pieces(&archived_segment.pieces))
             .unwrap();
 
@@ -600,14 +688,15 @@ fn blocks_completed_at_segment_end() {
     }
 
     {
-        let contents = reconstructor
+        let contents;
+        (reconstructor, contents) = reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[3].pieces))
             .unwrap();
 
         // Second block is finished, and the third block is fully contained
         assert_blocks(&contents.blocks, &[(1, &block_1), (2, &block_2)]);
 
-        let contents = Reconstructor::new(erasure_coding.clone())
+        let (_, contents) = Reconstructor::new(erasure_coding.clone())
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[3].pieces))
             .unwrap();
 
@@ -616,17 +705,340 @@ fn blocks_completed_at_segment_end() {
     }
 
     {
-        let contents = reconstructor
+        let (_, contents) = reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[4].pieces))
             .unwrap();
 
         // Previous segment ended with a whole block, only fourth block is fully contained
         assert_blocks(&contents.blocks, &[(3, &block_3)]);
 
-        let contents = Reconstructor::new(erasure_coding)
+        let (_, contents) = Reconstructor::new(erasure_coding)
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[4].pieces))
             .unwrap();
 
         assert_blocks(&contents.blocks, &[(3, &block_3)]);
+    }
+}
+
+#[test]
+fn misplaced_parent_segment_header() {
+    let erasure_coding = new_erasure_coding();
+    let (_, archived_segments) = archive_blocks_for_forging(&erasure_coding);
+
+    let segment_1_items = Reconstructor::new(erasure_coding.clone())
+        .reconstruct_segment(&pieces_to_option_of_pieces(&archived_segments[1].pieces))
+        .unwrap()
+        .into_items();
+    let [
+        SegmentItem::ParentSegmentHeader(_),
+        SegmentItem::BlockContinuation { .. },
+        SegmentItem::Block { .. },
+        SegmentItem::BlockStart { .. },
+        ..,
+    ] = segment_1_items.as_slice()
+    else {
+        panic!("Unexpected layout of the second segment");
+    };
+    let parent_segment_header = segment_1_items[0].clone();
+
+    {
+        let mut items = segment_1_items.clone();
+        items.swap(0, 1);
+
+        // Parent segment header after another item
+        let result = Reconstructor::new(erasure_coding.clone())
+            .add_segment(&segment_to_pieces(&Segment::V0 { items }))
+            .err();
+
+        assert_eq!(
+            result,
+            Some(ReconstructorError::UnexpectedParentSegmentHeader)
+        );
+    }
+
+    // Second parent segment header after padding, both inserted before the end of the first block,
+    // with padding instead of the second block
+    let second_header_after_padding = {
+        let mut items = segment_1_items.clone();
+        let padding = items[2].encoded_size()
+            - parent_segment_header.encoded_size()
+            - SegmentItem::Padding.encoded_size();
+        items.splice(2..3, iter::repeat_n(SegmentItem::Padding, padding));
+        items.splice(1..1, [SegmentItem::Padding, parent_segment_header.clone()]);
+        Segment::V0 { items }
+    };
+    // Second parent segment header that replaces the second block, after the end of the first block
+    let second_header_after_block_end = {
+        let mut items = segment_1_items.clone();
+        let padding = items[2].encoded_size() - parent_segment_header.encoded_size();
+        items.splice(
+            2..3,
+            iter::once(parent_segment_header).chain(iter::repeat_n(SegmentItem::Padding, padding)),
+        );
+        Segment::V0 { items }
+    };
+
+    for segment in [second_header_after_padding, second_header_after_block_end] {
+        let (reconstructor, _) = Reconstructor::new(erasure_coding.clone())
+            .add_segment(&pieces_to_option_of_pieces(&archived_segments[0].pieces))
+            .unwrap();
+
+        let result = reconstructor
+            .add_segment(&segment_to_pieces(&segment))
+            .err();
+
+        assert_eq!(
+            result,
+            Some(ReconstructorError::UnexpectedParentSegmentHeader)
+        );
+    }
+}
+
+#[test]
+fn segment_index_overflow() {
+    let erasure_coding = new_erasure_coding();
+    let ([_, block_1, ..], archived_segments) = archive_blocks_for_forging(&erasure_coding);
+
+    let segment_1_items = Reconstructor::new(erasure_coding.clone())
+        .reconstruct_segment(&pieces_to_option_of_pieces(&archived_segments[1].pieces))
+        .unwrap()
+        .into_items();
+    let SegmentItem::ParentSegmentHeader(SegmentHeader::V0 {
+        segment_index: _,
+        segment_commitment,
+        prev_segment_header_hash,
+        last_archived_block,
+    }) = segment_1_items[0]
+    else {
+        panic!("The second segment starts with a parent segment header");
+    };
+    let with_parent_segment_index = |parent_segment_index: u64| {
+        let mut items = segment_1_items.clone();
+        items[0] = SegmentItem::ParentSegmentHeader(SegmentHeader::V0 {
+            segment_index: SegmentIndex::new(parent_segment_index),
+            segment_commitment,
+            prev_segment_header_hash,
+            last_archived_block,
+        });
+        segment_to_pieces(&Segment::V0 { items })
+    };
+
+    {
+        let (reconstructor, _) = Reconstructor::new(erasure_coding.clone())
+            .add_segment(&pieces_to_option_of_pieces(&archived_segments[0].pieces))
+            .unwrap();
+
+        // Segment after the segment with the maximum index
+        let result = reconstructor
+            .clone()
+            .add_segment(&with_parent_segment_index(u64::MAX))
+            .err();
+
+        assert_eq!(result, Some(ReconstructorError::SegmentIndexOverflow));
+
+        // Segment with the maximum index
+        let result = reconstructor
+            .add_segment(&with_parent_segment_index(u64::MAX - 1))
+            .err();
+
+        assert_eq!(
+            result,
+            Some(ReconstructorError::IncorrectSegmentOrder {
+                expected_segment_index: SegmentIndex::ONE,
+                actual_segment_index: SegmentIndex::new(u64::MAX)
+            })
+        );
+    }
+
+    {
+        // Segment after the segment with the maximum index
+        let result = Reconstructor::new(erasure_coding.clone())
+            .add_segment(&with_parent_segment_index(u64::MAX))
+            .err();
+
+        assert_eq!(result, Some(ReconstructorError::SegmentIndexOverflow));
+
+        // Segment with the maximum index is fine on its own
+        let (reconstructor, contents) = Reconstructor::new(erasure_coding)
+            .add_segment(&with_parent_segment_index(u64::MAX - 1))
+            .unwrap();
+
+        assert_blocks(&contents.blocks, &[(1, &block_1)]);
+
+        // But no segment can follow it
+        let result = reconstructor
+            .clone()
+            .add_segment(&pieces_to_option_of_pieces(&archived_segments[2].pieces))
+            .err();
+
+        assert_eq!(result, Some(ReconstructorError::SegmentIndexOverflow));
+
+        let result = reconstructor
+            .add_segment(&with_parent_segment_index(u64::MAX))
+            .err();
+
+        assert_eq!(result, Some(ReconstructorError::SegmentIndexOverflow));
+    }
+}
+
+#[test]
+fn block_number_overflow() {
+    let erasure_coding = new_erasure_coding();
+    let ([block_0, block_1, ..], archived_segments) = archive_blocks_for_forging(&erasure_coding);
+
+    let segment_1_items = Reconstructor::new(erasure_coding.clone())
+        .reconstruct_segment(&pieces_to_option_of_pieces(&archived_segments[1].pieces))
+        .unwrap()
+        .into_items();
+    let SegmentItem::ParentSegmentHeader(SegmentHeader::V0 {
+        segment_index,
+        segment_commitment,
+        prev_segment_header_hash,
+        last_archived_block,
+    }) = segment_1_items[0]
+    else {
+        panic!("The second segment starts with a parent segment header");
+    };
+    // The second segment with padding instead of the second block, such that the third block
+    // starts right after the end of the first block
+    let segment_1_items_without_block_1 = {
+        let mut items = segment_1_items.clone();
+        let padding = items[2].encoded_size();
+        items.splice(2..3, iter::repeat_n(SegmentItem::Padding, padding));
+        items
+    };
+    let with_last_archived_block =
+        |items: &[SegmentItem],
+         last_archived_block_number: BlockNumber,
+         archived_progress: ArchivedBlockProgress| {
+            let mut items = items.to_vec();
+            items[0] = SegmentItem::ParentSegmentHeader(SegmentHeader::V0 {
+                segment_index,
+                segment_commitment,
+                prev_segment_header_hash,
+                last_archived_block: LastArchivedBlock {
+                    number: last_archived_block_number,
+                    archived_progress,
+                },
+            });
+            segment_to_pieces(&Segment::V0 { items })
+        };
+    let partial_progress = last_archived_block.archived_progress;
+    let complete_progress = ArchivedBlockProgress::Complete;
+
+    for archived_progress in [partial_progress, complete_progress] {
+        // The second block is numbered right after the last archived block, and neither it nor
+        // the number after it may be larger than the maximum
+        for last_archived_block_number in [BlockNumber::MAX, BlockNumber::MAX - 1] {
+            let result = Reconstructor::new(erasure_coding.clone())
+                .add_segment(&with_last_archived_block(
+                    &segment_1_items,
+                    last_archived_block_number,
+                    archived_progress,
+                ))
+                .err();
+
+            assert_eq!(result, Some(ReconstructorError::BlockNumberOverflow));
+        }
+
+        // The number after the second block is the maximum
+        let (_, contents) = Reconstructor::new(erasure_coding.clone())
+            .add_segment(&with_last_archived_block(
+                &segment_1_items,
+                BlockNumber::MAX - 2,
+                archived_progress,
+            ))
+            .unwrap();
+
+        assert_blocks(&contents.blocks, &[(BlockNumber::MAX - 1, &block_1)]);
+
+        // Without the second block, the third block that starts in this segment is numbered right
+        // after the last archived block, and that number may be the maximum
+        let result = Reconstructor::new(erasure_coding.clone())
+            .add_segment(&with_last_archived_block(
+                &segment_1_items_without_block_1,
+                BlockNumber::MAX,
+                archived_progress,
+            ))
+            .err();
+
+        assert_eq!(result, Some(ReconstructorError::BlockNumberOverflow));
+
+        let (_, contents) = Reconstructor::new(erasure_coding.clone())
+            .add_segment(&with_last_archived_block(
+                &segment_1_items_without_block_1,
+                BlockNumber::MAX - 1,
+                archived_progress,
+            ))
+            .unwrap();
+
+        assert_blocks(&contents.blocks, &[]);
+    }
+
+    let (reconstructor_after_segment_0, _) = Reconstructor::new(erasure_coding)
+        .add_segment(&pieces_to_option_of_pieces(&archived_segments[0].pieces))
+        .unwrap();
+
+    // The first block is completed in this segment with the number of the last archived block,
+    // followed by the second block
+    for last_archived_block_number in [BlockNumber::MAX, BlockNumber::MAX - 1] {
+        let result = reconstructor_after_segment_0
+            .clone()
+            .add_segment(&with_last_archived_block(
+                &segment_1_items,
+                last_archived_block_number,
+                partial_progress,
+            ))
+            .err();
+
+        assert_eq!(result, Some(ReconstructorError::BlockNumberOverflow));
+    }
+
+    {
+        // The number after the second block that follows the first block is the maximum
+        let (_, contents) = reconstructor_after_segment_0
+            .clone()
+            .add_segment(&with_last_archived_block(
+                &segment_1_items,
+                BlockNumber::MAX - 2,
+                partial_progress,
+            ))
+            .unwrap();
+
+        assert_blocks(
+            &contents.blocks,
+            &[
+                (BlockNumber::MAX - 2, &block_0),
+                (BlockNumber::MAX - 1, &block_1),
+            ],
+        );
+    }
+
+    {
+        // The first block has the maximum number, so the third block that starts right after it
+        // can't be numbered
+        let result = reconstructor_after_segment_0
+            .clone()
+            .add_segment(&with_last_archived_block(
+                &segment_1_items_without_block_1,
+                BlockNumber::MAX,
+                partial_progress,
+            ))
+            .err();
+
+        assert_eq!(result, Some(ReconstructorError::BlockNumberOverflow));
+    }
+
+    {
+        // The third block that starts right after the first block has the maximum number
+        let (_, contents) = reconstructor_after_segment_0
+            .add_segment(&with_last_archived_block(
+                &segment_1_items_without_block_1,
+                BlockNumber::MAX - 1,
+                partial_progress,
+            ))
+            .unwrap();
+
+        assert_blocks(&contents.blocks, &[(BlockNumber::MAX - 1, &block_0)]);
     }
 }
