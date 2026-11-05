@@ -24,8 +24,8 @@ use sp_mmr_primitives::MmrApi;
 use sp_objects::ObjectsApi;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::collections::{HashSet, VecDeque};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::segments::SegmentIndex;
@@ -292,7 +292,7 @@ where
     // Reconstruct blocks of the last segment
     let mut blocks = VecDeque::new();
     {
-        let reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
+        let mut reconstructor = Reconstructor::new(erasure_coding.clone());
 
         for segment_index in segments_to_reconstruct {
             let segment_pieces = download_segment_pieces(
@@ -307,24 +307,15 @@ where
             })?;
 
             // CPU-intensive piece and segment reconstruction code can block the async executor.
-            let segment_contents_fut = task::spawn_blocking({
-                let reconstructor = reconstructor.clone();
+            let segment_contents_fut =
+                task::spawn_blocking(move || reconstructor.add_segment(segment_pieces.as_ref()));
 
-                move || {
-                    reconstructor
-                        .lock()
-                        .expect("Panic if previous thread panicked when holding the mutex")
-                        .add_segment(segment_pieces.as_ref())
-                }
-            });
-
-            blocks = VecDeque::from(
-                segment_contents_fut
-                    .await
-                    .expect("Panic if blocking task panicked")
-                    .map_err(|error| error.to_string())?
-                    .blocks,
-            );
+            let segment_contents;
+            (reconstructor, segment_contents) = segment_contents_fut
+                .await
+                .expect("Panic if blocking task panicked")
+                .map_err(|error| error.to_string())?;
+            blocks = VecDeque::from(segment_contents.blocks);
 
             trace!( %segment_index, "Segment reconstructed successfully");
         }

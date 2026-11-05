@@ -26,7 +26,7 @@ pub enum ReconstructorError {
     /// Segment size is not bigger than record size
     #[error("Error during segment decoding: {0}")]
     SegmentDecoding(parity_scale_codec::Error),
-    /// Incorrect segment order, each next segment must have monotonically increasing segment index
+    /// Incorrect segment order, each next segment must directly follow the previous one
     #[error(
         "Incorrect segment order, expected index {expected_segment_index}, actual \
         {actual_segment_index}"
@@ -35,6 +35,15 @@ pub enum ReconstructorError {
         expected_segment_index: SegmentIndex,
         actual_segment_index: SegmentIndex,
     },
+    /// Parent segment header is not the first item of the segment
+    #[error("Parent segment header is not the first item of the segment")]
+    UnexpectedParentSegmentHeader,
+    /// Segment index overflow, no segment can follow the segment with the maximum index
+    #[error("Segment index overflow, no segment can follow the segment with the maximum index")]
+    SegmentIndexOverflow,
+    /// Block number overflow
+    #[error("Block number overflow")]
+    BlockNumberOverflow,
 }
 
 /// Data structure that contains information reconstructed from given segment (potentially using
@@ -54,8 +63,8 @@ pub struct Reconstructor {
     erasure_coding: ErasureCoding,
     /// Index of last segment added to reconstructor
     last_segment_index: Option<SegmentIndex>,
-    /// Partially reconstructed block waiting for more data
-    partial_block: Option<Vec<u8>>,
+    /// Partially reconstructed block waiting for more data, empty if there is none
+    partial_block: Vec<u8>,
 }
 
 impl Reconstructor {
@@ -64,7 +73,7 @@ impl Reconstructor {
         Self {
             erasure_coding,
             last_segment_index: None,
-            partial_block: None,
+            partial_block: Vec::new(),
         }
     }
 
@@ -158,111 +167,138 @@ impl Reconstructor {
     /// coding if needed), reconstructs and returns segment header and a list of encoded blocks with
     /// corresponding block numbers.
     ///
-    /// It is possible to start with any segment, but when next segment is pushed, it needs to
-    /// follow the previous one or else error will be returned.
+    /// The reconstructor is consumed and returned together with reconstructed contents if the
+    /// segment was added successfully. It is possible to start with any segment, but when next
+    /// segment is pushed, it needs to follow the previous one or else error will be returned.
     pub fn add_segment(
-        &mut self,
+        mut self,
         segment_pieces: &[Option<Piece>],
-    ) -> Result<ReconstructedContents, ReconstructorError> {
-        let items = self.reconstruct_segment(segment_pieces)?.into_items();
+    ) -> Result<(Self, ReconstructedContents), ReconstructorError> {
+        let mut segment_items = self
+            .reconstruct_segment(segment_pieces)?
+            .into_items()
+            .into_iter()
+            .peekable();
 
         let mut reconstructed_contents = ReconstructedContents::default();
-        let mut next_block_number = 0;
-        let mut partial_block = self.partial_block.take().unwrap_or_default();
+        let mut next_block_number: BlockNumber = 0;
 
-        for segment_item in items {
+        // Only the first segment has no parent segment header, all other segments start with it
+        let segment_index = if let Some(&SegmentItem::ParentSegmentHeader(parent_segment_header)) =
+            segment_items.peek()
+        {
+            segment_items.next();
+
+            let LastArchivedBlock {
+                number,
+                archived_progress,
+            } = parent_segment_header.last_archived_block();
+
+            reconstructed_contents
+                .segment_header
+                .replace(parent_segment_header);
+
+            match archived_progress {
+                ArchivedBlockProgress::Complete => {
+                    // The last archived block ended exactly with the previous segment, so if its
+                    // beginning was reconstructed from previous segments, it is complete now
+                    if !self.partial_block.is_empty() {
+                        reconstructed_contents
+                            .blocks
+                            .push((number, mem::take(&mut self.partial_block)));
+                    }
+
+                    next_block_number = number
+                        .checked_add(1)
+                        .ok_or(ReconstructorError::BlockNumberOverflow)?;
+                }
+                ArchivedBlockProgress::Partial(_bytes) => {
+                    next_block_number = number;
+
+                    if self.partial_block.is_empty() {
+                        // Will not be able to recover full block, bump right away
+                        next_block_number = next_block_number
+                            .checked_add(1)
+                            .ok_or(ReconstructorError::BlockNumberOverflow)?;
+                    }
+                }
+            }
+
+            parent_segment_header
+                .segment_index()
+                .checked_add(SegmentIndex::ONE)
+                .ok_or(ReconstructorError::SegmentIndexOverflow)?
+        } else {
+            SegmentIndex::ZERO
+        };
+
+        if let Some(last_segment_index) = self.last_segment_index {
+            let expected_segment_index = last_segment_index
+                .checked_add(SegmentIndex::ONE)
+                .ok_or(ReconstructorError::SegmentIndexOverflow)?;
+
+            if segment_index != expected_segment_index {
+                return Err(ReconstructorError::IncorrectSegmentOrder {
+                    expected_segment_index,
+                    actual_segment_index: segment_index,
+                });
+            }
+        }
+
+        self.last_segment_index.replace(segment_index);
+
+        for segment_item in segment_items {
             match segment_item {
                 SegmentItem::Padding => {
                     // Doesn't contain anything
                 }
                 SegmentItem::Block { bytes, .. } => {
-                    if !partial_block.is_empty() {
+                    if !self.partial_block.is_empty() {
                         reconstructed_contents
                             .blocks
-                            .push((next_block_number, mem::take(&mut partial_block)));
+                            .push((next_block_number, mem::take(&mut self.partial_block)));
 
-                        next_block_number += 1;
+                        next_block_number = next_block_number
+                            .checked_add(1)
+                            .ok_or(ReconstructorError::BlockNumberOverflow)?;
                     }
 
                     reconstructed_contents
                         .blocks
                         .push((next_block_number, bytes));
 
-                    next_block_number += 1;
+                    next_block_number = next_block_number
+                        .checked_add(1)
+                        .ok_or(ReconstructorError::BlockNumberOverflow)?;
                 }
                 SegmentItem::BlockStart { bytes, .. } => {
-                    if !partial_block.is_empty() {
+                    if !self.partial_block.is_empty() {
                         reconstructed_contents
                             .blocks
-                            .push((next_block_number, mem::take(&mut partial_block)));
+                            .push((next_block_number, mem::take(&mut self.partial_block)));
 
-                        next_block_number += 1;
+                        next_block_number = next_block_number
+                            .checked_add(1)
+                            .ok_or(ReconstructorError::BlockNumberOverflow)?;
                     }
 
-                    partial_block = bytes;
+                    self.partial_block = bytes;
                 }
                 SegmentItem::BlockContinuation { bytes, .. } => {
-                    if partial_block.is_empty() {
+                    if self.partial_block.is_empty() {
                         // This is continuation from previous segment, we don't have the beginning
                         // of the block to continue.
                         continue;
                     }
 
-                    partial_block.extend_from_slice(&bytes);
+                    self.partial_block.extend_from_slice(&bytes);
                 }
-                SegmentItem::ParentSegmentHeader(segment_header) => {
-                    let segment_index = segment_header.segment_index();
-
-                    if let Some(last_segment_index) = self.last_segment_index
-                        && last_segment_index != segment_index
-                    {
-                        return Err(ReconstructorError::IncorrectSegmentOrder {
-                            expected_segment_index: last_segment_index + SegmentIndex::ONE,
-                            actual_segment_index: segment_index + SegmentIndex::ONE,
-                        });
-                    }
-
-                    self.last_segment_index
-                        .replace(segment_index + SegmentIndex::ONE);
-
-                    let LastArchivedBlock {
-                        number,
-                        archived_progress,
-                    } = segment_header.last_archived_block();
-
-                    reconstructed_contents
-                        .segment_header
-                        .replace(segment_header);
-
-                    match archived_progress {
-                        ArchivedBlockProgress::Complete => {
-                            reconstructed_contents
-                                .blocks
-                                .push((next_block_number, mem::take(&mut partial_block)));
-
-                            next_block_number = number + 1;
-                        }
-                        ArchivedBlockProgress::Partial(_bytes) => {
-                            next_block_number = number;
-
-                            if partial_block.is_empty() {
-                                // Will not be able to recover full block, bump right away.
-                                next_block_number += 1;
-                            }
-                        }
-                    }
+                SegmentItem::ParentSegmentHeader(_) => {
+                    return Err(ReconstructorError::UnexpectedParentSegmentHeader);
                 }
             }
         }
 
-        if !partial_block.is_empty() {
-            self.partial_block.replace(partial_block);
-        }
-
-        if self.last_segment_index.is_none() {
-            self.last_segment_index.replace(SegmentIndex::ZERO);
-        }
-
-        Ok(reconstructed_contents)
+        Ok((self, reconstructed_contents))
     }
 }
