@@ -703,3 +703,80 @@ fn object_on_the_edge_of_segment() {
         mapped_bytes
     );
 }
+
+/// Many small blocks with objects, where object mappings are produced for each block as it is added
+#[test]
+fn many_small_blocks() {
+    // Each block (except the first one) is encoded into exactly 32 KiB segment item (1 byte for enum
+    // variant and 4 bytes for length), such that objects at the beginning of blocks do not cross
+    // record boundaries. The first block is one byte smaller to account for segment enum variant,
+    // such that the first segment is filled with blocks exactly.
+    const ITEM_SIZE: usize = 32 * 1024;
+    const BLOCK_SIZE: usize = ITEM_SIZE - 1 - size_of::<u32>();
+    const BLOCKS_PER_SEGMENT: usize = RecordedHistorySegment::SIZE / ITEM_SIZE;
+    const OBJECT_SIZE: u32 = 16;
+
+    let kzg = Kzg::new();
+    let erasure_coding = ErasureCoding::new(
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+            .expect("Not zero; qed"),
+    )
+    .unwrap();
+    let mut archiver = Archiver::new(kzg, erasure_coding);
+
+    let mut archived_segments = Vec::new();
+    // Blocks along with object mappings produced for them
+    let mut blocks = Vec::new();
+
+    // Second segment starts with parent segment header, so the last block doesn't fit into it
+    while archived_segments.len() < 2 {
+        let block_size = if blocks.is_empty() {
+            BLOCK_SIZE - 1
+        } else {
+            BLOCK_SIZE
+        };
+        let mut block = vec![0u8; block_size];
+        rand::rng().fill(block.as_mut_slice());
+        block
+            .as_mut_slice()
+            .write_all(&Compact(OBJECT_SIZE).encode())
+            .unwrap();
+        let object_mapping = BlockObjectMapping::V0 {
+            objects: vec![BlockObject {
+                hash: Blake3Hash::default(),
+                offset: 0,
+            }],
+        };
+
+        let outcome = archiver.add_block(block.clone(), object_mapping, true);
+        archived_segments.extend(outcome.archived_segments);
+        // Each block has one object and all of them are at the beginning of the block, so every
+        // block must have exactly one object mapping produced right away
+        assert_eq!(outcome.object_mapping.len(), 1);
+        blocks.push((block, outcome.object_mapping[0]));
+    }
+
+    assert_eq!(
+        archived_segments[0].segment_header.last_archived_block(),
+        LastArchivedBlock {
+            number: BLOCKS_PER_SEGMENT as u32 - 1,
+            archived_progress: ArchivedBlockProgress::Complete,
+        }
+    );
+
+    for (block_index, (block, global_object)) in blocks.iter().enumerate() {
+        let segment = &archived_segments[block_index / BLOCKS_PER_SEGMENT];
+        assert_eq!(
+            global_object.piece_index.segment_index(),
+            segment.segment_header.segment_index(),
+            "Block {block_index}"
+        );
+        let piece = &segment.pieces[global_object.piece_index.position() as usize];
+
+        assert_eq!(
+            extract_data_from_source_record(piece.record(), global_object.offset),
+            extract_data(block, 0u32),
+            "Block {block_index}"
+        );
+    }
+}

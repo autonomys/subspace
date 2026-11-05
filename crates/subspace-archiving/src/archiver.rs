@@ -36,6 +36,12 @@ const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
     archived_progress: ArchivedBlockProgress::Partial(0),
 };
 
+/// Segment is complete once its encoded size reaches this threshold.
+///
+/// `-2` because even the smallest segment item will take 2 bytes to encode, so it makes sense to
+/// stop earlier here.
+const SEGMENT_SIZE_THRESHOLD: usize = RecordedHistorySegment::SIZE - 2;
+
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Segment {
@@ -59,12 +65,7 @@ impl Encode for Segment {
 
     fn encode_to<O: Output + ?Sized>(&self, dest: &mut O) {
         match self {
-            Segment::V0 { items } => {
-                dest.push_byte(0);
-                for item in items {
-                    item.encode_to(dest);
-                }
-            }
+            Segment::V0 { items } => Self::encode_v0_items_to(items, dest),
         }
     }
 }
@@ -131,6 +132,18 @@ impl Segment {
     pub fn into_items(self) -> Vec<SegmentItem> {
         match self {
             Segment::V0 { items } => items,
+        }
+    }
+
+    /// Encode items as if they were in [`Segment::V0`] without collecting them into one
+    pub(crate) fn encode_v0_items_to<'a, Items, O>(items: Items, dest: &mut O)
+    where
+        Items: IntoIterator<Item = &'a SegmentItem>,
+        O: Output + ?Sized,
+    {
+        dest.push_byte(0);
+        for item in items {
+            item.encode_to(dest);
         }
     }
 }
@@ -218,6 +231,76 @@ pub enum ArchiverInstantiationError {
     },
 }
 
+/// Buffer of segment items that keeps track of their total encoded size and which items had their
+/// object mappings produced already
+#[derive(Debug, Default, Clone)]
+struct SegmentItemsBuffer {
+    items: VecDeque<SegmentItem>,
+    /// Total encoded size of all items
+    encoded_size: usize,
+    /// Number of items at the beginning of the buffer that had their object mappings produced
+    num_mapped_items: usize,
+    /// Total encoded size of items that had their object mappings produced
+    mapped_encoded_size: usize,
+}
+
+impl SegmentItemsBuffer {
+    fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &SegmentItem> {
+        self.items.iter()
+    }
+
+    fn push_back(&mut self, item: SegmentItem) {
+        self.encoded_size += item.encoded_size();
+        self.items.push_back(item);
+    }
+
+    fn push_front(&mut self, item: SegmentItem) {
+        self.encoded_size += item.encoded_size();
+        self.items.push_front(item);
+        // New item may have object mappings and shifts offsets of all other items, so all items are
+        // considered unmapped (items that were mapped before have no object mappings left anyway)
+        self.num_mapped_items = 0;
+        self.mapped_encoded_size = 0;
+    }
+
+    fn pop_front(&mut self) -> Option<SegmentItem> {
+        let item = self.items.pop_front()?;
+        let item_encoded_size = item.encoded_size();
+        self.encoded_size = self
+            .encoded_size
+            .checked_sub(item_encoded_size)
+            .expect("Item size was added to the total when the item was inserted; qed");
+        if self.num_mapped_items > 0 {
+            self.num_mapped_items -= 1;
+            self.mapped_encoded_size = self
+                .mapped_encoded_size
+                .checked_sub(item_encoded_size)
+                .expect("Mapped item size was added to the mapped total; qed");
+        }
+        Some(item)
+    }
+
+    /// Returns items that didn't have their object mappings produced yet along with the offset of
+    /// the first of them from the beginning of the buffer.
+    ///
+    /// Returned items are considered mapped afterwards, so object mappings must be produced for
+    /// them. Only fields that are not encoded (like object mappings) may be modified, otherwise the
+    /// total encoded size will be wrong.
+    fn take_unmapped_items(&mut self) -> (usize, impl Iterator<Item = &mut SegmentItem>) {
+        let offset = self.mapped_encoded_size;
+        let first_unmapped_item = self.num_mapped_items;
+
+        self.num_mapped_items = self.items.len();
+        self.mapped_encoded_size = self.encoded_size;
+
+        (offset, self.items.range_mut(first_unmapped_item..))
+    }
+}
+
 /// Block archiver for Subspace blockchain.
 ///
 /// It takes new confirmed (at `K` depth) blocks and concatenates them into a buffer, buffer is
@@ -233,7 +316,7 @@ pub enum ArchiverInstantiationError {
 pub struct Archiver {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
     /// next segment
-    buffer: VecDeque<SegmentItem>,
+    buffer: SegmentItemsBuffer,
     /// Intermediate record commitments that are built incrementally as above buffer fills up.
     incremental_record_commitments: IncrementalRecordCommitmentsState,
     /// Erasure coding data structure
@@ -252,7 +335,7 @@ impl Archiver {
     /// Create a new instance
     pub fn new(kzg: Kzg, erasure_coding: ErasureCoding) -> Self {
         Self {
-            buffer: VecDeque::default(),
+            buffer: SegmentItemsBuffer::default(),
             incremental_record_commitments: IncrementalRecordCommitmentsState::with_capacity(
                 RecordedHistorySegment::NUM_RAW_RECORDS,
             ),
@@ -359,6 +442,7 @@ impl Archiver {
             // Produce any segment mappings that haven't already been produced.
             object_mapping.extend(Self::produce_object_mappings(
                 self.segment_index,
+                Segment::default().encoded_size(),
                 segment.items_mut().iter_mut(),
             ));
             archived_segments.push(self.produce_archived_segment(segment));
@@ -376,40 +460,36 @@ impl Archiver {
     /// Try to slice buffer contents into segments if there is enough data, producing one segment at
     /// a time
     fn produce_segment(&mut self, incremental: bool) -> Option<Segment> {
+        let mut segment_size = Segment::default().encoded_size();
+        let buffered_segment_size = segment_size + self.buffer.encoded_size;
+
+        // Not enough data for a segment yet
+        if buffered_segment_size < SEGMENT_SIZE_THRESHOLD {
+            let existing_commitments = self.incremental_record_commitments.len();
+            let bytes_committed_to = existing_commitments * RawRecord::SIZE;
+            // Run incremental archiver only when there is at least two records to archive,
+            // otherwise we're wasting CPU cycles encoding segment over and over again
+            if incremental && buffered_segment_size - bytes_committed_to >= RawRecord::SIZE * 2 {
+                update_record_commitments(
+                    &mut self.incremental_record_commitments,
+                    self.buffer.iter(),
+                    &self.kzg,
+                );
+            }
+
+            return None;
+        }
+
         let mut segment = Segment::V0 {
             items: Vec::with_capacity(self.buffer.len()),
         };
 
         let mut last_archived_block = self.last_archived_block;
 
-        let mut segment_size = segment.encoded_size();
-
-        // `-2` because even the smallest segment item will take 2 bytes to encode, so it makes
-        // sense to stop earlier here
-        while segment_size < (RecordedHistorySegment::SIZE - 2) {
-            let segment_item = match self.buffer.pop_front() {
-                Some(segment_item) => segment_item,
-                None => {
-                    let existing_commitments = self.incremental_record_commitments.len();
-                    let bytes_committed_to = existing_commitments * RawRecord::SIZE;
-                    // Run incremental archiver only when there is at least two records to archive,
-                    // otherwise we're wasting CPU cycles encoding segment over and over again
-                    if incremental && segment_size - bytes_committed_to >= RawRecord::SIZE * 2 {
-                        update_record_commitments(
-                            &mut self.incremental_record_commitments,
-                            &segment,
-                            &self.kzg,
-                        );
-                    }
-
-                    // Push all of the items back into the buffer, we don't have enough data yet
-                    for segment_item in segment.into_items().into_iter().rev() {
-                        self.buffer.push_front(segment_item);
-                    }
-
-                    return None;
-                }
-            };
+        while segment_size < SEGMENT_SIZE_THRESHOLD {
+            let segment_item = self.buffer.pop_front().expect(
+                "Buffered items are large enough to fill a segment, which is checked above; qed",
+            );
 
             let segment_item_encoded_size = segment_item.encoded_size();
             segment_size += segment_item_encoded_size;
@@ -615,22 +695,33 @@ impl Archiver {
     /// Must only be called after all complete segments for a block have been produced. Before
     /// that, the buffer can contain a `BlockContinuation` which spans multiple segments.
     fn produce_next_segment_mappings(&mut self) -> Vec<GlobalObject> {
-        Self::produce_object_mappings(self.segment_index, self.buffer.iter_mut())
+        // Usually this is just the block that was just added, avoiding iteration over the whole
+        // buffer is important for performance when there are many small blocks
+        let (offset, unmapped_items) = self.buffer.take_unmapped_items();
+
+        Self::produce_object_mappings(
+            self.segment_index,
+            Segment::default().encoded_size() + offset,
+            unmapped_items,
+        )
     }
 
-    /// Produce object mappings for `items` in `segment_index`. Then remove the mappings from those
-    /// items.
+    /// Produce object mappings for `items` in `segment_index`, where the first item starts at
+    /// `base_offset_in_segment`. Then remove the mappings from those items.
     ///
     /// This method can be called on a `Segment`’s items, or on the `Archiver`'s internal buffer.
-    fn produce_object_mappings<'a>(
+    fn produce_object_mappings<'a, Items>(
         segment_index: SegmentIndex,
-        items: impl Iterator<Item = &'a mut SegmentItem>,
-    ) -> Vec<GlobalObject> {
+        mut base_offset_in_segment: usize,
+        items: Items,
+    ) -> Vec<GlobalObject>
+    where
+        Items: Iterator<Item = &'a mut SegmentItem>,
+    {
         let source_piece_indexes = &segment_index.segment_piece_indexes_source_first()
             [..RecordedHistorySegment::NUM_RAW_RECORDS];
 
         let mut corrected_object_mapping = Vec::new();
-        let mut base_offset_in_segment = Segment::default().encoded_size();
         for segment_item in items {
             match segment_item {
                 SegmentItem::Padding => {
