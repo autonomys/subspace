@@ -1,11 +1,11 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::archiver::Segment;
+use crate::archiver::{Segment, SegmentItem};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::ops::{Deref, DerefMut};
-use parity_scale_codec::{Encode, Output};
+use parity_scale_codec::Output;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use subspace_core_primitives::ScalarBytes;
@@ -53,16 +53,19 @@ impl IncrementalRecordCommitmentsState {
     }
 }
 
-/// Update internal record commitments state based on provided segment.
-pub(super) fn update_record_commitments(
+/// Update internal record commitments state based on provided items of the segment that is being
+/// built.
+pub(super) fn update_record_commitments<'a, Items>(
     incremental_record_commitments: &mut IncrementalRecordCommitmentsState,
-    segment: &Segment,
+    segment_items: Items,
     kzg: &Kzg,
-) {
-    segment.encode_to(&mut IncrementalRecordCommitmentsProcessor::new(
-        incremental_record_commitments,
-        kzg,
-    ));
+) where
+    Items: IntoIterator<Item = &'a SegmentItem>,
+{
+    Segment::encode_v0_items_to(
+        segment_items,
+        &mut IncrementalRecordCommitmentsProcessor::new(incremental_record_commitments, kzg),
+    );
 }
 
 /// Processor is hidden to not expose unnecessary implementation details (like `Output` trait
