@@ -236,9 +236,14 @@ impl Reconstructor {
 
                     match archived_progress {
                         ArchivedBlockProgress::Complete => {
-                            reconstructed_contents
-                                .blocks
-                                .push((next_block_number, mem::take(&mut partial_block)));
+                            // The last archived block ended exactly with the previous segment, so
+                            // if its beginning was reconstructed from previous segments, it is
+                            // complete now
+                            if !partial_block.is_empty() {
+                                reconstructed_contents
+                                    .blocks
+                                    .push((number, mem::take(&mut partial_block)));
+                            }
 
                             next_block_number = number + 1;
                         }
