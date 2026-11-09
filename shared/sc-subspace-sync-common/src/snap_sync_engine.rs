@@ -109,8 +109,6 @@ where
                         peer_id,
                         key,
                         request,
-                        // State sync doesn't use this
-                        remove_obsolete: _,
                     } => {
                         self.pending_responses.insert(peer_id, key, request);
                     }
@@ -201,6 +199,9 @@ where
                     }
                     RequestFailure::UnknownProtocol => {
                         debug_assert!(false, "Block request protocol should always be known.");
+                    }
+                    RequestFailure::InvalidRequest => {
+                        debug_assert!(false, "Block request payload should always be valid.");
                     }
                     RequestFailure::Obsolete => {
                         debug_assert!(

@@ -319,7 +319,10 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_session::SessionKeys<Block> for Runtime {
-        fn generate_session_keys(_seed: Option<Vec<u8>>) -> Vec<u8> {
+        fn generate_session_keys(
+            _owner: Vec<u8>,
+            _seed: Option<Vec<u8>>,
+        ) -> sp_session::OpaqueGeneratedSessionKeys {
             unreachable!()
         }
 

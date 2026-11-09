@@ -51,6 +51,7 @@ sc-offchain.workspace = true
 sc-proof-of-time.workspace = true
 sc-rpc.workspace = true
 sc-rpc-api.workspace = true
+sc-rpc-server.workspace = true
 sc-service.workspace = true
 sc-sysinfo.workspace = true
 sc-subspace-block-relay.workspace = true

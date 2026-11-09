@@ -63,7 +63,7 @@ where
         let next_weight =
             calculate_consumed_weight::<T::RuntimeCall>(&maximum_weight, all_weight, info, len);
 
-        frame_system::AllExtrinsicsLen::<T>::put(next_len);
+        frame_system::BlockSize::<T>::put(next_len);
         frame_system::BlockWeight::<T>::put(next_weight);
 
         Ok(())

@@ -58,6 +58,7 @@ domain-test-primitives.workspace = true
 domain-test-utils.workspace = true
 ethereum.workspace = true
 evm-domain-test-runtime.workspace = true
+sp-crypto-hashing.workspace = true
 fp-rpc.workspace = true
 fp-self-contained.workspace = true
 frame-system.workspace = true

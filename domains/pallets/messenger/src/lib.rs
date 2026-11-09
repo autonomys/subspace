@@ -36,7 +36,6 @@ pub mod weights;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use frame_support::__private::RuntimeDebug;
 use frame_support::pallet_prelude::{EnsureOrigin, MaxEncodedLen, StorageVersion};
 use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_system::pallet_prelude::BlockNumberFor;
@@ -83,15 +82,7 @@ pub enum OutboxMessageResult {
 
 /// Custom origin for validated unsigned extrinsics.
 #[derive(
-    PartialEq,
-    Eq,
-    Clone,
-    Encode,
-    Decode,
-    RuntimeDebug,
-    TypeInfo,
-    MaxEncodedLen,
-    DecodeWithMemTracking,
+    PartialEq, Eq, Clone, Encode, Decode, Debug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking,
 )]
 pub enum RawOrigin {
     ValidatedUnsigned,

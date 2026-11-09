@@ -53,7 +53,10 @@ where
 
         let trie_backend = state.as_trie_backend();
 
-        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
+        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(
+            trie_backend,
+            sp_state_machine::backend::TryPendingCode::No,
+        );
         let runtime_code = state_runtime_code
             .runtime_code()
             .map_err(sp_blockchain::Error::RuntimeCode)?;

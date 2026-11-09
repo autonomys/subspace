@@ -21,13 +21,13 @@ pallet-timestamp = { workspace = true, optional = true }
 scale-info = { workspace = true, features = ["derive"] }
 sp-auto-id.workspace = true
 sp-core.workspace = true
+sp-io.workspace = true
 sp-runtime.workspace = true
 subspace-runtime-primitives.workspace = true
 
 [dev-dependencies]
 pem.workspace = true
 ring.workspace = true
-sp-io.workspace = true
 x509-parser.workspace = true
 
 [features]
@@ -41,6 +41,7 @@ std = [
     "scale-info/std",
     "sp-auto-id/std",
     "sp-core/std",
+    "sp-io/std",
     "sp-runtime/std",
     "subspace-runtime-primitives/std",
 ]

@@ -252,7 +252,7 @@ impl<T: Config> Pallet<T> {
         }
 
         let avg_blockspace_usage = Self::update_avg_blockspace_usage(
-            frame_system::Pallet::<T>::all_extrinsics_len(),
+            frame_system::Pallet::<T>::block_size(),
             AvgBlockspaceUsage::<T>::get(),
             T::AvgBlockspaceUsageNumBlocks::get(),
             frame_system::Pallet::<T>::block_number(),

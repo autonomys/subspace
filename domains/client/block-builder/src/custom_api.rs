@@ -240,7 +240,10 @@ where
         // Trusted: bounded block-building context
         let state = backend.state_at(parent_hash, sc_client_api::TrieCacheContext::Trusted)?;
         let trie_backend = state.as_trie_backend();
-        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
+        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(
+            trie_backend,
+            sp_state_machine::backend::TryPendingCode::Yes,
+        );
         let sp_core::traits::RuntimeCode {
             code_fetcher,
             heap_pages,
@@ -298,7 +301,7 @@ where
             call_data.as_slice(),
             &mut extensions,
             &runtime_code,
-            CallContext::Onchain,
+            CallContext::Onchain { import: false },
         )
         .set_parent_hash(self.parent_hash)
         .execute()?;

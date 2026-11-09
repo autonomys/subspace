@@ -246,6 +246,20 @@ where
             COnRuntimeUpgrade,
         >::execute_block(block);
     }
+
+    fn verify_and_remove_seal(_: &mut <BlockOf<ExecutiveConfig> as BlockT>::LazyBlock) {
+        // Nothing to do here.
+    }
+
+    fn execute_verified_block(block: <BlockOf<ExecutiveConfig> as BlockT>::LazyBlock) {
+        Executive::<
+            ExecutiveConfig,
+            Context,
+            UnsignedValidator,
+            AllPalletsWithSystem,
+            COnRuntimeUpgrade,
+        >::execute_block(block);
+    }
 }
 
 impl<

@@ -22,6 +22,7 @@ domain-check-weight.workspace = true
 domain-pallet-executive.workspace = true
 domain-test-primitives.workspace = true
 domain-runtime-primitives.workspace = true
+fp-evm.workspace = true
 fp-rpc.workspace = true
 fp-self-contained = { workspace = true, features = ["serde"] }
 frame-support.workspace = true
@@ -84,6 +85,7 @@ std = [
     "domain-pallet-executive/std",
     "domain-runtime-primitives/std",
     "domain-test-primitives/std",
+    "fp-evm/std",
     "fp-rpc/std",
     "fp-self-contained/std",
     "frame-support/std",
@@ -135,5 +137,9 @@ std = [
 # Internal implementation detail, enabled during building of wasm blob.
 wasm-builder = []
 
-[lints]
-workspace = true
+[lints.rust]
+# Same as the workspace table, plus `deprecated`: unsigned extrinsic validation still calls
+# `ValidateUnsigned::pre_dispatch`, which stable2609 deprecates but frame-executive requires
+# until the authorize API lands (upstream removal after April 2027).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(substrate_runtime)'] }
+deprecated = "allow"

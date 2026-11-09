@@ -1254,6 +1254,8 @@ async fn test_evm_domain_gas_estimates() {
                         is_estimate,
                         Some(access_list.clone()),
                         Some(authorization_list.clone()),
+                        // state override
+                        None,
                     )
                     .expect("test EVM Call runtime call must succeed")
                     .expect("test EVM Call info must succeed");
@@ -5018,7 +5020,10 @@ async fn set_new_code_should_work() {
         .state_at(best_hash, sc_client_api::TrieCacheContext::Trusted)
         .expect("Get state");
     let trie_backend = state.as_trie_backend();
-    let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
+    let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(
+        trie_backend,
+        sp_state_machine::backend::TryPendingCode::No,
+    );
     let runtime_code = state_runtime_code.fetch_runtime_code().unwrap();
     let logs = alice.client.header(best_hash).unwrap().unwrap().digest.logs;
     if logs != vec![DigestItem::RuntimeEnvironmentUpdated] {
@@ -9099,7 +9104,7 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
             alice.client.info().best_hash,
             sp_core::H160::zero(), // from
             precompile_address,    // to
-            sp_core::hashing::keccak_256(b"minimum_transfer_amount()")[0..4].to_vec(), // data
+            sp_crypto_hashing::keccak_256(b"minimum_transfer_amount()")[0..4].to_vec(), // data
             sp_core::U256::zero(), // value
             sp_core::U256::from(300_000u64), // gas_limit
             None,
@@ -9107,6 +9112,8 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
             None,
             false,
             None,
+            None,
+            // state override
             None,
         )
         .expect("EVM runtime call must succeed")
@@ -9160,7 +9167,7 @@ async fn test_transporter_precompile_transfer_to_consensus_v1_e2e() {
     let transfer_amount = U256::from(TRANSFER_AMOUNT);
 
     let mut call_data =
-        sp_core::hashing::keccak_256(b"transfer_to_consensus_v1(bytes32,uint256)")[0..4].to_vec();
+        sp_crypto_hashing::keccak_256(b"transfer_to_consensus_v1(bytes32,uint256)")[0..4].to_vec();
     call_data.extend_from_slice(receiver_h256.as_bytes());
     call_data.extend_from_slice(&transfer_amount.to_big_endian());
 

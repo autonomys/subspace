@@ -24,7 +24,7 @@ use crate::extensions::weights::WeightInfo as ExtensionWeightInfo;
 use alloc::string::String;
 use core::num::NonZeroU64;
 use frame_support::dispatch::DispatchResult;
-use frame_support::pallet_prelude::{EnsureOrigin, RuntimeDebug};
+use frame_support::pallet_prelude::EnsureOrigin;
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
@@ -84,15 +84,7 @@ impl EraChangeTrigger for NormalEraChange {
 
 /// Custom origin for validated unsigned extrinsics.
 #[derive(
-    PartialEq,
-    Eq,
-    Clone,
-    Encode,
-    Decode,
-    RuntimeDebug,
-    TypeInfo,
-    MaxEncodedLen,
-    DecodeWithMemTracking,
+    PartialEq, Eq, Clone, Encode, Decode, Debug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking,
 )]
 pub enum RawOrigin {
     ValidatedUnsigned,
