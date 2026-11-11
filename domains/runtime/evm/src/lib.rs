@@ -2013,4 +2013,12 @@ mod tests {
     fn multiplier_can_grow_from_zero() {
         FeeMultiplierUtils::<Runtime, BlockWeights>::multiplier_can_grow_from_zero()
     }
+
+    #[test]
+    fn transaction_gas_limit_matches_eip7825_cap() {
+        assert_eq!(
+            <Runtime as pallet_evm::Config>::TransactionGasLimit::get(),
+            Some(fp_evm::MAX_TRANSACTION_GAS_LIMIT),
+        );
+    }
 }
