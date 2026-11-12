@@ -757,7 +757,7 @@ impl pallet_evm::Config for Runtime {
     type PrecompilesValue = PrecompilesValue;
     type ChainId = EVMChainId;
     type BlockGasLimit = BlockGasLimit;
-    // Frontier default: EIP-7825 caps a single transaction at 2^24 gas. Open decision for Ved.
+    // Frontier default: EIP-7825 caps a single transaction at 2^24 gas. TODO(ved): keep the cap or lower it.
     type TransactionGasLimit = TransactionGasLimit;
     type Runner = pallet_evm::runner::stack::Runner<Self>;
     type OnChargeTransaction = EVMCurrencyAdapter;
@@ -784,7 +784,7 @@ impl pallet_evm_tracker::Config for Runtime {}
 
 parameter_types! {
     pub const PostOnlyBlockHash: PostLogContent = PostLogContent::OnlyBlockHash;
-    // Same value as `fp_evm::MAX_TRANSACTION_GAS_LIMIT` (2^24). Open decision for Ved.
+    // Same value as `fp_evm::MAX_TRANSACTION_GAS_LIMIT` (2^24). TODO(ved): keep the cap or lower it.
     pub TransactionGasLimit: Option<U256> = Some(U256::from(16_777_216u64));
 }
 
