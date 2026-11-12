@@ -757,7 +757,7 @@ impl pallet_evm::Config for Runtime {
     type PrecompilesValue = PrecompilesValue;
     type ChainId = EVMChainId;
     type BlockGasLimit = BlockGasLimit;
-    // Frontier default: EIP-7825 caps a single transaction at 2^24 gas. TODO(ved): keep the cap or lower it.
+    // Frontier default: EIP-7825 caps a single transaction at 2^24 gas.
     type TransactionGasLimit = TransactionGasLimit;
     type Runner = pallet_evm::runner::stack::Runner<Self>;
     type OnChargeTransaction = EVMCurrencyAdapter;
