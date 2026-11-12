@@ -52,6 +52,7 @@ use frame_support::weights::{Weight, WeightToFee};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use parity_scale_codec::{Codec, Encode};
+#[allow(deprecated)]
 use sp_runtime::traits::{
     Applyable, Block as BlockT, CheckEqual, Checkable, Dispatchable, Header, LazyBlock, NumberFor,
     One, ValidateUnsigned, Zero,
@@ -209,6 +210,7 @@ pub struct Executive<
     )>,
 );
 
+#[allow(deprecated)]
 impl<
     ExecutiveConfig: Config + frame_system::Config + IsInherent<ExtrinsicOf<ExecutiveConfig>>,
     Context: Default,
@@ -262,6 +264,7 @@ where
     }
 }
 
+#[allow(deprecated)]
 impl<
     ExecutiveConfig: Config + frame_system::Config + IsInherent<ExtrinsicOf<ExecutiveConfig>>,
     Context: Default,

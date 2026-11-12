@@ -719,6 +719,8 @@ pub mod pallet {
         }
     }
 
+    #[allow(deprecated)]
+    #[allow(clippy::let_unit_value)]
     #[pallet::validate_unsigned]
     impl<T: Config> ValidateUnsigned for Pallet<T> {
         type Call = Call<T>;

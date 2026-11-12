@@ -56,7 +56,3 @@ runtime-benchmarks = [
     "frame-system/runtime-benchmarks",
 ]
 
-[lints.rust]
-# `ValidateUnsigned` is deprecated in stable2609 but frame-executive still requires it until
-# the authorize API replaces it (upstream removal after April 2027).
-deprecated = "allow"
