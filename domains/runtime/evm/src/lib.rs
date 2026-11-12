@@ -2007,6 +2007,7 @@ impl_runtime_apis! {
 #[cfg(test)]
 mod tests {
     use crate::{Runtime, RuntimeBlockWeights as BlockWeights};
+    use sp_runtime::traits::Get;
     use subspace_runtime_primitives::tests_utils::FeeMultiplierUtils;
 
     #[test]
@@ -2019,6 +2020,15 @@ mod tests {
         assert_eq!(
             <Runtime as pallet_evm::Config>::TransactionGasLimit::get(),
             Some(fp_evm::MAX_TRANSACTION_GAS_LIMIT),
+        );
+    }
+
+    #[test]
+    fn unprotected_transactions_are_allowed() {
+        let allowed: bool = <Runtime as pallet_ethereum::Config>::AllowUnprotectedTxs::get();
+        assert!(
+            allowed,
+            "legacy transactions without a chain id must be accepted"
         );
     }
 }
