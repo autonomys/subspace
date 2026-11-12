@@ -3552,6 +3552,7 @@ dependencies = [
  "frame-system",
  "parity-scale-codec",
  "scale-info",
+ "sp-io",
  "sp-runtime",
  "sp-weights",
 ]
@@ -3604,6 +3605,7 @@ dependencies = [
  "domain-test-utils",
  "ethereum",
  "evm-domain-test-runtime",
+ "fp-evm",
  "fp-rpc",
  "fp-self-contained",
  "frame-system",

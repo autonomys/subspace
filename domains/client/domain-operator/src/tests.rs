@@ -1440,6 +1440,90 @@ async fn test_evm_domain_gas_estimates() {
         }
     );
 
+    // A state override that changes the contract's slot 0 must change the gas estimate;
+    // otherwise the runtime API dropped the override instead of forwarding it.
+    let storage_contract_bytecode = hex::decode(
+        "6080604052348015600e575f5ffd5b5060a580601a5f395ff3fe6080604052348015600e575f5ffd5b50600436106030575f3560e01c806360fe47b11460345780636d4ce63c146045575b5f5ffd5b6043603f3660046059565b5f55565b005b5f5460405190815260200160405180910390f35b5f602082840312156068575f5ffd5b503591905056fea26469706673582212209bbc95f61621669c0229a0e7c8c945417d42b40a8b89bb0beb3bf43c2fca040764736f6c63430008230033",
+    )
+    .expect("storage contract bytecode is valid hex");
+    let evm_nonce = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, account_infos[0].address)
+        .unwrap()
+        .nonce;
+    let storage_contract_address = contract_address(account_infos[0].address, evm_nonce.as_u64());
+    // Deploy through the Ethereum transaction path, the same path the JSON-RPC uses.
+    let storage_create_tx = domain_test_utils::test_ethereum::generate_eip1559_tx::<TestRuntime>(
+        account_infos[0].clone(),
+        evm_nonce,
+        ethereum::TransactionAction::Create,
+        storage_contract_bytecode,
+        gas_price,
+    );
+    alice
+        .send_extrinsic(generate_eth_domain_sc_extrinsic(storage_create_tx))
+        .await
+        .expect("Failed to send the storage contract creation");
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+    let contract_account = alice
+        .client
+        .runtime_api()
+        .account_basic(alice.client.info().best_hash, storage_contract_address)
+        .unwrap();
+    assert!(
+        contract_account.nonce > U256::zero(),
+        "storage contract account was not created (nonce={:?})",
+        contract_account.nonce
+    );
+
+    let call_storage_contract = |input: Vec<u8>, state_override: fp_evm::StateOverride| {
+        alice
+            .client
+            .runtime_api()
+            .call(
+                alice.client.info().best_hash,
+                account_infos[0].address,
+                storage_contract_address,
+                input,
+                U256::zero(),
+                U256::from(1_000_000),
+                Some(gas_price),
+                Some(U256::from(1)),
+                None,
+                true,
+                Some(vec![]),
+                Some(vec![]),
+                state_override,
+            )
+            .expect("storage contract call must succeed")
+            .expect("storage contract call must return info")
+    };
+    let slot_zero_is_one = || {
+        Some(vec![(
+            storage_contract_address,
+            vec![(H256::zero(), H256::from_low_u64_be(1))],
+        )])
+    };
+
+    // `get()` reads slot 0, so the override must be visible in the returned value.
+    let get_input = vec![0x6d, 0x4c, 0xe6, 0x3c];
+    let value_without_override = call_storage_contract(get_input.clone(), None).value;
+    let value_with_override = call_storage_contract(get_input, slot_zero_is_one()).value;
+    assert_eq!(
+        value_without_override,
+        H256::zero().to_fixed_bytes().to_vec(),
+        "get() without the override should return the stored zero"
+    );
+    assert_eq!(
+        value_with_override,
+        H256::from_low_u64_be(1).to_fixed_bytes().to_vec(),
+        "the state override was not applied to the EVM call"
+    );
+
+    // The gas estimate itself does not change for a storage override in this EVM version;
+    // the returned value above is the observable that catches a dropped forward.
+
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 }
 
