@@ -94,43 +94,108 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use sc_client_api::backend::{BlockImportOperation, NewBlockState};
+    use sc_client_api::in_mem;
     use sp_core::storage::{StateVersion, well_known_keys};
-    use sp_core::traits::FetchRuntimeCode;
-    use sp_runtime::traits::BlakeTwo256;
-    use sp_state_machine::backend::{BackendRuntimeCode, TryPendingCode};
-    use sp_state_machine::new_in_mem;
+    use sp_core::traits::{CallContext, CodeExecutor, ReadRuntimeVersion, RuntimeCode};
+    use sp_runtime::Storage;
+    use sp_runtime::generic::{Block, Header};
+    use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
+    use sp_runtime::OpaqueExtrinsic;
+    use std::sync::Mutex;
+
+    type TestBlock = Block<Header<u32, BlakeTwo256>, OpaqueExtrinsic>;
+
+    /// Records the runtime code the prover hands to the executor without running any wasm.
+    #[derive(Clone, Default)]
+    struct RecordingExecutor {
+        executed_code: Arc<Mutex<Vec<Vec<u8>>>>,
+    }
+
+    impl ReadRuntimeVersion for RecordingExecutor {
+        fn read_runtime_version(
+            &self,
+            _wasm_code: &[u8],
+            _ext: &mut dyn sp_core::traits::Externalities,
+        ) -> Result<Vec<u8>, String> {
+            Err("the prover does not read the runtime version".into())
+        }
+    }
+
+    impl CodeExecutor for RecordingExecutor {
+        type Error = String;
+
+        fn call(
+            &self,
+            _ext: &mut dyn sp_core::traits::Externalities,
+            runtime_code: &RuntimeCode,
+            _method: &str,
+            _data: &[u8],
+            _context: CallContext,
+        ) -> (Result<Vec<u8>, String>, bool) {
+            let code = runtime_code
+                .code_fetcher
+                .fetch_runtime_code()
+                .expect("the prover passes the runtime code to the executor")
+                .into_owned();
+            self.executed_code
+                .lock()
+                .expect("lock is not poisoned")
+                .push(code);
+            (Ok(Vec::new()), false)
+        }
+    }
 
     #[test]
-    fn pending_code_is_read_for_the_upgrade_block() {
+    fn prover_executes_the_pending_code_of_the_upgrade_block() {
         let old_code = vec![1u8; 32];
         let pending_code = vec![2u8; 32];
-        let mut backend = new_in_mem::<BlakeTwo256>();
-        backend.insert(
-            vec![(
-                None,
-                vec![
-                    (well_known_keys::CODE.to_vec(), Some(old_code.clone())),
-                    (
-                        well_known_keys::PENDING_CODE.to_vec(),
-                        Some(pending_code.clone()),
-                    ),
-                ],
-            )],
-            StateVersion::V1,
+
+        let mut genesis_storage = Storage::default();
+        genesis_storage
+            .top
+            .insert(well_known_keys::CODE.to_vec(), old_code);
+        genesis_storage
+            .top
+            .insert(well_known_keys::PENDING_CODE.to_vec(), pending_code.clone());
+
+        let backend = Arc::new(in_mem::Backend::<TestBlock>::new());
+        let mut operation = backend
+            .begin_operation()
+            .expect("in-memory block import operation is created");
+        let state_root = operation
+            .set_genesis_state(genesis_storage, true, StateVersion::V1)
+            .expect("genesis state is set");
+        let header = Header::<u32, BlakeTwo256>::new(
+            0,
+            Default::default(),
+            state_root,
+            Default::default(),
+            Default::default(),
         );
+        operation
+            .set_block_data(header.clone(), None, None, None, NewBlockState::Final, true)
+            .expect("genesis block data is set");
+        backend
+            .commit_operation(operation)
+            .expect("genesis block is committed");
 
-        // The upgrade block carries the new code in `:pending_code`; the prover must read it.
-        let runtime_code = BackendRuntimeCode::new(&backend, TryPendingCode::Yes);
-        let code = runtime_code
-            .fetch_runtime_code()
-            .expect("pending runtime code is present");
-        assert_eq!(code.as_ref(), pending_code.as_slice());
+        let executor = Arc::new(RecordingExecutor::default());
+        let prover = ExecutionProver::<TestBlock, _, _>::new(backend, executor.clone());
+        prover
+            .prove_execution(header.hash(), &ExecutionPhase::InitializeBlock, &[], None)
+            .expect("execution proof is generated");
 
-        // The offchain path keeps the old code.
-        let runtime_code = BackendRuntimeCode::new(&backend, TryPendingCode::No);
-        let code = runtime_code
-            .fetch_runtime_code()
-            .expect("runtime code is present");
-        assert_eq!(code.as_ref(), old_code.as_slice());
+        let executed_code = executor
+            .executed_code
+            .lock()
+            .expect("lock is not poisoned")
+            .clone();
+        assert_eq!(
+            executed_code,
+            vec![pending_code],
+            "the upgrade block must be executed against `:pending_code`, not `:code`"
+        );
     }
 }
