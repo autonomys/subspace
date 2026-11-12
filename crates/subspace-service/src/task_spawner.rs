@@ -32,6 +32,14 @@ use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use std::sync::Arc;
 use tracing::info;
 
+/// Whether the transaction pool should be notified about every imported block.
+///
+/// The pool configuration decides this; the single-state pool the service builds is only
+/// maintained on best blocks, so this is `false` for it.
+fn all_block_notifications(options: &sc_transaction_pool::TransactionPoolOptions) -> bool {
+    options.use_all_block_notifications()
+}
+
 /// Spawn the tasks that are required to run a node.
 #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub(super) fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
@@ -112,7 +120,7 @@ where
         sc_transaction_pool::notification_future(
             client.clone(),
             transaction_pool.clone(),
-            config.transaction_pool.use_all_block_notifications(),
+            all_block_notifications(&config.transaction_pool),
         ),
     );
 
@@ -205,4 +213,28 @@ where
     task_manager.keep_alive((config.base_path, rpc_server_handle));
 
     Ok(in_memory_rpc_handle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::all_block_notifications;
+    use sc_transaction_pool::{TransactionPoolOptions, TransactionPoolType};
+
+    #[test]
+    fn single_state_pool_uses_best_block_notifications() {
+        assert!(!all_block_notifications(&TransactionPoolOptions::default()));
+    }
+
+    #[test]
+    fn fork_aware_pool_uses_all_block_notifications() {
+        let options = TransactionPoolOptions::new_with_params(
+            8192,
+            20 * 1024 * 1024,
+            None,
+            TransactionPoolType::ForkAware,
+            false,
+            false,
+        );
+        assert!(all_block_notifications(&options));
+    }
 }
