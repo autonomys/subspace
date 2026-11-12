@@ -154,7 +154,6 @@ where
     );
 
     // jsonrpsee RPC
-    // gen_rpc_module takes GenRpcModuleParams instead of positional args.
     let gen_rpc_module = || {
         gen_rpc_module(sc_service::GenRpcModuleParams {
             spawn_handle: rpc_spawn_handle.clone(),
