@@ -719,6 +719,7 @@ pub mod pallet {
         }
     }
 
+    // Must stay exactly this form: frame-support-procedural keys on it to suppress its deprecation shim.
     #[allow(deprecated)]
     #[pallet::validate_unsigned]
     impl<T: Config> ValidateUnsigned for Pallet<T> {

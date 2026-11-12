@@ -34,7 +34,7 @@ use tracing::info;
 
 /// Whether the transaction pool is notified about every imported block.
 ///
-/// The single-state pool the service builds is only maintained on best blocks.
+/// A single-state pool is only maintained on best blocks.
 fn all_block_notifications(options: &sc_transaction_pool::TransactionPoolOptions) -> bool {
     options.use_all_block_notifications()
 }

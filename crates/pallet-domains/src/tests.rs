@@ -392,7 +392,7 @@ fn test_bundle_format_verification() {
                 dest,
                 value,
             }),
-            // stable2512: bijective encoding protection field, None for test extrinsics
+            // The bijective encoding protection field, None for test extrinsics.
             encoded_call: None,
             // The cached encoded length is unknown for test extrinsics.
             encoded_len: None,

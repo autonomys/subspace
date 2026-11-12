@@ -1520,7 +1520,7 @@ async fn test_evm_domain_gas_estimates() {
         "the state override was not applied to the EVM call"
     );
 
-    // A storage override changes the call's reads, not the estimate's gas in this EVM version.
+    // For this `get()` call the override changes the returned value, not the gas estimate.
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 }
