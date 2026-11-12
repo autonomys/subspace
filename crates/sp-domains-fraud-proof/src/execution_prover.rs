@@ -55,7 +55,7 @@ where
 
         let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(
             trie_backend,
-            sp_state_machine::backend::TryPendingCode::No,
+            sp_state_machine::backend::TryPendingCode::Yes,
         );
         let runtime_code = state_runtime_code
             .runtime_code()
@@ -89,5 +89,48 @@ where
             .map(|(_ret, proof)| proof)
             .map_err(Into::into)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sp_core::storage::{StateVersion, well_known_keys};
+    use sp_core::traits::FetchRuntimeCode;
+    use sp_runtime::traits::BlakeTwo256;
+    use sp_state_machine::backend::{BackendRuntimeCode, TryPendingCode};
+    use sp_state_machine::new_in_mem;
+
+    #[test]
+    fn pending_code_is_read_for_the_upgrade_block() {
+        let old_code = vec![1u8; 32];
+        let pending_code = vec![2u8; 32];
+        let mut backend = new_in_mem::<BlakeTwo256>();
+        backend.insert(
+            vec![(
+                None,
+                vec![
+                    (well_known_keys::CODE.to_vec(), Some(old_code.clone())),
+                    (
+                        well_known_keys::PENDING_CODE.to_vec(),
+                        Some(pending_code.clone()),
+                    ),
+                ],
+            )],
+            StateVersion::V1,
+        );
+
+        // The upgrade block carries the new code in `:pending_code`; the prover must read it.
+        let runtime_code = BackendRuntimeCode::new(&backend, TryPendingCode::Yes);
+        let code = runtime_code
+            .fetch_runtime_code()
+            .expect("pending runtime code is present");
+        assert_eq!(code.as_ref(), pending_code.as_slice());
+
+        // The offchain path keeps the old code.
+        let runtime_code = BackendRuntimeCode::new(&backend, TryPendingCode::No);
+        let code = runtime_code
+            .fetch_runtime_code()
+            .expect("runtime code is present");
+        assert_eq!(code.as_ref(), old_code.as_slice());
     }
 }
