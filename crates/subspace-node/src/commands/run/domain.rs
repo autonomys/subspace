@@ -241,9 +241,7 @@ pub(super) fn create_domain_configuration(
                 }
             }
         };
-        // The domain node only builds a single-state transaction pool, so keep the
-        // configuration in step: a fork-aware value here would otherwise put a fork-aware
-        // configuration behind the single-state pool.
+        // The domain node only builds a single-state pool, so force the configuration to match.
         pool_config.pool_type = TransactionPoolType::SingleState;
         transaction_pool = pool_config.transaction_pool(dev);
         rpc_cors = rpc_options.rpc_cors.unwrap_or_else(|| {

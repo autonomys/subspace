@@ -1440,8 +1440,7 @@ async fn test_evm_domain_gas_estimates() {
         }
     );
 
-    // A state override that changes the contract's slot 0 must change the gas estimate;
-    // otherwise the runtime API dropped the override instead of forwarding it.
+    // The runtime API must forward the state override to the call.
     let storage_contract_bytecode = hex::decode(
         "6080604052348015600e575f5ffd5b5060a580601a5f395ff3fe6080604052348015600e575f5ffd5b50600436106030575f3560e01c806360fe47b11460345780636d4ce63c146045575b5f5ffd5b6043603f3660046059565b5f55565b005b5f5460405190815260200160405180910390f35b5f602082840312156068575f5ffd5b503591905056fea26469706673582212209bbc95f61621669c0229a0e7c8c945417d42b40a8b89bb0beb3bf43c2fca040764736f6c63430008230033",
     )
@@ -1453,7 +1452,7 @@ async fn test_evm_domain_gas_estimates() {
         .unwrap()
         .nonce;
     let storage_contract_address = contract_address(account_infos[0].address, evm_nonce.as_u64());
-    // Deploy through the Ethereum transaction path, the same path the JSON-RPC uses.
+    // Deploy through the Ethereum transaction path, as the JSON-RPC does.
     let storage_create_tx = domain_test_utils::test_ethereum::generate_eip1559_tx::<TestRuntime>(
         account_infos[0].clone(),
         evm_nonce,
@@ -1521,8 +1520,7 @@ async fn test_evm_domain_gas_estimates() {
         "the state override was not applied to the EVM call"
     );
 
-    // The gas estimate itself does not change for a storage override in this EVM version;
-    // the returned value above is the observable that catches a dropped forward.
+    // A storage override changes the call's reads, not the estimate's gas in this EVM version.
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 }

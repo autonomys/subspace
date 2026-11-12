@@ -32,10 +32,9 @@ use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use std::sync::Arc;
 use tracing::info;
 
-/// Whether the transaction pool should be notified about every imported block.
+/// Whether the transaction pool is notified about every imported block.
 ///
-/// The pool configuration decides this; the single-state pool the service builds is only
-/// maintained on best blocks, so this is `false` for it.
+/// The single-state pool the service builds is only maintained on best blocks.
 fn all_block_notifications(options: &sc_transaction_pool::TransactionPoolOptions) -> bool {
     options.use_all_block_notifications()
 }
@@ -155,7 +154,7 @@ where
     );
 
     // jsonrpsee RPC
-    // gen_rpc_module takes GenRpcModuleParams (re-exported from our fork) instead of positional args
+    // gen_rpc_module takes GenRpcModuleParams instead of positional args.
     let gen_rpc_module = || {
         gen_rpc_module(sc_service::GenRpcModuleParams {
             spawn_handle: rpc_spawn_handle.clone(),

@@ -394,7 +394,7 @@ fn test_bundle_format_verification() {
             }),
             // stable2512: bijective encoding protection field, None for test extrinsics
             encoded_call: None,
-            // stable2609: cached encoded length, unknown for test extrinsics
+            // The cached encoded length is unknown for test extrinsics.
             encoded_len: None,
         }
         .into()
