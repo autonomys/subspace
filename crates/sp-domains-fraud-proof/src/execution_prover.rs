@@ -99,10 +99,9 @@ mod tests {
     use sc_client_api::in_mem;
     use sp_core::storage::{StateVersion, well_known_keys};
     use sp_core::traits::{CallContext, CodeExecutor, ReadRuntimeVersion, RuntimeCode};
-    use sp_runtime::Storage;
     use sp_runtime::generic::{Block, Header};
     use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
-    use sp_runtime::OpaqueExtrinsic;
+    use sp_runtime::{OpaqueExtrinsic, Storage};
     use std::sync::Mutex;
 
     type TestBlock = Block<Header<u32, BlakeTwo256>, OpaqueExtrinsic>;
