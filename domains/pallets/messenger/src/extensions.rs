@@ -19,7 +19,6 @@ use crate::{
     XDM_TRANSACTION_LONGEVITY,
 };
 use core::cmp::Ordering;
-use frame_support::RuntimeDebugNoBound;
 use frame_support::pallet_prelude::{PhantomData, TypeInfo, Weight};
 use frame_system::pallet_prelude::RuntimeCallFor;
 use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
@@ -46,7 +45,7 @@ where
 }
 
 /// Data passed from validate to prepare.
-#[derive(RuntimeDebugNoBound)]
+#[derive(Debug)]
 pub enum Val<T: Config + fmt::Debug> {
     /// No validation data
     None,
@@ -55,7 +54,7 @@ pub enum Val<T: Config + fmt::Debug> {
 }
 
 /// Data passed from prepare to post_dispatch.
-#[derive(RuntimeDebugNoBound)]
+#[derive(Debug)]
 pub enum Pre {
     Refund(Weight),
 }

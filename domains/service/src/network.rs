@@ -8,7 +8,7 @@ use sc_network_sync::engine::SyncingEngine;
 use sc_network_sync::service::network::{NetworkServiceHandle, NetworkServiceProvider};
 use sc_service::{
     BuildNetworkAdvancedParams, BuildNetworkParams, Error, build_default_block_downloader,
-    build_network_advanced, build_polkadot_syncing_strategy,
+    build_network_advanced, build_polkadot_syncing_strategy, default_gap_sync_body_policy,
 };
 use sc_transaction_pool_api::TransactionPool;
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -58,12 +58,17 @@ where
         client,
         transaction_pool,
         spawn_handle,
+        spawn_essential_handle,
         import_queue,
         block_announce_validator_builder,
         warp_sync_config,
         block_relay,
         metrics,
+        gap_sync_body_policy,
     } = params;
+
+    let gap_sync_body_policy =
+        gap_sync_body_policy.unwrap_or_else(|| default_gap_sync_body_policy(config.blocks_pruning));
     let fork_id = config.chain_spec.fork_id();
 
     let block_announce_validator = if let Some(f) = block_announce_validator_builder {
@@ -116,6 +121,7 @@ where
         client.clone(),
         &spawn_handle,
         metrics_registry,
+        gap_sync_body_policy,
     )?;
 
     let (syncing_engine, sync_service, block_announce_config) = SyncingEngine::new(
@@ -141,21 +147,22 @@ where
         role: config.role,
         protocol_id,
         fork_id,
-        ipfs_server: config.network.ipfs_server,
         announce_block: config.announce_block,
         net_config,
         client,
         transaction_pool,
         spawn_handle,
+        spawn_essential_handle,
         import_queue,
         sync_service,
         block_announce_config,
         network_service_provider,
         metrics_registry,
         metrics,
+        blocks_pruning: config.blocks_pruning,
     })
     .map(
-        |(network_service, system_rpc_tx, tx_handler_controller, sync_service)| {
+        |(network_service, system_rpc_tx, tx_handler_controller, sync_service, _)| {
             (
                 network_service,
                 system_rpc_tx,

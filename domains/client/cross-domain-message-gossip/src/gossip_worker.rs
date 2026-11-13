@@ -10,7 +10,7 @@ use sc_network_gossip::{
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender, tracing_unbounded};
 use sp_api::StorageProof;
 use sp_consensus::SyncOracle;
-use sp_core::twox_256;
+use sp_crypto_hashing::twox_256;
 use sp_messenger::messages::{ChainId, ChannelId};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, HashingFor};
 use std::collections::{BTreeMap, HashSet};

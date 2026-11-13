@@ -32,6 +32,13 @@ use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use std::sync::Arc;
 use tracing::info;
 
+/// Whether the transaction pool is notified about every imported block.
+///
+/// A single-state pool is only maintained on best blocks.
+fn all_block_notifications(options: &sc_transaction_pool::TransactionPoolOptions) -> bool {
+    options.use_all_block_notifications()
+}
+
 /// Spawn the tasks that are required to run a node.
 #[expect(clippy::result_large_err, reason = "Comes from Substrate")]
 pub(super) fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
@@ -109,7 +116,11 @@ where
     spawn_handle.spawn(
         "txpool-notifications",
         Some("transaction-pool"),
-        sc_transaction_pool::notification_future(client.clone(), transaction_pool.clone()),
+        sc_transaction_pool::notification_future(
+            client.clone(),
+            transaction_pool.clone(),
+            all_block_notifications(&config.transaction_pool),
+        ),
     );
 
     spawn_handle.spawn(
@@ -136,12 +147,16 @@ where
 
     let rpc_id_provider = config.rpc.id_provider.take();
 
+    // A dedicated runtime for RPC tasks, matching upstream's spawn_tasks.
+    let rpc_runtime = sc_service::create_rpc_runtime(config.rpc.max_connections)?;
+    let rpc_spawn_handle: Arc<dyn sp_core::traits::SpawnNamed> = Arc::new(
+        sc_rpc_server::RpcSpawnHandle::new(rpc_runtime.handle().clone()),
+    );
+
     // jsonrpsee RPC
-    // stable2512: gen_rpc_module now takes GenRpcModuleParams struct (re-exported from our fork)
-    // instead of positional args
     let gen_rpc_module = || {
         gen_rpc_module(sc_service::GenRpcModuleParams {
-            spawn_handle: task_manager.spawn_handle(),
+            spawn_handle: rpc_spawn_handle.clone(),
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             keystore: keystore.clone(),
@@ -154,15 +169,18 @@ where
             backend: backend.clone(),
             rpc_builder: &*rpc_builder,
             metrics: None,
+            sync_oracle: sync_service.clone(),
             tracing_execute_block: tracing_execute_block.clone(),
         })
     };
 
+    let rpc_api = gen_rpc_module()?;
     let rpc_server_handle = start_rpc_servers(
         &config.rpc,
         config.prometheus_registry(),
         &config.tokio_handle,
-        gen_rpc_module,
+        rpc_api,
+        rpc_runtime,
         rpc_id_provider,
     )?;
 
@@ -193,4 +211,28 @@ where
     task_manager.keep_alive((config.base_path, rpc_server_handle));
 
     Ok(in_memory_rpc_handle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::all_block_notifications;
+    use sc_transaction_pool::{TransactionPoolOptions, TransactionPoolType};
+
+    #[test]
+    fn single_state_pool_uses_best_block_notifications() {
+        assert!(!all_block_notifications(&TransactionPoolOptions::default()));
+    }
+
+    #[test]
+    fn fork_aware_pool_uses_all_block_notifications() {
+        let options = TransactionPoolOptions::new_with_params(
+            8192,
+            20 * 1024 * 1024,
+            None,
+            TransactionPoolType::ForkAware,
+            false,
+            false,
+        );
+        assert!(all_block_notifications(&options));
+    }
 }

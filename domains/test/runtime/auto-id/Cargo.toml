@@ -132,5 +132,9 @@ runtime-benchmarks = [
     "sp-subspace-mmr/runtime-benchmarks",
 ]
 
-[lints]
-workspace = true
+[lints.rust]
+# Same as the workspace table, plus `deprecated`: unsigned extrinsic validation still calls
+# `ValidateUnsigned::pre_dispatch`, which stable2609 deprecates but frame-executive requires
+# until the authorize API lands (upstream removal after April 2027).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(substrate_runtime)'] }
+deprecated = "allow"

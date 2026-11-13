@@ -51,8 +51,8 @@ use sp_messenger_host_functions::{StorageKeyRequest, get_storage_key};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::generic::{Era, ExtrinsicFormat, Preamble};
 use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, Checkable, DispatchTransaction, Keccak256, NumberFor, One,
-    TransactionExtension, ValidateUnsigned, Zero,
+    AccountIdLookup, BlakeTwo256, Checkable, DispatchTransaction, ExtensionVariant, Keccak256,
+    NumberFor, One, TransactionExtension, ValidateUnsigned, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -587,7 +587,7 @@ where
     Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
 {
     match &ext.preamble {
-        Preamble::Bare(_) | Preamble::General(_, _) => None,
+        Preamble::Bare(_) | Preamble::General(_) => None,
         Preamble::Signed(address, _, _) => {
             Some(lookup.lookup(address.clone()).map_err(|e| e.into()))
         }
@@ -613,7 +613,7 @@ pub fn extract_signer(
 
 fn extrinsic_era(extrinsic: &ExtrinsicFor<Block>) -> Option<Era> {
     match &extrinsic.preamble {
-        Preamble::Bare(_) | Preamble::General(_, _) => None,
+        Preamble::Bare(_) | Preamble::General(_) => None,
         Preamble::Signed(_, _, extra) => Some(extra.4.0),
     }
 }
@@ -687,7 +687,8 @@ fn check_transaction_and_do_pre_dispatch_inner(
     // which would help to maintain context across multiple transaction validity check against same
     // runtime instance.
     match xt.format {
-        ExtrinsicFormat::General(extension_version, extra) => {
+        ExtrinsicFormat::General(extension_variant) => {
+            let ExtensionVariant::V0(extra) = extension_variant;
             let origin = RuntimeOrigin::none();
             <SignedExtra as DispatchTransaction<RuntimeCall>>::validate_and_prepare(
                 extra,
@@ -695,7 +696,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                 &xt.function,
                 &dispatch_info,
                 encoded_len,
-                extension_version,
+                0,
             )
             .map(|_| ())
         }
@@ -811,8 +812,11 @@ impl_runtime_apis! {
     }
 
     impl sp_session::SessionKeys<Block> for Runtime {
-        fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
-            SessionKeys::generate(seed)
+        fn generate_session_keys(
+            owner: Vec<u8>,
+            seed: Option<Vec<u8>>,
+        ) -> sp_session::OpaqueGeneratedSessionKeys {
+            SessionKeys::generate(&owner, seed).into()
         }
 
         fn decode_session_keys(

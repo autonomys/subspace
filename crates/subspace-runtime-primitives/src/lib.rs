@@ -12,7 +12,7 @@ use crate::time::{BLOCKS_IN_A_DAY, BLOCKS_IN_AN_MINUTE};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use frame_support::dispatch::DispatchResult;
+use frame_support::dispatch::{DispatchClass, DispatchResult};
 use frame_support::pallet_prelude::Weight;
 use frame_support::traits::tokens;
 use frame_support::weights::WeightToFee;
@@ -58,7 +58,12 @@ pub const DOMAINS_PRUNING_DEPTH_MULTIPLIER: u32 = 2;
 
 /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
 pub fn maximum_normal_block_length() -> BlockLength {
-    BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO)
+    BlockLength::builder()
+        .max_length(MAX_BLOCK_LENGTH)
+        .modify_max_length_for_class(DispatchClass::Normal, |max| {
+            *max = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH
+        })
+        .build()
 }
 
 /// The maximum recursion depth we allow when parsing calls.

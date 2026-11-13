@@ -57,6 +57,7 @@ pallet-domains.workspace = true
 pallet-ethereum.workspace = true
 rand = { workspace = true, features = ["thread_rng"] }
 sp-core.workspace = true
+sp-crypto-hashing.workspace = true
 sp-externalities.workspace = true
 sp-weights.workspace = true
 sc-cli.workspace = true

@@ -18,6 +18,7 @@ use futures::StreamExt;
 use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension, Properties};
 use sc_cli::{
     Cors, KeystoreParams, RPC_DEFAULT_PORT, RpcMethods, RuntimeParams, TransactionPoolParams,
+    TransactionPoolType,
 };
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -208,7 +209,7 @@ pub(super) fn create_domain_configuration(
         network_options,
         mut keystore_suri,
         keystore_options,
-        pool_config,
+        mut pool_config,
         runtime_params,
         trie_cache_params,
         domain_type_args,
@@ -240,6 +241,8 @@ pub(super) fn create_domain_configuration(
                 }
             }
         };
+        // The domain node only builds a single-state pool, so force the configuration to match.
+        pool_config.pool_type = TransactionPoolType::SingleState;
         transaction_pool = pool_config.transaction_pool(dev);
         rpc_cors = rpc_options.rpc_cors.unwrap_or_else(|| {
             if dev {
