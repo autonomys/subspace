@@ -1,7 +1,8 @@
-use crate::archiver::SegmentHeadersStore;
+use crate::archiver::{CreateObjectMappings, SegmentHeadersStore};
 use parking_lot::RwLock;
 use sc_client_api::AuxStore;
 use std::collections::HashMap;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use subspace_core_primitives::segments::{
     ArchivedBlockProgress, LastArchivedBlock, SegmentHeader, SegmentIndex,
@@ -165,4 +166,16 @@ fn segment_headers_store_block_number_queries_work() {
         .unwrap();
     let result = segment_headers.segment_headers_for_block(907u32);
     assert_eq!(result, vec![segment_header3, segment_header4]);
+}
+
+#[test]
+fn object_mappings_are_never_created_for_genesis() {
+    for create_object_mappings in [
+        CreateObjectMappings::Yes,
+        CreateObjectMappings::Block(NonZeroU32::MIN),
+    ] {
+        assert!(!create_object_mappings.is_enabled_for_block(0));
+        assert!(create_object_mappings.is_enabled_for_block(1));
+    }
+    assert!(!CreateObjectMappings::No.is_enabled_for_block(1));
 }

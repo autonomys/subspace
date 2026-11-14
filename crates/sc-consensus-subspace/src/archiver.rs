@@ -391,6 +391,11 @@ impl CreateObjectMappings {
             return false;
         }
 
+        // The genesis block has no mappings, and its parent has no state to extract them at
+        if block == 0 {
+            return false;
+        }
+
         if let Some(target_block) = self.block() {
             return block >= target_block;
         }
