@@ -1428,7 +1428,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 [[package]]
 name = "binary-merkle-tree"
 version = "16.1.2"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "hash-db",
  "log",
@@ -2548,21 +2548,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ccca83c45ddfe0412b1b2e4fe509d28d1bdbc014e306574a848519741bebc36"
 
 [[package]]
-name = "crc"
-version = "3.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5eb8a2a1cd12ab0d987a5d5e825195d372001a4094a0376319d5a0ad71c1ba0d"
-dependencies = [
- "crc-catalog",
-]
-
-[[package]]
-name = "crc-catalog"
-version = "2.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "217698eaf96b4a3f0bc4f3662aaa55bdf913cd54d7204591faa790070c6d0853"
-
-[[package]]
 name = "crc32fast"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2630,7 +2615,7 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-domains",
  "sp-messenger",
  "sp-runtime",
@@ -2776,7 +2761,7 @@ dependencies = [
 [[package]]
 name = "cumulus-client-parachain-inherent"
 version = "0.30.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "cumulus-primitives-core",
@@ -2787,7 +2772,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus-babe",
  "sc-network-types",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-inherents",
  "sp-runtime",
  "sp-state-machine",
@@ -2798,7 +2783,7 @@ dependencies = [
 [[package]]
 name = "cumulus-pallet-parachain-system"
 version = "0.32.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "bytes",
@@ -2824,7 +2809,7 @@ dependencies = [
  "sp-api",
  "sp-consensus-babe",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-externalities",
  "sp-inherents",
  "sp-io",
@@ -2841,7 +2826,7 @@ dependencies = [
 [[package]]
 name = "cumulus-pallet-parachain-system-proc-macro"
 version = "0.6.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2852,7 +2837,7 @@ dependencies = [
 [[package]]
 name = "cumulus-primitives-core"
 version = "0.27.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "polkadot-core-primitives",
@@ -2869,7 +2854,7 @@ dependencies = [
 [[package]]
 name = "cumulus-primitives-parachain-inherent"
 version = "0.27.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "cumulus-primitives-core",
@@ -2883,7 +2868,7 @@ dependencies = [
 [[package]]
 name = "cumulus-primitives-proof-size-hostfunction"
 version = "0.21.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "sp-externalities",
  "sp-runtime-interface",
@@ -2893,7 +2878,7 @@ dependencies = [
 [[package]]
 name = "cumulus-primitives-storage-weight-reclaim"
 version = "21.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "cumulus-primitives-core",
  "cumulus-primitives-proof-size-hostfunction",
@@ -2910,7 +2895,7 @@ dependencies = [
 [[package]]
 name = "cumulus-relay-chain-interface"
 version = "0.36.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "cumulus-primitives-core",
@@ -2931,7 +2916,7 @@ dependencies = [
 [[package]]
 name = "cumulus-test-relay-sproof-builder"
 version = "0.28.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "cumulus-primitives-core",
  "parity-scale-codec",
@@ -3347,21 +3332,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dimpl"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e769119713c7cf11efb6dd594258095c4a5959fa2bb8d4a7f89978efbd0c08b"
-dependencies = [
- "arrayvec 0.7.6",
- "log",
- "nom 8.0.0",
- "once_cell",
- "rand 0.9.4",
- "subtle 2.6.1",
- "time",
-]
-
-[[package]]
 name = "directories"
 version = "5.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3641,7 +3611,7 @@ dependencies = [
  "sp-consensus",
  "sp-consensus-slots",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-domain-digests",
  "sp-domains",
  "sp-domains-fraud-proof",
@@ -3846,7 +3816,7 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus-subspace",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-domains",
  "sp-keyring",
  "sp-messenger",
@@ -3878,7 +3848,7 @@ dependencies = [
  "pallet-utility",
  "rlp",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-domains",
 ]
 
@@ -4651,7 +4621,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
 ]
 
 [[package]]
@@ -4805,24 +4775,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
-name = "foreign-types"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6f339eb8adc052cd2ca78910fda869aefa38d22d5cb648e6485e4d3fc06f3b1"
-dependencies = [
- "foreign-types-shared",
-]
-
-[[package]]
-name = "foreign-types-shared"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
-
-[[package]]
 name = "fork-tree"
 version = "12.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
 ]
@@ -4878,7 +4833,7 @@ dependencies = [
 [[package]]
 name = "fp-coretime"
 version = "0.2.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -4960,7 +4915,7 @@ checksum = "28dd6caf6059519a65843af8fe2a3ae298b14b80179855aeb4adc2c1934ee619"
 [[package]]
 name = "frame-benchmarking"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "anyhow",
  "frame-support",
@@ -4985,7 +4940,7 @@ dependencies = [
 [[package]]
 name = "frame-benchmarking-cli"
 version = "64.0.1"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "Inflector",
  "anyhow",
@@ -5029,7 +4984,7 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-database",
  "sp-externalities",
  "sp-genesis-builder",
@@ -5073,7 +5028,7 @@ dependencies = [
 [[package]]
 name = "frame-election-provider-solution-type"
 version = "13.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -5084,7 +5039,7 @@ dependencies = [
 [[package]]
 name = "frame-election-provider-support"
 version = "49.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-election-provider-solution-type",
  "frame-support",
@@ -5101,7 +5056,7 @@ dependencies = [
 [[package]]
 name = "frame-executive"
 version = "49.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "aquamarine",
  "frame-support",
@@ -5131,7 +5086,7 @@ dependencies = [
 [[package]]
 name = "frame-storage-access-test-runtime"
 version = "0.13.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "cumulus-pallet-parachain-system",
  "parity-scale-codec",
@@ -5145,7 +5100,7 @@ dependencies = [
 [[package]]
 name = "frame-support"
 version = "49.1.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "aquamarine",
  "array-bytes",
@@ -5187,7 +5142,7 @@ dependencies = [
 [[package]]
 name = "frame-support-procedural"
 version = "41.0.1"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "Inflector",
  "cfg-expr",
@@ -5200,14 +5155,14 @@ dependencies = [
  "proc-macro-warning",
  "proc-macro2",
  "quote",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "syn 2.0.118",
 ]
 
 [[package]]
 name = "frame-support-procedural-tools"
 version = "10.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-support-procedural-tools-derive",
  "proc-macro-crate",
@@ -5219,7 +5174,7 @@ dependencies = [
 [[package]]
 name = "frame-support-procedural-tools-derive"
 version = "11.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5229,7 +5184,7 @@ dependencies = [
 [[package]]
 name = "frame-system"
 version = "49.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "cfg-if",
  "docify",
@@ -5248,7 +5203,7 @@ dependencies = [
 [[package]]
 name = "frame-system-benchmarking"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -5262,7 +5217,7 @@ dependencies = [
 [[package]]
 name = "frame-system-rpc-runtime-api"
 version = "44.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "docify",
  "parity-scale-codec",
@@ -5272,7 +5227,7 @@ dependencies = [
 [[package]]
 name = "frame-try-runtime"
 version = "0.55.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-support",
  "parity-scale-codec",
@@ -6526,19 +6481,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "is"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6edbbdc611843e8c65878ee735f68c495cede11ae5a9582b17fe0369c456ef5"
-dependencies = [
- "crc",
- "serde",
- "str0m-proto",
- "subtle 2.6.1",
- "tracing",
-]
-
-[[package]]
 name = "is-terminal"
 version = "0.4.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7689,7 +7631,6 @@ dependencies = [
  "pin-project",
  "prost 0.13.5",
  "prost-build 0.14.3",
- "quinn-udp 0.6.3",
  "rand 0.8.6",
  "ring",
  "serde",
@@ -7698,7 +7639,6 @@ dependencies = [
  "smallvec",
  "snow 0.9.6",
  "socket2 0.5.10",
- "str0m",
  "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
@@ -8008,7 +7948,7 @@ dependencies = [
 [[package]]
 name = "mmr-gadget"
 version = "55.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "futures",
  "log",
@@ -8027,7 +7967,7 @@ dependencies = [
 [[package]]
 name = "mmr-rpc"
 version = "48.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "jsonrpsee",
  "parity-scale-codec",
@@ -8726,57 +8666,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
-name = "openssl"
-version = "0.10.82"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4de8111e94a56adca7ebfe6c365b6d42f99deb69b74b6becacd4204e2f193aa2"
-dependencies = [
- "bitflags 2.13.2",
- "cfg-if",
- "foreign-types",
- "libc",
- "openssl-macros",
- "openssl-sys",
-]
-
-[[package]]
-name = "openssl-macros"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
 name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
-
-[[package]]
-name = "openssl-src"
-version = "300.6.1+3.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46eb8fb9fb3b61ce1c0f8a026c4c1a0714d3a9e138e7fbde78753ce2babc3846"
-dependencies = [
- "cc",
-]
-
-[[package]]
-name = "openssl-sys"
-version = "0.9.118"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19c413d6ec9ebaf5e1c829d355cb3e9f783778d700f135be0921d52fce3c60ae"
-dependencies = [
- "cc",
- "libc",
- "openssl-src",
- "pkg-config",
- "vcpkg",
-]
 
 [[package]]
 name = "option-ext"
@@ -8884,7 +8777,7 @@ dependencies = [
 [[package]]
 name = "pallet-accumulate-and-forward"
 version = "0.5.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -8898,7 +8791,7 @@ dependencies = [
 [[package]]
 name = "pallet-asset-conversion"
 version = "33.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -8916,7 +8809,7 @@ dependencies = [
 [[package]]
 name = "pallet-authority-discovery"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -8931,7 +8824,7 @@ dependencies = [
 [[package]]
 name = "pallet-authorship"
 version = "49.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -8964,7 +8857,7 @@ dependencies = [
 [[package]]
 name = "pallet-babe"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -8987,7 +8880,7 @@ dependencies = [
 [[package]]
 name = "pallet-balances"
 version = "51.0.2"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "docify",
  "frame-benchmarking",
@@ -9019,7 +8912,7 @@ dependencies = [
 [[package]]
 name = "pallet-broker"
 version = "0.30.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "fp-coretime",
  "frame-benchmarking",
@@ -9037,7 +8930,7 @@ dependencies = [
 [[package]]
 name = "pallet-collective"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "docify",
  "frame-benchmarking",
@@ -9054,7 +8947,7 @@ dependencies = [
 [[package]]
 name = "pallet-democracy"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -9251,7 +9144,7 @@ dependencies = [
 [[package]]
 name = "pallet-message-queue"
 version = "53.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "environmental",
  "frame-benchmarking",
@@ -9294,7 +9187,7 @@ dependencies = [
 [[package]]
 name = "pallet-mmr"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "log",
  "parity-scale-codec",
@@ -9306,7 +9199,7 @@ dependencies = [
 [[package]]
 name = "pallet-multisig"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "log",
  "parity-scale-codec",
@@ -9317,7 +9210,7 @@ dependencies = [
 [[package]]
 name = "pallet-preimage"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -9366,7 +9259,7 @@ dependencies = [
 [[package]]
 name = "pallet-scheduler"
 version = "51.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "docify",
  "frame-benchmarking",
@@ -9383,7 +9276,7 @@ dependencies = [
 [[package]]
 name = "pallet-session"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -9405,7 +9298,7 @@ dependencies = [
 [[package]]
 name = "pallet-session-benchmarking"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -9421,7 +9314,7 @@ dependencies = [
 [[package]]
 name = "pallet-staking"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-benchmarking",
  "frame-election-provider-support",
@@ -9502,7 +9395,7 @@ dependencies = [
 [[package]]
 name = "pallet-sudo"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "docify",
  "frame-benchmarking",
@@ -9517,7 +9410,7 @@ dependencies = [
 [[package]]
 name = "pallet-timestamp"
 version = "49.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "docify",
  "frame-benchmarking",
@@ -9546,7 +9439,7 @@ dependencies = [
 [[package]]
 name = "pallet-transaction-payment"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -9562,7 +9455,7 @@ dependencies = [
 [[package]]
 name = "pallet-transaction-payment-rpc"
 version = "53.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "jsonrpsee",
  "pallet-transaction-payment-rpc-runtime-api",
@@ -9578,7 +9471,7 @@ dependencies = [
 [[package]]
 name = "pallet-transaction-payment-rpc-runtime-api"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "pallet-transaction-payment",
  "parity-scale-codec",
@@ -9612,7 +9505,7 @@ dependencies = [
 [[package]]
 name = "pallet-utility"
 version = "50.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -10004,7 +9897,7 @@ dependencies = [
 [[package]]
 name = "polkadot-core-primitives"
 version = "25.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -10015,7 +9908,7 @@ dependencies = [
 [[package]]
 name = "polkadot-node-metrics"
 version = "34.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "bs58",
  "futures",
@@ -10032,7 +9925,7 @@ dependencies = [
 [[package]]
 name = "polkadot-node-network-protocol"
 version = "36.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-channel 1.9.0",
  "async-trait",
@@ -10057,7 +9950,7 @@ dependencies = [
 [[package]]
 name = "polkadot-node-primitives"
 version = "28.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "bitvec",
  "bounded-vec",
@@ -10082,7 +9975,7 @@ dependencies = [
 [[package]]
 name = "polkadot-node-subsystem-types"
 version = "36.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "derive_more 0.99.20",
@@ -10110,7 +10003,7 @@ dependencies = [
 [[package]]
 name = "polkadot-overseer"
 version = "36.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "futures",
@@ -10130,7 +10023,7 @@ dependencies = [
 [[package]]
 name = "polkadot-parachain-primitives"
 version = "24.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "bounded-collections",
@@ -10147,7 +10040,7 @@ dependencies = [
 [[package]]
 name = "polkadot-primitives"
 version = "26.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "bitvec",
  "bounded-collections",
@@ -10176,7 +10069,7 @@ dependencies = [
 [[package]]
 name = "polkadot-runtime-metrics"
 version = "30.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "bs58",
  "frame-benchmarking",
@@ -10188,7 +10081,7 @@ dependencies = [
 [[package]]
 name = "polkadot-runtime-parachains"
 version = "30.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "bitflags 1.3.2",
  "bitvec",
@@ -10237,7 +10130,7 @@ dependencies = [
 [[package]]
 name = "polkadot-sdk-frame"
 version = "0.19.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "docify",
  "frame-benchmarking",
@@ -10257,7 +10150,7 @@ dependencies = [
  "sp-consensus-aura",
  "sp-consensus-grandpa",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-genesis-builder",
  "sp-inherents",
  "sp-io",
@@ -10273,7 +10166,7 @@ dependencies = [
 [[package]]
 name = "polkadot-statement-table"
 version = "27.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "polkadot-primitives",
@@ -10489,7 +10382,7 @@ dependencies = [
  "prettyplease",
  "proc-macro2",
  "quote",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "syn 2.0.118",
 ]
 
@@ -10938,7 +10831,7 @@ dependencies = [
  "futures-io",
  "pin-project-lite",
  "quinn-proto",
- "quinn-udp 0.5.14",
+ "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls",
  "socket2 0.6.3",
@@ -10984,19 +10877,6 @@ dependencies = [
  "socket2 0.6.3",
  "tracing",
  "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "quinn-udp"
-version = "0.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47091c86514c2e11452cb228dee77037334b99d92a23e4c69aa5982261f39247"
-dependencies = [
- "cfg_aliases 0.2.2",
- "libc",
- "socket2 0.6.3",
- "tracing",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11788,7 +11668,7 @@ dependencies = [
 [[package]]
 name = "sc-allocator"
 version = "23.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "log",
  "sp-core",
@@ -11799,7 +11679,7 @@ dependencies = [
 [[package]]
 name = "sc-authority-discovery"
 version = "0.61.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "futures",
@@ -11831,7 +11711,7 @@ dependencies = [
 [[package]]
 name = "sc-basic-authorship"
 version = "0.57.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "futures",
  "log",
@@ -11854,7 +11734,7 @@ dependencies = [
 [[package]]
 name = "sc-block-builder"
 version = "0.52.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "sp-api",
@@ -11869,7 +11749,7 @@ dependencies = [
 [[package]]
 name = "sc-chain-spec"
 version = "53.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "docify",
@@ -11884,7 +11764,7 @@ dependencies = [
  "serde_json",
  "sp-blockchain",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-genesis-builder",
  "sp-io",
  "sp-runtime",
@@ -11895,7 +11775,7 @@ dependencies = [
 [[package]]
 name = "sc-chain-spec-derive"
 version = "11.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -11906,7 +11786,7 @@ dependencies = [
 [[package]]
 name = "sc-cli"
 version = "0.63.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "bip39 2.2.2",
@@ -11948,7 +11828,7 @@ dependencies = [
 [[package]]
 name = "sc-client-api"
 version = "48.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "fnv",
  "futures",
@@ -11974,7 +11854,7 @@ dependencies = [
 [[package]]
 name = "sc-client-db"
 version = "0.55.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "hash-db",
  "kvdb",
@@ -12001,7 +11881,7 @@ dependencies = [
 [[package]]
 name = "sc-consensus"
 version = "0.59.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "futures",
@@ -12024,7 +11904,7 @@ dependencies = [
 [[package]]
 name = "sc-consensus-babe"
 version = "0.60.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "fork-tree",
@@ -12049,7 +11929,7 @@ dependencies = [
  "sp-consensus-babe",
  "sp-consensus-slots",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-inherents",
  "sp-keystore",
  "sp-runtime",
@@ -12061,7 +11941,7 @@ dependencies = [
 [[package]]
 name = "sc-consensus-epochs"
 version = "0.59.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "fork-tree",
  "parity-scale-codec",
@@ -12074,7 +11954,7 @@ dependencies = [
 [[package]]
 name = "sc-consensus-slots"
 version = "0.59.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "futures",
@@ -12205,7 +12085,7 @@ dependencies = [
 [[package]]
 name = "sc-executor"
 version = "0.51.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.5",
@@ -12228,7 +12108,7 @@ dependencies = [
 [[package]]
 name = "sc-executor-common"
 version = "0.29.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "polkavm",
  "sc-allocator",
@@ -12241,7 +12121,7 @@ dependencies = [
 [[package]]
 name = "sc-executor-polkavm"
 version = "0.29.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "log",
  "polkavm",
@@ -12253,7 +12133,7 @@ dependencies = [
 [[package]]
 name = "sc-executor-wasmtime"
 version = "0.29.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "anyhow",
  "log",
@@ -12269,7 +12149,7 @@ dependencies = [
 [[package]]
 name = "sc-informant"
 version = "0.59.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "console 0.15.11",
  "futures",
@@ -12285,7 +12165,7 @@ dependencies = [
 [[package]]
 name = "sc-keystore"
 version = "43.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "parking_lot 0.12.5",
@@ -12299,7 +12179,7 @@ dependencies = [
 [[package]]
 name = "sc-mixnet"
 version = "0.30.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "arrayvec 0.7.6",
@@ -12327,7 +12207,7 @@ dependencies = [
 [[package]]
 name = "sc-network"
 version = "0.60.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "async-channel 1.9.0",
@@ -12380,7 +12260,7 @@ dependencies = [
 [[package]]
 name = "sc-network-bitswap"
 version = "0.38.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "bytes",
@@ -12404,7 +12284,7 @@ dependencies = [
 [[package]]
 name = "sc-network-common"
 version = "0.56.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "bitflags 1.3.2",
  "parity-scale-codec",
@@ -12414,7 +12294,7 @@ dependencies = [
 [[package]]
 name = "sc-network-gossip"
 version = "0.60.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "ahash 0.8.12",
  "futures",
@@ -12433,7 +12313,7 @@ dependencies = [
 [[package]]
 name = "sc-network-light"
 version = "0.59.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "async-channel 1.9.0",
@@ -12454,7 +12334,7 @@ dependencies = [
 [[package]]
 name = "sc-network-statement"
 version = "0.43.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "async-channel 1.9.0",
@@ -12478,7 +12358,7 @@ dependencies = [
 [[package]]
 name = "sc-network-sync"
 version = "0.59.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "async-channel 1.9.0",
@@ -12512,7 +12392,7 @@ dependencies = [
 [[package]]
 name = "sc-network-transactions"
 version = "0.59.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "futures",
@@ -12531,7 +12411,7 @@ dependencies = [
 [[package]]
 name = "sc-network-types"
 version = "0.23.2"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "bs58",
  "bytes",
@@ -12553,7 +12433,7 @@ dependencies = [
 [[package]]
 name = "sc-offchain"
 version = "55.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "bytes",
  "fnv",
@@ -12616,7 +12496,7 @@ dependencies = [
 [[package]]
 name = "sc-proposer-metrics"
 version = "0.17.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "log",
  "substrate-prometheus-endpoint",
@@ -12625,7 +12505,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc"
 version = "56.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-channel 1.9.0",
  "futures",
@@ -12659,7 +12539,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc-api"
 version = "0.60.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "jsonrpsee",
  "parity-scale-codec",
@@ -12680,7 +12560,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc-server"
 version = "33.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "dyn-clone",
  "forwarded-header-value",
@@ -12707,7 +12587,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc-spec-v2"
 version = "0.61.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "cid",
@@ -12745,13 +12625,13 @@ dependencies = [
 [[package]]
 name = "sc-runtime-utilities"
 version = "0.11.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "sc-executor",
  "sc-executor-common",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-state-machine",
  "sp-wasm-interface",
  "thiserror 1.0.69",
@@ -12760,7 +12640,7 @@ dependencies = [
 [[package]]
 name = "sc-service"
 version = "0.62.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "directories 5.0.1",
@@ -12825,7 +12705,7 @@ dependencies = [
 [[package]]
 name = "sc-state-db"
 version = "0.30.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "log",
  "parity-scale-codec",
@@ -12836,7 +12716,7 @@ dependencies = [
 [[package]]
 name = "sc-statement-store"
 version = "32.0.1"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-channel 1.9.0",
  "futures",
@@ -12863,7 +12743,7 @@ dependencies = [
 [[package]]
 name = "sc-storage-monitor"
 version = "0.16.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "clap",
  "fs4 0.7.0",
@@ -12921,7 +12801,7 @@ dependencies = [
 [[package]]
 name = "sc-sysinfo"
 version = "51.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "derive_more 0.99.20",
  "futures",
@@ -12934,14 +12814,14 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-io",
 ]
 
 [[package]]
 name = "sc-telemetry"
 version = "34.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "chrono",
  "futures",
@@ -12960,7 +12840,7 @@ dependencies = [
 [[package]]
 name = "sc-tracing"
 version = "48.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "chrono",
  "console 0.15.11",
@@ -12988,7 +12868,7 @@ dependencies = [
 [[package]]
 name = "sc-tracing-proc-macro"
 version = "11.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -12999,7 +12879,7 @@ dependencies = [
 [[package]]
 name = "sc-transaction-pool"
 version = "48.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "futures",
@@ -13016,7 +12896,7 @@ dependencies = [
  "sp-api",
  "sp-blockchain",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-runtime",
  "sp-tracing",
  "sp-transaction-pool",
@@ -13031,7 +12911,7 @@ dependencies = [
 [[package]]
 name = "sc-transaction-pool-api"
 version = "47.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "futures",
@@ -13049,7 +12929,7 @@ dependencies = [
 [[package]]
 name = "sc-utils"
 version = "24.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-channel 1.9.0",
  "futures",
@@ -13063,7 +12943,7 @@ dependencies = [
 [[package]]
 name = "sc-virtualization"
 version = "0.1.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "log",
  "polkavm",
@@ -13305,21 +13185,6 @@ dependencies = [
  "pbkdf2",
  "salsa20",
  "sha2 0.10.9",
-]
-
-[[package]]
-name = "sctp-proto"
-version = "0.10.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28aca56f649fa088cbdda778a5121f2227995ed057e77de462112b2e5890d591"
-dependencies = [
- "bytes",
- "crc",
- "log",
- "rand 0.9.4",
- "rustc-hash 2.1.1",
- "slab",
- "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -14077,7 +13942,7 @@ dependencies = [
 [[package]]
 name = "sp-api"
 version = "44.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "docify",
  "hash-db",
@@ -14099,7 +13964,7 @@ dependencies = [
 [[package]]
 name = "sp-api-proc-macro"
 version = "15.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "Inflector",
  "blake2 0.10.6",
@@ -14113,7 +13978,7 @@ dependencies = [
 [[package]]
 name = "sp-application-crypto"
 version = "49.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -14125,7 +13990,7 @@ dependencies = [
 [[package]]
 name = "sp-arithmetic"
 version = "29.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "docify",
  "integer-sqrt",
@@ -14139,7 +14004,7 @@ dependencies = [
 [[package]]
 name = "sp-authority-discovery"
 version = "44.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -14164,7 +14029,7 @@ dependencies = [
 [[package]]
 name = "sp-block-builder"
 version = "44.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "sp-api",
@@ -14186,7 +14051,7 @@ dependencies = [
 [[package]]
 name = "sp-blockchain"
 version = "47.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "futures",
  "parity-scale-codec",
@@ -14205,7 +14070,7 @@ dependencies = [
 [[package]]
 name = "sp-consensus"
 version = "0.50.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "futures",
@@ -14222,7 +14087,7 @@ dependencies = [
 [[package]]
 name = "sp-consensus-aura"
 version = "0.50.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "parity-scale-codec",
@@ -14238,7 +14103,7 @@ dependencies = [
 [[package]]
 name = "sp-consensus-babe"
 version = "0.50.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "parity-scale-codec",
@@ -14256,7 +14121,7 @@ dependencies = [
 [[package]]
 name = "sp-consensus-beefy"
 version = "32.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -14264,7 +14129,7 @@ dependencies = [
  "sp-api",
  "sp-application-crypto",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-io",
  "sp-keystore",
  "sp-mmr-primitives",
@@ -14276,7 +14141,7 @@ dependencies = [
 [[package]]
 name = "sp-consensus-grandpa"
 version = "31.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "finality-grandpa",
  "log",
@@ -14293,7 +14158,7 @@ dependencies = [
 [[package]]
 name = "sp-consensus-slots"
 version = "0.50.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -14332,7 +14197,7 @@ dependencies = [
 [[package]]
 name = "sp-core"
 version = "28.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "ark-vrf",
  "array-bytes",
@@ -14363,7 +14228,7 @@ dependencies = [
  "secrecy 0.8.0",
  "serde",
  "sha2 0.10.9",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-debug-derive",
  "sp-externalities",
  "sp-std",
@@ -14393,7 +14258,7 @@ dependencies = [
 [[package]]
 name = "sp-crypto-hashing"
 version = "0.1.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "blake2b_simd",
  "byteorder",
@@ -14406,17 +14271,17 @@ dependencies = [
 [[package]]
 name = "sp-crypto-hashing-proc-macro"
 version = "0.1.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "quote",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "syn 2.0.118",
 ]
 
 [[package]]
 name = "sp-database"
 version = "10.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "kvdb",
  "parking_lot 0.12.5",
@@ -14425,7 +14290,7 @@ dependencies = [
 [[package]]
 name = "sp-debug-derive"
 version = "14.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "proc-macro-warning",
  "proc-macro2",
@@ -14520,7 +14385,7 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus-slots",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-domain-digests",
  "sp-domains",
  "sp-externalities",
@@ -14581,7 +14446,7 @@ dependencies = [
 [[package]]
 name = "sp-externalities"
 version = "0.25.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "environmental",
  "parity-scale-codec",
@@ -14591,7 +14456,7 @@ dependencies = [
 [[package]]
 name = "sp-genesis-builder"
 version = "0.25.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -14603,7 +14468,7 @@ dependencies = [
 [[package]]
 name = "sp-inherents"
 version = "44.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "impl-trait-for-tuples",
@@ -14616,7 +14481,7 @@ dependencies = [
 [[package]]
 name = "sp-io"
 version = "49.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "bytes",
  "docify",
@@ -14628,7 +14493,7 @@ dependencies = [
  "rustversion",
  "secp256k1 0.28.2",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-externalities",
  "sp-keystore",
  "sp-runtime-interface",
@@ -14642,7 +14507,7 @@ dependencies = [
 [[package]]
 name = "sp-keyring"
 version = "49.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "sp-core",
  "sp-runtime",
@@ -14652,7 +14517,7 @@ dependencies = [
 [[package]]
 name = "sp-keystore"
 version = "0.34.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.5",
@@ -14663,7 +14528,7 @@ dependencies = [
 [[package]]
 name = "sp-maybe-compressed-blob"
 version = "11.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "thiserror 1.0.69",
  "zstd 0.12.4",
@@ -14711,7 +14576,7 @@ dependencies = [
 [[package]]
 name = "sp-metadata-ir"
 version = "0.6.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "derive-where",
  "frame-metadata",
@@ -14722,7 +14587,7 @@ dependencies = [
 [[package]]
 name = "sp-mixnet"
 version = "0.22.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -14733,7 +14598,7 @@ dependencies = [
 [[package]]
 name = "sp-mmr-primitives"
 version = "44.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "log",
  "parity-scale-codec",
@@ -14750,7 +14615,7 @@ dependencies = [
 [[package]]
 name = "sp-npos-elections"
 version = "44.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -14771,7 +14636,7 @@ dependencies = [
 [[package]]
 name = "sp-offchain"
 version = "44.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "sp-api",
  "sp-core",
@@ -14781,7 +14646,7 @@ dependencies = [
 [[package]]
 name = "sp-panic-handler"
 version = "13.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "backtrace",
  "regex",
@@ -14790,7 +14655,7 @@ dependencies = [
 [[package]]
 name = "sp-rpc"
 version = "26.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "rustc-hash 1.1.0",
  "serde",
@@ -14800,7 +14665,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime"
 version = "49.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "binary-merkle-tree",
  "bytes",
@@ -14831,7 +14696,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface"
 version = "37.0.1"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "bytes",
  "impl-trait-for-tuples",
@@ -14848,7 +14713,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface-proc-macro"
 version = "17.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "Inflector",
  "expander",
@@ -14861,7 +14726,7 @@ dependencies = [
 [[package]]
 name = "sp-session"
 version = "46.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -14875,7 +14740,7 @@ dependencies = [
 [[package]]
 name = "sp-staking"
 version = "46.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "impl-trait-for-tuples",
  "parity-scale-codec",
@@ -14888,7 +14753,7 @@ dependencies = [
 [[package]]
 name = "sp-state-machine"
 version = "0.54.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "hash-db",
  "log",
@@ -14908,7 +14773,7 @@ dependencies = [
 [[package]]
 name = "sp-statement-store"
 version = "29.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "aes-gcm",
  "curve25519-dalek 4.1.3",
@@ -14923,7 +14788,7 @@ dependencies = [
  "sp-api",
  "sp-application-crypto",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-externalities",
  "sp-runtime",
  "sp-runtime-interface",
@@ -14934,12 +14799,12 @@ dependencies = [
 [[package]]
 name = "sp-std"
 version = "14.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 
 [[package]]
 name = "sp-storage"
 version = "19.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "impl-serde",
  "parity-scale-codec",
@@ -14969,7 +14834,7 @@ dependencies = [
 [[package]]
 name = "sp-timestamp"
 version = "44.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "parity-scale-codec",
@@ -14981,7 +14846,7 @@ dependencies = [
 [[package]]
 name = "sp-tracing"
 version = "16.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "regex",
@@ -14993,7 +14858,7 @@ dependencies = [
 [[package]]
 name = "sp-transaction-pool"
 version = "44.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "sp-api",
  "sp-runtime",
@@ -15002,14 +14867,14 @@ dependencies = [
 [[package]]
 name = "sp-transaction-storage-proof"
 version = "44.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "async-trait",
  "parity-scale-codec",
  "scale-info",
  "sp-api",
  "sp-core",
- "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53)",
+ "sp-crypto-hashing 0.1.0 (git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394)",
  "sp-inherents",
  "sp-runtime",
  "sp-trie",
@@ -15018,7 +14883,7 @@ dependencies = [
 [[package]]
 name = "sp-trie"
 version = "47.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "ahash 0.8.12",
  "foldhash 0.1.5",
@@ -15043,7 +14908,7 @@ dependencies = [
 [[package]]
 name = "sp-version"
 version = "47.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "impl-serde",
  "parity-scale-codec",
@@ -15061,7 +14926,7 @@ dependencies = [
 [[package]]
 name = "sp-version-proc-macro"
 version = "13.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "parity-scale-codec",
  "proc-macro-warning",
@@ -15073,7 +14938,7 @@ dependencies = [
 [[package]]
 name = "sp-virtualization"
 version = "1.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "log",
  "num_enum",
@@ -15087,7 +14952,7 @@ dependencies = [
 [[package]]
 name = "sp-wasm-interface"
 version = "20.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "anyhow",
  "impl-trait-for-tuples",
@@ -15099,7 +14964,7 @@ dependencies = [
 [[package]]
 name = "sp-weights"
 version = "37.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "bounded-collections",
  "parity-scale-codec",
@@ -15243,7 +15108,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "staging-xcm"
 version = "25.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "bounded-collections",
@@ -15264,7 +15129,7 @@ dependencies = [
 [[package]]
 name = "staging-xcm-builder"
 version = "31.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "environmental",
  "frame-support",
@@ -15289,7 +15154,7 @@ dependencies = [
 [[package]]
 name = "staging-xcm-executor"
 version = "29.0.2"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "environmental",
  "frame-benchmarking",
@@ -15338,55 +15203,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "str0m"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8522aa06c731cfdc1488e32de7fcebcfc8d9d86d49a6ecc95a64779fe7b545f2"
-dependencies = [
- "arrayvec 0.7.6",
- "base64ct",
- "combine",
- "dimpl",
- "fastrand",
- "is",
- "sctp-proto",
- "serde",
- "str0m-openssl",
- "str0m-proto",
- "subtle 2.6.1",
- "time",
- "tracing",
-]
-
-[[package]]
-name = "str0m-openssl"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae33ce33dcd4dd2d9b6c01e7e425b604be9b811f69511b4387e76d5a36fe606b"
-dependencies = [
- "libc",
- "openssl",
- "openssl-sys",
- "str0m-proto",
- "tracing",
-]
-
-[[package]]
-name = "str0m-proto"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8f3d99f2cf6c76a502e45feb896ea71e54787ede8744bcdb215acfbfcb905dd"
-dependencies = [
- "base64ct",
- "dimpl",
- "fastrand",
- "openssl",
- "serde",
- "subtle 2.6.1",
- "time",
 ]
 
 [[package]]
@@ -16361,12 +16177,12 @@ dependencies = [
 [[package]]
 name = "substrate-build-script-utils"
 version = "11.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 
 [[package]]
 name = "substrate-frame-rpc-system"
 version = "55.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "docify",
  "frame-system-rpc-runtime-api",
@@ -16386,7 +16202,7 @@ dependencies = [
 [[package]]
 name = "substrate-prometheus-endpoint"
 version = "0.17.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "http-body-util",
  "hyper",
@@ -16400,7 +16216,7 @@ dependencies = [
 [[package]]
 name = "substrate-test-client"
 version = "2.0.1"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "array-bytes",
  "async-trait",
@@ -16425,7 +16241,7 @@ dependencies = [
 [[package]]
 name = "substrate-wasm-builder"
 version = "35.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "build-helper",
  "cargo_metadata 0.15.4",
@@ -17295,7 +17111,7 @@ dependencies = [
 [[package]]
 name = "tracing-gum"
 version = "27.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "coarsetime",
  "polkadot-primitives",
@@ -17306,7 +17122,7 @@ dependencies = [
 [[package]]
 name = "tracing-gum-proc-macro"
 version = "5.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "expander",
  "proc-macro-crate",
@@ -17694,12 +17510,6 @@ name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
-
-[[package]]
-name = "vcpkg"
-version = "0.2.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "version_check"
@@ -19226,7 +19036,7 @@ dependencies = [
 [[package]]
 name = "xcm-procedural"
 version = "7.0.0"
-source = "git+https://github.com/autonomys/polkadot-sdk?rev=3ffd65a8a6279e0eb96292c90980b8c1f05a0f53#3ffd65a8a6279e0eb96292c90980b8c1f05a0f53"
+source = "git+https://github.com/autonomys/polkadot-sdk?rev=c2ece7ab11f8245193c3fe4c398e192e096e5394#c2ece7ab11f8245193c3fe4c398e192e096e5394"
 dependencies = [
  "Inflector",
  "proc-macro2",
