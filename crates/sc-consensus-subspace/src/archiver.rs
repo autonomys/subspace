@@ -391,6 +391,11 @@ impl CreateObjectMappings {
             return false;
         }
 
+        // The genesis block has no mappings, and its parent has no state to extract them at
+        if block == 0 {
+            return false;
+        }
+
         if let Some(target_block) = self.block() {
             return block >= target_block;
         }
@@ -748,32 +753,40 @@ where
             let blocks_to_archive = thread_pool.install(|| {
                 (blocks_to_archive_from..=blocks_to_archive_to)
                     .into_par_iter()
-                    .map_init(
-                        || client.runtime_api(),
-                        |runtime_api, block_number| {
-                            let block_hash = client
-                                .hash(block_number.into())?
-                                .expect("All blocks since last archived must be present; qed");
+                    .map(|block_number| {
+                        let block_hash = client
+                            .hash(block_number.into())?
+                            .expect("All blocks since last archived must be present; qed");
 
-                            let block = client
-                                .block(block_hash)?
-                                .expect("All blocks since last archived must be present; qed");
+                        let block = client
+                            .block(block_hash)?
+                            .expect("All blocks since last archived must be present; qed");
 
-                            let block_object_mappings =
-                                if create_object_mappings.is_enabled_for_block(block_number) {
-                                    runtime_api
-                                        .extract_block_object_mapping(
-                                            *block.block.header().parent_hash(),
-                                            block.block.clone(),
+                        let block_object_mappings =
+                            if create_object_mappings.is_enabled_for_block(block_number) {
+                                // A runtime API instance only works for one block, reusing it
+                                // fails with `UsingSameInstanceForDifferentBlocks`
+                                client
+                                    .runtime_api()
+                                    .extract_block_object_mapping(
+                                        *block.block.header().parent_hash(),
+                                        block.block.clone(),
+                                    )
+                                    .map_err(|error| {
+                                        sp_blockchain::Error::Application(
+                                            format!(
+                                                "Failed to retrieve block object mappings for \
+                                                block {block_number}: {error}"
+                                            )
+                                            .into(),
                                         )
-                                        .unwrap_or_default()
-                                } else {
-                                    BlockObjectMapping::default()
-                                };
+                                    })?
+                            } else {
+                                BlockObjectMapping::default()
+                            };
 
-                            Ok((block, block_object_mappings))
-                        },
-                    )
+                        Ok((block, block_object_mappings))
+                    })
                     .collect::<sp_blockchain::Result<Vec<(SignedBlock<_>, _)>>>()
             })?;
 
