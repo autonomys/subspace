@@ -62,3 +62,13 @@ runtime-benchmarks = [
     "sp-messenger/runtime-benchmarks",
     "sp-subspace-mmr/runtime-benchmarks",
 ]
+
+[lints.rust]
+# `ValidateUnsigned` is deprecated in stable2609 but frame-executive still requires it until
+# the authorize API replaces it (upstream removal after April 2027).
+deprecated = "allow"
+
+[lints.clippy]
+# The stable2609 `#[pallet::validate_unsigned]` expansion emits `let _ = _w;` for a unit const
+# to carry its deprecation notice, which trips this lint in generated code.
+let_unit_value = "allow"

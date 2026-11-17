@@ -242,6 +242,10 @@ fn store_segment_header_works() {
 }
 
 #[test]
+#[expect(
+    deprecated,
+    reason = "ValidateUnsigned stays until the authorize API lands"
+)]
 fn store_segment_header_validate_unsigned_prevents_duplicates() {
     new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();

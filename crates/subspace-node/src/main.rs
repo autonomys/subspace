@@ -364,7 +364,9 @@ fn main() -> Result<(), Error> {
                         DomainBlock,
                         evm_domain_runtime::RuntimeApi,
                         _,
-                    >(&domain_config, None, executor)?;
+                    >(
+                        &domain_config, None, executor, Vec::new()
+                    )?;
 
                     cmd.run(&client, &client)
                 })?;

@@ -945,7 +945,7 @@ where
 
     let network_service_provider = NetworkServiceProvider::new();
     let network_service_handle = network_service_provider.handle();
-    let (network_service, system_rpc_tx, tx_handler_controller, sync_service) = {
+    let (network_service, system_rpc_tx, tx_handler_controller, sync_service, _) = {
         let spawn_handle = task_manager.spawn_handle();
         let metrics = NotificationMetrics::new(substrate_prometheus_registry.as_ref());
 
@@ -974,6 +974,7 @@ where
             client.clone(),
             &spawn_handle,
             substrate_prometheus_registry.as_ref(),
+            sc_service::default_gap_sync_body_policy(config.base.blocks_pruning),
         )?;
 
         let (syncing_engine, sync_service, block_announce_config) =
@@ -1000,18 +1001,19 @@ where
             role: config.base.role,
             protocol_id,
             fork_id,
-            ipfs_server: config.base.network.ipfs_server,
             announce_block: config.base.announce_block,
             net_config,
             client: Arc::clone(&client),
             transaction_pool: Arc::clone(&transaction_pool),
             spawn_handle,
+            spawn_essential_handle: task_manager.spawn_essential_handle(),
             import_queue,
             sync_service,
             block_announce_config,
             network_service_provider,
             metrics_registry: substrate_prometheus_registry.as_ref(),
             metrics,
+            blocks_pruning: config.base.blocks_pruning,
         })?
     };
 

@@ -2,7 +2,7 @@ use domain_service::rpc::FullDeps;
 use fc_mapping_sync::{EthereumBlockNotification, EthereumBlockNotificationSinks};
 use fc_rpc::{
     Eth, EthApiServer, EthDevSigner, EthFilter, EthFilterApiServer, EthPubSub, EthPubSubApiServer,
-    EthSigner, Net, NetApiServer, Web3, Web3ApiServer,
+    EthSigner, LogsJournal, Net, NetApiServer, Web3, Web3ApiServer,
 };
 pub use fc_rpc::{EthBlockDataCacheTask, EthConfig};
 pub use fc_rpc_core::types::{FeeHistoryCache, FeeHistoryCacheLimit, FilterPool};
@@ -161,6 +161,8 @@ where
             fee_history_cache,
             fee_history_cache_limit,
             execute_gas_limit_multiplier,
+            // Accept unprotected transactions at the RPC layer, matching the runtime config.
+            true,
             forced_parent_hashes,
             pending_inherent_data_provider,
             None,
@@ -168,6 +170,12 @@ where
         .replace_config::<EC>()
         .into_rpc(),
     )?;
+
+    let logs_journal = Arc::new(LogsJournal::new(
+        subscription_task_executor.clone(),
+        storage_override.clone(),
+        pubsub_notification_sinks.clone(),
+    ));
 
     if let Some(filter_pool) = filter_pool {
         io.merge(
@@ -180,6 +188,7 @@ where
                 max_past_logs,
                 10_000_u32, // max block range for eth_getLogs (stable2512: new param to prevent overly wide queries)
                 block_data_cache,
+                logs_journal.clone(),
             )
             .into_rpc(),
         )?;
@@ -193,6 +202,7 @@ where
             subscription_task_executor,
             storage_override,
             pubsub_notification_sinks,
+            logs_journal,
         )
         .into_rpc(),
     )?;

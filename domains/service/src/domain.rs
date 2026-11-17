@@ -408,11 +408,13 @@ where
         client: client.clone(),
         transaction_pool: transaction_pool.clone(),
         spawn_handle: task_manager.spawn_handle(),
+        spawn_essential_handle: task_manager.spawn_essential_handle(),
         import_queue: params.import_queue,
         // TODO: we might want to re-enable this some day.
         block_announce_validator_builder: None,
         warp_sync_config: None,
         block_relay: None,
+        gap_sync_body_policy: None,
         metrics: NotificationMetrics::new(
             domain_config
                 .prometheus_config

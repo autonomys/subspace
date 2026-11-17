@@ -38,6 +38,7 @@ use domain_runtime_primitives::{
     AccountIdConverter, BlockNumber as DomainNumber, EthereumAccountId, Hash as DomainHash,
     MAX_OUTGOING_MESSAGES,
 };
+use frame_support::dispatch::DispatchClass;
 use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::fungible::Inspect;
@@ -217,7 +218,12 @@ parameter_types! {
     /// We allow for 2 seconds of compute with a 6 second average block time.
     pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(BLOCK_WEIGHT_FOR_2_SEC, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
-    pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
+    pub SubspaceBlockLength: BlockLength = BlockLength::builder()
+        .max_length(MAX_BLOCK_LENGTH)
+        .modify_max_length_for_class(DispatchClass::Normal, |max| {
+            *max = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH
+        })
+        .build();
 }
 
 pub type SS58Prefix = ConstU16<6094>;
@@ -1716,8 +1722,11 @@ impl_runtime_apis! {
     }
 
     impl sp_session::SessionKeys<Block> for Runtime {
-        fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
-            SessionKeys::generate(seed)
+        fn generate_session_keys(
+            owner: Vec<u8>,
+            seed: Option<Vec<u8>>,
+        ) -> sp_session::OpaqueGeneratedSessionKeys {
+            SessionKeys::generate(&owner, seed).into()
         }
 
         fn decode_session_keys(

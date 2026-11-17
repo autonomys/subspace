@@ -52,6 +52,10 @@ use frame_support::weights::{Weight, WeightToFee};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use parity_scale_codec::{Codec, Encode};
+#[expect(
+    deprecated,
+    reason = "ValidateUnsigned stays until the authorize API lands"
+)]
 use sp_runtime::traits::{
     Applyable, Block as BlockT, CheckEqual, Checkable, Dispatchable, Header, LazyBlock, NumberFor,
     One, ValidateUnsigned, Zero,
@@ -209,6 +213,10 @@ pub struct Executive<
     )>,
 );
 
+#[expect(
+    deprecated,
+    reason = "ValidateUnsigned stays until the authorize API lands"
+)]
 impl<
     ExecutiveConfig: Config + frame_system::Config + IsInherent<ExtrinsicOf<ExecutiveConfig>>,
     Context: Default,
@@ -246,8 +254,26 @@ where
             COnRuntimeUpgrade,
         >::execute_block(block);
     }
+
+    fn verify_and_remove_seal(_: &mut <BlockOf<ExecutiveConfig> as BlockT>::LazyBlock) {
+        // Nothing to do here.
+    }
+
+    fn execute_verified_block(block: <BlockOf<ExecutiveConfig> as BlockT>::LazyBlock) {
+        Executive::<
+            ExecutiveConfig,
+            Context,
+            UnsignedValidator,
+            AllPalletsWithSystem,
+            COnRuntimeUpgrade,
+        >::execute_block(block);
+    }
 }
 
+#[expect(
+    deprecated,
+    reason = "ValidateUnsigned stays until the authorize API lands"
+)]
 impl<
     ExecutiveConfig: Config + frame_system::Config + IsInherent<ExtrinsicOf<ExecutiveConfig>>,
     Context: Default,

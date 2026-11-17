@@ -42,7 +42,7 @@ use alloc::vec::Vec;
 use domain_runtime_primitives::EthereumAccountId;
 use frame_support::dispatch::DispatchResult;
 use frame_support::ensure;
-use frame_support::pallet_prelude::{RuntimeDebug, StorageVersion};
+use frame_support::pallet_prelude::StorageVersion;
 use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::traits::{EnsureOrigin, Get, Randomness as RandomnessT, Time};
@@ -172,15 +172,7 @@ pub type BlockTreeNodeFor<T> = crate::block_tree::BlockTreeNode<
 
 /// Custom origin for validated unsigned extrinsics.
 #[derive(
-    PartialEq,
-    Eq,
-    Clone,
-    Encode,
-    Decode,
-    RuntimeDebug,
-    TypeInfo,
-    MaxEncodedLen,
-    DecodeWithMemTracking,
+    PartialEq, Eq, Clone, Encode, Decode, Debug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking,
 )]
 pub enum RawOrigin {
     ValidatedUnsigned,

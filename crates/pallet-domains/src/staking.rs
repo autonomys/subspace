@@ -2602,16 +2602,29 @@ pub(crate) mod tests {
 
     /// Withdraw stake in a non-proptest.
     fn withdraw_stake(params: WithdrawParams) {
-        withdraw_stake_inner(params, false).expect("always panics rather than returning an error");
+        withdraw_stake_inner(params, false, None)
+            .expect("always panics rather than returning an error");
     }
 
     /// Withdraw stake in a proptest.
     fn withdraw_stake_prop(params: WithdrawParams) -> TestCaseResult {
-        withdraw_stake_inner(params, true)
+        withdraw_stake_inner(params, true, None)
+    }
+
+    /// Withdraw stake in a proptest with a separate lower bound for the expected withdrawal.
+    fn withdraw_stake_prop_with_lower_bound(
+        params: WithdrawParams,
+        expected_withdraw_lower: BalanceOf<Test>,
+    ) -> TestCaseResult {
+        withdraw_stake_inner(params, true, Some(expected_withdraw_lower))
     }
 
     /// Inner function for withdrawing stake.
-    fn withdraw_stake_inner(params: WithdrawParams, is_proptest: bool) -> TestCaseResult {
+    fn withdraw_stake_inner(
+        params: WithdrawParams,
+        is_proptest: bool,
+        expected_withdraw_lower: Option<BalanceOf<Test>>,
+    ) -> TestCaseResult {
         let WithdrawParams {
             minimum_nominator_stake,
             nominators,
@@ -2746,7 +2759,26 @@ pub(crate) mod tests {
                 };
 
                 if is_proptest {
-                    prop_assert_approx!(Balances::usable_balance(nominator_id), expected_balance);
+                    match expected_withdraw_lower {
+                        Some(withdraw_lower) => {
+                            let expected_balance_lower = if include_ed {
+                                previous_usable_balance + withdraw_lower + ExistentialDeposit::get()
+                            } else {
+                                previous_usable_balance + withdraw_lower
+                            };
+                            prop_assert_approx_between!(
+                                Balances::usable_balance(nominator_id),
+                                expected_balance_lower,
+                                expected_balance,
+                            );
+                        }
+                        None => {
+                            prop_assert_approx!(
+                                Balances::usable_balance(nominator_id),
+                                expected_balance
+                            );
+                        }
+                    }
                 } else {
                     assert_eq!(
                         Balances::usable_balance(nominator_id),
@@ -2869,6 +2901,44 @@ pub(crate) mod tests {
 
     // Export the macro for use in other modules (and earlier in this file).
     pub(crate) use prop_assert_approx;
+
+    /// Do an approximate amount comparison with distinct lower and upper bounds in a proptest.
+    ///
+    /// The upper bound is strict: the user should never get more than `$expected_upper`.
+    /// The lower bound allows the same relative and absolute rounding errors as
+    /// [`prop_assert_approx!`], measured from `$expected_lower`.
+    macro_rules! prop_assert_approx_between {
+        ($actual:expr, $expected_lower:expr, $expected_upper:expr $(,)?) => {{
+            let actual = $actual;
+            let expected_lower = $expected_lower;
+            let expected_upper = $expected_upper;
+            prop_test::proptest::prop_assert!(
+                actual <= expected_upper,
+                "extra minting: actual amount is greater than expected upper amount:\
+                    \n{} >\
+                    \n{}",
+                actual,
+                expected_upper,
+            );
+            let expected_lower_rounded_down = $crate::staking::tests::PROP_ROUNDING_DOWN_FACTOR
+                .mul_floor(expected_lower)
+                .saturating_sub($crate::staking::tests::PROP_ABSOLUTE_ROUNDING_ERROR);
+            prop_test::proptest::prop_assert!(
+                actual >= expected_lower_rounded_down,
+                "excess rounding losses: actual amount is less than expected lower amount \
+                    rounded down:\
+                    \n{} <\
+                    \n{} (from\
+                    \n{})",
+                actual,
+                expected_lower_rounded_down,
+                expected_lower,
+            );
+        }};
+    }
+
+    // Export the macro for use in other modules (and earlier in this file).
+    pub(crate) use prop_assert_approx_between;
 
     /// Rounding down factor for property tests to account for arithmetic precision errors.
     /// This factor is used to allow for small rounding errors in calculations.
@@ -3207,20 +3277,28 @@ pub(crate) mod tests {
                     operator_stake.saturating_sub(2 * <Test as Config>::MinOperatorStake::get());
 
                 let expected_withdraw = (excess_stake.saturating_add(operator_reward_split), true);
+                // Only the withdrawn part of the operator's shares carries that part of the reward.
+                let expected_withdraw_lower = excess_stake.saturating_add(
+                    Perquintill::from_rational(excess_stake, operator_stake)
+                        .mul_floor(operator_reward_split),
+                );
 
                 prop_assert!(excess_stake > 0, "would cause ZeroWithdraw error");
 
-                withdraw_stake_prop(WithdrawParams {
-                    minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
-                    nominators: vec![(0, operator_stake), (1, nominator_stake)],
-                    operator_reward,
-                    nominator_id: 0,
-                    withdraws: vec![(excess_stake, Ok(()))],
-                    maybe_deposit: None,
-                    expected_withdraw: Some(expected_withdraw),
-                    expected_nominator_count_reduced_by: 0,
-                    storage_fund_change: (true, 0),
-                })
+                withdraw_stake_prop_with_lower_bound(
+                    WithdrawParams {
+                        minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+                        nominators: vec![(0, operator_stake), (1, nominator_stake)],
+                        operator_reward,
+                        nominator_id: 0,
+                        withdraws: vec![(excess_stake, Ok(()))],
+                        maybe_deposit: None,
+                        expected_withdraw: Some(expected_withdraw),
+                        expected_nominator_count_reduced_by: 0,
+                        storage_fund_change: (true, 0),
+                    },
+                    expected_withdraw_lower,
+                )
             }
         );
     }
@@ -3264,6 +3342,11 @@ pub(crate) mod tests {
                         .saturating_sub(reserve),
                     true,
                 );
+                // Only the withdrawn part of the operator's shares carries that part of the reward.
+                let expected_withdraw_lower = excess_stake.saturating_add(
+                    Perquintill::from_rational(excess_stake, operator_stake)
+                        .mul_floor(operator_reward),
+                );
 
                 prop_assume!(excess_stake > 0, "would cause ZeroWithdraw error");
 
@@ -3274,17 +3357,20 @@ pub(crate) mod tests {
                     Some(maybe_deposit)
                 };
 
-                withdraw_stake_prop(WithdrawParams {
-                    minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
-                    nominators: vec![(0, operator_stake)],
-                    operator_reward,
-                    nominator_id: 0,
-                    withdraws: vec![(excess_stake, Ok(()))],
-                    maybe_deposit,
-                    expected_withdraw: Some(expected_withdraw),
-                    expected_nominator_count_reduced_by: 0,
-                    storage_fund_change: (true, 0),
-                })
+                withdraw_stake_prop_with_lower_bound(
+                    WithdrawParams {
+                        minimum_nominator_stake: <Test as Config>::MinNominatorStake::get(),
+                        nominators: vec![(0, operator_stake)],
+                        operator_reward,
+                        nominator_id: 0,
+                        withdraws: vec![(excess_stake, Ok(()))],
+                        maybe_deposit,
+                        expected_withdraw: Some(expected_withdraw),
+                        expected_nominator_count_reduced_by: 0,
+                        storage_fund_change: (true, 0),
+                    },
+                    expected_withdraw_lower,
+                )
             }
         );
     }

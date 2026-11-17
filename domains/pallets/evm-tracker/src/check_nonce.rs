@@ -5,7 +5,6 @@ use core::cmp::max;
 use core::fmt;
 use core::result::Result;
 use domain_runtime_primitives::ERR_EVM_NONCE_OVERFLOW;
-use frame_support::RuntimeDebugNoBound;
 use frame_support::dispatch::DispatchInfo;
 use frame_support::pallet_prelude::{
     CheckedAdd, InvalidTransaction, TransactionLongevity, TransactionValidityError, TypeInfo,
@@ -44,7 +43,7 @@ impl<T: Config> fmt::Debug for CheckNonce<T> {
 }
 
 /// Operation to perform from `validate` to `prepare` in [`frame_system::CheckNonce`] transaction extension.
-#[derive(RuntimeDebugNoBound)]
+#[derive(Debug)]
 pub enum Val<T: frame_system::Config> {
     /// Account and its nonce to check for.
     CheckNonce((T::AccountId, T::Nonce)),
@@ -54,7 +53,7 @@ pub enum Val<T: frame_system::Config> {
 
 /// Operation to perform from `prepare` to `post_dispatch_details` in [`frame_system::CheckNonce`] transaction
 /// extension.
-#[derive(RuntimeDebugNoBound)]
+#[derive(Debug)]
 pub enum Pre {
     /// The transaction extension weight should not be refunded.
     NonceChecked,

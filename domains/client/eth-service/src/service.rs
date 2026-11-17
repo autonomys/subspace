@@ -106,6 +106,7 @@ pub(crate) fn spawn_frontier_tasks<Block, Client, Backend, SE>(
                 frontier_backend,
                 3,
                 NumberFor::<Block>::zero(),
+                None,
                 SyncStrategy::Normal,
                 sync,
                 pubsub_notification_sinks,

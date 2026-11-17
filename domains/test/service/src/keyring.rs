@@ -1,7 +1,8 @@
 //! Set of test accounts.
 use fp_account::AccountId20;
 use sp_core::ecdsa::{Pair, Public, Signature};
-use sp_core::{Pair as PairT, ecdsa, keccak_256};
+use sp_core::{Pair as PairT, ecdsa};
+use sp_crypto_hashing::keccak_256;
 
 #[allow(missing_docs)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

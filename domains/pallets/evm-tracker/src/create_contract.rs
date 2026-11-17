@@ -4,7 +4,6 @@ use crate::traits::{AccountIdFor, MaybeIntoEthCall, MaybeIntoEvmCall};
 use crate::weights::pallet_evm_tracker::WeightInfo as SubstrateWeightInfo;
 use crate::{MAXIMUM_NUMBER_OF_CALLS, WeightInfo};
 use domain_runtime_primitives::{ERR_CONTRACT_CREATION_NOT_ALLOWED, EthereumAccountId};
-use frame_support::RuntimeDebugNoBound;
 use frame_support::dispatch::PostDispatchInfo;
 use frame_support::pallet_prelude::{DispatchResult, PhantomData, TypeInfo};
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
@@ -183,14 +182,14 @@ where
 }
 
 /// Data passed from prepare to post_dispatch.
-#[derive(RuntimeDebugNoBound)]
+#[derive(Debug)]
 pub enum Pre {
     /// Refund this exact amount of weight.
     Refund(Weight),
 }
 
 /// Data passed from validate to prepare.
-#[derive(RuntimeDebugNoBound)]
+#[derive(Debug)]
 pub enum Val {
     /// Partially refund, based on the actual number of calls.
     PartialRefund(u32),

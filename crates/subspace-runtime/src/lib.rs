@@ -1339,6 +1339,9 @@ mod benches {
 impl frame_system_benchmarking::Config for Runtime {}
 
 #[cfg(feature = "runtime-benchmarks")]
+impl pallet_transaction_payment::BenchmarkConfig for Runtime {}
+
+#[cfg(feature = "runtime-benchmarks")]
 impl frame_benchmarking::baseline::Config for Runtime {}
 
 impl_runtime_apis! {
@@ -1652,8 +1655,11 @@ impl_runtime_apis! {
     }
 
     impl sp_session::SessionKeys<Block> for Runtime {
-        fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
-            SessionKeys::generate(seed)
+        fn generate_session_keys(
+            owner: Vec<u8>,
+            seed: Option<Vec<u8>>,
+        ) -> sp_session::OpaqueGeneratedSessionKeys {
+            SessionKeys::generate(&owner, seed).into()
         }
 
         fn decode_session_keys(

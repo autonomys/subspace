@@ -477,8 +477,13 @@ impl MockConsensusNode {
         let executor = sc_service::new_wasm_executor(&config.executor);
 
         let (client, backend, keystore_container, mut task_manager) =
-            sc_service::new_full_parts::<Block, RuntimeApi, _>(&config, None, executor.clone())
-                .expect("Fail to new full parts");
+            sc_service::new_full_parts::<Block, RuntimeApi, _>(
+                &config,
+                None,
+                executor.clone(),
+                Vec::new(),
+            )
+            .expect("Fail to new full parts");
 
         let domain_executor = Arc::new(sc_service::new_wasm_executor(&config.executor));
         let client = Arc::new(client);
@@ -522,13 +527,14 @@ impl MockConsensusNode {
             xdm_gossip_peers_set_config();
         net_config.add_notification_protocol(xdm_gossip_notification_config);
 
-        let (network_service, system_rpc_tx, tx_handler_controller, sync_service) =
+        let (network_service, system_rpc_tx, tx_handler_controller, sync_service, _) =
             sc_service::build_network(sc_service::BuildNetworkParams {
                 config: &config,
                 net_config,
                 client: client.clone(),
                 transaction_pool: transaction_pool.clone(),
                 spawn_handle: task_manager.spawn_handle(),
+                spawn_essential_handle: task_manager.spawn_essential_handle(),
                 import_queue: mock_import_queue(
                     block_import.clone(),
                     &task_manager.spawn_essential_handle(),
@@ -537,6 +543,7 @@ impl MockConsensusNode {
                 warp_sync_config: None,
                 block_relay: None,
                 metrics: NotificationMetrics::new(None),
+                gap_sync_body_policy: None,
             })
             .expect("Should be able to build network");
 
@@ -1190,7 +1197,7 @@ impl MockConsensusNode {
             }
         }
 
-        let (block, storage_changes, _) = block_builder.build()?.into_inner();
+        let (block, storage_changes) = block_builder.build()?.into_inner();
         Ok((block, storage_changes))
     }
 

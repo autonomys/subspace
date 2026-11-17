@@ -63,7 +63,7 @@ where
         let next_weight =
             calculate_consumed_weight::<T::RuntimeCall>(&maximum_weight, all_weight, info, len);
 
-        frame_system::AllExtrinsicsLen::<T>::put(next_len);
+        frame_system::BlockSize::<T>::put(next_len);
         frame_system::BlockWeight::<T>::put(next_weight);
 
         Ok(())
@@ -179,5 +179,38 @@ impl<T: Config + Send + Sync> core::fmt::Debug for CheckWeight<T> {
     #[cfg(not(feature = "std"))]
     fn fmt(&self, _: &mut core::fmt::Formatter) -> core::fmt::Result {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use frame_support::dispatch::DispatchInfo;
+    use frame_support::{construct_runtime, derive_impl};
+    use sp_io::TestExternalities;
+
+    type Block = frame_system::mocking::MockBlock<Test>;
+
+    construct_runtime!(
+        pub struct Test {
+            System: frame_system,
+        }
+    );
+
+    #[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
+    impl frame_system::Config for Test {
+        type Block = Block;
+        type EventSegmentSize = ();
+    }
+
+    #[test]
+    fn block_size_advances_when_extrinsics_are_prepared() {
+        TestExternalities::default().execute_with(|| {
+            let info = DispatchInfo::default();
+            CheckWeight::<Test>::do_prepare(&info, 100, 100).unwrap();
+            assert_eq!(frame_system::BlockSize::<Test>::get(), Some(100));
+            CheckWeight::<Test>::do_prepare(&info, 100, 210).unwrap();
+            assert_eq!(frame_system::BlockSize::<Test>::get(), Some(210));
+        });
     }
 }

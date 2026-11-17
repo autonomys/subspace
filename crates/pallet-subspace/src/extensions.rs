@@ -7,7 +7,6 @@ pub mod weights;
 pub use crate::extensions::weights::WeightInfo;
 use crate::pallet::Call as SubspaceCall;
 use crate::{Config, Origin, Pallet as Subspace};
-use frame_support::RuntimeDebugNoBound;
 use frame_support::pallet_prelude::{PhantomData, TypeInfo, Weight};
 use frame_system::pallet_prelude::{BlockNumberFor, RuntimeCallFor};
 use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
@@ -31,7 +30,7 @@ where
 }
 
 /// Weight info used by this extension
-#[derive(RuntimeDebugNoBound)]
+#[derive(Debug)]
 pub enum ExtensionWeightData {
     /// Represents the validated call's used weight
     Validated(Weight),

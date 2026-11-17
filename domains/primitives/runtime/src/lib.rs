@@ -118,7 +118,12 @@ pub const ERR_CONTRACT_CREATION_NOT_ALLOWED: u8 = 210;
 /// Maximum block length for all dispatches.
 /// This is set to 3.75 MiB since consensus chain supports on 3.75 MiB for normal
 pub fn maximum_block_length() -> BlockLength {
-    BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO)
+    BlockLength::builder()
+        .max_length(MAX_BLOCK_LENGTH)
+        .modify_max_length_for_class(DispatchClass::Normal, |max| {
+            *max = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH
+        })
+        .build()
 }
 
 /// Default version of the Extension used to construct the inherited implication for legacy transactions.
@@ -194,7 +199,7 @@ where
         match &self.preamble {
             Preamble::Bare(_) => None,
             Preamble::Signed(address, _, _) => lookup.lookup(address.clone()).ok(),
-            Preamble::General(_, _) => None,
+            Preamble::General(_) => None,
         }
     }
 }

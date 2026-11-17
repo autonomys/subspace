@@ -33,8 +33,8 @@ use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::pallet_prelude::TypeInfo;
 use frame_support::traits::fungible::Credit;
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, IsInherent,
-    OnFinalize, OnUnbalanced, VariantCount,
+    ConstBool, ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance,
+    IsInherent, OnFinalize, OnUnbalanced, VariantCount,
 };
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, Weight};
@@ -71,9 +71,9 @@ use sp_messenger_host_functions::{StorageKeyRequest, get_storage_key};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::generic::{Era, ExtrinsicFormat, Preamble};
 use sp_runtime::traits::{
-    BlakeTwo256, Checkable, DispatchInfoOf, DispatchTransaction, Dispatchable, IdentityLookup,
-    Keccak256, NumberFor, One, PostDispatchInfoOf, TransactionExtension, UniqueSaturatedInto,
-    ValidateUnsigned, Zero,
+    BlakeTwo256, Checkable, DispatchInfoOf, DispatchTransaction, Dispatchable, ExtensionVariant,
+    IdentityLookup, Keccak256, NumberFor, One, PostDispatchInfoOf, TransactionExtension,
+    UniqueSaturatedInto, ValidateUnsigned, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -757,6 +757,8 @@ impl pallet_evm::Config for Runtime {
     type PrecompilesValue = PrecompilesValue;
     type ChainId = EVMChainId;
     type BlockGasLimit = BlockGasLimit;
+    // Frontier default: EIP-7825 caps a single transaction at 2^24 gas.
+    type TransactionGasLimit = TransactionGasLimit;
     type Runner = pallet_evm::runner::stack::Runner<Self>;
     type OnChargeTransaction = EVMCurrencyAdapter;
     type OnCreate = ();
@@ -782,12 +784,16 @@ impl pallet_evm_tracker::Config for Runtime {}
 
 parameter_types! {
     pub const PostOnlyBlockHash: PostLogContent = PostLogContent::OnlyBlockHash;
+    // Same value as `fp_evm::MAX_TRANSACTION_GAS_LIMIT` (2^24). TODO(ved): keep the cap or lower it.
+    pub TransactionGasLimit: Option<U256> = Some(U256::from(16_777_216u64));
 }
 
 impl pallet_ethereum::Config for Runtime {
     type StateRoot = pallet_ethereum::IntermediateStateRoot<Self::Version>;
     type PostLogContent = PostOnlyBlockHash;
     type ExtraDataLength = ConstU32<30>;
+    // Keep accepting legacy transactions without a chain id, as before the upgrade.
+    type AllowUnprotectedTxs = ConstBool<true>;
 }
 
 impl MaybeIntoEthCall<Runtime> for RuntimeCall {
@@ -979,7 +985,7 @@ where
             .map(|signed_info| signed_info.map(|signer| signer.into()))
     } else {
         match &ext.0.preamble {
-            Preamble::Bare(_) | Preamble::General(_, _) => None,
+            Preamble::Bare(_) | Preamble::General(_) => None,
             Preamble::Signed(address, _, _) => Some(lookup.lookup(*address).map_err(|e| e.into())),
         }
     }
@@ -1004,7 +1010,7 @@ pub fn extract_signer(
 
 fn extrinsic_era(extrinsic: &ExtrinsicFor<Block>) -> Option<Era> {
     match &extrinsic.0.preamble {
-        Preamble::Bare(_) | Preamble::General(_, _) => None,
+        Preamble::Bare(_) | Preamble::General(_) => None,
         Preamble::Signed(_, _, extra) => Some(extra.4.0),
     }
 }
@@ -1123,7 +1129,8 @@ fn check_transaction_and_do_pre_dispatch_inner(
                 )
                 .map(|_| ())
             }
-            ExtrinsicFormat::General(extension_version, extra) => {
+            ExtrinsicFormat::General(extension_variant) => {
+                let ExtensionVariant::V0(extra) = extension_variant;
                 let custom_extra: CustomSignedExtra = (
                     extra.0,
                     extra.1,
@@ -1144,7 +1151,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                     &xt.function,
                     &dispatch_info,
                     encoded_len,
-                    extension_version,
+                    0,
                 )
                 .map(|_| ())
             }
@@ -1225,6 +1232,9 @@ fn create_unsigned_general_extrinsic(call: RuntimeCall) -> UncheckedExtrinsic {
 impl frame_system_benchmarking::Config for Runtime {}
 
 #[cfg(feature = "runtime-benchmarks")]
+impl pallet_transaction_payment::BenchmarkConfig for Runtime {}
+
+#[cfg(feature = "runtime-benchmarks")]
 impl frame_benchmarking::baseline::Config for Runtime {}
 
 impl_runtime_apis! {
@@ -1294,8 +1304,11 @@ impl_runtime_apis! {
     }
 
     impl sp_session::SessionKeys<Block> for Runtime {
-        fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
-            SessionKeys::generate(seed)
+        fn generate_session_keys(
+            owner: Vec<u8>,
+            seed: Option<Vec<u8>>,
+        ) -> sp_session::OpaqueGeneratedSessionKeys {
+            SessionKeys::generate(&owner, seed).into()
         }
 
         fn decode_session_keys(
@@ -1687,6 +1700,7 @@ impl_runtime_apis! {
             estimate: bool,
             access_list: Option<Vec<(H160, Vec<H256>)>>,
             authorization_list: Option<AuthorizationList>,
+            state_override: fp_evm::StateOverride,
         ) -> Result<pallet_evm::CallInfo, sp_runtime::DispatchError> {
             let config = if estimate {
                 let mut config = <Runtime as pallet_evm::Config>::config().clone();
@@ -1759,6 +1773,7 @@ impl_runtime_apis! {
                 validate,
                 weight_limit,
                 proof_size_base_cost,
+                state_override,
                 evm_config,
             ).map_err(|err| err.error.into())
         }
@@ -1992,10 +2007,28 @@ impl_runtime_apis! {
 #[cfg(test)]
 mod tests {
     use crate::{Runtime, RuntimeBlockWeights as BlockWeights};
+    use sp_runtime::traits::Get;
     use subspace_runtime_primitives::tests_utils::FeeMultiplierUtils;
 
     #[test]
     fn multiplier_can_grow_from_zero() {
         FeeMultiplierUtils::<Runtime, BlockWeights>::multiplier_can_grow_from_zero()
+    }
+
+    #[test]
+    fn transaction_gas_limit_matches_eip7825_cap() {
+        assert_eq!(
+            <Runtime as pallet_evm::Config>::TransactionGasLimit::get(),
+            Some(fp_evm::MAX_TRANSACTION_GAS_LIMIT),
+        );
+    }
+
+    #[test]
+    fn unprotected_transactions_are_allowed() {
+        let allowed: bool = <Runtime as pallet_ethereum::Config>::AllowUnprotectedTxs::get();
+        assert!(
+            allowed,
+            "legacy transactions without a chain id must be accepted"
+        );
     }
 }

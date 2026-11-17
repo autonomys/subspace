@@ -4,7 +4,6 @@ pub mod benchmarking;
 use crate::utility::{MaybeNestedCall, nested_call_iter};
 use crate::weights::balance_transfer_check_extension::WeightInfo as SubstrateWeightInfo;
 use core::marker::PhantomData;
-use frame_support::RuntimeDebugNoBound;
 use frame_support::pallet_prelude::Weight;
 use frame_system::Config;
 use frame_system::pallet_prelude::{OriginFor, RuntimeCallFor};
@@ -116,13 +115,13 @@ where
 }
 
 /// Data passed from prepare to post_dispatch.
-#[derive(RuntimeDebugNoBound)]
+#[derive(Debug)]
 pub enum Pre {
     Refund(Weight),
 }
 
 /// Data passed from validate to prepare.
-#[derive(RuntimeDebugNoBound)]
+#[derive(Debug)]
 pub enum Val {
     FullRefund,
     PartialRefund(Option<u32>),
