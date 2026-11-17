@@ -141,6 +141,16 @@ impl SegmentIndex {
         source_first_piece_indices
     }
 
+    /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
+    #[inline]
+    pub const fn checked_add(self, rhs: Self) -> Option<Self> {
+        // TODO: when Option::map becomes const, use it here
+        match self.0.checked_add(rhs.0) {
+            Some(segment_index) => Some(Self(segment_index)),
+            None => None,
+        }
+    }
+
     /// Checked integer subtraction. Computes `self - rhs`, returning `None` if underflow occurred.
     #[inline]
     pub const fn checked_sub(self, rhs: Self) -> Option<Self> {

@@ -10,7 +10,6 @@ use sp_consensus::BlockOrigin;
 use sp_runtime::Saturating;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::BlockNumber;
@@ -71,7 +70,7 @@ where
     }
 
     let mut imported_blocks = 0;
-    let mut reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
+    let mut reconstructor = Reconstructor::new(erasure_coding.clone());
     // Start from the first unprocessed segment and process all segments known so far
     let segment_indices_iter = (*last_completed_segment_index + SegmentIndex::ONE)
         ..=segment_headers_store
@@ -116,7 +115,7 @@ where
             );
             *last_completed_segment_index = segment_index;
             // Reset reconstructor instance
-            reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
+            reconstructor = Reconstructor::new(erasure_coding.clone());
             continue;
         }
         // Just one partial unprocessed block and this was the last segment available, so nothing to
@@ -167,21 +166,14 @@ where
             format!("Failed to download segment pieces during block import: {error}")
         })?;
         // CPU-intensive piece and segment reconstruction code can block the async executor.
-        let segment_contents_fut = task::spawn_blocking({
-            let reconstructor = reconstructor.clone();
-
-            move || {
-                reconstructor
-                    .lock()
-                    .expect("Panic if previous thread panicked when holding the mutex")
-                    .add_segment(segment_pieces.as_ref())
-            }
-        });
-        let blocks = segment_contents_fut
+        let segment_contents_fut =
+            task::spawn_blocking(move || reconstructor.add_segment(segment_pieces.as_ref()));
+        let segment_contents;
+        (reconstructor, segment_contents) = segment_contents_fut
             .await
             .expect("Panic if blocking task panicked")
-            .map_err(|error| error.to_string())?
-            .blocks;
+            .map_err(|error| error.to_string())?;
+        let blocks = segment_contents.blocks;
         trace!( %segment_index, "Segment reconstructed successfully");
 
         let mut blocks_to_import = Vec::with_capacity(QUEUED_BLOCKS_LIMIT as usize);
