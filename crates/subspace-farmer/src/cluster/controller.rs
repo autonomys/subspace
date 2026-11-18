@@ -73,9 +73,10 @@ impl GenericBroadcast for ClusterControllerSlotInfoBroadcast {
     fn deterministic_message_id(&self) -> Option<HeaderValue> {
         // TODO: Depending on answer in `https://github.com/nats-io/nats.docs/issues/663` this might
         //  be simplified to just a slot number
-        Some(HeaderValue::from(
-            format!("slot-info-{}", self.slot_info.slot_number).as_str(),
-        ))
+        Some(HeaderValue::from_lossy(&format!(
+            "slot-info-{}",
+            self.slot_info.slot_number
+        )))
     }
 }
 
@@ -101,13 +102,10 @@ impl GenericBroadcast for ClusterControllerArchivedSegmentHeaderBroadcast {
     fn deterministic_message_id(&self) -> Option<HeaderValue> {
         // TODO: Depending on answer in `https://github.com/nats-io/nats.docs/issues/663` this might
         //  be simplified to just a segment index
-        Some(HeaderValue::from(
-            format!(
-                "archived-segment-{}",
-                self.archived_segment_header.segment_index()
-            )
-            .as_str(),
-        ))
+        Some(HeaderValue::from_lossy(&format!(
+            "archived-segment-{}",
+            self.archived_segment_header.segment_index()
+        )))
     }
 }
 
