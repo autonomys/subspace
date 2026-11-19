@@ -23,9 +23,7 @@ use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::{
     Behaviour as Kademlia, BootstrapOk, Event as KademliaEvent, GetClosestPeersError,
-    GetClosestPeersOk, GetProvidersError, GetProvidersOk, GetRecordError, GetRecordOk,
-    InboundRequest, KBucketKey, PeerRecord, ProgressStep, PutRecordOk, QueryId, QueryResult,
-    Quorum, Record, RecordKey,
+    GetClosestPeersOk, InboundRequest, KBucketKey, ProgressStep, QueryId, QueryResult,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::multiaddr::Protocol;
@@ -60,26 +58,10 @@ const PEER_INFO_LOG_INTERVAL: Duration = Duration::from_secs(300);
 const MAX_LISTEN_ADDRESSES: usize = 30;
 
 enum QueryResultSender {
-    Value {
-        sender: mpsc::UnboundedSender<PeerRecord>,
-        // Just holding onto permit while data structure is not dropped
-        _permit: OwnedSemaphorePermit,
-    },
     ClosestPeers {
         sender: mpsc::UnboundedSender<PeerId>,
         // Just holding onto permit while data structure is not dropped
         _permit: Option<OwnedSemaphorePermit>,
-    },
-    Providers {
-        key: RecordKey,
-        sender: mpsc::UnboundedSender<PeerId>,
-        // Just holding onto permit while data structure is not dropped
-        _permit: Option<OwnedSemaphorePermit>,
-    },
-    PutValue {
-        sender: mpsc::UnboundedSender<()>,
-        // Just holding onto permit while data structure is not dropped
-        _permit: OwnedSemaphorePermit,
     },
     Bootstrap {
         sender: mpsc::UnboundedSender<()>,
@@ -988,137 +970,6 @@ impl NodeRunner {
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
-                step: ProgressStep { last, .. },
-                id,
-                result: QueryResult::GetRecord(result),
-                ..
-            } => {
-                let mut cancelled = false;
-                if let Some(QueryResultSender::Value { sender, .. }) =
-                    self.query_id_receivers.get(&id)
-                {
-                    match result {
-                        Ok(GetRecordOk::FoundRecord(rec)) => {
-                            trace!(
-                                key = hex::encode(&rec.record.key),
-                                "Get record query succeeded",
-                            );
-
-                            cancelled = Self::unbounded_send_and_cancel_on_error(
-                                &mut self.swarm.behaviour_mut().kademlia,
-                                sender,
-                                rec,
-                                "GetRecordOk",
-                                &id,
-                            ) || cancelled;
-                        }
-                        Ok(GetRecordOk::FinishedWithNoAdditionalRecord { .. }) => {
-                            trace!("Get record query yielded no results");
-                        }
-                        Err(error) => match error {
-                            GetRecordError::NotFound { key, .. } => {
-                                debug!(
-                                    key = hex::encode(&key),
-                                    "Get record query failed with no results",
-                                );
-                            }
-                            GetRecordError::Timeout { key } => {
-                                debug!(key = hex::encode(&key), "Get record query timed out");
-                            }
-                        },
-                    }
-                }
-
-                if last || cancelled {
-                    // There will be no more progress
-                    self.query_id_receivers.remove(&id);
-                }
-            }
-            KademliaEvent::OutboundQueryProgressed {
-                step: ProgressStep { last, .. },
-                id,
-                result: QueryResult::GetProviders(result),
-                ..
-            } => {
-                let mut cancelled = false;
-                if let Some(QueryResultSender::Providers { key, sender, .. }) =
-                    self.query_id_receivers.get(&id)
-                {
-                    match result {
-                        Ok(GetProvidersOk::FoundProviders { key, providers }) => {
-                            trace!(
-                                key = hex::encode(&key),
-                                "Get providers query yielded {} results",
-                                providers.len(),
-                            );
-
-                            for provider in providers {
-                                cancelled = Self::unbounded_send_and_cancel_on_error(
-                                    &mut self.swarm.behaviour_mut().kademlia,
-                                    sender,
-                                    provider,
-                                    "GetProvidersOk",
-                                    &id,
-                                ) || cancelled;
-                            }
-                        }
-                        Ok(GetProvidersOk::FinishedWithNoAdditionalRecord { closest_peers }) => {
-                            trace!(
-                                key = hex::encode(key),
-                                closest_peers = %closest_peers.len(),
-                                "Get providers query yielded no results"
-                            );
-                        }
-                        Err(error) => {
-                            let GetProvidersError::Timeout { key, .. } = error;
-
-                            debug!(
-                                key = hex::encode(&key),
-                                "Get providers query failed with no results",
-                            );
-                        }
-                    }
-                }
-
-                if last || cancelled {
-                    // There will be no more progress
-                    self.query_id_receivers.remove(&id);
-                }
-            }
-            KademliaEvent::OutboundQueryProgressed {
-                step: ProgressStep { last, .. },
-                id,
-                result: QueryResult::PutRecord(result),
-                ..
-            } => {
-                let mut cancelled = false;
-                if let Some(QueryResultSender::PutValue { sender, .. }) =
-                    self.query_id_receivers.get(&id)
-                {
-                    match result {
-                        Ok(PutRecordOk { key, .. }) => {
-                            trace!("Put record query for {} succeeded", hex::encode(&key));
-
-                            cancelled = Self::unbounded_send_and_cancel_on_error(
-                                &mut self.swarm.behaviour_mut().kademlia,
-                                sender,
-                                (),
-                                "PutRecordOk",
-                                &id,
-                            ) || cancelled;
-                        }
-                        Err(error) => {
-                            debug!(?error, "Put record query failed.");
-                        }
-                    }
-                }
-
-                if last || cancelled {
-                    // There will be no more progress
-                    self.query_id_receivers.remove(&id);
-                }
-            }
-            KademliaEvent::OutboundQueryProgressed {
                 step: ProgressStep { last, count },
                 id,
                 result: QueryResult::Bootstrap(result),
@@ -1271,60 +1122,6 @@ impl NodeRunner {
 
     fn handle_command(&mut self, command: Command) {
         match command {
-            Command::GetValue {
-                key,
-                result_sender,
-                permit,
-            } => {
-                let query_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .get_record(key.to_bytes().into());
-
-                self.query_id_receivers.insert(
-                    query_id,
-                    QueryResultSender::Value {
-                        sender: result_sender,
-                        _permit: permit,
-                    },
-                );
-            }
-            Command::PutValue {
-                key,
-                value,
-                result_sender,
-                permit,
-            } => {
-                let local_peer_id = *self.swarm.local_peer_id();
-
-                let record = Record {
-                    key: key.into(),
-                    value,
-                    publisher: Some(local_peer_id),
-                    expires: None, // No time expiration.
-                };
-                let query_result = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .put_record(record, Quorum::One);
-
-                match query_result {
-                    Ok(query_id) => {
-                        self.query_id_receivers.insert(
-                            query_id,
-                            QueryResultSender::PutValue {
-                                sender: result_sender,
-                                _permit: permit,
-                            },
-                        );
-                    }
-                    Err(err) => {
-                        warn!(?err, "Failed to put value.");
-                    }
-                }
-            }
             Command::Subscribe {
                 topic,
                 result_sender,
@@ -1472,26 +1269,6 @@ impl NodeRunner {
                     result_sender,
                     IfDisconnected::TryConnect,
                     addresses,
-                );
-            }
-            Command::GetProviders {
-                key,
-                result_sender,
-                permit,
-            } => {
-                let query_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .get_providers(key.clone());
-
-                self.query_id_receivers.insert(
-                    query_id,
-                    QueryResultSender::Providers {
-                        key,
-                        sender: result_sender,
-                        _permit: permit,
-                    },
                 );
             }
             Command::BanPeer { peer_id } => {

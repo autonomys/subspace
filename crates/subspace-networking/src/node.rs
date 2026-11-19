@@ -11,7 +11,6 @@ use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
 use libp2p::gossipsub::{Sha256Topic, SubscriptionError};
-use libp2p::kad::{PeerRecord, RecordKey};
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use std::pin::Pin;
@@ -65,40 +64,6 @@ impl PinnedDrop for TopicSubscription {
                 })
                 .await;
         });
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum GetValueError {
-    /// Failed to send command to the node runner
-    #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] mpsc::SendError),
-    /// Node runner was dropped
-    #[error("Node runner was dropped")]
-    NodeRunnerDropped,
-}
-
-impl From<oneshot::Canceled> for GetValueError {
-    #[inline]
-    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::NodeRunnerDropped
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum PutValueError {
-    /// Failed to send command to the node runner
-    #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] mpsc::SendError),
-    /// Node runner was dropped
-    #[error("Node runner was dropped")]
-    NodeRunnerDropped,
-}
-
-impl From<oneshot::Canceled> for PutValueError {
-    #[inline]
-    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::NodeRunnerDropped
     }
 }
 
@@ -173,26 +138,6 @@ pub enum PublishError {
 }
 
 impl From<oneshot::Canceled> for PublishError {
-    #[inline]
-    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::NodeRunnerDropped
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum GetProvidersError {
-    /// Failed to send command to the node runner
-    #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] mpsc::SendError),
-    /// Node runner was dropped
-    #[error("Node runner was dropped")]
-    NodeRunnerDropped,
-    /// Failed to get providers.
-    #[error("Failed to get providers.")]
-    GetProviders,
-}
-
-impl From<oneshot::Canceled> for GetProvidersError {
     #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
@@ -278,52 +223,6 @@ impl Node {
     /// Node's own local ID.
     pub fn id(&self) -> PeerId {
         self.shared.id
-    }
-
-    /// Return a value from the Kademlia network of the DSN.
-    pub async fn get_value(
-        &self,
-        key: Multihash,
-    ) -> Result<impl Stream<Item = PeerRecord>, GetValueError> {
-        let permit = self.shared.rate_limiter.acquire_permit().await;
-        let (result_sender, result_receiver) = mpsc::unbounded();
-
-        self.shared
-            .command_sender
-            .clone()
-            .send(Command::GetValue {
-                key,
-                result_sender,
-                permit,
-            })
-            .await?;
-
-        // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(result_receiver)
-    }
-
-    /// Puts a value into the Kademlia network of the DSN.
-    pub async fn put_value(
-        &self,
-        key: Multihash,
-        value: Vec<u8>,
-    ) -> Result<impl Stream<Item = ()>, PutValueError> {
-        let permit = self.shared.rate_limiter.acquire_permit().await;
-        let (result_sender, result_receiver) = mpsc::unbounded();
-
-        self.shared
-            .command_sender
-            .clone()
-            .send(Command::PutValue {
-                key,
-                value,
-                result_sender,
-                permit,
-            })
-            .await?;
-
-        // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(result_receiver)
     }
 
     /// Subscribe to some topic on the DSN.
@@ -473,43 +372,6 @@ impl Node {
             .command_sender
             .clone()
             .send(Command::GetClosestPeers {
-                key,
-                result_sender,
-                permit,
-            })
-            .await?;
-
-        // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(result_receiver)
-    }
-
-    /// Get item providers by its key. Initiate 'providers' Kademlia operation.
-    pub async fn get_providers(
-        &self,
-        key: RecordKey,
-    ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
-        self.get_providers_internal(key, true).await
-    }
-
-    async fn get_providers_internal(
-        &self,
-        key: RecordKey,
-        acquire_permit: bool,
-    ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
-        let permit = if acquire_permit {
-            Some(self.shared.rate_limiter.acquire_permit().await)
-        } else {
-            None
-        };
-
-        let (result_sender, result_receiver) = mpsc::unbounded();
-
-        trace!(key = hex::encode(&key), "Starting 'get_providers' request");
-
-        self.shared
-            .command_sender
-            .clone()
-            .send(Command::GetProviders {
                 key,
                 result_sender,
                 permit,
@@ -675,23 +537,15 @@ impl WeakNode {
 }
 
 /// Requests handle for node operations. These operations share the same semaphore permit for
-/// connection and substream limits. It generally serves for the case when we have `get-providers`
-/// operation followed by request-responses. This way we likely share the same connection and
-/// we don't need to obtain separate semaphore permits for the operations.
+/// connection and substream limits. It generally serves for the case when we have
+/// `get-closest-peers` operation followed by request-responses. This way we likely share the same
+/// connection and we don't need to obtain separate semaphore permits for the operations.
 pub struct NodeRequestsBatchHandle {
     node: Node,
     _permit: OwnedSemaphorePermit,
 }
 
 impl NodeRequestsBatchHandle {
-    /// Get item providers by its key. Initiate 'providers' Kademlia operation.
-    pub async fn get_providers(
-        &self,
-        key: RecordKey,
-    ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
-        self.node.get_providers_internal(key, false).await
-    }
-
     /// Get closest peers by key. Initiate 'find_node' Kademlia operation.
     pub async fn get_closest_peers(
         &self,

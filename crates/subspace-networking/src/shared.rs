@@ -8,7 +8,6 @@ use crate::utils::rate_limiter::RateLimiter;
 use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
 use libp2p::gossipsub::{PublishError, Sha256Topic, SubscriptionError};
-use libp2p::kad::{PeerRecord, RecordKey};
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -53,17 +52,6 @@ pub(crate) struct CreatedSubscription {
 
 #[derive(Debug)]
 pub(crate) enum Command {
-    GetValue {
-        key: Multihash,
-        result_sender: mpsc::UnboundedSender<PeerRecord>,
-        permit: OwnedSemaphorePermit,
-    },
-    PutValue {
-        key: Multihash,
-        value: Vec<u8>,
-        result_sender: mpsc::UnboundedSender<()>,
-        permit: OwnedSemaphorePermit,
-    },
     Subscribe {
         topic: Sha256Topic,
         result_sender: oneshot::Sender<Result<CreatedSubscription, SubscriptionError>>,
@@ -93,11 +81,6 @@ pub(crate) enum Command {
         protocol_name: &'static str,
         request: Vec<u8>,
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
-    },
-    GetProviders {
-        key: RecordKey,
-        result_sender: mpsc::UnboundedSender<PeerId>,
-        permit: Option<OwnedSemaphorePermit>,
     },
     BanPeer {
         peer_id: PeerId,
