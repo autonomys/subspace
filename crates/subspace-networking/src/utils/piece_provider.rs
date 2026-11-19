@@ -491,9 +491,11 @@ where
         .collect::<StreamMap<_, _>>();
 
     loop {
-        // Process up to 50% of the pieces concurrently
-        let mut additional_pieces_to_download =
-            (num_pieces / 2).saturating_sub(downloading_stream.len());
+        // Process up to 50% of the pieces concurrently, but at least one, otherwise small batches
+        // would stop after the first round of requests to connected peers
+        let mut additional_pieces_to_download = (num_pieces / 2)
+            .max(1)
+            .saturating_sub(downloading_stream.len());
         if additional_pieces_to_download > 0 {
             trace!(
                 %additional_pieces_to_download,
@@ -625,6 +627,9 @@ where
             }
             break;
         };
+        // Every stream yields a single result, remove it right away so that it is not counted as
+        // being in progress anymore
+        downloading_stream.remove(&piece_index);
         process_downloading_result(
             piece_index,
             result,

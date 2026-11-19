@@ -1,6 +1,6 @@
 use crate::protocols::request_response::handlers::cached_piece_by_index::{
     CachedPieceByIndexRequest, CachedPieceByIndexRequestHandler, CachedPieceByIndexResponse,
-    PieceResult,
+    ClosestPeers, PieceResult,
 };
 use crate::utils::piece_provider::{NoPieceValidator, PieceProvider};
 use crate::{Config, KademliaMode, Node, construct};
@@ -96,6 +96,24 @@ async fn get_piece_from_cache() {
 
     let (_server, server_address) = start_server(PieceResult::Piece(piece.clone())).await;
     let piece_provider = start_client(server_address).await;
+
+    assert_eq!(
+        piece_provider.get_piece_from_cache(piece_index).await,
+        Some(piece)
+    );
+}
+
+#[tokio::test]
+async fn get_piece_from_cache_through_closest_peers() {
+    let piece_index = PieceIndex::ZERO;
+    let piece = Piece::default();
+
+    let (holder, holder_address) = start_server(PieceResult::Piece(piece.clone())).await;
+    let (_referrer, referrer_address) = start_server(PieceResult::ClosestPeers(
+        ClosestPeers::from(vec![(holder.id(), vec![holder_address])]),
+    ))
+    .await;
+    let piece_provider = start_client(referrer_address).await;
 
     assert_eq!(
         piece_provider.get_piece_from_cache(piece_index).await,
