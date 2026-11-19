@@ -403,29 +403,6 @@ where
         // For PoT justifications we only need to check the seed and number of checkpoints, the rest
         // was already checked during stateless block verification.
         {
-            let runtime_api = self.client.runtime_api();
-            let parent_pot_parameters = runtime_api
-                .pot_parameters(parent_hash)
-                .map_err(|_| Error::ParentUnavailable(parent_hash, block_hash))?;
-
-            let pot_input = pot_next_slot_input::<Block>(
-                parent_header.number(),
-                parent_slot,
-                &parent_pot_parameters,
-                self.pot_verifier.genesis_seed(),
-                parent_pre_digest.pot_info().proof_of_time(),
-            );
-
-            // Ensure proof of time is valid according to parent block
-            if !self.pot_verifier.is_output_valid(
-                pot_input,
-                pre_digest.slot() - parent_slot,
-                pre_digest.pot_info().proof_of_time(),
-                parent_pot_parameters.next_parameters_change(),
-            ) {
-                return Err(Error::InvalidProofOfTime);
-            }
-
             let Some(subspace_justification) = justifications
                 .as_ref()
                 .and_then(|justifications| {
@@ -486,6 +463,31 @@ where
                 if checkpoints.len() as u64 != (*future_slot - *parent_future_slot) {
                     return Err(Error::InvalidSubspaceJustificationContents);
                 }
+            }
+
+            // This is checked last, since it walks over all slots between the parent and this
+            // block, whose number is bounded by the number of checkpoints checked above
+            let runtime_api = self.client.runtime_api();
+            let parent_pot_parameters = runtime_api
+                .pot_parameters(parent_hash)
+                .map_err(|_| Error::ParentUnavailable(parent_hash, block_hash))?;
+
+            let pot_input = pot_next_slot_input::<Block>(
+                parent_header.number(),
+                parent_slot,
+                &parent_pot_parameters,
+                self.pot_verifier.genesis_seed(),
+                parent_pre_digest.pot_info().proof_of_time(),
+            );
+
+            // Ensure proof of time is valid according to parent block
+            if !self.pot_verifier.is_output_valid(
+                pot_input,
+                pre_digest.slot() - parent_slot,
+                pre_digest.pot_info().proof_of_time(),
+                parent_pot_parameters.next_parameters_change(),
+            ) {
+                return Err(Error::InvalidProofOfTime);
             }
         }
 
