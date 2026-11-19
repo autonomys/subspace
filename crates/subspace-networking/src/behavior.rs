@@ -23,14 +23,10 @@ use libp2p::PeerId;
 use libp2p::allow_block_list::{Behaviour as AllowBlockListBehaviour, BlockedPeers};
 use libp2p::autonat::Event as AutonatEvent;
 use libp2p::connection_limits::ConnectionLimits;
-use libp2p::gossipsub::{
-    Behaviour as Gossipsub, Config as GossipsubConfig, Event as GossipsubEvent, MessageAuthenticity,
-};
 use libp2p::identify::{Behaviour as Identify, Config as IdentifyConfig, Event as IdentifyEvent};
 use libp2p::kad::{Behaviour as Kademlia, Config as KademliaConfig, Event as KademliaEvent};
 use libp2p::ping::{Behaviour as Ping, Event as PingEvent};
 use libp2p::swarm::NetworkBehaviour;
-use libp2p::swarm::behaviour::toggle::Toggle;
 use void::Void as VoidEvent;
 
 type BlockListBehaviour = AllowBlockListBehaviour<BlockedPeers>;
@@ -42,8 +38,6 @@ pub(crate) struct BehaviorConfig {
     pub(crate) identify: IdentifyConfig,
     /// The configuration for the [`Kademlia`] behaviour.
     pub(crate) kademlia: KademliaConfig,
-    /// The configuration for the [`Gossipsub`] behaviour.
-    pub(crate) gossipsub: Option<GossipsubConfig>,
     /// The configuration for the [`RequestResponsesBehaviour`] protocol.
     pub(crate) request_response_protocols: Vec<Box<dyn RequestHandler>>,
     /// The upper bound for the number of concurrent inbound + outbound streams for request/response
@@ -65,7 +59,6 @@ pub(crate) struct Behavior {
     pub(crate) connection_limits: ConnectionLimitsBehaviour,
     pub(crate) identify: Identify,
     pub(crate) kademlia: Kademlia<DummyRecordStore>,
-    pub(crate) gossipsub: Toggle<Gossipsub>,
     pub(crate) ping: Ping,
     pub(crate) request_response: RequestResponseFactoryBehaviour,
     pub(crate) block_list: BlockListBehaviour,
@@ -77,23 +70,10 @@ impl Behavior {
     pub(crate) fn new(config: BehaviorConfig) -> Self {
         let kademlia = Kademlia::with_config(config.peer_id, DummyRecordStore, config.kademlia);
 
-        let gossipsub = config
-            .gossipsub
-            .map(|gossip_config| {
-                Gossipsub::new(
-                    // TODO: Do we want message signing?
-                    MessageAuthenticity::Anonymous,
-                    gossip_config,
-                )
-                .expect("Correct configuration")
-            })
-            .into();
-
         Self {
             connection_limits: ConnectionLimitsBehaviour::new(config.connection_limits),
             identify: Identify::new(config.identify),
             kademlia,
-            gossipsub,
             ping: Ping::default(),
             request_response: RequestResponseFactoryBehaviour::new(
                 config.request_response_protocols,
@@ -113,7 +93,6 @@ impl Behavior {
 pub(crate) enum Event {
     Identify(IdentifyEvent),
     Kademlia(KademliaEvent),
-    Gossipsub(GossipsubEvent),
     Ping(PingEvent),
     RequestResponse(RequestResponseEvent),
     /// Event stub for connection limits and block list behaviours. We won't receive such events.

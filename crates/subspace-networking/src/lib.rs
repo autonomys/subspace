@@ -17,9 +17,7 @@ pub use crate::behavior::persistent_parameters::{
     KnownPeersManager, KnownPeersManagerConfig, KnownPeersManagerPersistenceError,
     KnownPeersRegistry, PeerAddressRemovedEvent,
 };
-pub use crate::node::{
-    GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription, WeakNode,
-};
+pub use crate::node::{GetClosestPeersError, Node, SendRequestError, WeakNode};
 pub use crate::node_runner::NodeRunner;
 pub use constructor::{Config, CreationError, KademliaMode, construct, peer_id};
 pub use libp2p;

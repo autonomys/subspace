@@ -17,10 +17,6 @@ use backon::ExponentialBuilder;
 use futures::channel::mpsc;
 use libp2p::autonat::Config as AutonatConfig;
 use libp2p::connection_limits::ConnectionLimits;
-use libp2p::gossipsub::{
-    Config as GossipsubConfig, ConfigBuilder as GossipsubConfigBuilder,
-    Message as GossipsubMessage, MessageId, ValidationMode,
-};
 use libp2p::identify::Config as IdentifyConfig;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
@@ -38,14 +34,12 @@ use std::iter::Empty;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io, iter};
-use subspace_core_primitives::hashes;
 use subspace_core_primitives::pieces::Piece;
 use thiserror::Error;
 use tracing::{debug, info};
 
 const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
 const KADEMLIA_PROTOCOL: &str = "/subspace/kad/0.1.0";
-const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 
 /// Defines max_negotiating_inbound_streams constant for the swarm.
 /// It must be set for large plots.
@@ -63,9 +57,6 @@ const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 80;
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(40);
 const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: u32 = 3;
 const MAX_CONCURRENT_STREAMS_PER_CONNECTION: usize = 10;
-// TODO: Consider moving this constant to configuration or removing `Toggle` wrapper when we find a
-//  use-case for gossipsub protocol.
-const ENABLE_GOSSIP_PROTOCOL: bool = false;
 
 const TEMPORARY_BANS_CACHE_SIZE: u32 = 10_000;
 const TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
@@ -176,8 +167,6 @@ pub struct Config {
     pub identify: IdentifyConfig,
     /// The configuration for the Kademlia behaviour.
     pub kademlia: KademliaConfig,
-    /// The configuration for the Gossip behaviour.
-    pub gossipsub: Option<GossipsubConfig>,
     /// Yamux multiplexing configuration.
     pub yamux_config: YamuxConfig,
     /// Should non-global addresses be added to the DHT?
@@ -275,20 +264,6 @@ impl Config {
         // They silently downgrade from yamux 0.13 to 0.12, which has a remote DoS vulnerability.
         let yamux_config = YamuxConfig::default();
 
-        let gossipsub = ENABLE_GOSSIP_PROTOCOL.then(|| {
-            GossipsubConfigBuilder::default()
-                .protocol_id_prefix(GOSSIPSUB_PROTOCOL_PREFIX)
-                // TODO: Do we want message signing?
-                .validation_mode(ValidationMode::None)
-                // To content-address message, we can take the hash of message and use it as an ID.
-                .message_id_fn(|message: &GossipsubMessage| {
-                    MessageId::from(*hashes::blake3_hash(&message.data))
-                })
-                .max_transmit_size(2 * 1024 * 1024) // 2MB
-                .build()
-                .expect("Default config for gossipsub is always correct; qed")
-        });
-
         let protocol_version = format!("/subspace/2/{protocol_version}");
         let identify = IdentifyConfig::new(protocol_version.clone(), keypair.public());
 
@@ -305,7 +280,6 @@ impl Config {
             timeout: Duration::from_secs(10),
             identify,
             kademlia,
-            gossipsub,
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             known_peers_registry: StubNetworkingParametersManager.boxed(),
@@ -362,7 +336,6 @@ pub fn construct(config: Config) -> Result<(Node, NodeRunner), CreationError> {
         timeout,
         identify,
         kademlia,
-        gossipsub,
         yamux_config,
         allow_non_global_addresses_in_dht,
         initial_random_query_interval,
@@ -417,7 +390,6 @@ pub fn construct(config: Config) -> Result<(Node, NodeRunner), CreationError> {
         peer_id: local_peer_id,
         identify,
         kademlia,
-        gossipsub,
         request_response_protocols,
         request_response_max_concurrent_streams: {
             let max_num_connections = max_established_incoming_connections as usize

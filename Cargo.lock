@@ -7251,7 +7251,6 @@ source = "git+https://github.com/autonomys/rust-libp2p?rev=5914c8763c6073b31208c
 dependencies = [
  "futures",
  "libp2p-core",
- "libp2p-gossipsub",
  "libp2p-identify",
  "libp2p-identity 0.3.0",
  "libp2p-kad",
@@ -15657,10 +15656,8 @@ dependencies = [
  "libp2p-swarm-test",
  "memmap2 0.9.12",
  "multihash",
- "nohash-hasher",
  "parity-scale-codec",
  "parking_lot 0.13.0",
- "pin-project",
  "prometheus-client",
  "rand 0.10.3",
  "schnellru",

@@ -3,69 +3,18 @@ mod tests;
 
 use crate::protocols::request_response::handlers::generic_request_handler::GenericRequest;
 use crate::protocols::request_response::request_response_factory;
-use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
+use crate::shared::{Command, PeerDiscovered, Shared};
 use crate::utils::HandlerFn;
 use crate::utils::multihash::Multihash;
-use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
-use libp2p::gossipsub::{Sha256Topic, SubscriptionError};
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
-use std::pin::Pin;
 use std::sync::{Arc, Weak};
-use std::task::{Context, Poll};
 use thiserror::Error;
 use tokio::sync::OwnedSemaphorePermit;
 use tracing::{debug, trace};
-
-/// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
-#[derive(Debug)]
-#[pin_project::pin_project(PinnedDrop)]
-pub struct TopicSubscription {
-    topic: Option<Sha256Topic>,
-    subscription_id: usize,
-    command_sender: Option<mpsc::Sender<Command>>,
-    #[pin]
-    receiver: mpsc::UnboundedReceiver<Bytes>,
-    _permit: OwnedSemaphorePermit,
-}
-
-impl Stream for TopicSubscription {
-    type Item = Bytes;
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project().receiver.poll_next(cx)
-    }
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.receiver.size_hint()
-    }
-}
-
-#[pin_project::pinned_drop]
-impl PinnedDrop for TopicSubscription {
-    fn drop(mut self: Pin<&mut Self>) {
-        let topic = self
-            .topic
-            .take()
-            .expect("Always specified on creation and only removed on drop; qed");
-        let subscription_id = self.subscription_id;
-        let mut command_sender = self
-            .command_sender
-            .take()
-            .expect("Always specified on creation and only removed on drop; qed");
-
-        tokio::spawn(async move {
-            // Doesn't matter if node runner is already dropped.
-            let _ = command_sender
-                .send(Command::Unsubscribe {
-                    topic,
-                    subscription_id,
-                })
-                .await;
-        });
-    }
-}
 
 /// Defines errors for `get-closest-peers` operation.
 #[derive(Debug, Error)]
@@ -97,47 +46,6 @@ pub enum GetClosestLocalPeersError {
 }
 
 impl From<oneshot::Canceled> for GetClosestLocalPeersError {
-    #[inline]
-    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::NodeRunnerDropped
-    }
-}
-
-/// Defines errors for `subscribe` operation.
-#[derive(Debug, Error)]
-pub enum SubscribeError {
-    /// Failed to send command to the node runner
-    #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] mpsc::SendError),
-    /// Node runner was dropped
-    #[error("Node runner was dropped")]
-    NodeRunnerDropped,
-    /// Failed to create subscription.
-    #[error("Failed to create subscription: {0}")]
-    Subscription(#[from] SubscriptionError),
-}
-
-impl From<oneshot::Canceled> for SubscribeError {
-    #[inline]
-    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::NodeRunnerDropped
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum PublishError {
-    /// Failed to send command to the node runner
-    #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] mpsc::SendError),
-    /// Node runner was dropped
-    #[error("Node runner was dropped")]
-    NodeRunnerDropped,
-    /// Failed to publish message.
-    #[error("Failed to publish message: {0}")]
-    Publish(#[from] libp2p::gossipsub::PublishError),
-}
-
-impl From<oneshot::Canceled> for PublishError {
     #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
@@ -223,52 +131,6 @@ impl Node {
     /// Node's own local ID.
     pub fn id(&self) -> PeerId {
         self.shared.id
-    }
-
-    /// Subscribe to some topic on the DSN.
-    pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
-        let permit = self.shared.rate_limiter.acquire_permit().await;
-        let (result_sender, result_receiver) = oneshot::channel();
-
-        self.shared
-            .command_sender
-            .clone()
-            .send(Command::Subscribe {
-                topic: topic.clone(),
-                result_sender,
-            })
-            .await?;
-
-        let CreatedSubscription {
-            subscription_id,
-            receiver,
-        } = result_receiver.await??;
-
-        Ok(TopicSubscription {
-            topic: Some(topic),
-            subscription_id,
-            command_sender: Some(self.shared.command_sender.clone()),
-            receiver,
-            _permit: permit,
-        })
-    }
-
-    /// Subscribe a messgo to some topic on the DSN.
-    pub async fn publish(&self, topic: Sha256Topic, message: Vec<u8>) -> Result<(), PublishError> {
-        let _permit = self.shared.rate_limiter.acquire_permit().await;
-        let (result_sender, result_receiver) = oneshot::channel();
-
-        self.shared
-            .command_sender
-            .clone()
-            .send(Command::Publish {
-                topic,
-                message,
-                result_sender,
-            })
-            .await?;
-
-        result_receiver.await?.map_err(PublishError::Publish)
     }
 
     async fn send_generic_request_internal<Request>(
