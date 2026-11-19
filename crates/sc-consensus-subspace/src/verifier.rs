@@ -201,17 +201,13 @@ where
         n < sample_size
     }
 
-    /// Check a header has been signed correctly and whether solution is correct. If the slot is too
-    /// far in the future, an error will be returned. If successful, returns the pre-header and the
-    /// digest item containing the seal.
+    /// Check a header has been signed correctly and whether solution and PoT justification are
+    /// correct. If successful, returns the pre-header and the digest item containing the seal.
     ///
     /// The seal must be the last digest. Otherwise, the whole header is considered unsigned. This
     /// is required for security and must not be changed.
     ///
-    /// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
-    ///
-    /// `pre_digest` argument is optional in case it is available to avoid doing the work of
-    /// extracting it from the header twice.
+    /// The returned seal digest item will always return `Some` when used with `as_subspace_seal`.
     fn check_header(
         &self,
         params: VerificationParams<'_, Block::Header>,
