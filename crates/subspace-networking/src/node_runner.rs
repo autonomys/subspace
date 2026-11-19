@@ -9,32 +9,26 @@ use crate::constructor::temporary_bans::TemporaryBans;
 use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, IfDisconnected,
 };
-use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
+use crate::shared::{Command, PeerDiscovered, Shared};
 use crate::utils::{SubspaceMetrics, is_global_address_or_dns, strip_peer_id};
 use async_lock::Mutex as AsyncMutex;
-use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
 use libp2p::autonat::{Event as AutonatEvent, NatStatus, OutboundProbeEvent};
 use libp2p::core::ConnectedPoint;
-use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::{
     Behaviour as Kademlia, BootstrapOk, Event as KademliaEvent, GetClosestPeersError,
-    GetClosestPeersOk, GetProvidersError, GetProvidersOk, GetRecordError, GetRecordOk,
-    InboundRequest, KBucketKey, PeerRecord, ProgressStep, PutRecordOk, QueryId, QueryResult,
-    Quorum, Record, RecordKey,
+    GetClosestPeersOk, InboundRequest, KBucketKey, ProgressStep, QueryId, QueryResult,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{Multiaddr, PeerId, Swarm, TransportError};
-use nohash_hasher::IntMap;
 use parking_lot::Mutex;
-use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::pin::Pin;
@@ -45,7 +39,7 @@ use std::{fmt, slice};
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::task::yield_now;
 use tokio::time::Sleep;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
 /// The maximum time between random Kademlia peer DHT queries.
 const MAX_RANDOM_QUERY_INTERVAL: Duration = Duration::from_secs(60);
@@ -60,26 +54,10 @@ const PEER_INFO_LOG_INTERVAL: Duration = Duration::from_secs(300);
 const MAX_LISTEN_ADDRESSES: usize = 30;
 
 enum QueryResultSender {
-    Value {
-        sender: mpsc::UnboundedSender<PeerRecord>,
-        // Just holding onto permit while data structure is not dropped
-        _permit: OwnedSemaphorePermit,
-    },
     ClosestPeers {
         sender: mpsc::UnboundedSender<PeerId>,
         // Just holding onto permit while data structure is not dropped
         _permit: Option<OwnedSemaphorePermit>,
-    },
-    Providers {
-        key: RecordKey,
-        sender: mpsc::UnboundedSender<PeerId>,
-        // Just holding onto permit while data structure is not dropped
-        _permit: Option<OwnedSemaphorePermit>,
-    },
-    PutValue {
-        sender: mpsc::UnboundedSender<()>,
-        // Just holding onto permit while data structure is not dropped
-        _permit: OwnedSemaphorePermit,
     },
     Bootstrap {
         sender: mpsc::UnboundedSender<()>,
@@ -107,12 +85,6 @@ pub struct NodeRunner {
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
     query_id_receivers: HashMap<QueryId, QueryResultSender>,
-    /// Global subscription counter, is assigned to every (logical) subscription and is used for
-    /// unsubscribing.
-    next_subscription_id: usize,
-    /// Topic subscription senders for logical subscriptions (multiple logical subscriptions can be
-    /// present for the same physical subscription).
-    topic_subscription_senders: HashMap<TopicHash, IntMap<usize, mpsc::UnboundedSender<Bytes>>>,
     random_query_timeout: Pin<Box<Fuse<Sleep>>>,
     /// Defines an interval between periodical tasks.
     periodical_tasks_interval: Pin<Box<Fuse<Sleep>>>,
@@ -208,8 +180,6 @@ impl NodeRunner {
             shared_weak,
             next_random_query_interval,
             query_id_receivers: HashMap::default(),
-            next_subscription_id: 0,
-            topic_subscription_senders: HashMap::default(),
             // We'll make the first query right away and continue at the interval.
             random_query_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             // We'll make the first dial right away and continue at the interval.
@@ -480,9 +450,6 @@ impl NodeRunner {
             }
             SwarmEvent::Behaviour(Event::Kademlia(event)) => {
                 self.handle_kademlia_event(event).await;
-            }
-            SwarmEvent::Behaviour(Event::Gossipsub(event)) => {
-                self.handle_gossipsub_event(event).await;
             }
             SwarmEvent::Behaviour(Event::RequestResponse(event)) => {
                 self.handle_request_response_event(event).await;
@@ -988,137 +955,6 @@ impl NodeRunner {
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
-                step: ProgressStep { last, .. },
-                id,
-                result: QueryResult::GetRecord(result),
-                ..
-            } => {
-                let mut cancelled = false;
-                if let Some(QueryResultSender::Value { sender, .. }) =
-                    self.query_id_receivers.get(&id)
-                {
-                    match result {
-                        Ok(GetRecordOk::FoundRecord(rec)) => {
-                            trace!(
-                                key = hex::encode(&rec.record.key),
-                                "Get record query succeeded",
-                            );
-
-                            cancelled = Self::unbounded_send_and_cancel_on_error(
-                                &mut self.swarm.behaviour_mut().kademlia,
-                                sender,
-                                rec,
-                                "GetRecordOk",
-                                &id,
-                            ) || cancelled;
-                        }
-                        Ok(GetRecordOk::FinishedWithNoAdditionalRecord { .. }) => {
-                            trace!("Get record query yielded no results");
-                        }
-                        Err(error) => match error {
-                            GetRecordError::NotFound { key, .. } => {
-                                debug!(
-                                    key = hex::encode(&key),
-                                    "Get record query failed with no results",
-                                );
-                            }
-                            GetRecordError::Timeout { key } => {
-                                debug!(key = hex::encode(&key), "Get record query timed out");
-                            }
-                        },
-                    }
-                }
-
-                if last || cancelled {
-                    // There will be no more progress
-                    self.query_id_receivers.remove(&id);
-                }
-            }
-            KademliaEvent::OutboundQueryProgressed {
-                step: ProgressStep { last, .. },
-                id,
-                result: QueryResult::GetProviders(result),
-                ..
-            } => {
-                let mut cancelled = false;
-                if let Some(QueryResultSender::Providers { key, sender, .. }) =
-                    self.query_id_receivers.get(&id)
-                {
-                    match result {
-                        Ok(GetProvidersOk::FoundProviders { key, providers }) => {
-                            trace!(
-                                key = hex::encode(&key),
-                                "Get providers query yielded {} results",
-                                providers.len(),
-                            );
-
-                            for provider in providers {
-                                cancelled = Self::unbounded_send_and_cancel_on_error(
-                                    &mut self.swarm.behaviour_mut().kademlia,
-                                    sender,
-                                    provider,
-                                    "GetProvidersOk",
-                                    &id,
-                                ) || cancelled;
-                            }
-                        }
-                        Ok(GetProvidersOk::FinishedWithNoAdditionalRecord { closest_peers }) => {
-                            trace!(
-                                key = hex::encode(key),
-                                closest_peers = %closest_peers.len(),
-                                "Get providers query yielded no results"
-                            );
-                        }
-                        Err(error) => {
-                            let GetProvidersError::Timeout { key, .. } = error;
-
-                            debug!(
-                                key = hex::encode(&key),
-                                "Get providers query failed with no results",
-                            );
-                        }
-                    }
-                }
-
-                if last || cancelled {
-                    // There will be no more progress
-                    self.query_id_receivers.remove(&id);
-                }
-            }
-            KademliaEvent::OutboundQueryProgressed {
-                step: ProgressStep { last, .. },
-                id,
-                result: QueryResult::PutRecord(result),
-                ..
-            } => {
-                let mut cancelled = false;
-                if let Some(QueryResultSender::PutValue { sender, .. }) =
-                    self.query_id_receivers.get(&id)
-                {
-                    match result {
-                        Ok(PutRecordOk { key, .. }) => {
-                            trace!("Put record query for {} succeeded", hex::encode(&key));
-
-                            cancelled = Self::unbounded_send_and_cancel_on_error(
-                                &mut self.swarm.behaviour_mut().kademlia,
-                                sender,
-                                (),
-                                "PutRecordOk",
-                                &id,
-                            ) || cancelled;
-                        }
-                        Err(error) => {
-                            debug!(?error, "Put record query failed.");
-                        }
-                    }
-                }
-
-                if last || cancelled {
-                    // There will be no more progress
-                    self.query_id_receivers.remove(&id);
-                }
-            }
-            KademliaEvent::OutboundQueryProgressed {
                 step: ProgressStep { last, count },
                 id,
                 result: QueryResult::Bootstrap(result),
@@ -1178,19 +1014,6 @@ impl NodeRunner {
             true
         } else {
             false
-        }
-    }
-
-    async fn handle_gossipsub_event(&mut self, event: GossipsubEvent) {
-        if let GossipsubEvent::Message { message, .. } = event
-            && let Some(senders) = self.topic_subscription_senders.get(&message.topic)
-        {
-            let bytes = Bytes::from(message.data);
-
-            for sender in senders.values() {
-                // Doesn't matter if receiver is still listening for messages or not.
-                let _ = sender.unbounded_send(bytes.clone());
-            }
         }
     }
 
@@ -1271,160 +1094,6 @@ impl NodeRunner {
 
     fn handle_command(&mut self, command: Command) {
         match command {
-            Command::GetValue {
-                key,
-                result_sender,
-                permit,
-            } => {
-                let query_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .get_record(key.to_bytes().into());
-
-                self.query_id_receivers.insert(
-                    query_id,
-                    QueryResultSender::Value {
-                        sender: result_sender,
-                        _permit: permit,
-                    },
-                );
-            }
-            Command::PutValue {
-                key,
-                value,
-                result_sender,
-                permit,
-            } => {
-                let local_peer_id = *self.swarm.local_peer_id();
-
-                let record = Record {
-                    key: key.into(),
-                    value,
-                    publisher: Some(local_peer_id),
-                    expires: None, // No time expiration.
-                };
-                let query_result = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .put_record(record, Quorum::One);
-
-                match query_result {
-                    Ok(query_id) => {
-                        self.query_id_receivers.insert(
-                            query_id,
-                            QueryResultSender::PutValue {
-                                sender: result_sender,
-                                _permit: permit,
-                            },
-                        );
-                    }
-                    Err(err) => {
-                        warn!(?err, "Failed to put value.");
-                    }
-                }
-            }
-            Command::Subscribe {
-                topic,
-                result_sender,
-            } => {
-                if !self.swarm.behaviour().gossipsub.is_enabled() {
-                    panic!("Gossipsub protocol is disabled.");
-                }
-
-                let topic_hash = topic.hash();
-                let (sender, receiver) = mpsc::unbounded();
-
-                // Unconditionally create subscription ID, code is simpler this way.
-                let subscription_id = self.next_subscription_id;
-                self.next_subscription_id += 1;
-
-                let created_subscription = CreatedSubscription {
-                    subscription_id,
-                    receiver,
-                };
-
-                match self.topic_subscription_senders.entry(topic_hash) {
-                    Entry::Occupied(mut entry) => {
-                        // In case subscription already exists, just add one more sender to it.
-                        if result_sender.send(Ok(created_subscription)).is_ok() {
-                            entry.get_mut().insert(subscription_id, sender);
-                        }
-                    }
-                    Entry::Vacant(entry) => {
-                        // Otherwise subscription needs to be created.
-
-                        if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut() {
-                            match gossipsub.subscribe(&topic) {
-                                Ok(true) => {
-                                    if result_sender.send(Ok(created_subscription)).is_ok() {
-                                        entry
-                                            .insert(IntMap::from_iter([(subscription_id, sender)]));
-                                    }
-                                }
-                                Ok(false) => {
-                                    panic!(
-                                        "Logic error, topic subscription wasn't created, this \
-                                        must never happen"
-                                    );
-                                }
-                                Err(error) => {
-                                    let _ = result_sender.send(Err(error));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            Command::Unsubscribe {
-                topic,
-                subscription_id,
-            } => {
-                if !self.swarm.behaviour().gossipsub.is_enabled() {
-                    panic!("Gossipsub protocol is disabled.");
-                }
-
-                if let Entry::Occupied(mut entry) =
-                    self.topic_subscription_senders.entry(topic.hash())
-                {
-                    entry.get_mut().remove(&subscription_id);
-
-                    // If last sender was removed - unsubscribe.
-                    if entry.get().is_empty() {
-                        entry.remove_entry();
-
-                        if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut()
-                            && !gossipsub.unsubscribe(&topic)
-                        {
-                            warn!(
-                                "Can't unsubscribe from topic {topic} because subscription doesn't exist, \
-                                    this is a logic error in the subspace or swarm libraries"
-                            );
-                        }
-                    }
-                } else {
-                    error!(
-                        "Can't unsubscribe from topic {topic} because subscription doesn't exist, \
-                        this is a logic error in the subspace library"
-                    );
-                }
-            }
-            Command::Publish {
-                topic,
-                message,
-                result_sender,
-            } => {
-                if !self.swarm.behaviour().gossipsub.is_enabled() {
-                    panic!("Gossipsub protocol is disabled.");
-                }
-
-                if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut() {
-                    // Doesn't matter if receiver still waits for response.
-                    let _ =
-                        result_sender.send(gossipsub.publish(topic, message).map(|_message_id| ()));
-                }
-            }
             Command::GetClosestPeers {
                 key,
                 result_sender,
@@ -1472,26 +1141,6 @@ impl NodeRunner {
                     result_sender,
                     IfDisconnected::TryConnect,
                     addresses,
-                );
-            }
-            Command::GetProviders {
-                key,
-                result_sender,
-                permit,
-            } => {
-                let query_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .get_providers(key.clone());
-
-                self.query_id_receivers.insert(
-                    query_id,
-                    QueryResultSender::Providers {
-                        key,
-                        sender: result_sender,
-                        _permit: permit,
-                    },
                 );
             }
             Command::BanPeer { peer_id } => {
@@ -1558,9 +1207,6 @@ impl NodeRunner {
                 }
                 SwarmEvent::Behaviour(Event::Kademlia(kademlia_event)) => {
                     metrics.record(kademlia_event);
-                }
-                SwarmEvent::Behaviour(Event::Gossipsub(gossipsub_event)) => {
-                    metrics.record(gossipsub_event);
                 }
                 // TODO: implement in the upstream repository
                 // SwarmEvent::Behaviour(Event::RequestResponse(request_response_event)) => {

@@ -1,5 +1,8 @@
 //! Provides methods to retrieve pieces from DSN.
 
+#[cfg(test)]
+mod tests;
+
 use crate::constructor::DummyRecordStore;
 use crate::protocols::request_response::handlers::cached_piece_by_index::{
     CachedPieceByIndexRequest, CachedPieceByIndexResponse, PieceResult,
@@ -16,16 +19,16 @@ use futures::future::FusedFuture;
 use futures::stream::FuturesUnordered;
 use futures::task::noop_waker_ref;
 use futures::{FutureExt, Stream, StreamExt, stream};
-use libp2p::kad::{Behaviour as Kademlia, KBucketKey, RecordKey};
+use libp2p::kad::{Behaviour as Kademlia, KBucketKey};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{Multiaddr, PeerId};
 use rand::prelude::*;
 use std::any::type_name;
 use std::collections::{HashMap, HashSet};
-use std::fmt;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::{fmt, iter};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tokio_stream::StreamMap;
 use tracing::{Instrument, debug, trace, warn};
@@ -141,53 +144,14 @@ where
     }
 
     /// Returns piece by its index from farmer's piece cache (L2)
+    // TODO: Implement more narrowly focused single piece retrieval instead of reusing batch
+    //  retrieval logic
     pub async fn get_piece_from_cache(&self, piece_index: PieceIndex) -> Option<Piece> {
-        let key = RecordKey::from(piece_index.to_multihash());
-
-        let request_batch = self.node.get_requests_batch_handle().await;
-        let mut get_providers_stream = request_batch
-            .get_providers(key.clone())
+        self.get_from_cache(iter::once(piece_index))
             .await
-            .inspect_err(|err| warn!(%piece_index,?key, ?err, "get_providers returned an error"))
-            .ok()?;
-
-        let key = hex::encode(&key);
-        while let Some(provider_id) = get_providers_stream.next().await {
-            trace!(%piece_index, key, %provider_id, "get_providers returned an item");
-
-            let Ok(PieceByIndexResponse {
-                piece,
-                cached_pieces: _,
-            }) = request_batch
-                .send_generic_request(
-                    provider_id,
-                    Vec::new(),
-                    PieceByIndexRequest {
-                        piece_index,
-                        cached_pieces: Arc::default(),
-                    },
-                )
-                .await
-                .inspect_err(
-                    |error| debug!(%piece_index, key, %provider_id, ?error, "Piece request failed"),
-                )
-            else {
-                continue;
-            };
-
-            if let Some(piece) = piece {
-                trace!(%piece_index, key, %provider_id, "Piece request succeeded");
-
-                return self
-                    .piece_validator
-                    .validate_piece(provider_id, piece_index, piece)
-                    .await;
-            } else {
-                debug!(%piece_index, key, %provider_id, "Piece request returned empty piece");
-            }
-        }
-
-        None
+            .next()
+            .await
+            .and_then(|(_piece_index, maybe_piece)| maybe_piece)
     }
 
     /// Get piece from a particular peer.
@@ -527,9 +491,11 @@ where
         .collect::<StreamMap<_, _>>();
 
     loop {
-        // Process up to 50% of the pieces concurrently
-        let mut additional_pieces_to_download =
-            (num_pieces / 2).saturating_sub(downloading_stream.len());
+        // Process up to 50% of the pieces concurrently, but at least one, otherwise small batches
+        // would stop after the first round of requests to connected peers
+        let mut additional_pieces_to_download = (num_pieces / 2)
+            .max(1)
+            .saturating_sub(downloading_stream.len());
         if additional_pieces_to_download > 0 {
             trace!(
                 %additional_pieces_to_download,
@@ -661,6 +627,9 @@ where
             }
             break;
         };
+        // Every stream yields a single result, remove it right away so that it is not counted as
+        // being in progress anymore
+        downloading_stream.remove(&piece_index);
         process_downloading_result(
             piece_index,
             result,

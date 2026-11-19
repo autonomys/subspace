@@ -27,13 +27,11 @@ fs2.workspace = true
 futures.workspace = true
 futures-timer.workspace = true
 hex.workspace = true
-libp2p = { workspace = true, features = ["autonat", "dns", "gossipsub", "identify", "kad", "macros", "metrics", "noise", "ping", "plaintext", "request-response", "serde", "tcp", "tokio", "yamux"] }
+libp2p = { workspace = true, features = ["autonat", "dns", "identify", "kad", "macros", "metrics", "noise", "ping", "plaintext", "request-response", "serde", "tcp", "tokio", "yamux"] }
 memmap2.workspace = true
 multihash = { workspace = true, features = ["scale-codec"] }
-nohash-hasher.workspace = true
 parity-scale-codec = { workspace = true, features = ["std"] }
 parking_lot.workspace = true
-pin-project.workspace = true
 prometheus-client.workspace = true
 rand = { workspace = true, features = ["thread_rng"] }
 schnellru.workspace = true
