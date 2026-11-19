@@ -71,6 +71,9 @@ pub enum VerificationError<Header: HeaderT> {
     /// Invalid proof of time
     #[error("Invalid proof of time")]
     InvalidProofOfTime,
+    /// Adding block authoring delay to the slot overflows
+    #[error("Future slot of slot {0} overflows")]
+    FutureSlotOverflow(Slot),
     /// Verification error
     #[error("Verification error on slot {0:?}: {1:?}")]
     VerificationError(Slot, subspace_verification::Error),
@@ -264,7 +267,10 @@ where
                 return Err(VerificationError::InvalidSubspaceJustificationContents);
             }
 
-            let future_slot = slot + self.chain_constants.block_authoring_delay();
+            let future_slot = Slot::from(
+                slot.checked_add(*self.chain_constants.block_authoring_delay())
+                    .ok_or(VerificationError::FutureSlotOverflow(slot))?,
+            );
             let first_slot_to_check = Slot::from(
                 future_slot
                     .checked_sub(checkpoints.len() as u64 - 1)
@@ -485,7 +491,7 @@ where
             .load(Ordering::Relaxed)
             .saturating_sub(BlockNumber::from(*pre_header.number()));
         let slot_now = if diff_in_blocks > 0 {
-            slot + Slot::from(
+            slot.saturating_add(
                 u64::from(diff_in_blocks) * self.chain_constants.slot_probability().1
                     / self.chain_constants.slot_probability().0,
             )

@@ -104,6 +104,9 @@ pub enum Error<Header: HeaderT> {
     /// Invalid proof of time
     #[error("Invalid proof of time")]
     InvalidProofOfTime,
+    /// Adding block authoring delay to the slot overflows
+    #[error("Future slot of slot {0} overflows")]
+    FutureSlotOverflow(Slot),
     /// Solution is outside of solution range
     #[error(
         "Solution distance {solution_distance} is outside of solution range \
@@ -222,6 +225,7 @@ where
                 Error::InvalidSubspaceJustificationContents
             }
             VerificationError::InvalidProofOfTime => Error::InvalidProofOfTime,
+            VerificationError::FutureSlotOverflow(slot) => Error::FutureSlotOverflow(slot),
             VerificationError::VerificationError(slot, error) => match error {
                 VerificationPrimitiveError::InvalidPieceOffset {
                     piece_offset,
@@ -438,7 +442,12 @@ where
             let SubspaceJustification::PotCheckpoints { seed, checkpoints } =
                 subspace_justification;
 
-            let future_slot = pre_digest.slot() + chain_constants.block_authoring_delay();
+            let future_slot = Slot::from(
+                pre_digest
+                    .slot()
+                    .checked_add(*chain_constants.block_authoring_delay())
+                    .ok_or(Error::FutureSlotOverflow(pre_digest.slot()))?,
+            );
 
             if block_number.is_one() {
                 // In case of first block seed must match genesis seed
@@ -455,6 +464,8 @@ where
                     .as_ref()
                     .expect("Always Some for non-first block; qed");
 
+                // Can't overflow since parent slot is below this block's slot, whose future slot
+                // was checked above
                 let parent_future_slot = parent_slot + chain_constants.block_authoring_delay();
 
                 let correct_input_parameters = PotNextSlotInput::derive(
