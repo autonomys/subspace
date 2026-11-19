@@ -71,6 +71,9 @@ pub enum VerificationError<Header: HeaderT> {
     /// Invalid proof of time
     #[error("Invalid proof of time")]
     InvalidProofOfTime,
+    /// Adding block authoring delay to the slot overflows
+    #[error("Future slot of slot {0} overflows")]
+    FutureSlotOverflow(Slot),
     /// Verification error
     #[error("Verification error on slot {0:?}: {1:?}")]
     VerificationError(Slot, subspace_verification::Error),
@@ -198,17 +201,13 @@ where
         n < sample_size
     }
 
-    /// Check a header has been signed correctly and whether solution is correct. If the slot is too
-    /// far in the future, an error will be returned. If successful, returns the pre-header and the
-    /// digest item containing the seal.
+    /// Check a header has been signed correctly and whether solution and PoT justification are
+    /// correct. If successful, returns the pre-header and the digest item containing the seal.
     ///
     /// The seal must be the last digest. Otherwise, the whole header is considered unsigned. This
     /// is required for security and must not be changed.
     ///
-    /// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
-    ///
-    /// `pre_digest` argument is optional in case it is available to avoid doing the work of
-    /// extracting it from the header twice.
+    /// The returned seal digest item will always return `Some` when used with `as_subspace_seal`.
     fn check_header(
         &self,
         params: VerificationParams<'_, Block::Header>,
@@ -264,7 +263,10 @@ where
                 return Err(VerificationError::InvalidSubspaceJustificationContents);
             }
 
-            let future_slot = slot + self.chain_constants.block_authoring_delay();
+            let future_slot = Slot::from(
+                slot.checked_add(*self.chain_constants.block_authoring_delay())
+                    .ok_or(VerificationError::FutureSlotOverflow(slot))?,
+            );
             let first_slot_to_check = Slot::from(
                 future_slot
                     .checked_sub(checkpoints.len() as u64 - 1)
@@ -485,7 +487,7 @@ where
             .load(Ordering::Relaxed)
             .saturating_sub(BlockNumber::from(*pre_header.number()));
         let slot_now = if diff_in_blocks > 0 {
-            slot + Slot::from(
+            slot.saturating_add(
                 u64::from(diff_in_blocks) * self.chain_constants.slot_probability().1
                     / self.chain_constants.slot_probability().0,
             )

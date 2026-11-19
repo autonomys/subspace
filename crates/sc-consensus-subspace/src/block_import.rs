@@ -104,6 +104,9 @@ pub enum Error<Header: HeaderT> {
     /// Invalid proof of time
     #[error("Invalid proof of time")]
     InvalidProofOfTime,
+    /// Adding block authoring delay to the slot overflows
+    #[error("Future slot of slot {0} overflows")]
+    FutureSlotOverflow(Slot),
     /// Solution is outside of solution range
     #[error(
         "Solution distance {solution_distance} is outside of solution range \
@@ -222,6 +225,7 @@ where
                 Error::InvalidSubspaceJustificationContents
             }
             VerificationError::InvalidProofOfTime => Error::InvalidProofOfTime,
+            VerificationError::FutureSlotOverflow(slot) => Error::FutureSlotOverflow(slot),
             VerificationError::VerificationError(slot, error) => match error {
                 VerificationPrimitiveError::InvalidPieceOffset {
                     piece_offset,
@@ -399,6 +403,70 @@ where
         // For PoT justifications we only need to check the seed and number of checkpoints, the rest
         // was already checked during stateless block verification.
         {
+            let Some(subspace_justification) = justifications
+                .as_ref()
+                .and_then(|justifications| {
+                    justifications
+                        .iter()
+                        .find_map(SubspaceJustification::try_from_justification)
+                })
+                .transpose()
+                .map_err(Error::InvalidSubspaceJustification)?
+            else {
+                return Err(Error::MissingSubspaceJustification);
+            };
+
+            let SubspaceJustification::PotCheckpoints { seed, checkpoints } =
+                subspace_justification;
+
+            let future_slot = Slot::from(
+                pre_digest
+                    .slot()
+                    .checked_add(*chain_constants.block_authoring_delay())
+                    .ok_or(Error::FutureSlotOverflow(pre_digest.slot()))?,
+            );
+
+            if block_number.is_one() {
+                // In case of first block seed must match genesis seed
+                if seed != self.pot_verifier.genesis_seed() {
+                    return Err(Error::InvalidSubspaceJustificationContents);
+                }
+
+                // Number of checkpoints must match future slot number
+                if checkpoints.len() as u64 != *future_slot {
+                    return Err(Error::InvalidSubspaceJustificationContents);
+                }
+            } else {
+                let parent_subspace_digest_items = parent_subspace_digest_items
+                    .as_ref()
+                    .expect("Always Some for non-first block; qed");
+
+                // Can't overflow since parent slot is below this block's slot, whose future slot
+                // was checked above
+                let parent_future_slot = parent_slot + chain_constants.block_authoring_delay();
+
+                let correct_input_parameters = PotNextSlotInput::derive(
+                    subspace_digest_items.pot_slot_iterations,
+                    parent_future_slot,
+                    parent_subspace_digest_items
+                        .pre_digest
+                        .pot_info()
+                        .future_proof_of_time(),
+                    &subspace_digest_items.pot_parameters_change,
+                );
+
+                if seed != correct_input_parameters.seed {
+                    return Err(Error::InvalidSubspaceJustificationContents);
+                }
+
+                // Number of checkpoints must match number of proofs that were not yet seen on chain
+                if checkpoints.len() as u64 != (*future_slot - *parent_future_slot) {
+                    return Err(Error::InvalidSubspaceJustificationContents);
+                }
+            }
+
+            // This is checked last, since it walks over all slots between the parent and this
+            // block, whose number is bounded by the number of checkpoints checked above
             let runtime_api = self.client.runtime_api();
             let parent_pot_parameters = runtime_api
                 .pot_parameters(parent_hash)
@@ -420,61 +488,6 @@ where
                 parent_pot_parameters.next_parameters_change(),
             ) {
                 return Err(Error::InvalidProofOfTime);
-            }
-
-            let Some(subspace_justification) = justifications
-                .as_ref()
-                .and_then(|justifications| {
-                    justifications
-                        .iter()
-                        .find_map(SubspaceJustification::try_from_justification)
-                })
-                .transpose()
-                .map_err(Error::InvalidSubspaceJustification)?
-            else {
-                return Err(Error::MissingSubspaceJustification);
-            };
-
-            let SubspaceJustification::PotCheckpoints { seed, checkpoints } =
-                subspace_justification;
-
-            let future_slot = pre_digest.slot() + chain_constants.block_authoring_delay();
-
-            if block_number.is_one() {
-                // In case of first block seed must match genesis seed
-                if seed != self.pot_verifier.genesis_seed() {
-                    return Err(Error::InvalidSubspaceJustificationContents);
-                }
-
-                // Number of checkpoints must match future slot number
-                if checkpoints.len() as u64 != *future_slot {
-                    return Err(Error::InvalidSubspaceJustificationContents);
-                }
-            } else {
-                let parent_subspace_digest_items = parent_subspace_digest_items
-                    .as_ref()
-                    .expect("Always Some for non-first block; qed");
-
-                let parent_future_slot = parent_slot + chain_constants.block_authoring_delay();
-
-                let correct_input_parameters = PotNextSlotInput::derive(
-                    subspace_digest_items.pot_slot_iterations,
-                    parent_future_slot,
-                    parent_subspace_digest_items
-                        .pre_digest
-                        .pot_info()
-                        .future_proof_of_time(),
-                    &subspace_digest_items.pot_parameters_change,
-                );
-
-                if seed != correct_input_parameters.seed {
-                    return Err(Error::InvalidSubspaceJustificationContents);
-                }
-
-                // Number of checkpoints must match number of proofs that were not yet seen on chain
-                if checkpoints.len() as u64 != (*future_slot - *parent_future_slot) {
-                    return Err(Error::InvalidSubspaceJustificationContents);
-                }
             }
         }
 
