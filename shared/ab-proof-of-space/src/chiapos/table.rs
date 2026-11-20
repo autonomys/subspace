@@ -74,12 +74,16 @@ const NUM_BUCKETS<const K: u8>: usize =
     2_usize
         .pow(y_size_bits(K) as u32)
         .div_ceil(usize::from(PARAM_BC));
-#[cfg(feature = "parallel")]
+#[cfg(feature = "alloc")]
 const NUM_BUCKET_PAIRS<const K: u8>: usize = NUM_BUCKETS::<K> - 1;
 
-/// Size of the first table and max size for other tables
+/// Size of the first table
 #[cfg(feature = "alloc")]
 const MAX_TABLE_SIZE<const K: u8>: usize = 1 << K;
+/// Upper bound on the size of other tables: every pair of adjacent buckets yields at most
+/// [`REDUCED_MATCHES_COUNT`] matches. The actual size is data-dependent and can exceed `2^K`.
+#[cfg(feature = "alloc")]
+const MAX_OTHER_TABLE_SIZE<const K: u8>: usize = NUM_BUCKET_PAIRS::<K> * REDUCED_MATCHES_COUNT;
 
 #[cfg(any(feature = "alloc", test))]
 const TABLE_1_YS_BATCH_SIMD<const K: u8>: usize =
@@ -1164,7 +1168,7 @@ pub(super) enum PrunedTable<const K: u8, const TABLE_NUMBER: u8> {
     /// Other tables
     Other {
         /// Left and right entry positions in a previous table encoded into bits
-        positions: Box<[MaybeUninit<[Position; 2]>; MAX_TABLE_SIZE::<K>]>,
+        positions: Box<[MaybeUninit<[Position; 2]>; MAX_OTHER_TABLE_SIZE::<K>]>,
     },
     /// Other tables
     #[cfg(feature = "parallel")]
@@ -1224,9 +1228,9 @@ pub(super) enum Table<const K: u8, const TABLE_NUMBER: u8> {
     /// Other tables
     Other {
         /// Left and right entry positions in a previous table encoded into bits
-        positions: Box<[MaybeUninit<[Position; 2]>; MAX_TABLE_SIZE::<K>]>,
+        positions: Box<[MaybeUninit<[Position; 2]>; MAX_OTHER_TABLE_SIZE::<K>]>,
         /// Metadata corresponding to each entry
-        metadatas: Box<[MaybeUninit<Metadata<K, TABLE_NUMBER>>; MAX_TABLE_SIZE::<K>]>,
+        metadatas: Box<[MaybeUninit<Metadata<K, TABLE_NUMBER>>; MAX_OTHER_TABLE_SIZE::<K>]>,
         /// Each bucket contains positions of `Y` values that belong to it and corresponding `y`.
         ///
         /// Buckets are padded with sentinel values to `REDUCED_BUCKETS_SIZE`.
@@ -1351,15 +1355,17 @@ where
         Table<K, PARENT_TABLE_NUMBER>: NotLastTable,
     {
         // SAFETY: Contents is `MaybeUninit`
-        let mut ys =
-            unsafe { Box::<[MaybeUninit<Y>; MAX_TABLE_SIZE::<K>]>::new_uninit().assume_init() };
+        let mut ys = unsafe {
+            Box::<[MaybeUninit<Y>; MAX_OTHER_TABLE_SIZE::<K>]>::new_uninit().assume_init()
+        };
         // SAFETY: Contents is `MaybeUninit`
         let mut positions = unsafe {
-            Box::<[MaybeUninit<[Position; 2]>; MAX_TABLE_SIZE::<K>]>::new_uninit().assume_init()
+            Box::<[MaybeUninit<[Position; 2]>; MAX_OTHER_TABLE_SIZE::<K>]>::new_uninit()
+                .assume_init()
         };
         // SAFETY: Contents is `MaybeUninit`
         let mut metadatas = unsafe {
-            Box::<[MaybeUninit<Metadata<K, TABLE_NUMBER>>; MAX_TABLE_SIZE::<K>]>::new_uninit()
+            Box::<[MaybeUninit<Metadata<K, TABLE_NUMBER>>; MAX_OTHER_TABLE_SIZE::<K>]>::new_uninit()
                 .assume_init()
         };
 
@@ -1393,9 +1399,9 @@ where
     #[cfg_attr(feature = "no-panic", no_panic::no_panic)]
     fn create_internal<const PARENT_TABLE_NUMBER: u8>(
         parent_table: &Table<K, PARENT_TABLE_NUMBER>,
-        ys: &mut [MaybeUninit<Y>; MAX_TABLE_SIZE::<K>],
-        positions: &mut [MaybeUninit<[Position; 2]>; MAX_TABLE_SIZE::<K>],
-        metadatas: &mut [MaybeUninit<Metadata<K, TABLE_NUMBER>>; MAX_TABLE_SIZE::<K>],
+        ys: &mut [MaybeUninit<Y>; MAX_OTHER_TABLE_SIZE::<K>],
+        positions: &mut [MaybeUninit<[Position; 2]>; MAX_OTHER_TABLE_SIZE::<K>],
+        metadatas: &mut [MaybeUninit<Metadata<K, TABLE_NUMBER>>; MAX_OTHER_TABLE_SIZE::<K>],
     ) -> usize
     where
         Table<K, PARENT_TABLE_NUMBER>: NotLastTable,

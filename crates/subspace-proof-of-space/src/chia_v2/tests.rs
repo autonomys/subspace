@@ -27,3 +27,23 @@ fn proofs_verify_under_consensus() {
         assert!(verified > 0, "seed {seed_byte}: no proofs produced");
     }
 }
+
+// Piece reading builds the table with `generate`, plotting and proving with `generate_parallel`.
+// The second table for this seed holds more than `2^K` entries, which the non-parallel path used
+// to write out of bounds.
+#[cfg(feature = "parallel")]
+#[test]
+fn serial_and_parallel_tables_match_when_table_exceeds_2_pow_k() {
+    let generator = ChiaV2TableGenerator;
+    let seed = PosSeed::from([64; 32]);
+    let table = generator.generate(&seed);
+    let table_parallel = generator.generate_parallel(&seed);
+
+    for s_bucket in u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX) {
+        assert_eq!(
+            table.find_proof(u32::from(s_bucket)),
+            table_parallel.find_proof(u32::from(s_bucket)),
+            "s-bucket {s_bucket}"
+        );
+    }
+}
