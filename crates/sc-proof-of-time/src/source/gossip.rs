@@ -27,7 +27,7 @@ use subspace_core_primitives::pot::{PotCheckpoints, PotSeed};
 use tracing::{debug, error, trace, warn};
 
 /// How many slots can proof be before it is too far
-const MAX_SLOTS_IN_THE_FUTURE: u64 = 10;
+const MAX_SLOTS_IN_THE_FUTURE: u64 = 20;
 /// How much faster PoT verification is expected to be comparing to PoT proving
 const EXPECTED_POT_VERIFICATION_SPEEDUP: usize = 7;
 const GOSSIP_CACHE_PEER_COUNT: u32 = 1_000;
