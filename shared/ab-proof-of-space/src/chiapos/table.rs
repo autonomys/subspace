@@ -74,12 +74,19 @@ const NUM_BUCKETS<const K: u8>: usize =
     2_usize
         .pow(y_size_bits(K) as u32)
         .div_ceil(usize::from(PARAM_BC));
-#[cfg(feature = "parallel")]
+#[cfg(feature = "alloc")]
 const NUM_BUCKET_PAIRS<const K: u8>: usize = NUM_BUCKETS::<K> - 1;
 
-/// Size of the first table and max size for other tables
+/// Size of the first table
 #[cfg(feature = "alloc")]
 const MAX_TABLE_SIZE<const K: u8>: usize = 1 << K;
+/// Max size of other tables, each pair of adjacent buckets produces at most
+/// [`REDUCED_MATCHES_COUNT`] matches.
+///
+/// Note that unlike the first table, the size of other tables is data-dependent and can exceed
+/// [`MAX_TABLE_SIZE`].
+#[cfg(feature = "alloc")]
+const MAX_OTHER_TABLE_SIZE<const K: u8>: usize = NUM_BUCKET_PAIRS::<K> * REDUCED_MATCHES_COUNT;
 
 #[cfg(any(feature = "alloc", test))]
 const TABLE_1_YS_BATCH_SIMD<const K: u8>: usize =
@@ -1018,11 +1025,11 @@ unsafe fn matches_to_results<const K: u8, const TABLE_NUMBER: u8, const PARENT_T
 }
 
 /// Find matches between a pair of adjacent buckets of the parent table and turn them into the
-/// results of the current table, returns the number of matches processed.
+/// results of the current table, returns the number of matches processed (the number of
+/// initialized elements at the beginning of `ys`, `positions` and `metadatas`).
 ///
 /// # Safety
-/// Buckets must come from `parent_table`, `ys`, `positions` and `metadatas` must have at least as
-/// many elements as there are matches in the pair of buckets (at most [`REDUCED_MATCHES_COUNT`]).
+/// Buckets must come from `parent_table`.
 #[cfg(feature = "alloc")]
 #[inline(always)]
 #[cfg_attr(feature = "no-panic", no_panic::no_panic)]
@@ -1034,9 +1041,9 @@ unsafe fn bucket_pair_to_results<
     parent_table: &Table<K, PARENT_TABLE_NUMBER>,
     left_bucket_index: u32,
     [left_bucket, right_bucket]: &[[(Position, Y); REDUCED_BUCKET_SIZE]; 2],
-    ys: &mut [MaybeUninit<Y>],
-    positions: &mut [MaybeUninit<[Position; 2]>],
-    metadatas: &mut [MaybeUninit<Metadata<K, TABLE_NUMBER>>],
+    ys: &mut [MaybeUninit<Y>; REDUCED_MATCHES_COUNT],
+    positions: &mut [MaybeUninit<[Position; 2]>; REDUCED_MATCHES_COUNT],
+    metadatas: &mut [MaybeUninit<Metadata<K, TABLE_NUMBER>>; REDUCED_MATCHES_COUNT],
 ) -> usize
 where
     Table<K, PARENT_TABLE_NUMBER>: NotLastTable,
@@ -1049,7 +1056,7 @@ where
     // Throw away some successful matches that are not that necessary
     let matches = &matches[..matches.len().min(REDUCED_MATCHES_COUNT)];
 
-    // SAFETY: Guaranteed by function contract
+    // SAFETY: The number of matches was limited to `REDUCED_MATCHES_COUNT` above
     let (ys, positions, metadatas) = unsafe {
         (
             ys.get_unchecked_mut(..matches.len()),
@@ -1164,7 +1171,7 @@ pub(super) enum PrunedTable<const K: u8, const TABLE_NUMBER: u8> {
     /// Other tables
     Other {
         /// Left and right entry positions in a previous table encoded into bits
-        positions: Box<[MaybeUninit<[Position; 2]>; MAX_TABLE_SIZE::<K>]>,
+        positions: Box<[MaybeUninit<[Position; 2]>; MAX_OTHER_TABLE_SIZE::<K>]>,
     },
     /// Other tables
     #[cfg(feature = "parallel")]
@@ -1224,9 +1231,9 @@ pub(super) enum Table<const K: u8, const TABLE_NUMBER: u8> {
     /// Other tables
     Other {
         /// Left and right entry positions in a previous table encoded into bits
-        positions: Box<[MaybeUninit<[Position; 2]>; MAX_TABLE_SIZE::<K>]>,
+        positions: Box<[MaybeUninit<[Position; 2]>; MAX_OTHER_TABLE_SIZE::<K>]>,
         /// Metadata corresponding to each entry
-        metadatas: Box<[MaybeUninit<Metadata<K, TABLE_NUMBER>>; MAX_TABLE_SIZE::<K>]>,
+        metadatas: Box<[MaybeUninit<Metadata<K, TABLE_NUMBER>>; MAX_OTHER_TABLE_SIZE::<K>]>,
         /// Each bucket contains positions of `Y` values that belong to it and corresponding `y`.
         ///
         /// Buckets are padded with sentinel values to `REDUCED_BUCKETS_SIZE`.
@@ -1351,15 +1358,17 @@ where
         Table<K, PARENT_TABLE_NUMBER>: NotLastTable,
     {
         // SAFETY: Contents is `MaybeUninit`
-        let mut ys =
-            unsafe { Box::<[MaybeUninit<Y>; MAX_TABLE_SIZE::<K>]>::new_uninit().assume_init() };
+        let mut ys = unsafe {
+            Box::<[MaybeUninit<Y>; MAX_OTHER_TABLE_SIZE::<K>]>::new_uninit().assume_init()
+        };
         // SAFETY: Contents is `MaybeUninit`
         let mut positions = unsafe {
-            Box::<[MaybeUninit<[Position; 2]>; MAX_TABLE_SIZE::<K>]>::new_uninit().assume_init()
+            Box::<[MaybeUninit<[Position; 2]>; MAX_OTHER_TABLE_SIZE::<K>]>::new_uninit()
+                .assume_init()
         };
         // SAFETY: Contents is `MaybeUninit`
         let mut metadatas = unsafe {
-            Box::<[MaybeUninit<Metadata<K, TABLE_NUMBER>>; MAX_TABLE_SIZE::<K>]>::new_uninit()
+            Box::<[MaybeUninit<Metadata<K, TABLE_NUMBER>>; MAX_OTHER_TABLE_SIZE::<K>]>::new_uninit()
                 .assume_init()
         };
 
@@ -1393,9 +1402,9 @@ where
     #[cfg_attr(feature = "no-panic", no_panic::no_panic)]
     fn create_internal<const PARENT_TABLE_NUMBER: u8>(
         parent_table: &Table<K, PARENT_TABLE_NUMBER>,
-        ys: &mut [MaybeUninit<Y>; MAX_TABLE_SIZE::<K>],
-        positions: &mut [MaybeUninit<[Position; 2]>; MAX_TABLE_SIZE::<K>],
-        metadatas: &mut [MaybeUninit<Metadata<K, TABLE_NUMBER>>; MAX_TABLE_SIZE::<K>],
+        ys: &mut [MaybeUninit<Y>; MAX_OTHER_TABLE_SIZE::<K>],
+        positions: &mut [MaybeUninit<[Position; 2]>; MAX_OTHER_TABLE_SIZE::<K>],
+        metadatas: &mut [MaybeUninit<Metadata<K, TABLE_NUMBER>>; MAX_OTHER_TABLE_SIZE::<K>],
     ) -> usize
     where
         Table<K, PARENT_TABLE_NUMBER>: NotLastTable,
@@ -1403,18 +1412,26 @@ where
         let mut initialized_elements = 0_usize;
 
         for (buckets, left_bucket_index) in parent_table.buckets().array_windows().zip(0..) {
-            // SAFETY: Already initialized this many elements, preallocated length is an upper
-            // bound and is always sufficient
+            // SAFETY: Each of `NUM_BUCKET_PAIRS` bucket pairs initializes at most
+            // `REDUCED_MATCHES_COUNT` elements, hence there are always at least
+            // `REDUCED_MATCHES_COUNT` uninitialized elements left after already initialized ones
             let (ys, positions, metadatas) = unsafe {
                 (
-                    ys.get_unchecked_mut(initialized_elements..),
-                    positions.get_unchecked_mut(initialized_elements..),
-                    metadatas.get_unchecked_mut(initialized_elements..),
+                    ys.get_unchecked_mut(initialized_elements..)
+                        .first_chunk_mut()
+                        .unwrap_unchecked(),
+                    positions
+                        .get_unchecked_mut(initialized_elements..)
+                        .first_chunk_mut()
+                        .unwrap_unchecked(),
+                    metadatas
+                        .get_unchecked_mut(initialized_elements..)
+                        .first_chunk_mut()
+                        .unwrap_unchecked(),
                 )
             };
 
-            // SAFETY: Buckets are taken from `parent_table`, preallocated length is an upper bound
-            // and is always sufficient
+            // SAFETY: Buckets are taken from `parent_table`
             initialized_elements += unsafe {
                 bucket_pair_to_results::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
                     parent_table,
@@ -1493,8 +1510,7 @@ where
                         &mut *global_results_counts.get_unchecked(left_bucket_index).get()
                     };
 
-                    // SAFETY: Buckets are taken from `parent_table`, the size of `ys`, `positions`
-                    // and `metadatas` is larger or equal to the number of matches
+                    // SAFETY: Buckets are taken from `parent_table`
                     *count = unsafe {
                         bucket_pair_to_results::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
                             &parent_table,
