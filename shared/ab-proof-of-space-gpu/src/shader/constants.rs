@@ -32,8 +32,8 @@ pub(super) const PARAM_B: u16 = 119;
 pub(super) const PARAM_C: u16 = 127;
 pub(super) const PARAM_BC: u16 = PARAM_B * PARAM_C;
 pub(super) const NUM_TABLES: u8 = 7;
-/// Size of the first table and max size for other tables
-pub const MAX_TABLE_SIZE: u32 = 1 << K;
+/// Size of the first table
+pub const TABLE_1_SIZE: u32 = 1 << K;
 
 /// Compute the size of `y` in bits
 pub(super) const fn y_size_bits(k: u8) -> usize {

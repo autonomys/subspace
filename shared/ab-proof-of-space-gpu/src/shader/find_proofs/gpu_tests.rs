@@ -1,5 +1,5 @@
 use crate::shader::constants::{
-    MAX_TABLE_SIZE, NUM_MATCH_BUCKETS, NUM_S_BUCKETS, REDUCED_MATCHES_COUNT,
+    NUM_MATCH_BUCKETS, NUM_S_BUCKETS, REDUCED_MATCHES_COUNT, TABLE_1_SIZE,
 };
 use crate::shader::find_matches_and_compute_f7::{NUM_ELEMENTS_PER_S_BUCKET, ProofTargets};
 use crate::shader::find_proofs::cpu_tests::find_proofs_correct;
@@ -97,8 +97,8 @@ fn find_proofs_gpu() {
     let mut table_2_positions = generate_positions(&mut rng);
     // Clamp values in the first table to the correct range
     for positions in table_2_positions.as_flattened_mut() {
-        positions[0] = positions[0].min(MAX_TABLE_SIZE - 1);
-        positions[1] = positions[1].min(MAX_TABLE_SIZE - 1);
+        positions[0] = positions[0].min(TABLE_1_SIZE - 1);
+        positions[1] = positions[1].min(TABLE_1_SIZE - 1);
     }
     let table_3_positions = generate_positions(&mut rng);
     let table_4_positions = generate_positions(&mut rng);

@@ -1,6 +1,6 @@
 use crate::shader::constants::{
-    MAX_BUCKET_SIZE, MAX_TABLE_SIZE, NUM_BUCKETS, NUM_MATCH_BUCKETS, NUM_S_BUCKETS,
-    REDUCED_MATCHES_COUNT,
+    MAX_BUCKET_SIZE, NUM_BUCKETS, NUM_MATCH_BUCKETS, NUM_S_BUCKETS, REDUCED_MATCHES_COUNT,
+    TABLE_1_SIZE,
 };
 use crate::shader::find_matches_and_compute_f7::{NUM_ELEMENTS_PER_S_BUCKET, ProofTargets};
 use crate::shader::find_proofs::ProofsHost;
@@ -570,7 +570,7 @@ impl GpuRecordsEncoderInstance {
             cpass.set_bind_group(0, &self.bind_group_compute_f1, &[]);
             cpass.set_pipeline(&self.compute_pipeline_compute_f1);
             cpass.dispatch_workgroups(
-                MAX_TABLE_SIZE
+                TABLE_1_SIZE
                     .div_ceil(compute_f1::WORKGROUP_SIZE * compute_f1::ELEMENTS_PER_INVOCATION),
                 1,
                 1,

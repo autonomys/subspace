@@ -3,7 +3,7 @@ mod cpu_tests;
 #[cfg(all(test, not(miri), not(target_arch = "spirv")))]
 mod gpu_tests;
 
-use crate::shader::constants::{K, MAX_BUCKET_SIZE, MAX_TABLE_SIZE, NUM_BUCKETS, PARAM_EXT};
+use crate::shader::constants::{K, MAX_BUCKET_SIZE, NUM_BUCKETS, PARAM_EXT, TABLE_1_SIZE};
 #[cfg(target_arch = "spirv")]
 use crate::shader::polyfills::ArrayIndexingPolyfill;
 use crate::shader::types::{Position, PositionExt, PositionR, X, Y};
@@ -176,7 +176,7 @@ pub unsafe fn compute_f1(
 
     // TODO: More idiomatic version currently doesn't compile:
     //  https://github.com/Rust-GPU/rust-gpu/issues/241#issuecomment-3005693043
-    for x in x_start..(x_start + ELEMENTS_PER_INVOCATION).min(MAX_TABLE_SIZE) {
+    for x in x_start..(x_start + ELEMENTS_PER_INVOCATION).min(TABLE_1_SIZE) {
         let y = compute_f1_impl(X::from(x), &chacha8_keystream);
 
         let (bucket_index, r) = y.into_bucket_index_and_r();

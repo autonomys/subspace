@@ -79,12 +79,12 @@ const NUM_BUCKET_PAIRS<const K: u8>: usize = NUM_BUCKETS::<K> - 1;
 
 /// Size of the first table
 #[cfg(feature = "alloc")]
-const MAX_TABLE_SIZE<const K: u8>: usize = 1 << K;
+const TABLE_1_SIZE<const K: u8>: usize = 1 << K;
 /// Max size of other tables, each pair of adjacent buckets produces at most
 /// [`REDUCED_MATCHES_COUNT`] matches.
 ///
 /// Note that unlike the first table, the size of other tables is data-dependent and can exceed
-/// [`MAX_TABLE_SIZE`].
+/// [`TABLE_1_SIZE`].
 #[cfg(feature = "alloc")]
 const MAX_OTHER_TABLE_SIZE<const K: u8>: usize = NUM_BUCKET_PAIRS::<K> * REDUCED_MATCHES_COUNT;
 
@@ -95,7 +95,7 @@ const TABLE_1_YS_BATCH_SIMD<const K: u8>: usize =
 /// Number of ChaCha8 keystream bytes the first table is derived from
 #[cfg(feature = "alloc")]
 const TABLE_1_PARTIAL_YS_SIZE<const K: u8>: usize =
-    (usize::from(K) * MAX_TABLE_SIZE::<K>).div_ceil(u8::BITS as usize);
+    (usize::from(K) * TABLE_1_SIZE::<K>).div_ceil(u8::BITS as usize);
 
 /// Number of bucket pairs one chunk of [`group_by_buckets_from_buckets()`] covers.
 ///
@@ -169,7 +169,7 @@ fn partial_ys<const K: u8>(seed: Seed) -> Box<[u8; TABLE_1_PARTIAL_YS_SIZE::<K>]
 #[cfg_attr(feature = "no-panic", no_panic::no_panic)]
 fn compute_table_1_ys<'a, const K: u8>(
     partial_ys: &[u8; TABLE_1_PARTIAL_YS_SIZE::<K>],
-    ys: &'a mut [MaybeUninit<Y>; MAX_TABLE_SIZE::<K>],
+    ys: &'a mut [MaybeUninit<Y>; TABLE_1_SIZE::<K>],
 ) -> &'a [Y] {
     for ((ys, xs_batch_start), partial_ys) in ys
         .as_chunks_mut::<COMPUTE_F1_SIMD_FACTOR>()
@@ -1276,7 +1276,7 @@ impl<const K: u8> Table<K, 1> {
 
         // SAFETY: Contents is `MaybeUninit`
         let mut ys =
-            unsafe { Box::<[MaybeUninit<Y>; MAX_TABLE_SIZE::<K>]>::new_uninit().assume_init() };
+            unsafe { Box::<[MaybeUninit<Y>; TABLE_1_SIZE::<K>]>::new_uninit().assume_init() };
 
         let ys = compute_table_1_ys::<K>(&partial_ys, &mut ys);
 
@@ -1300,7 +1300,7 @@ impl<const K: u8> Table<K, 1> {
 
         // SAFETY: Contents is `MaybeUninit`
         let mut ys =
-            unsafe { Box::<[MaybeUninit<Y>; MAX_TABLE_SIZE::<K>]>::new_uninit().assume_init() };
+            unsafe { Box::<[MaybeUninit<Y>; TABLE_1_SIZE::<K>]>::new_uninit().assume_init() };
 
         let ys = compute_table_1_ys::<K>(&partial_ys, &mut ys);
 

@@ -1,7 +1,7 @@
 use crate::shader::compute_fn::cpu_tests::random_metadata;
 use crate::shader::constants::{
-    MAX_BUCKET_SIZE, MAX_TABLE_SIZE, NUM_BUCKETS, NUM_MATCH_BUCKETS, PARAM_BC, REDUCED_BUCKET_SIZE,
-    REDUCED_MATCHES_COUNT,
+    MAX_BUCKET_SIZE, NUM_BUCKETS, NUM_MATCH_BUCKETS, PARAM_BC, REDUCED_BUCKET_SIZE,
+    REDUCED_MATCHES_COUNT, TABLE_1_SIZE,
 };
 use crate::shader::find_matches_and_compute_fn::cpu_tests::find_matches_and_compute_fn_correct;
 use crate::shader::select_shader_features_limits;
@@ -47,7 +47,7 @@ fn find_matches_and_compute_fn_gpu<const TABLE_NUMBER: u8, const PARENT_TABLE_NU
     // Generate `y`s within `0..PARAM_BC*NUM_BUCKETS` range to fill the first `NUM_BUCKETS` buckets
     let parent_table_ys =
         iter::repeat_with(|| Y::from(rng.next_u32() % (u32::from(PARAM_BC) * NUM_BUCKETS as u32)))
-            .take(MAX_TABLE_SIZE as usize)
+            .take(TABLE_1_SIZE as usize)
             .collect::<Vec<_>>();
     let parent_buckets = {
         // SAFETY: Contents is `MaybeUninit`

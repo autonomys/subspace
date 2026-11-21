@@ -1,6 +1,6 @@
 use crate::shader::compute_f1::cpu_tests::correct_compute_f1;
 use crate::shader::compute_f1::{ELEMENTS_PER_INVOCATION, WORKGROUP_SIZE};
-use crate::shader::constants::{MAX_BUCKET_SIZE, MAX_TABLE_SIZE, NUM_BUCKETS};
+use crate::shader::constants::{MAX_BUCKET_SIZE, NUM_BUCKETS, TABLE_1_SIZE};
 use crate::shader::select_shader_features_limits;
 use crate::shader::types::{PositionR, X};
 use ab_chacha8::ChaCha8State;
@@ -28,13 +28,13 @@ fn compute_f1_gpu() {
     };
 
     let expected_output = (X::ZERO..)
-        .take(MAX_TABLE_SIZE as usize)
+        .take(TABLE_1_SIZE as usize)
         .map(|x| correct_compute_f1::<const { PosProof::K }>(x, &seed))
         .collect::<Vec<_>>();
 
     assert_eq!(
         actual_output.iter().map(Vec::len).sum::<usize>(),
-        MAX_TABLE_SIZE as usize
+        TABLE_1_SIZE as usize
     );
     for (bucket_index, bucket) in actual_output.iter().enumerate() {
         for &PositionR { position, r } in bucket {
@@ -236,7 +236,7 @@ async fn compute_f1_adapter(
         cpass.set_bind_group(0, &bind_group, &[]);
         cpass.set_pipeline(&compute_pipeline);
         cpass.dispatch_workgroups(
-            MAX_TABLE_SIZE.div_ceil(WORKGROUP_SIZE * ELEMENTS_PER_INVOCATION),
+            TABLE_1_SIZE.div_ceil(WORKGROUP_SIZE * ELEMENTS_PER_INVOCATION),
             1,
             1,
         );
