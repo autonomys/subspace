@@ -9,7 +9,7 @@
 use crate::FarmerProtocolInfo;
 use crate::sector::{
     EncodedChunksUsed, RawSector, RecordMetadata, SectorContentsMap, SectorMetadata,
-    SectorMetadataChecksummed, sector_record_chunks_size, sector_size,
+    SectorMetadataChecksummed, sector_record_chunks_size, sector_record_metadata_size, sector_size,
 };
 use crate::segment_reconstruction::recover_missing_piece;
 use async_lock::{Mutex as AsyncMutex, Semaphore};
@@ -536,7 +536,9 @@ pub fn write_sector(
         });
     }
 
-    sector_output.resize(sector_size, 0);
+    // Every byte of the sector is written below, there is no need to initialize memory beforehand
+    sector_output.clear();
+    sector_output.reserve_exact(sector_size);
 
     // Write sector to disk in form of following regions:
     // * sector contents map
@@ -544,17 +546,24 @@ pub fn write_sector(
     // * record metadata
     // * checksum
     {
-        let (sector_contents_map_region, remaining_bytes) =
-            sector_output.split_at_mut(SectorContentsMap::encoded_size(pieces_in_sector));
+        let (sector_contents_map_region, remaining_bytes) = sector_output
+            .spare_capacity_mut()
+            .split_at_mut(SectorContentsMap::encoded_size(pieces_in_sector));
         // Slice remaining memory into belonging to s-buckets and metadata
-        let (s_buckets_region, metadata_region) =
+        let (s_buckets_region, remaining_bytes) =
             remaining_bytes.split_at_mut(sector_record_chunks_size(pieces_in_sector));
+        let (metadata_region, _remaining_bytes) =
+            remaining_bytes.split_at_mut(sector_record_metadata_size(pieces_in_sector));
 
         // Write sector contents map so we can decode it later
         sector_contents_map
             .encode_into(sector_contents_map_region)
             .expect("Chunked into correct size above; qed");
 
+        let s_bucket_chunks = s_buckets_region
+            .as_chunks_mut::<{ ScalarBytes::FULL_BYTES }>()
+            .0;
+        let mut num_written_s_bucket_chunks = 0_usize;
         let num_encoded_record_chunks = sector_contents_map.num_encoded_record_chunks();
         let mut next_encoded_record_chunks_offset = vec![0_usize; pieces_in_sector.into()];
         let mut next_unencoded_record_chunks_offset = vec![0_usize; pieces_in_sector.into()];
@@ -565,11 +574,7 @@ pub fn write_sector(
                     .iter_s_bucket_records(s_bucket)
                     .expect("S-bucket guaranteed to be in range; qed")
             })
-            .zip(
-                s_buckets_region
-                    .as_chunks_mut::<{ ScalarBytes::FULL_BYTES }>()
-                    .0,
-            )
+            .zip(s_bucket_chunks)
         {
             let num_encoded_record_chunks =
                 usize::from(num_encoded_record_chunks[usize::from(piece_offset)]);
@@ -589,22 +594,49 @@ pub fn write_sector(
                 chunk_position = num_encoded_record_chunks + *next_unencoded_record_chunks_offset;
                 *next_unencoded_record_chunks_offset += 1;
             }
-            output.copy_from_slice(&raw_sector.records[usize::from(piece_offset)][chunk_position]);
+            output.write_copy_of_slice(
+                &raw_sector.records[usize::from(piece_offset)][chunk_position],
+            );
+            num_written_s_bucket_chunks += 1;
         }
+        // Cheap check before exposing the memory as initialized below
+        assert_eq!(
+            num_written_s_bucket_chunks * ScalarBytes::FULL_BYTES,
+            s_buckets_region.len(),
+            "`SectorContentsMap` complements encoded chunks of every record with unencoded ones up \
+            to `Record::NUM_CHUNKS`, so s-buckets cover all chunks of all records; qed"
+        );
 
         let metadata_chunks = metadata_region
             .as_chunks_mut::<{ RecordMetadata::encoded_size() }>()
             .0;
+        let mut num_written_metadata_chunks = 0_usize;
         for (record_metadata, output) in raw_sector.metadata.iter().zip(metadata_chunks) {
-            record_metadata.encode_to(&mut output.as_mut_slice());
+            let mut record_metadata_bytes = [0; RecordMetadata::encoded_size()];
+            record_metadata.encode_to(&mut record_metadata_bytes.as_mut_slice());
+            output.write_copy_of_slice(&record_metadata_bytes);
+            num_written_metadata_chunks += 1;
         }
-
-        // It would be more efficient to not re-read the whole sector again, but it makes above code
-        // significantly more convoluted and most likely not worth it
-        let (sector_contents, sector_checksum) =
-            sector_output.split_at_mut(sector_size - Blake3Hash::SIZE);
-        sector_checksum.copy_from_slice(blake3_hash_parallel(sector_contents).as_ref());
+        // Cheap check before exposing the memory as initialized below
+        assert_eq!(
+            num_written_metadata_chunks * RecordMetadata::encoded_size(),
+            metadata_region.len(),
+            "Raw sector always has metadata for every record; qed"
+        );
     }
+
+    // SAFETY: The sector contents map is written by `encode_into()`, s-buckets and metadata regions
+    // are covered by contiguous chunks written from their beginning, which is checked above, and
+    // together they are everything except the checksum. The capacity was reserved above.
+    unsafe {
+        sector_output.set_len(sector_size - Blake3Hash::SIZE);
+    }
+
+    // It would be more efficient to not re-read the whole sector again, but it makes above code
+    // significantly more convoluted and most likely not worth it
+    let sector_checksum = blake3_hash_parallel(sector_output);
+    // Doesn't reallocate, the capacity was reserved above
+    sector_output.extend_from_slice(sector_checksum.as_ref());
 
     Ok(())
 }
