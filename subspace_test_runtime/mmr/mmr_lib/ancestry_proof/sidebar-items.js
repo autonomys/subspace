@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["ancestry_proof_positions","bagging_peaks_hashes","expected_ancestry_proof_size"],"struct":["AncestryProof","NodeMerkleProof"]};
