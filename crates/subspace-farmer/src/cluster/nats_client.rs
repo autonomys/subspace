@@ -22,7 +22,7 @@ use backon::{BackoffBuilder, ExponentialBuilder};
 use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, Stream, StreamExt, select};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode, decode_from_bytes};
 use std::any::type_name;
 use std::collections::VecDeque;
 use std::future::Future;
@@ -182,7 +182,8 @@ where
         let mut projected = self.project();
         match projected.subscriber.poll_next_unpin(cx) {
             Poll::Ready(Some(message)) => {
-                match GenericStreamResponses::<Response>::decode(&mut message.payload.as_ref()) {
+                match decode_from_bytes::<GenericStreamResponses<Response>>(message.payload.clone())
+                {
                     Ok(mut responses) => {
                         if responses.index() != *projected.next_index {
                             warn!(
@@ -330,19 +331,21 @@ where
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.project().subscriber.poll_next_unpin(cx) {
-            Poll::Ready(Some(message)) => match Message::decode(&mut message.payload.as_ref()) {
-                Ok(message) => Poll::Ready(Some(message)),
-                Err(error) => {
-                    warn!(
-                        %error,
-                        message_type = %type_name::<Message>(),
-                        message = %hex::encode(message.payload),
-                        "Failed to decode stream message"
-                    );
+            Poll::Ready(Some(message)) => {
+                match decode_from_bytes::<Message>(message.payload.clone()) {
+                    Ok(message) => Poll::Ready(Some(message)),
+                    Err(error) => {
+                        warn!(
+                            %error,
+                            message_type = %type_name::<Message>(),
+                            message = %hex::encode(message.payload),
+                            "Failed to decode stream message"
+                        );
 
-                    Poll::Pending
+                        Poll::Pending
+                    }
                 }
-            },
+            }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }
@@ -478,7 +481,7 @@ impl NatsClient {
         };
 
         let response =
-            Request::Response::decode(&mut message.payload.as_ref()).map_err(|error| {
+            decode_from_bytes::<Request::Response>(message.payload.clone()).map_err(|error| {
                 warn!(
                     %subject,
                     %error,
@@ -574,7 +577,7 @@ impl NatsClient {
         };
 
         let message_payload_size = message.payload.len();
-        let request = match Request::decode(&mut message.payload.as_ref()) {
+        let request = match decode_from_bytes::<Request>(message.payload.clone()) {
             Ok(request) => {
                 // Free allocation early
                 drop(message.payload);
@@ -743,7 +746,7 @@ impl NatsClient {
         };
 
         let message_payload_size = message.payload.len();
-        let request = match Request::decode(&mut message.payload.as_ref()) {
+        let request = match decode_from_bytes::<Request>(message.payload.clone()) {
             Ok(request) => {
                 // Free allocation early
                 drop(message.payload);

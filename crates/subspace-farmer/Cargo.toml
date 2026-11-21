@@ -39,7 +39,7 @@ jsonrpsee = { workspace = true, features = ["ws-client"] }
 mimalloc = { workspace = true, optional = true }
 num_cpus.workspace = true
 ouroboros.workspace = true
-parity-scale-codec.workspace = true
+parity-scale-codec = { workspace = true, features = ["bytes"] }
 parking_lot.workspace = true
 pin-project.workspace = true
 prometheus-client.workspace = true

@@ -6,11 +6,12 @@ use crate::protocols::request_response::request_response_factory;
 use crate::shared::{Command, PeerDiscovered, Shared};
 use crate::utils::HandlerFn;
 use crate::utils::multihash::Multihash;
+use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
 use libp2p::{Multiaddr, PeerId};
-use parity_scale_codec::Decode;
+use parity_scale_codec::decode_from_bytes;
 use std::sync::{Arc, Weak};
 use thiserror::Error;
 use tokio::sync::OwnedSemaphorePermit;
@@ -162,7 +163,7 @@ impl Node {
 
         let result = result_receiver.await??;
 
-        Request::Response::decode(&mut result.as_slice()).map_err(Into::into)
+        decode_from_bytes::<Request::Response>(Bytes::from(result)).map_err(Into::into)
     }
 
     /// Sends the generic request to the peer and awaits the result.

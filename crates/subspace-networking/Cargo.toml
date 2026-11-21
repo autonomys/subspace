@@ -30,7 +30,7 @@ hex.workspace = true
 libp2p = { workspace = true, features = ["autonat", "dns", "identify", "kad", "macros", "metrics", "noise", "ping", "plaintext", "request-response", "serde", "tcp", "tokio", "yamux"] }
 memmap2.workspace = true
 multihash = { workspace = true, features = ["scale-codec"] }
-parity-scale-codec = { workspace = true, features = ["std"] }
+parity-scale-codec = { workspace = true, features = ["bytes", "std"] }
 parking_lot.workspace = true
 prometheus-client.workspace = true
 rand = { workspace = true, features = ["thread_rng"] }
