@@ -605,29 +605,8 @@ impl Record {
     #[inline]
     pub fn new_zero_vec(length: usize) -> Vec<Self> {
         // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
-        let mut records = Vec::with_capacity(length);
-        {
-            let slice = records.spare_capacity_mut();
-            // SAFETY: Same memory layout due to `#[repr(transparent)]` on `Record` and
-            // `MaybeUninit<[[T; M]; N]>` is guaranteed to have the same layout as
-            // `[[MaybeUninit<T>; M]; N]`
-            let slice = unsafe {
-                slice::from_raw_parts_mut(
-                    slice.as_mut_ptr()
-                        as *mut [[mem::MaybeUninit<u8>; ScalarBytes::FULL_BYTES]; Self::NUM_CHUNKS],
-                    length,
-                )
-            };
-            for byte in slice.as_flattened_mut().as_flattened_mut() {
-                byte.write(0);
-            }
-        }
-        // SAFETY: All values are initialized above.
-        unsafe {
-            records.set_len(records.capacity());
-        }
-
-        records
+        // SAFETY: Data structure filled with zeroes is a valid invariant
+        unsafe { Box::<[Self]>::new_zeroed_slice(length).assume_init() }.into_vec()
     }
 
     /// Convenient conversion from slice of record to underlying representation for efficiency
