@@ -4,14 +4,14 @@
 use crate::chiapos::Seed;
 use crate::chiapos::constants::{NUM_TABLES, PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT};
 #[cfg(feature = "alloc")]
-use crate::chiapos::table::find_matches_in_buckets;
-#[cfg(feature = "alloc")]
 use crate::chiapos::table::types::Position;
 use crate::chiapos::table::types::{Metadata, X, Y};
 use crate::chiapos::table::{
     BUCKET_SIZE_UPPER_BOUND_SECURITY_BITS, REDUCED_BUCKET_SIZE, REDUCED_MATCHES_COUNT,
     TABLE_1_YS_BATCH_SIMD, compute_f1, compute_f1_simd, compute_fn, compute_fn_simd, has_match,
 };
+#[cfg(feature = "alloc")]
+use crate::chiapos::table::{Table, find_matches_in_buckets};
 #[cfg(feature = "alloc")]
 use alloc::collections::BTreeMap;
 #[cfg(feature = "alloc")]
@@ -407,4 +407,96 @@ fn test_proofs_lower_bound() {
             REDUCED_BUCKET_SIZE
         ) >= Record::NUM_CHUNKS as u64
     );
+}
+
+// The size of tables other than the first one is data-dependent and can exceed `2^K`
+#[cfg(feature = "alloc")]
+#[test]
+#[cfg_attr(miri, ignore)]
+fn table_exceeds_2_pow_k() {
+    const K: u8 = 20;
+    let seed = [64; 32];
+
+    let table_1 = Table::<K, 1>::create(seed);
+
+    let table_2_size = table_1
+        .buckets()
+        .array_windows()
+        .zip(0..)
+        .map(|([left_bucket, right_bucket], left_bucket_index)| {
+            let mut matches = [MaybeUninit::uninit(); _];
+            // SAFETY: Buckets are taken from the table
+            let matches = unsafe {
+                find_matches_in_buckets(left_bucket_index, left_bucket, right_bucket, &mut matches)
+            };
+            matches.len().min(REDUCED_MATCHES_COUNT)
+        })
+        .sum::<usize>();
+    assert!(table_2_size > 1 << K, "table_2_size {table_2_size}");
+
+    let (table_2, _) = Table::<K, 2>::create(table_1);
+
+    for (bucket_index, bucket) in table_2.buckets().iter().enumerate() {
+        for &(position, y) in bucket {
+            if position == Position::SENTINEL {
+                continue;
+            }
+
+            // SAFETY: Non-sentinel position is taken from the table
+            let (parent_positions, metadata) =
+                unsafe { (table_2.position(position), table_2.metadata(position)) };
+            // Positions in the first table are `x`s
+            let [left_x, right_x] = parent_positions.map(|position| X::from(u32::from(position)));
+            let left_y = compute_f1::<K>(left_x, &seed);
+            let right_y = compute_f1::<K>(right_x, &seed);
+
+            assert!(has_match(left_y, right_y), "bucket index {bucket_index}");
+            assert_eq!(
+                compute_fn::<K, 2, 1>(left_y, Metadata::from(left_x), Metadata::from(right_x)),
+                (y, metadata),
+                "bucket index {bucket_index}"
+            );
+        }
+    }
+
+    #[cfg(feature = "parallel")]
+    {
+        let (table_2_parallel, _) =
+            Table::<K, 2>::create_parallel(Table::<K, 1>::create_parallel(seed));
+
+        for (bucket_index, (bucket, bucket_parallel)) in table_2
+            .buckets()
+            .iter()
+            .zip(table_2_parallel.buckets().iter())
+            .enumerate()
+        {
+            for (&(position, y), &(position_parallel, y_parallel)) in
+                bucket.iter().zip(bucket_parallel)
+            {
+                assert_eq!(y, y_parallel, "bucket index {bucket_index}");
+                assert_eq!(
+                    position == Position::SENTINEL,
+                    position_parallel == Position::SENTINEL,
+                    "bucket index {bucket_index}"
+                );
+                if position == Position::SENTINEL {
+                    continue;
+                }
+
+                // SAFETY: Non-sentinel positions are taken from the tables
+                unsafe {
+                    assert_eq!(
+                        table_2.position(position),
+                        table_2_parallel.position(position_parallel),
+                        "bucket index {bucket_index}"
+                    );
+                    assert_eq!(
+                        table_2.metadata(position),
+                        table_2_parallel.metadata(position_parallel),
+                        "bucket index {bucket_index}"
+                    );
+                }
+            }
+        }
+    }
 }
