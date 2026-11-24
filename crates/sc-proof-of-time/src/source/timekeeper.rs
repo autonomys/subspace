@@ -51,20 +51,32 @@ pub(super) fn run_timekeeper(
             checkpoints,
         );
 
-        next_slot_input = state
-            .try_extend(
-                next_slot_input,
-                next_slot_input.slot,
-                checkpoints.output(),
-                None,
-            )
-            .unwrap_or_else(|next_slot_input| next_slot_input);
+        match state.try_extend(
+            next_slot_input,
+            next_slot_input.slot,
+            checkpoints.output(),
+            None,
+        ) {
+            Ok(new_next_slot_input) => {
+                next_slot_input = new_next_slot_input;
 
-        if let Err(error) = proofs_sender.try_send(proof)
-            && let Err(error) = block_on(proofs_sender.send(error.into_inner()))
-        {
-            debug!(%error, "Couldn't send checkpoints, channel is closed");
-            return Ok(());
+                if let Err(error) = proofs_sender.try_send(proof)
+                    && let Err(error) = block_on(proofs_sender.send(error.into_inner()))
+                {
+                    debug!(%error, "Couldn't send checkpoints, channel is closed");
+                    return Ok(());
+                }
+            }
+            Err(existing_next_slot_input) => {
+                // PoT chain was changed while proving, the proof is either known already or not on
+                // the chain that is followed anymore
+                trace!(
+                    slot = %next_slot_input.slot,
+                    "Proof of time chain was changed while proving, not sending the proof",
+                );
+
+                next_slot_input = existing_next_slot_input;
+            }
         }
     }
 }
