@@ -36,10 +36,10 @@ ab-proof-of-space-gpu = { path = "shared/ab-proof-of-space-gpu", default-feature
 actix-web = { version = "4.17.0", default-features = false }
 aes = "0.9.3"
 anyhow = "1.0.104"
-array-reshape = { version = "0.1.1", features = ["const-trait"] }
+array-reshape = { version = "0.2.0", features = ["const-trait"] }
 async-channel = "1.9.0"
 async-lock = "3.4.2"
-async-nats = "0.52.0"
+async-nats = "0.53.0"
 async-oneshot = "0.5.9"
 async-trait = "0.1.92"
 auto-id-domain-runtime = { version = "0.1.0", path = "domains/runtime/auto-id" }
