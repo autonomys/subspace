@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use crate::verifier::PotVerifier;
 use parking_lot::Mutex;
 use sp_consensus_slots::Slot;
@@ -110,6 +113,49 @@ impl PotState {
         );
 
         Ok(existing_inner_state.next_slot_input)
+    }
+
+    /// Check whether a proof with `proof_output` for `proof_slot_input` belongs to the PoT chain
+    /// that is currently followed, either as one of the recent slots or as the next slot.
+    ///
+    /// Recent slots are connected to the tip using previously verified proofs, so `false` is also
+    /// returned for proofs that can't be connected this way.
+    pub(super) fn is_on_current_chain(
+        &self,
+        proof_slot_input: PotNextSlotInput,
+        proof_output: PotOutput,
+    ) -> bool {
+        let inner_state = *self.inner_state.lock();
+        let next_slot_input = inner_state.next_slot_input;
+
+        if proof_slot_input.slot >= next_slot_input.slot {
+            return proof_slot_input == next_slot_input;
+        }
+
+        let mut slot_input = PotNextSlotInput::derive(
+            proof_slot_input.slot_iterations,
+            proof_slot_input.slot,
+            proof_output,
+            &inner_state.parameters_change,
+        );
+
+        while slot_input.slot < next_slot_input.slot {
+            let Some(checkpoints) = self
+                .verifier
+                .try_get_checkpoints(slot_input.slot_iterations, slot_input.seed)
+            else {
+                return false;
+            };
+
+            slot_input = PotNextSlotInput::derive(
+                slot_input.slot_iterations,
+                slot_input.slot,
+                checkpoints.output(),
+                &inner_state.parameters_change,
+            );
+        }
+
+        slot_input == next_slot_input
     }
 
     /// Update state, overriding PoT chain if it doesn't match provided values.

@@ -255,6 +255,26 @@ where
             return;
         }
 
+        // Timekeeper may have produced the proof before PoT chain was changed by block import
+        if !self.state.is_on_current_chain(
+            PotNextSlotInput {
+                slot,
+                slot_iterations,
+                seed,
+            },
+            checkpoints.output(),
+        ) {
+            debug!(
+                ?slot,
+                %seed,
+                %slot_iterations,
+                output = %checkpoints.output(),
+                "Ignore timekeeper proof that is not on the current proof of time chain",
+            );
+
+            return;
+        }
+
         debug!(
             ?slot,
             %seed,

@@ -231,9 +231,18 @@ where
     SO: SyncOracle + Send + Sync,
 {
     fn on_proof(&mut self, slot: Slot, checkpoints: PotCheckpoints) {
-        // Remove checkpoints from future slots, if present they are out of date anyway
-        self.pot_checkpoints
-            .retain(|&stored_slot, _checkpoints| stored_slot < slot);
+        // Slots before this one can't be claimed anymore
+        let oldest_claimable_slot =
+            slot.saturating_sub(self.subspace_link.chain_constants().block_authoring_delay());
+
+        // Remove checkpoints from future slots, if present they are out of date anyway, and from
+        // slots that can't be claimed anymore
+        self.pot_checkpoints.retain(|&stored_slot, _checkpoints| {
+            (oldest_claimable_slot..slot).contains(&stored_slot)
+        });
+        // Remove receivers for slots that can't be claimed anymore
+        self.pending_solutions
+            .retain(|&stored_slot, _solution_receiver| stored_slot >= oldest_claimable_slot);
 
         self.pot_checkpoints.insert(slot, checkpoints);
 
@@ -395,10 +404,6 @@ where
         };
 
         let (proof_of_time, future_proof_of_time, pot_justification) = {
-            // Remove checkpoints from old slots we will not need anymore
-            self.pot_checkpoints
-                .retain(|&stored_slot, _checkpoints| stored_slot > parent_slot);
-
             let proof_of_time = self.pot_checkpoints.get(&slot)?.output();
 
             // Future slot for which proof must be available before authoring block at this slot
@@ -480,10 +485,6 @@ where
         };
 
         let mut solution_receiver = {
-            // Remove receivers for old slots we will not need anymore
-            self.pending_solutions
-                .retain(|&stored_slot, _solution_receiver| stored_slot >= slot);
-
             let mut solution_receiver = self.pending_solutions.remove(&slot)?;
             // Time is out, we will not accept any more solutions
             solution_receiver.close();
