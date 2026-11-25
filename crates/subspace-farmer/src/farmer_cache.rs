@@ -18,7 +18,7 @@ use futures::channel::mpsc;
 use futures::future::{Either, FusedFuture};
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{FutureExt, SinkExt, Stream, StreamExt, select, stream};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use prometheus_client::registry::Registry;
 use rand::prelude::*;
 use rayon::prelude::*;
@@ -45,9 +45,8 @@ use tracing::{Instrument, debug, error, info, info_span, trace, warn};
 const WORKER_CHANNEL_CAPACITY: usize = 100;
 const SYNC_BATCH_SIZE: usize = 256;
 const SYNC_CONCURRENT_BATCHES: usize = 4;
-/// Make caches available as they are building without waiting for the initialization to finish,
-/// this number defines an interval in pieces after which cache is updated
-const INTERMEDIATE_CACHE_UPDATE_INTERVAL: usize = 100;
+/// Interval in pieces after which piece cache sync progress is logged
+const SYNC_PROGRESS_LOG_INTERVAL: usize = 100;
 const INITIAL_SYNC_FARM_INFO_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
@@ -513,9 +512,10 @@ where
             }
         }
 
-        // Store whatever correct pieces are immediately available after restart
-        self.piece_caches.write().await.clone_from(&caches);
         let stored_count = caches.stored_pieces_offsets().len();
+        // Store whatever correct pieces are immediately available after restart, the rest is
+        // updated in place as pieces are downloaded, so readers always see the latest state
+        *self.piece_caches.write().await = caches;
 
         debug!(
             %stored_count,
@@ -535,7 +535,6 @@ where
             .collect::<Vec<_>>();
 
         let downloaded_pieces_count = AtomicUsize::new(stored_count);
-        let caches = Mutex::new(caches);
         self.handlers.progress.call_simple(&0.0);
         let batch_count = piece_indices_to_store.len();
         let piece_indices_to_store = piece_indices_to_store.into_iter().enumerate();
@@ -546,7 +545,6 @@ where
         let downloading_pieces_stream =
             stream::iter(piece_indices_to_store.map(|(batch, piece_indices)| {
                 let downloaded_pieces_count = &downloaded_pieces_count;
-                let caches = &caches;
                 let num_pieces = piece_indices.len();
 
                 trace!(
@@ -606,7 +604,7 @@ where
                         };
 
                         let (offset, maybe_backend) = {
-                            let mut caches = caches.lock();
+                            let mut caches = self.piece_caches.write().await;
 
                             // Find plot in which there is a place for new piece to be stored
                             let Some(offset) = caches.pop_free_offset() else {
@@ -653,7 +651,10 @@ where
 
                             let key =
                                 KeyWithDistance::new(self.peer_id, piece_index.to_multihash());
-                            caches.lock().push_stored_piece(key, offset);
+                            self.piece_caches
+                                .write()
+                                .await
+                                .push_stored_piece(key, offset);
                         }
 
                         let prev_downloaded_pieces_count =
@@ -665,11 +666,8 @@ where
                                 / pieces_to_download_total as f32
                                 * 100.0;
                             if prev_downloaded_pieces_count
-                                .is_multiple_of(INTERMEDIATE_CACHE_UPDATE_INTERVAL)
+                                .is_multiple_of(SYNC_PROGRESS_LOG_INTERVAL)
                             {
-                                let mut piece_caches = self.piece_caches.write().await;
-                                piece_caches.clone_from(&caches.lock());
-
                                 info!(
                                     "Piece cache sync {progress:.2}% complete ({} / {})",
                                     bytesize::ByteSize::b(
@@ -711,7 +709,6 @@ where
             .for_each(|()| async {})
             .await;
 
-        *self.piece_caches.write().await = caches.into_inner();
         self.handlers.progress.call_simple(&100.0);
         *last_segment_index_internal = last_segment_index;
 
