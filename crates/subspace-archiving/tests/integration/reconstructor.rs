@@ -415,6 +415,20 @@ fn partial_data() {
         let (_, contents) = Reconstructor::new(erasure_coding.clone())
             .add_segment(
                 &iter::repeat_n(None, RecordedHistorySegment::NUM_RAW_RECORDS)
+                    .zip(pieces.parity_pieces().map(Some))
+                    .flat_map(|(a, b)| [a, b])
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+
+        assert_eq!(contents.blocks, vec![(0, block_0.clone())]);
+    }
+
+    {
+        // Take the second half of all shards (both source and parity shards)
+        let (_, contents) = Reconstructor::new(erasure_coding.clone())
+            .add_segment(
+                &iter::repeat_n(None, RecordedHistorySegment::NUM_RAW_RECORDS)
                     .chain(
                         pieces
                             .pieces()

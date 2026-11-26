@@ -122,6 +122,95 @@ fn piece_reconstruction_works() {
 }
 
 #[test]
+fn segment_reconstruction_from_parity_pieces_works() {
+    let kzg = Kzg::new();
+    let erasure_coding = ErasureCoding::new(
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+            .expect("Not zero; qed"),
+    )
+    .unwrap();
+    let mut archiver = Archiver::new(kzg.clone(), erasure_coding.clone());
+
+    let block = get_random_block();
+
+    let archived_segments = archiver
+        .add_block(block, BlockObjectMapping::default(), true)
+        .archived_segments;
+
+    assert_eq!(archived_segments.len(), 1);
+
+    let original_pieces = &archived_segments.first().unwrap().pieces;
+    let mut maybe_pieces = pieces_to_option_of_pieces(original_pieces);
+
+    assert_eq!(maybe_pieces.len(), ArchivedHistorySegment::NUM_PIECES);
+
+    // Remove all source pieces (even positions), leaving only parity pieces
+    maybe_pieces.iter_mut().step_by(2).for_each(|piece| {
+        piece.take().unwrap();
+    });
+    assert_eq!(
+        maybe_pieces.iter().filter(|piece| piece.is_some()).count(),
+        RecordedHistorySegment::NUM_RAW_RECORDS
+    );
+
+    let reconstructor = PiecesReconstructor::new(kzg, erasure_coding);
+
+    let flat_pieces = reconstructor.reconstruct_segment(&maybe_pieces).unwrap();
+
+    assert_eq!(flat_pieces.len(), ArchivedHistorySegment::NUM_PIECES);
+    original_pieces.iter().zip(flat_pieces.iter()).for_each(
+        |(original_piece, reconstructed_piece)| {
+            assert_eq!(original_piece, reconstructed_piece);
+        },
+    );
+}
+
+#[test]
+fn piece_reconstruction_from_parity_pieces_works() {
+    let kzg = Kzg::new();
+    let erasure_coding = ErasureCoding::new(
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+            .expect("Not zero; qed"),
+    )
+    .unwrap();
+    let mut archiver = Archiver::new(kzg.clone(), erasure_coding.clone());
+
+    let block = get_random_block();
+
+    let archived_segments = archiver
+        .add_block(block, BlockObjectMapping::default(), true)
+        .archived_segments;
+
+    assert_eq!(archived_segments.len(), 1);
+
+    let mut maybe_pieces = pieces_to_option_of_pieces(&archived_segments.first().unwrap().pieces);
+
+    assert_eq!(maybe_pieces.len(), ArchivedHistorySegment::NUM_PIECES);
+
+    // Remove all source pieces (even positions), leaving only parity pieces
+    let missing_pieces = maybe_pieces
+        .iter_mut()
+        .step_by(2)
+        .map(|piece| piece.take().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        maybe_pieces.iter().filter(|piece| piece.is_some()).count(),
+        RecordedHistorySegment::NUM_RAW_RECORDS
+    );
+
+    let reconstructor = PiecesReconstructor::new(kzg, erasure_coding);
+
+    // First and last source positions
+    for position in [0, ArchivedHistorySegment::NUM_PIECES - 2] {
+        let reconstructed_piece = reconstructor
+            .reconstruct_piece(&maybe_pieces, position)
+            .unwrap();
+
+        assert_eq!(missing_pieces[position / 2], reconstructed_piece);
+    }
+}
+
+#[test]
 fn segment_reconstruction_fails() {
     let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
