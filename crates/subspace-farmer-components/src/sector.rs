@@ -324,20 +324,18 @@ impl SectorContentsMap {
             return Err(SectorContentsMapFromBytesError::ChecksumMismatch);
         }
 
-        let mut encoded_record_chunks_used =
-            vec![SingleRecordBitArray::default(); pieces_in_sector.into()];
+        // Length was checked above, so there is no remainder
+        let encoded_record_chunks_used = single_records_bit_arrays
+            .as_chunks::<{ SINGLE_RECORD_BIT_ARRAY_SIZE }>()
+            .0
+            .iter()
+            .copied()
+            .map(SingleRecordBitArray::new)
+            .collect::<Vec<_>>();
 
         let num_encoded_record_chunks = encoded_record_chunks_used
-            .iter_mut()
-            .zip(
-                single_records_bit_arrays
-                    .as_chunks::<{ SINGLE_RECORD_BIT_ARRAY_SIZE }>()
-                    .0,
-            )
-            .map(|(encoded_record_chunks_used, bytes)| {
-                encoded_record_chunks_used
-                    .as_raw_mut_slice()
-                    .copy_from_slice(bytes);
+            .iter()
+            .map(|encoded_record_chunks_used| {
                 let num_encoded_record_chunks = encoded_record_chunks_used.count_ones();
                 if num_encoded_record_chunks > Record::NUM_CHUNKS {
                     return Err(
