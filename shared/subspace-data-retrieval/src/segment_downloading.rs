@@ -75,9 +75,10 @@ where
     let segment_pieces =
         download_segment_pieces(segment_index, piece_getter, retries, retry_delay).await?;
 
-    let segment = spawn_blocking(move || reconstructor.reconstruct_segment(&segment_pieces))
-        .await
-        .expect("Panic if blocking task panicked")?;
+    let segment =
+        spawn_blocking(move || reconstructor.reconstruct_segment(segment_pieces.as_slice()))
+            .await
+            .expect("Panic if blocking task panicked")?;
 
     Ok(segment)
 }
@@ -91,11 +92,11 @@ pub async fn download_segment_pieces<PG>(
     piece_getter: &PG,
     retries: usize,
     retry_delay: Option<Duration>,
-) -> Result<Vec<Option<Piece>>, SegmentDownloadingError>
+) -> Result<Box<[Option<Piece>; ArchivedHistorySegment::NUM_PIECES]>, SegmentDownloadingError>
 where
     PG: PieceGetter,
 {
-    let mut existing_pieces = [const { None }; ArchivedHistorySegment::NUM_PIECES];
+    let mut existing_pieces = Box::new([const { None }; ArchivedHistorySegment::NUM_PIECES]);
 
     for retry in 0..=retries {
         match download_missing_segment_pieces(segment_index, piece_getter, existing_pieces).await {
@@ -136,31 +137,26 @@ where
 }
 
 /// Tries to download pieces of a segment once, so that segment can be reconstructed afterward.
-/// Pass existing pieces in `existing_pieces`, or use
-/// `[const { None }; ArchivedHistorySegment::NUM_PIECES]` if no pieces are available.
+/// Pieces that are already available are passed in `segment_pieces`, the rest are `None`.
 ///
 /// Prefers source pieces if available, on error returns the incomplete piece download (including
-/// existing pieces).
-#[expect(
-    clippy::result_large_err,
-    reason = "Same as the input, returned back to the caller to retry with"
-)]
+/// pieces that were already available).
 async fn download_missing_segment_pieces<PG>(
     segment_index: SegmentIndex,
     piece_getter: &PG,
-    existing_pieces: [Option<Piece>; ArchivedHistorySegment::NUM_PIECES],
+    mut segment_pieces: Box<[Option<Piece>; ArchivedHistorySegment::NUM_PIECES]>,
 ) -> Result<
-    Vec<Option<Piece>>,
+    Box<[Option<Piece>; ArchivedHistorySegment::NUM_PIECES]>,
     (
         SegmentDownloadingError,
-        [Option<Piece>; ArchivedHistorySegment::NUM_PIECES],
+        Box<[Option<Piece>; ArchivedHistorySegment::NUM_PIECES]>,
     ),
 >
 where
     PG: PieceGetter,
 {
     let required_pieces_number = RecordedHistorySegment::NUM_RAW_RECORDS;
-    let mut downloaded_pieces = existing_pieces
+    let mut downloaded_pieces = segment_pieces
         .iter()
         .filter(|piece| piece.is_some())
         .count();
@@ -170,8 +166,6 @@ where
     let mut last_success = None;
     let mut first_failure = None;
     let mut last_failure = None;
-
-    let mut segment_pieces = existing_pieces;
 
     let mut pieces_iter = segment_index
         .segment_piece_indexes_source_first()
@@ -251,5 +245,5 @@ where
         ));
     }
 
-    Ok(segment_pieces.to_vec())
+    Ok(segment_pieces)
 }
