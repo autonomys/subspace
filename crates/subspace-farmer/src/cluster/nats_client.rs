@@ -862,9 +862,14 @@ impl NatsClient {
             {
                 buffer.push_back(element);
             }
-            while buffer.encoded_size() < approximate_max_message_size
+            // Tracked incrementally, encoding the whole buffer for every added element is
+            // quadratic. Growth of the length prefix is not accounted for, but the size is
+            // approximate anyway and the real one is checked below.
+            let mut buffer_encoded_size = buffer.encoded_size();
+            while buffer_encoded_size < approximate_max_message_size
                 && let Some(element) = response_stream.next().now_or_never().flatten()
             {
+                buffer_encoded_size += element.encoded_size();
                 buffer.push_back(element);
             }
 
