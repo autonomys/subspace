@@ -25,8 +25,6 @@
 // TODO: Remove if/when this is addressed:
 //  https://github.com/rust-lang/rust-clippy/issues/17524#issuecomment-5405010966
 #![cfg_attr(test, expect(clippy::manual_assert_eq, reason = "False-positive"))]
-// TODO: Remove once https://github.com/gfx-rs/wgpu/pull/9953 is released
-#![recursion_limit = "256"]
 
 #[cfg(not(target_arch = "spirv"))]
 mod host;
