@@ -33,13 +33,13 @@ ab-blake3 = "0.2.0"
 ab-chacha8 = "0.1.1"
 ab-proof-of-space = { path = "shared/ab-proof-of-space", default-features = false }
 ab-proof-of-space-gpu = { path = "shared/ab-proof-of-space-gpu", default-features = false }
-actix-web = { version = "4.17.0", default-features = false }
-aes = "0.9.3"
-anyhow = "1.0.104"
-array-reshape = { version = "0.1.1", features = ["const-trait"] }
+actix-web = { version = "4.20.0", default-features = false }
+aes = "0.9.4"
+anyhow = "1.0.105"
+array-reshape = { version = "0.2.0", features = ["const-trait"] }
 async-channel = "1.9.0"
-async-lock = "3.4.2"
-async-nats = "0.52.0"
+async-lock = "3.5.0"
+async-nats = "0.53.0"
 async-oneshot = "0.5.9"
 async-trait = "0.1.92"
 auto-id-domain-runtime = { version = "0.1.0", path = "domains/runtime/auto-id" }
@@ -50,14 +50,14 @@ bincode = { version = "2.0.1" }
 bip39 = "3.0.0"
 bitvec = "1.1.1"
 blake2 = { version = "0.11.0", default-features = false }
-blake3 = { version = "1.8.7", default-features = false }
+blake3 = { version = "1.8.8", default-features = false }
 blst = "0.3.17"
-bytes = { version = "1.12.1", default-features = false }
+bytes = { version = "1.12.2", default-features = false }
 bytesize = "2.7.0"
 cargo-gpu-install = "0.11.0"
-cc = "1.9.0"
+cc = "1.12.0"
 chacha20 = { version = "0.10.2", default-features = false }
-clap = "4.6.7"
+clap = "4.6.10"
 console = "0.16.6"
 core_affinity = "0.8.3"
 cpufeatures = "0.3.1"
@@ -78,10 +78,10 @@ domain-service = { version = "0.1.0", path = "domains/service" }
 domain-test-primitives = { version = "0.1.0", path = "domains/test/primitives", default-features = false }
 domain-test-service = { version = "0.1.0", path = "domains/test/service" }
 domain-test-utils = { version = "0.1.0", path = "domains/test/utils" }
-env_logger = "0.11.11"
+env_logger = "0.11.12"
 ethereum = { version = "0.18.2", default-features = false, features = ["with-scale"] }
 event-listener = "5.4.2"
-event-listener-primitives = "2.0.2"
+event-listener-primitives = "2.0.3"
 evm-domain-runtime = { version = "0.1.0", path = "domains/runtime/evm" }
 evm-domain-test-runtime = { version = "0.1.0", path = "domains/test/runtime/evm" }
 fc-consensus = { version = "2.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "04f960fef4a66c8f7473999716263a82bde35280" }
@@ -116,8 +116,8 @@ libc = "0.2.191"
 libp2p = { version = "0.57.0", git = "https://github.com/autonomys/rust-libp2p", rev = "5914c8763c6073b31208ca343a4da779c90e481f", default-features = false }
 libp2p-swarm-test = { version = "0.7.0", git = "https://github.com/autonomys/rust-libp2p", rev = "5914c8763c6073b31208ca343a4da779c90e481f" }
 libsecp256k1 = "0.7.2"
-log = { version = "0.4.34", default-features = false }
-memmap2 = "0.9.11"
+log = { version = "0.4.35", default-features = false }
+memmap2 = "0.9.12"
 memory-db = { version = "0.34.0", default-features = false }
 mimalloc = "0.1.52"
 mmr-gadget = { git = "https://github.com/autonomys/polkadot-sdk", rev = "c2ece7ab11f8245193c3fe4c398e192e096e5394" }
@@ -164,10 +164,10 @@ pallet-utility = { git = "https://github.com/autonomys/polkadot-sdk", rev = "c2e
 parity-scale-codec = { version = "3.7.5", default-features = false }
 parking_lot = "0.13.0"
 pem = "4.0.0"
-pin-project = "1.1.13"
+pin-project = "1.2.0"
 precompile-utils = { version = "0.1.0", git = "https://github.com/autonomys/frontier", rev = "04f960fef4a66c8f7473999716263a82bde35280", default-features = false }
 prometheus = { version = "0.13.4", default-features = false }
-prometheus-client = "0.25.1"
+prometheus-client = "0.25.2"
 prop-test = "0.1.1"
 rand = { version = "0.10.3", default-features = false }
 rand_chacha = { version = "0.10.0", default-features = false }
@@ -221,7 +221,7 @@ seq-macro = "0.3.6"
 serde = { version = "1.0.229", default-features = false }
 serde-big-array = "0.5.1"
 serde_json = "1.0.154"
-sha2 = { version = "0.11.1", default-features = false }
+sha2 = { version = "0.11.2", default-features = false }
 sp-api = { git = "https://github.com/autonomys/polkadot-sdk", rev = "c2ece7ab11f8245193c3fe4c398e192e096e5394", default-features = false }
 sp-application-crypto = { git = "https://github.com/autonomys/polkadot-sdk", rev = "c2ece7ab11f8245193c3fe4c398e192e096e5394", default-features = false }
 sp-arithmetic = { git = "https://github.com/autonomys/polkadot-sdk", rev = "c2ece7ab11f8245193c3fe4c398e192e096e5394", default-features = false }
@@ -314,9 +314,9 @@ uint = { version = "0.10.2", default-features = false }
 ulid = "3.0.0"
 unsigned-varint = "0.8.0"
 void = "1.0.2"
-wgpu = { version = "30.0.1", default-features = false, features = ["metal", "parking_lot", "spirv", "std", "vulkan"] }
+wgpu = { version = "30.0.2", default-features = false, features = ["metal", "parking_lot", "spirv", "std", "vulkan"] }
 x509-parser = "0.18.1"
-zeroize = "1.9.1"
+zeroize = "1.9.2"
 ziggy = { version = "1.7.3", default-features = false }
 
 # The list of dependencies below (which can be both direct and indirect dependencies) are crates
